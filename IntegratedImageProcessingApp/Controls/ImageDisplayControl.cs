@@ -17,6 +17,9 @@ namespace IntegratedImageProcessingApp.Controls
         private PointF _imageOffset = PointF.Empty;
         private bool _isPanning;
         private Point _lastMousePoint;
+        private bool _suppressViewChanged;
+
+        public event EventHandler ViewChanged;
 
         public ImageDisplayControl()
         {
@@ -41,6 +44,53 @@ namespace IntegratedImageProcessingApp.Controls
         {
             get { return statusLabel.Text; }
             private set { statusLabel.Text = value; }
+        }
+
+        public ImageViewState ViewState
+        {
+            get
+            {
+                lock (_imageLock)
+                {
+                    return new ImageViewState(_zoom, _imageOffset);
+                }
+            }
+        }
+
+        public bool HasImage
+        {
+            get
+            {
+                lock (_imageLock)
+                {
+                    return _sourceBitmap != null;
+                }
+            }
+        }
+
+        public void ApplyViewState(ImageViewState viewState)
+        {
+            if (!HasImage)
+            {
+                return;
+            }
+
+            _suppressViewChanged = true;
+            try
+            {
+                lock (_imageLock)
+                {
+                    _zoom = ClampZoom(viewState.Zoom);
+                    _imageOffset = viewState.Offset;
+                }
+
+                UpdateStatusLabel();
+                viewerPanel.Invalidate();
+            }
+            finally
+            {
+                _suppressViewChanged = false;
+            }
         }
 
         public async Task LoadImageFromFileAsync(string filePath, CancellationToken cancellationToken)
@@ -85,6 +135,7 @@ namespace IntegratedImageProcessingApp.Controls
             FitImageToView();
             UpdateStatusLabel();
             viewerPanel.Invalidate();
+            OnViewChanged();
         }
 
         public void ClearImage()
@@ -158,6 +209,7 @@ namespace IntegratedImageProcessingApp.Controls
 
             UpdateStatusLabel();
             viewerPanel.Invalidate();
+            OnViewChanged();
         }
 
         private void viewerPanel_MouseDown(object sender, MouseEventArgs e)
@@ -193,6 +245,7 @@ namespace IntegratedImageProcessingApp.Controls
 
             UpdateStatusLabel();
             viewerPanel.Invalidate();
+            OnViewChanged();
         }
 
         private void viewerPanel_MouseUp(object sender, MouseEventArgs e)
@@ -223,6 +276,7 @@ namespace IntegratedImageProcessingApp.Controls
             FitImageToView();
             UpdateStatusLabel();
             viewerPanel.Invalidate();
+            OnViewChanged();
         }
 
         private void FitImageToView()
@@ -308,6 +362,20 @@ namespace IntegratedImageProcessingApp.Controls
             return zoom;
         }
 
+        private void OnViewChanged()
+        {
+            if (_suppressViewChanged)
+            {
+                return;
+            }
+
+            EventHandler handler = ViewChanged;
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
+        }
+
         private void DisposeCurrentImage()
         {
             if (_sourceBitmap != null)
@@ -316,5 +384,18 @@ namespace IntegratedImageProcessingApp.Controls
                 _sourceBitmap = null;
             }
         }
+    }
+
+    public struct ImageViewState
+    {
+        public ImageViewState(float zoom, PointF offset)
+        {
+            Zoom = zoom;
+            Offset = offset;
+        }
+
+        public float Zoom { get; private set; }
+
+        public PointF Offset { get; private set; }
     }
 }

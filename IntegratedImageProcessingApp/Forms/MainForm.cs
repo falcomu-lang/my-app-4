@@ -21,6 +21,7 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageDisplayControl rightObjectsDisplayControl;
         private ImageDisplayControl rightDebugDisplayControl;
         private bool isLoadingImage;
+        private bool isSyncingImageView;
 
         public MainForm()
         {
@@ -54,6 +55,8 @@ namespace IntegratedImageProcessingApp.Forms
             rightProcessedDisplayControl = CreateImageDisplayControl(rightProcessedDisplayHostPanel, "右側 處理後");
             rightObjectsDisplayControl = CreateImageDisplayControl(rightObjectsDisplayHostPanel, "右側 物件結果");
             rightDebugDisplayControl = CreateImageDisplayControl(rightDebugDisplayHostPanel, "右側 debug");
+
+            WireImageDisplaySynchronization();
         }
 
         private static ImageDisplayControl CreateImageDisplayControl(Control host, string title)
@@ -65,6 +68,143 @@ namespace IntegratedImageProcessingApp.Forms
             displayControl.TitleText = title;
             host.Controls.Add(displayControl);
             return displayControl;
+        }
+
+        private void WireImageDisplaySynchronization()
+        {
+            leftOriginalDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            leftProcessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            leftObjectsDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            leftDebugDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            rightOriginalDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            rightProcessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            rightObjectsDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            rightDebugDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+
+            leftImageTabControl.SelectedIndexChanged += VisibleImageTabControl_SelectedIndexChanged;
+            rightImageTabControl.SelectedIndexChanged += VisibleImageTabControl_SelectedIndexChanged;
+        }
+
+        private void ImageDisplayControl_ViewChanged(object sender, EventArgs e)
+        {
+            if (isSyncingImageView)
+            {
+                return;
+            }
+
+            var source = sender as ImageDisplayControl;
+            if (source == null || !source.HasImage)
+            {
+                return;
+            }
+
+            ImageDisplayControl leftVisible = GetVisibleLeftImageDisplayControl();
+            ImageDisplayControl rightVisible = GetVisibleRightImageDisplayControl();
+            ImageDisplayControl target = null;
+
+            if (ReferenceEquals(source, leftVisible))
+            {
+                target = rightVisible;
+            }
+            else if (ReferenceEquals(source, rightVisible))
+            {
+                target = leftVisible;
+            }
+
+            if (target == null || !target.HasImage)
+            {
+                return;
+            }
+
+            isSyncingImageView = true;
+            try
+            {
+                target.ApplyViewState(source.ViewState);
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
+        }
+
+        private void VisibleImageTabControl_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            SyncVisibleImageDisplaysFromLeft();
+        }
+
+        private void SyncVisibleImageDisplaysFromLeft()
+        {
+            if (isSyncingImageView)
+            {
+                return;
+            }
+
+            ImageDisplayControl leftVisible = GetVisibleLeftImageDisplayControl();
+            ImageDisplayControl rightVisible = GetVisibleRightImageDisplayControl();
+            if (leftVisible == null || rightVisible == null || !leftVisible.HasImage || !rightVisible.HasImage)
+            {
+                return;
+            }
+
+            isSyncingImageView = true;
+            try
+            {
+                rightVisible.ApplyViewState(leftVisible.ViewState);
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
+        }
+
+        private ImageDisplayControl GetVisibleLeftImageDisplayControl()
+        {
+            if (leftImageTabControl.SelectedTab == leftOriginalTabPage)
+            {
+                return leftOriginalDisplayControl;
+            }
+
+            if (leftImageTabControl.SelectedTab == leftProcessedTabPage)
+            {
+                return leftProcessedDisplayControl;
+            }
+
+            if (leftImageTabControl.SelectedTab == leftObjectsTabPage)
+            {
+                return leftObjectsDisplayControl;
+            }
+
+            if (leftImageTabControl.SelectedTab == leftDebugTabPage)
+            {
+                return leftDebugDisplayControl;
+            }
+
+            return null;
+        }
+
+        private ImageDisplayControl GetVisibleRightImageDisplayControl()
+        {
+            if (rightImageTabControl.SelectedTab == rightOriginalTabPage)
+            {
+                return rightOriginalDisplayControl;
+            }
+
+            if (rightImageTabControl.SelectedTab == rightProcessedTabPage)
+            {
+                return rightProcessedDisplayControl;
+            }
+
+            if (rightImageTabControl.SelectedTab == rightObjectsTabPage)
+            {
+                return rightObjectsDisplayControl;
+            }
+
+            if (rightImageTabControl.SelectedTab == rightDebugTabPage)
+            {
+                return rightDebugDisplayControl;
+            }
+
+            return null;
         }
 
         private void MainForm_Load(object sender, EventArgs e)
@@ -127,6 +267,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                     await leftOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
                     await rightOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
+                    SyncVisibleImageDisplaysFromLeft();
 
                     statusLabel.Text = "已讀取圖片：" + fileName;
                 }
