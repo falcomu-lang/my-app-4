@@ -21,7 +21,6 @@ namespace IntegratedImageProcessingApp.Forms
         public MainForm()
         {
             InitializeComponent();
-            InitializeDesignImageDisplayPlaceholders();
 
             if (!IsRunningInDesigner())
             {
@@ -57,10 +56,62 @@ namespace IntegratedImageProcessingApp.Forms
         {
             host.Controls.Clear();
             host.BackColor = Color.White;
-            host.Paint -= ImageDisplayHostPanel_Paint;
-            host.Paint += ImageDisplayHostPanel_Paint;
-            host.Resize -= ImageDisplayHostPanel_Resize;
-            host.Resize += ImageDisplayHostPanel_Resize;
+            CreateDesignImageDisplayPlaceholder(host, "圖片顯示");
+        }
+
+        private static void CreateDesignImageDisplayPlaceholder(Control host, string title)
+        {
+            var topPanel = new Panel();
+            var titleLabel = new Label();
+            var resolutionLabel = new Label();
+            var viewPanel = new Panel();
+            var bottomPanel = new Panel();
+            var statusLabel = new Label();
+            var fitButton = new Button();
+
+            topPanel.BackColor = Color.FromArgb(232, 235, 240);
+            topPanel.Dock = DockStyle.Top;
+            topPanel.Height = 42;
+            topPanel.Padding = new Padding(10, 8, 10, 8);
+
+            titleLabel.AutoSize = true;
+            titleLabel.Dock = DockStyle.Left;
+            titleLabel.Font = new Font("Microsoft JhengHei UI", 9F, FontStyle.Bold);
+            titleLabel.ForeColor = Color.Black;
+            titleLabel.Text = title;
+
+            resolutionLabel.AutoSize = true;
+            resolutionLabel.Dock = DockStyle.Right;
+            resolutionLabel.ForeColor = Color.Black;
+            resolutionLabel.Text = "0 x 0";
+
+            viewPanel.BackColor = Color.White;
+            viewPanel.BorderStyle = BorderStyle.FixedSingle;
+            viewPanel.Dock = DockStyle.Fill;
+
+            bottomPanel.BackColor = Color.FromArgb(232, 235, 240);
+            bottomPanel.Dock = DockStyle.Bottom;
+            bottomPanel.Height = 42;
+            bottomPanel.Padding = new Padding(10, 7, 10, 7);
+
+            statusLabel.AutoSize = true;
+            statusLabel.Dock = DockStyle.Left;
+            statusLabel.ForeColor = Color.Black;
+            statusLabel.Text = "尚未載入圖片";
+
+            fitButton.Dock = DockStyle.Right;
+            fitButton.FlatStyle = FlatStyle.Flat;
+            fitButton.ForeColor = Color.Black;
+            fitButton.Text = "重設視圖";
+            fitButton.Width = 90;
+
+            topPanel.Controls.Add(resolutionLabel);
+            topPanel.Controls.Add(titleLabel);
+            bottomPanel.Controls.Add(fitButton);
+            bottomPanel.Controls.Add(statusLabel);
+            host.Controls.Add(viewPanel);
+            host.Controls.Add(bottomPanel);
+            host.Controls.Add(topPanel);
         }
 
         private void InitializeImageDisplayControls()
@@ -84,59 +135,6 @@ namespace IntegratedImageProcessingApp.Forms
             displayControl.TitleText = title;
             host.Controls.Add(displayControl);
             return displayControl;
-        }
-
-        private void ImageDisplayHostPanel_Resize(object sender, EventArgs e)
-        {
-            var host = sender as Control;
-            if (host != null)
-            {
-                host.Invalidate();
-            }
-        }
-
-        private void ImageDisplayHostPanel_Paint(object sender, PaintEventArgs e)
-        {
-            var host = sender as Control;
-            if (host == null)
-            {
-                return;
-            }
-
-            DrawImageDisplayPlaceholder(e.Graphics, host.ClientRectangle);
-        }
-
-        private static void DrawImageDisplayPlaceholder(Graphics graphics, Rectangle bounds)
-        {
-            if (bounds.Width <= 0 || bounds.Height <= 0)
-            {
-                return;
-            }
-
-            var headerBounds = new Rectangle(0, 0, bounds.Width, 42);
-            var footerBounds = new Rectangle(0, Math.Max(42, bounds.Height - 42), bounds.Width, 42);
-            var imageBounds = Rectangle.FromLTRB(0, headerBounds.Bottom, bounds.Width, footerBounds.Top);
-            imageBounds.Inflate(-1, -1);
-            var buttonBounds = new Rectangle(Math.Max(10, bounds.Width - 100), footerBounds.Top + 7, 90, 28);
-
-            using (var grayBrush = new SolidBrush(Color.FromArgb(232, 235, 240)))
-            using (var whiteBrush = new SolidBrush(Color.White))
-            using (var borderPen = new Pen(Color.FromArgb(170, 176, 185)))
-            using (var textBrush = new SolidBrush(Color.Black))
-            using (var boldFont = new Font("Microsoft JhengHei UI", 9F, FontStyle.Bold))
-            using (var font = new Font("Microsoft JhengHei UI", 9F, FontStyle.Regular))
-            {
-                graphics.FillRectangle(grayBrush, headerBounds);
-                graphics.FillRectangle(whiteBrush, imageBounds);
-                graphics.DrawRectangle(borderPen, imageBounds);
-                graphics.FillRectangle(grayBrush, footerBounds);
-                graphics.DrawRectangle(borderPen, buttonBounds);
-
-                graphics.DrawString("圖片顯示", boldFont, textBrush, new PointF(10, 11));
-                graphics.DrawString("0 x 0", font, textBrush, new PointF(Math.Max(10, bounds.Width - 55), 11));
-                graphics.DrawString("尚未載入圖片", font, textBrush, new PointF(10, footerBounds.Top + 12));
-                graphics.DrawString("重設視圖", font, textBrush, new PointF(buttonBounds.Left + 16, buttonBounds.Top + 6));
-            }
         }
 
         private void MainForm_Load(object sender, EventArgs e)

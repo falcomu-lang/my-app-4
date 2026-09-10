@@ -260,10 +260,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftOriginalDisplayHostPanel.Name = "leftOriginalDisplayHostPanel";
             this.leftOriginalDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
-            this.leftOriginalDisplayHostPanel.TabIndex = 0;
-            this.leftOriginalDisplayHostPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.ImageDisplayHostPanel_Paint);
-            this.leftOriginalDisplayHostPanel.Resize += new System.EventHandler(this.ImageDisplayHostPanel_Resize);
-            // 
+            this.leftOriginalDisplayHostPanel.TabIndex = 0;            // 
             // leftProcessedTabPage
             // 
             this.leftProcessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
@@ -281,10 +278,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftProcessedDisplayHostPanel.Name = "leftProcessedDisplayHostPanel";
             this.leftProcessedDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
-            this.leftProcessedDisplayHostPanel.TabIndex = 0;
-            this.leftProcessedDisplayHostPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.ImageDisplayHostPanel_Paint);
-            this.leftProcessedDisplayHostPanel.Resize += new System.EventHandler(this.ImageDisplayHostPanel_Resize);
-            // 
+            this.leftProcessedDisplayHostPanel.TabIndex = 0;            // 
             // leftObjectsTabPage
             // 
             this.leftObjectsTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
@@ -302,10 +296,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftObjectsDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftObjectsDisplayHostPanel.Name = "leftObjectsDisplayHostPanel";
             this.leftObjectsDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
-            this.leftObjectsDisplayHostPanel.TabIndex = 0;
-            this.leftObjectsDisplayHostPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.ImageDisplayHostPanel_Paint);
-            this.leftObjectsDisplayHostPanel.Resize += new System.EventHandler(this.ImageDisplayHostPanel_Resize);
-            // 
+            this.leftObjectsDisplayHostPanel.TabIndex = 0;            // 
             // leftDebugTabPage
             // 
             this.leftDebugTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
@@ -323,10 +314,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftDebugDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftDebugDisplayHostPanel.Name = "leftDebugDisplayHostPanel";
             this.leftDebugDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
-            this.leftDebugDisplayHostPanel.TabIndex = 0;
-            this.leftDebugDisplayHostPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.ImageDisplayHostPanel_Paint);
-            this.leftDebugDisplayHostPanel.Resize += new System.EventHandler(this.ImageDisplayHostPanel_Resize);
-            // 
+            this.leftDebugDisplayHostPanel.TabIndex = 0;            // 
             // rightImageTabControl
             // 
             this.rightImageTabControl.Controls.Add(this.rightOriginalTabPage);
@@ -358,10 +346,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightOriginalDisplayHostPanel.Name = "rightOriginalDisplayHostPanel";
             this.rightOriginalDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
-            this.rightOriginalDisplayHostPanel.TabIndex = 0;
-            this.rightOriginalDisplayHostPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.ImageDisplayHostPanel_Paint);
-            this.rightOriginalDisplayHostPanel.Resize += new System.EventHandler(this.ImageDisplayHostPanel_Resize);
-            // 
+            this.rightOriginalDisplayHostPanel.TabIndex = 0;            // 
             // rightProcessedTabPage
             // 
             this.rightProcessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
@@ -379,10 +364,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightProcessedDisplayHostPanel.Name = "rightProcessedDisplayHostPanel";
             this.rightProcessedDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
-            this.rightProcessedDisplayHostPanel.TabIndex = 0;
-            this.rightProcessedDisplayHostPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.ImageDisplayHostPanel_Paint);
-            this.rightProcessedDisplayHostPanel.Resize += new System.EventHandler(this.ImageDisplayHostPanel_Resize);
-            // 
+            this.rightProcessedDisplayHostPanel.TabIndex = 0;            // 
             // rightObjectsTabPage
             // 
             this.rightObjectsTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
@@ -400,10 +382,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightObjectsDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightObjectsDisplayHostPanel.Name = "rightObjectsDisplayHostPanel";
             this.rightObjectsDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
-            this.rightObjectsDisplayHostPanel.TabIndex = 0;
-            this.rightObjectsDisplayHostPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.ImageDisplayHostPanel_Paint);
-            this.rightObjectsDisplayHostPanel.Resize += new System.EventHandler(this.ImageDisplayHostPanel_Resize);
-            // 
+            this.rightObjectsDisplayHostPanel.TabIndex = 0;            // 
             // rightDebugTabPage
             // 
             this.rightDebugTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
@@ -421,10 +400,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightDebugDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightDebugDisplayHostPanel.Name = "rightDebugDisplayHostPanel";
             this.rightDebugDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
-            this.rightDebugDisplayHostPanel.TabIndex = 0;
-            this.rightDebugDisplayHostPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.ImageDisplayHostPanel_Paint);
-            this.rightDebugDisplayHostPanel.Resize += new System.EventHandler(this.ImageDisplayHostPanel_Resize);
-            // 
+            this.rightDebugDisplayHostPanel.TabIndex = 0;            // 
             // rightPanel
             // 
             this.rightPanel.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(241)))), ((int)(((byte)(244)))), ((int)(((byte)(248)))));
@@ -523,11 +499,13 @@ namespace IntegratedImageProcessingApp.Forms
             this.parameterPanel.ResumeLayout(false);
             this.statusStrip.ResumeLayout(false);
             this.statusStrip.PerformLayout();
+            this.InitializeDesignImageDisplayPlaceholders();
             this.ResumeLayout(false);
             this.PerformLayout();
         }
     }
 }
+
 
 
 
