@@ -313,6 +313,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.functionListBox.ItemHeight = 38;
             this.functionListBox.Items.AddRange(new object[] {
             "讀取圖片",
+            "指定 ROI",
             "亮度 / 對比",
             "濾波與銳化",
             "邊緣偵測",

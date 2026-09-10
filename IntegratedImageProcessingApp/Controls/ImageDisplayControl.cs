@@ -18,8 +18,14 @@ namespace IntegratedImageProcessingApp.Controls
         private bool _isPanning;
         private Point _lastMousePoint;
         private bool _suppressViewChanged;
+        private bool _isSelectingRoi;
+        private bool _isDrawingRoi;
+        private Point _roiStartPoint;
+        private Point _roiCurrentPoint;
+        private Rectangle? _roiOverlay;
 
         public event EventHandler ViewChanged;
+        public event EventHandler<RoiSelectedEventArgs> RoiSelected;
 
         public ImageDisplayControl()
         {
@@ -93,6 +99,52 @@ namespace IntegratedImageProcessingApp.Controls
             }
         }
 
+        public bool BeginRoiSelection()
+        {
+            if (!HasImage)
+            {
+                StatusText = "請先載入圖片";
+                return false;
+            }
+
+            _isSelectingRoi = true;
+            _isDrawingRoi = false;
+            viewerPanel.Cursor = Cursors.Cross;
+            StatusText = "拖曳滑鼠指定 ROI";
+            viewerPanel.Focus();
+            viewerPanel.Invalidate();
+            return true;
+        }
+
+        public void CancelRoiSelection()
+        {
+            _isSelectingRoi = false;
+            _isDrawingRoi = false;
+            viewerPanel.Capture = false;
+            viewerPanel.Cursor = Cursors.Default;
+            viewerPanel.Invalidate();
+        }
+
+        public void SetRoiOverlay(Rectangle roi)
+        {
+            lock (_imageLock)
+            {
+                _roiOverlay = NormalizeImageRectangle(roi);
+            }
+
+            viewerPanel.Invalidate();
+        }
+
+        public void ClearRoiOverlay()
+        {
+            lock (_imageLock)
+            {
+                _roiOverlay = null;
+            }
+
+            viewerPanel.Invalidate();
+        }
+
         public async Task LoadImageFromFileAsync(string filePath, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(filePath))
@@ -163,11 +215,13 @@ namespace IntegratedImageProcessingApp.Controls
             Bitmap bitmap;
             float zoom;
             PointF offset;
+            Rectangle? roiOverlay;
             lock (_imageLock)
             {
                 bitmap = _sourceBitmap;
                 zoom = _zoom;
                 offset = _imageOffset;
+                roiOverlay = _roiOverlay;
             }
 
             if (bitmap == null || zoom <= 0f)
@@ -176,6 +230,8 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             e.Graphics.DrawImage(bitmap, offset.X, offset.Y, bitmap.Width * zoom, bitmap.Height * zoom);
+            DrawRoiOverlay(e.Graphics, roiOverlay, zoom, offset);
+            DrawActiveRoiSelection(e.Graphics);
         }
 
         private void viewerPanel_MouseWheel(object sender, MouseEventArgs e)
@@ -214,6 +270,16 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void viewerPanel_MouseDown(object sender, MouseEventArgs e)
         {
+            if (_isSelectingRoi && e.Button == MouseButtons.Left && HasImage)
+            {
+                _isDrawingRoi = true;
+                _roiStartPoint = e.Location;
+                _roiCurrentPoint = e.Location;
+                viewerPanel.Capture = true;
+                viewerPanel.Invalidate();
+                return;
+            }
+
             lock (_imageLock)
             {
                 if (e.Button != MouseButtons.Left || _sourceBitmap == null)
@@ -229,6 +295,13 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void viewerPanel_MouseMove(object sender, MouseEventArgs e)
         {
+            if (_isDrawingRoi)
+            {
+                _roiCurrentPoint = e.Location;
+                viewerPanel.Invalidate();
+                return;
+            }
+
             if (!_isPanning)
             {
                 return;
@@ -250,6 +323,18 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void viewerPanel_MouseUp(object sender, MouseEventArgs e)
         {
+            if (_isDrawingRoi)
+            {
+                _roiCurrentPoint = e.Location;
+                _isDrawingRoi = false;
+                _isSelectingRoi = false;
+                viewerPanel.Capture = false;
+                viewerPanel.Cursor = Cursors.Default;
+                viewerPanel.Invalidate();
+                FinishRoiSelection();
+                return;
+            }
+
             _isPanning = false;
             viewerPanel.Cursor = Cursors.Default;
             viewerPanel.Invalidate();
@@ -347,6 +432,124 @@ namespace IntegratedImageProcessingApp.Controls
             }
         }
 
+        private void DrawRoiOverlay(Graphics graphics, Rectangle? roiOverlay, float zoom, PointF offset)
+        {
+            if (!roiOverlay.HasValue)
+            {
+                return;
+            }
+
+            RectangleF viewRectangle = ImageRectangleToViewRectangle(roiOverlay.Value, zoom, offset);
+            using (var pen = new Pen(Color.LimeGreen, 2f))
+            {
+                graphics.DrawRectangle(
+                    pen,
+                    viewRectangle.X,
+                    viewRectangle.Y,
+                    viewRectangle.Width,
+                    viewRectangle.Height);
+            }
+        }
+
+        private void DrawActiveRoiSelection(Graphics graphics)
+        {
+            if (!_isDrawingRoi)
+            {
+                return;
+            }
+
+            Rectangle viewRectangle = NormalizeViewRectangle(_roiStartPoint, _roiCurrentPoint);
+            if (viewRectangle.Width < 1 || viewRectangle.Height < 1)
+            {
+                return;
+            }
+
+            using (var pen = new Pen(Color.LimeGreen, 2f))
+            {
+                graphics.DrawRectangle(pen, viewRectangle);
+            }
+        }
+
+        private void FinishRoiSelection()
+        {
+            Rectangle viewRectangle = NormalizeViewRectangle(_roiStartPoint, _roiCurrentPoint);
+            if (viewRectangle.Width < 3 || viewRectangle.Height < 3)
+            {
+                StatusText = "ROI 範圍太小";
+                return;
+            }
+
+            Rectangle imageRectangle;
+            if (!TryConvertViewRectangleToImageRectangle(viewRectangle, out imageRectangle))
+            {
+                StatusText = "ROI 未落在圖片範圍內";
+                return;
+            }
+
+            EventHandler<RoiSelectedEventArgs> handler = RoiSelected;
+            if (handler != null)
+            {
+                handler(this, new RoiSelectedEventArgs(imageRectangle));
+            }
+        }
+
+        private bool TryConvertViewRectangleToImageRectangle(Rectangle viewRectangle, out Rectangle imageRectangle)
+        {
+            lock (_imageLock)
+            {
+                imageRectangle = Rectangle.Empty;
+                if (_sourceBitmap == null || _zoom <= 0f)
+                {
+                    return false;
+                }
+
+                float left = (viewRectangle.Left - _imageOffset.X) / _zoom;
+                float top = (viewRectangle.Top - _imageOffset.Y) / _zoom;
+                float right = (viewRectangle.Right - _imageOffset.X) / _zoom;
+                float bottom = (viewRectangle.Bottom - _imageOffset.Y) / _zoom;
+
+                int imageLeft = Math.Max(0, Math.Min(_sourceBitmap.Width, (int)Math.Floor(left)));
+                int imageTop = Math.Max(0, Math.Min(_sourceBitmap.Height, (int)Math.Floor(top)));
+                int imageRight = Math.Max(0, Math.Min(_sourceBitmap.Width, (int)Math.Ceiling(right)));
+                int imageBottom = Math.Max(0, Math.Min(_sourceBitmap.Height, (int)Math.Ceiling(bottom)));
+
+                if (imageRight <= imageLeft || imageBottom <= imageTop)
+                {
+                    return false;
+                }
+
+                imageRectangle = Rectangle.FromLTRB(imageLeft, imageTop, imageRight, imageBottom);
+                return true;
+            }
+        }
+
+        private static Rectangle NormalizeViewRectangle(Point start, Point end)
+        {
+            int left = Math.Min(start.X, end.X);
+            int top = Math.Min(start.Y, end.Y);
+            int right = Math.Max(start.X, end.X);
+            int bottom = Math.Max(start.Y, end.Y);
+            return Rectangle.FromLTRB(left, top, right, bottom);
+        }
+
+        private static Rectangle NormalizeImageRectangle(Rectangle rectangle)
+        {
+            int left = Math.Min(rectangle.Left, rectangle.Right);
+            int top = Math.Min(rectangle.Top, rectangle.Bottom);
+            int right = Math.Max(rectangle.Left, rectangle.Right);
+            int bottom = Math.Max(rectangle.Top, rectangle.Bottom);
+            return Rectangle.FromLTRB(left, top, right, bottom);
+        }
+
+        private static RectangleF ImageRectangleToViewRectangle(Rectangle rectangle, float zoom, PointF offset)
+        {
+            return new RectangleF(
+                offset.X + (rectangle.X * zoom),
+                offset.Y + (rectangle.Y * zoom),
+                rectangle.Width * zoom,
+                rectangle.Height * zoom);
+        }
+
         private static float ClampZoom(float zoom)
         {
             if (zoom < 0.02f)
@@ -397,5 +600,15 @@ namespace IntegratedImageProcessingApp.Controls
         public float Zoom { get; private set; }
 
         public PointF Offset { get; private set; }
+    }
+
+    public class RoiSelectedEventArgs : EventArgs
+    {
+        public RoiSelectedEventArgs(Rectangle roi)
+        {
+            Roi = roi;
+        }
+
+        public Rectangle Roi { get; private set; }
     }
 }

@@ -83,6 +83,9 @@ namespace IntegratedImageProcessingApp.Forms
 
             leftImageTabControl.SelectedIndexChanged += VisibleImageTabControl_SelectedIndexChanged;
             rightImageTabControl.SelectedIndexChanged += VisibleImageTabControl_SelectedIndexChanged;
+
+            leftOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
+            rightOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
         }
 
         private void ImageDisplayControl_ViewChanged(object sender, EventArgs e)
@@ -223,9 +226,19 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
-            parameterPlaceholderLabel.Text = selectedFunction == "讀取圖片"
-                ? "點選左側「讀取圖片」後，選擇要載入的圖片。"
-                : "這裡會顯示「" + selectedFunction + "」的參數設定與選項。";
+            if (selectedFunction == "讀取圖片")
+            {
+                parameterPlaceholderLabel.Text = "點選左側「讀取圖片」後，選擇要載入的圖片。";
+            }
+            else if (selectedFunction == "指定 ROI")
+            {
+                parameterPlaceholderLabel.Text = "點選左側「指定 ROI」後，在左邊或右邊的原圖拖曳矩形。確認後 ROI 只會保留在右邊原圖。";
+            }
+            else
+            {
+                parameterPlaceholderLabel.Text = "這裡會顯示「" + selectedFunction + "」的參數設定與選項。";
+            }
+
             statusLabel.Text = "目前選擇：" + selectedFunction;
         }
 
@@ -236,6 +249,66 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 await OpenImageAsync();
             }
+            else if (clickedIndex == 1)
+            {
+                BeginRoiSelection();
+            }
+        }
+
+        private void BeginRoiSelection()
+        {
+            bool enabled = false;
+            if (leftImageTabControl.SelectedTab == leftOriginalTabPage && leftOriginalDisplayControl.HasImage)
+            {
+                enabled = leftOriginalDisplayControl.BeginRoiSelection() || enabled;
+            }
+
+            if (rightImageTabControl.SelectedTab == rightOriginalTabPage && rightOriginalDisplayControl.HasImage)
+            {
+                enabled = rightOriginalDisplayControl.BeginRoiSelection() || enabled;
+            }
+
+            if (!enabled)
+            {
+                statusLabel.Text = "請先切到左邊或右邊的原圖，並載入圖片後再指定 ROI";
+                MessageBox.Show(
+                    this,
+                    "請先載入圖片，並在左邊或右邊的「原圖」分頁指定 ROI。",
+                    "指定 ROI",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            statusLabel.Text = "請在目前顯示的原圖上拖曳矩形指定 ROI";
+        }
+
+        private void ImageDisplayControl_RoiSelected(object sender, RoiSelectedEventArgs e)
+        {
+            leftOriginalDisplayControl.CancelRoiSelection();
+            rightOriginalDisplayControl.CancelRoiSelection();
+
+            DialogResult result = MessageBox.Show(
+                this,
+                "是否要保留此 ROI？",
+                "指定 ROI",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result != DialogResult.Yes)
+            {
+                statusLabel.Text = "已取消 ROI";
+                return;
+            }
+
+            rightImageTabControl.SelectedTab = rightOriginalTabPage;
+            rightOriginalDisplayControl.SetRoiOverlay(e.Roi);
+            statusLabel.Text = string.Format(
+                "已保留 ROI：X={0}, Y={1}, W={2}, H={3}",
+                e.Roi.X,
+                e.Roi.Y,
+                e.Roi.Width,
+                e.Roi.Height);
         }
 
         private async Task OpenImageAsync()
@@ -264,6 +337,7 @@ namespace IntegratedImageProcessingApp.Forms
                     statusLabel.Text = "讀取圖片中：" + fileName;
                     leftImageTabControl.SelectedTab = leftOriginalTabPage;
                     rightImageTabControl.SelectedTab = rightOriginalTabPage;
+                    rightOriginalDisplayControl.ClearRoiOverlay();
 
                     await leftOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
                     await rightOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
