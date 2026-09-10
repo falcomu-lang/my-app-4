@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
+using IntegratedImageProcessingApp.Services;
 
 namespace IntegratedImageProcessingApp.Forms
 {
@@ -22,9 +23,21 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageDisplayControl rightDebugDisplayControl;
         private bool isLoadingImage;
         private bool isSyncingImageView;
+        private readonly SystemParameterIniService systemParameterService;
+        private SystemParameterSettings systemParameters;
+        private bool roiMenuExpanded;
+
+        private const string LoadImageMenuText = "讀取圖片";
+        private const string RoiMenuText = "指定 ROI";
+        private const string SetRoiMenuText = "  設定 ROI";
+        private const string CancelRoiMenuText = "  取消 ROI";
 
         public MainForm()
         {
+            systemParameterService = new SystemParameterIniService(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SystemParameters.ini"));
+            systemParameters = systemParameterService.Load();
+
             InitializeComponent();
 
             if (!IsRunningInDesigner())
@@ -214,6 +227,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             functionListBox.SelectedIndex = 0;
             statusLabel.Text = "介面框架準備就緒";
+            BeginInvoke(new Action(async () => await RestoreSystemParametersAsync()));
         }
 
         private void FunctionListBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -226,13 +240,17 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
-            if (selectedFunction == "讀取圖片")
+            if (selectedFunction == LoadImageMenuText)
             {
                 parameterPlaceholderLabel.Text = "點選左側「讀取圖片」後，選擇要載入的圖片。";
             }
-            else if (selectedFunction == "指定 ROI")
+            else if (selectedFunction == RoiMenuText || selectedFunction == SetRoiMenuText)
             {
-                parameterPlaceholderLabel.Text = "點選左側「指定 ROI」後，在左邊或右邊的原圖拖曳矩形。確認後 ROI 只會保留在右邊原圖。";
+                parameterPlaceholderLabel.Text = "展開「指定 ROI」後點選「設定 ROI」，在左邊或右邊的原圖拖曳矩形。確認後 ROI 只會保留在右邊原圖，並寫入 SystemParameters.ini。";
+            }
+            else if (selectedFunction == CancelRoiMenuText)
+            {
+                parameterPlaceholderLabel.Text = "取消目前保存的 ROI，並更新 SystemParameters.ini。";
             }
             else
             {
@@ -245,14 +263,53 @@ namespace IntegratedImageProcessingApp.Forms
         private async void FunctionListBox_MouseClick(object sender, MouseEventArgs e)
         {
             int clickedIndex = functionListBox.IndexFromPoint(e.Location);
-            if (clickedIndex == 0)
+            if (clickedIndex < 0)
+            {
+                return;
+            }
+
+            string selectedFunction = functionListBox.Items[clickedIndex] as string;
+            if (selectedFunction == LoadImageMenuText)
             {
                 await OpenImageAsync();
             }
-            else if (clickedIndex == 1)
+            else if (selectedFunction == RoiMenuText)
+            {
+                ToggleRoiMenu();
+            }
+            else if (selectedFunction == SetRoiMenuText)
             {
                 BeginRoiSelection();
             }
+            else if (selectedFunction == CancelRoiMenuText)
+            {
+                CancelSavedRoi();
+            }
+        }
+
+        private void ToggleRoiMenu()
+        {
+            if (roiMenuExpanded)
+            {
+                RemoveRoiSubMenuItems();
+            }
+            else
+            {
+                int roiIndex = functionListBox.Items.IndexOf(RoiMenuText);
+                if (roiIndex >= 0)
+                {
+                    functionListBox.Items.Insert(roiIndex + 1, SetRoiMenuText);
+                    functionListBox.Items.Insert(roiIndex + 2, CancelRoiMenuText);
+                    roiMenuExpanded = true;
+                }
+            }
+        }
+
+        private void RemoveRoiSubMenuItems()
+        {
+            functionListBox.Items.Remove(SetRoiMenuText);
+            functionListBox.Items.Remove(CancelRoiMenuText);
+            roiMenuExpanded = false;
         }
 
         private void BeginRoiSelection()
@@ -303,12 +360,68 @@ namespace IntegratedImageProcessingApp.Forms
 
             rightImageTabControl.SelectedTab = rightOriginalTabPage;
             rightOriginalDisplayControl.SetRoiOverlay(e.Roi);
+            systemParameters.RoiEnabled = true;
+            systemParameters.Roi = e.Roi;
+            SaveSystemParameters();
             statusLabel.Text = string.Format(
                 "已保留 ROI：X={0}, Y={1}, W={2}, H={3}",
                 e.Roi.X,
                 e.Roi.Y,
                 e.Roi.Width,
                 e.Roi.Height);
+        }
+
+        private void CancelSavedRoi()
+        {
+            rightOriginalDisplayControl.ClearRoiOverlay();
+            systemParameters.RoiEnabled = false;
+            systemParameters.Roi = Rectangle.Empty;
+            SaveSystemParameters();
+            statusLabel.Text = "已取消 ROI 設定";
+        }
+
+        private async Task RestoreSystemParametersAsync()
+        {
+            if (!string.IsNullOrWhiteSpace(systemParameters.LastImagePath) && File.Exists(systemParameters.LastImagePath))
+            {
+                try
+                {
+                    leftImageTabControl.SelectedTab = leftOriginalTabPage;
+                    rightImageTabControl.SelectedTab = rightOriginalTabPage;
+                    await leftOriginalDisplayControl.LoadImageFromFileAsync(systemParameters.LastImagePath, CancellationToken.None);
+                    await rightOriginalDisplayControl.LoadImageFromFileAsync(systemParameters.LastImagePath, CancellationToken.None);
+                    SyncVisibleImageDisplaysFromLeft();
+                    statusLabel.Text = "已還原上次圖片：" + Path.GetFileName(systemParameters.LastImagePath);
+                }
+                catch (Exception ex)
+                {
+                    statusLabel.Text = "還原上次圖片失敗";
+                    Debug.WriteLine(ex);
+                }
+            }
+
+            RestoreSavedRoiOverlay();
+        }
+
+        private void RestoreSavedRoiOverlay()
+        {
+            if (!systemParameters.RoiEnabled || systemParameters.Roi.Width <= 0 || systemParameters.Roi.Height <= 0)
+            {
+                return;
+            }
+
+            rightOriginalDisplayControl.SetRoiOverlay(systemParameters.Roi);
+            statusLabel.Text = string.Format(
+                "已還原 ROI：X={0}, Y={1}, W={2}, H={3}",
+                systemParameters.Roi.X,
+                systemParameters.Roi.Y,
+                systemParameters.Roi.Width,
+                systemParameters.Roi.Height);
+        }
+
+        private void SaveSystemParameters()
+        {
+            systemParameterService.Save(systemParameters);
         }
 
         private async Task OpenImageAsync()
@@ -338,10 +451,14 @@ namespace IntegratedImageProcessingApp.Forms
                     leftImageTabControl.SelectedTab = leftOriginalTabPage;
                     rightImageTabControl.SelectedTab = rightOriginalTabPage;
                     rightOriginalDisplayControl.ClearRoiOverlay();
+                    systemParameters.LastImagePath = dialog.FileName;
+                    systemParameters.RoiEnabled = false;
+                    systemParameters.Roi = Rectangle.Empty;
 
                     await leftOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
                     await rightOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
                     SyncVisibleImageDisplaysFromLeft();
+                    SaveSystemParameters();
 
                     statusLabel.Text = "已讀取圖片：" + fileName;
                 }
@@ -379,18 +496,23 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             Rectangle textBounds = new Rectangle(
-                e.Bounds.Left + 12,
+                e.Bounds.Left + (IsRoiSubMenuItem(functionListBox.Items[e.Index].ToString()) ? 30 : 12),
                 e.Bounds.Top,
                 e.Bounds.Width - 24,
                 e.Bounds.Height);
 
             TextRenderer.DrawText(
                 e.Graphics,
-                functionListBox.Items[e.Index].ToString(),
+                functionListBox.Items[e.Index].ToString().Trim(),
                 e.Font,
                 textBounds,
                 foreColor,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+        }
+
+        private static bool IsRoiSubMenuItem(string menuText)
+        {
+            return menuText == SetRoiMenuText || menuText == CancelRoiMenuText;
         }
     }
 }

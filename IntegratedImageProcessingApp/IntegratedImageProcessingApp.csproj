@@ -50,6 +50,8 @@
       <DependentUpon>ImageDisplayControl.cs</DependentUpon>
     </Compile>
     <Compile Include="Program.cs" />
+    <Compile Include="Services\SystemParameterIniService.cs" />
+    <Compile Include="Services\SystemParameterSettings.cs" />
     <Compile Include="Forms\MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
