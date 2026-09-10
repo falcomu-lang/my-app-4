@@ -15,6 +15,8 @@ namespace IntegratedImageProcessingApp.Controls
         private int _imageVersion;
         private float _zoom = 1f;
         private PointF _imageOffset = PointF.Empty;
+        private bool _isPanning;
+        private Point _lastMousePoint;
 
         public ImageDisplayControl()
         {
@@ -103,7 +105,7 @@ namespace IntegratedImageProcessingApp.Controls
         private void viewerPanel_Paint(object sender, PaintEventArgs e)
         {
             e.Graphics.Clear(Color.White);
-            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
+            e.Graphics.InterpolationMode = _isPanning ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
             e.Graphics.SmoothingMode = SmoothingMode.HighSpeed;
 
@@ -125,9 +127,94 @@ namespace IntegratedImageProcessingApp.Controls
             e.Graphics.DrawImage(bitmap, offset.X, offset.Y, bitmap.Width * zoom, bitmap.Height * zoom);
         }
 
+        private void viewerPanel_MouseWheel(object sender, MouseEventArgs e)
+        {
+            int width;
+            int height;
+            float oldZoom;
+            PointF oldOffset;
+            if (!TryGetSourceMetrics(out width, out height, out oldZoom, out oldOffset))
+            {
+                return;
+            }
+
+            float zoomFactor = e.Delta > 0 ? 1.25f : 0.8f;
+            float newZoom = ClampZoom(oldZoom * zoomFactor);
+            if (Math.Abs(newZoom - oldZoom) < 0.0001f)
+            {
+                return;
+            }
+
+            float imageX = (e.X - oldOffset.X) / oldZoom;
+            float imageY = (e.Y - oldOffset.Y) / oldZoom;
+
+            lock (_imageLock)
+            {
+                _zoom = newZoom;
+                _imageOffset = new PointF(
+                    e.X - (imageX * newZoom),
+                    e.Y - (imageY * newZoom));
+            }
+
+            UpdateStatusLabel();
+            viewerPanel.Invalidate();
+        }
+
+        private void viewerPanel_MouseDown(object sender, MouseEventArgs e)
+        {
+            lock (_imageLock)
+            {
+                if (e.Button != MouseButtons.Left || _sourceBitmap == null)
+                {
+                    return;
+                }
+            }
+
+            _isPanning = true;
+            _lastMousePoint = e.Location;
+            viewerPanel.Cursor = Cursors.Hand;
+        }
+
+        private void viewerPanel_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_isPanning)
+            {
+                return;
+            }
+
+            int deltaX = e.X - _lastMousePoint.X;
+            int deltaY = e.Y - _lastMousePoint.Y;
+            _lastMousePoint = e.Location;
+
+            lock (_imageLock)
+            {
+                _imageOffset = new PointF(_imageOffset.X + deltaX, _imageOffset.Y + deltaY);
+            }
+
+            UpdateStatusLabel();
+            viewerPanel.Invalidate();
+        }
+
+        private void viewerPanel_MouseUp(object sender, MouseEventArgs e)
+        {
+            _isPanning = false;
+            viewerPanel.Cursor = Cursors.Default;
+            viewerPanel.Invalidate();
+        }
+
+        private void viewerPanel_MouseEnter(object sender, EventArgs e)
+        {
+            viewerPanel.Focus();
+        }
+
         private void ImageDisplayControl_SizeChanged(object sender, EventArgs e)
         {
-            FitImageToView();
+            if (!_isPanning)
+            {
+                FitImageToView();
+                UpdateStatusLabel();
+            }
+
             viewerPanel.Invalidate();
         }
 
@@ -182,8 +269,43 @@ namespace IntegratedImageProcessingApp.Controls
                 }
 
                 ResolutionText = _sourceBitmap.Width + " x " + _sourceBitmap.Height;
-                StatusText = string.Format("Zoom {0:0.00}x", _zoom);
+                float imageX = (-_imageOffset.X) / _zoom;
+                float imageY = (-_imageOffset.Y) / _zoom;
+                StatusText = string.Format(
+                    "Zoom {0:0.00}x | Offset {1:0},{2:0} | Image {3:0},{4:0}",
+                    _zoom,
+                    _imageOffset.X,
+                    _imageOffset.Y,
+                    imageX,
+                    imageY);
             }
+        }
+
+        private bool TryGetSourceMetrics(out int width, out int height, out float zoom, out PointF offset)
+        {
+            lock (_imageLock)
+            {
+                width = _sourceBitmap != null ? _sourceBitmap.Width : 0;
+                height = _sourceBitmap != null ? _sourceBitmap.Height : 0;
+                zoom = _zoom;
+                offset = _imageOffset;
+                return width > 0 && height > 0;
+            }
+        }
+
+        private static float ClampZoom(float zoom)
+        {
+            if (zoom < 0.02f)
+            {
+                return 0.02f;
+            }
+
+            if (zoom > 50f)
+            {
+                return 50f;
+            }
+
+            return zoom;
         }
 
         private void DisposeCurrentImage()

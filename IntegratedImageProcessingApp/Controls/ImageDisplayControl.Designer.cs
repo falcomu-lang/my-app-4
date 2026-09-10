@@ -83,6 +83,11 @@ namespace IntegratedImageProcessingApp.Controls
             this.viewerPanel.Size = new System.Drawing.Size(340, 248);
             this.viewerPanel.TabIndex = 1;
             this.viewerPanel.Paint += new System.Windows.Forms.PaintEventHandler(this.viewerPanel_Paint);
+            this.viewerPanel.MouseDown += new System.Windows.Forms.MouseEventHandler(this.viewerPanel_MouseDown);
+            this.viewerPanel.MouseEnter += new System.EventHandler(this.viewerPanel_MouseEnter);
+            this.viewerPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.viewerPanel_MouseMove);
+            this.viewerPanel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.viewerPanel_MouseUp);
+            this.viewerPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.viewerPanel_MouseWheel);
             // 
             // bottomPanel
             // 
