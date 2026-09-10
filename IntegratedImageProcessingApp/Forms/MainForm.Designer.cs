@@ -26,14 +26,14 @@ namespace IntegratedImageProcessingApp.Forms
         private System.Windows.Forms.TabPage rightProcessedTabPage;
         private System.Windows.Forms.TabPage rightObjectsTabPage;
         private System.Windows.Forms.TabPage rightDebugTabPage;
-        private System.Windows.Forms.PictureBox leftOriginalPictureBox;
-        private System.Windows.Forms.PictureBox leftProcessedPictureBox;
-        private System.Windows.Forms.PictureBox leftObjectsPictureBox;
-        private System.Windows.Forms.PictureBox leftDebugPictureBox;
-        private System.Windows.Forms.PictureBox rightOriginalPictureBox;
-        private System.Windows.Forms.PictureBox rightProcessedPictureBox;
-        private System.Windows.Forms.PictureBox rightObjectsPictureBox;
-        private System.Windows.Forms.PictureBox rightDebugPictureBox;
+        private IntegratedImageProcessingApp.Controls.ImageDisplayControl leftOriginalDisplayControl;
+        private IntegratedImageProcessingApp.Controls.ImageDisplayControl leftProcessedDisplayControl;
+        private IntegratedImageProcessingApp.Controls.ImageDisplayControl leftObjectsDisplayControl;
+        private IntegratedImageProcessingApp.Controls.ImageDisplayControl leftDebugDisplayControl;
+        private IntegratedImageProcessingApp.Controls.ImageDisplayControl rightOriginalDisplayControl;
+        private IntegratedImageProcessingApp.Controls.ImageDisplayControl rightProcessedDisplayControl;
+        private IntegratedImageProcessingApp.Controls.ImageDisplayControl rightObjectsDisplayControl;
+        private IntegratedImageProcessingApp.Controls.ImageDisplayControl rightDebugDisplayControl;
         private System.Windows.Forms.StatusStrip statusStrip;
         private System.Windows.Forms.ToolStripStatusLabel statusLabel;
 
@@ -60,22 +60,22 @@ namespace IntegratedImageProcessingApp.Forms
             this.imageLayoutPanel = new System.Windows.Forms.TableLayoutPanel();
             this.leftImageTabControl = new System.Windows.Forms.TabControl();
             this.leftOriginalTabPage = new System.Windows.Forms.TabPage();
-            this.leftOriginalPictureBox = new System.Windows.Forms.PictureBox();
+            this.leftOriginalDisplayControl = new IntegratedImageProcessingApp.Controls.ImageDisplayControl();
             this.leftProcessedTabPage = new System.Windows.Forms.TabPage();
-            this.leftProcessedPictureBox = new System.Windows.Forms.PictureBox();
+            this.leftProcessedDisplayControl = new IntegratedImageProcessingApp.Controls.ImageDisplayControl();
             this.leftObjectsTabPage = new System.Windows.Forms.TabPage();
-            this.leftObjectsPictureBox = new System.Windows.Forms.PictureBox();
+            this.leftObjectsDisplayControl = new IntegratedImageProcessingApp.Controls.ImageDisplayControl();
             this.leftDebugTabPage = new System.Windows.Forms.TabPage();
-            this.leftDebugPictureBox = new System.Windows.Forms.PictureBox();
+            this.leftDebugDisplayControl = new IntegratedImageProcessingApp.Controls.ImageDisplayControl();
             this.rightImageTabControl = new System.Windows.Forms.TabControl();
             this.rightOriginalTabPage = new System.Windows.Forms.TabPage();
-            this.rightOriginalPictureBox = new System.Windows.Forms.PictureBox();
+            this.rightOriginalDisplayControl = new IntegratedImageProcessingApp.Controls.ImageDisplayControl();
             this.rightProcessedTabPage = new System.Windows.Forms.TabPage();
-            this.rightProcessedPictureBox = new System.Windows.Forms.PictureBox();
+            this.rightProcessedDisplayControl = new IntegratedImageProcessingApp.Controls.ImageDisplayControl();
             this.rightObjectsTabPage = new System.Windows.Forms.TabPage();
-            this.rightObjectsPictureBox = new System.Windows.Forms.PictureBox();
+            this.rightObjectsDisplayControl = new IntegratedImageProcessingApp.Controls.ImageDisplayControl();
             this.rightDebugTabPage = new System.Windows.Forms.TabPage();
-            this.rightDebugPictureBox = new System.Windows.Forms.PictureBox();
+            this.rightDebugDisplayControl = new IntegratedImageProcessingApp.Controls.ImageDisplayControl();
             this.rightPanel = new System.Windows.Forms.Panel();
             this.parameterPanel = new System.Windows.Forms.Panel();
             this.parameterPlaceholderLabel = new System.Windows.Forms.Label();
@@ -89,22 +89,14 @@ namespace IntegratedImageProcessingApp.Forms
             this.imageLayoutPanel.SuspendLayout();
             this.leftImageTabControl.SuspendLayout();
             this.leftOriginalTabPage.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.leftOriginalPictureBox)).BeginInit();
             this.leftProcessedTabPage.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.leftProcessedPictureBox)).BeginInit();
             this.leftObjectsTabPage.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.leftObjectsPictureBox)).BeginInit();
             this.leftDebugTabPage.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.leftDebugPictureBox)).BeginInit();
             this.rightImageTabControl.SuspendLayout();
             this.rightOriginalTabPage.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.rightOriginalPictureBox)).BeginInit();
             this.rightProcessedTabPage.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.rightProcessedPictureBox)).BeginInit();
             this.rightObjectsTabPage.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.rightObjectsPictureBox)).BeginInit();
             this.rightDebugTabPage.SuspendLayout();
-            ((System.ComponentModel.ISupportInitialize)(this.rightDebugPictureBox)).BeginInit();
             this.rightPanel.SuspendLayout();
             this.parameterPanel.SuspendLayout();
             this.statusStrip.SuspendLayout();
@@ -254,7 +246,7 @@ namespace IntegratedImageProcessingApp.Forms
             // leftOriginalTabPage
             // 
             this.leftOriginalTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
-            this.leftOriginalTabPage.Controls.Add(this.leftOriginalPictureBox);
+            this.leftOriginalTabPage.Controls.Add(this.leftOriginalDisplayControl);
             this.leftOriginalTabPage.Location = new System.Drawing.Point(4, 24);
             this.leftOriginalTabPage.Name = "leftOriginalTabPage";
             this.leftOriginalTabPage.Padding = new System.Windows.Forms.Padding(12);
@@ -262,22 +254,19 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalTabPage.TabIndex = 0;
             this.leftOriginalTabPage.Text = "原圖";
             // 
-            // leftOriginalPictureBox
+            // leftOriginalDisplayControl
             // 
-            this.leftOriginalPictureBox.BackColor = System.Drawing.Color.White;
-            this.leftOriginalPictureBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.leftOriginalPictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.leftOriginalPictureBox.Location = new System.Drawing.Point(12, 12);
-            this.leftOriginalPictureBox.Name = "leftOriginalPictureBox";
-            this.leftOriginalPictureBox.Size = new System.Drawing.Size(328, 570);
-            this.leftOriginalPictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.leftOriginalPictureBox.TabIndex = 0;
-            this.leftOriginalPictureBox.TabStop = false;
+            this.leftOriginalDisplayControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftOriginalDisplayControl.Location = new System.Drawing.Point(12, 12);
+            this.leftOriginalDisplayControl.Name = "leftOriginalDisplayControl";
+            this.leftOriginalDisplayControl.Size = new System.Drawing.Size(328, 570);
+            this.leftOriginalDisplayControl.TabIndex = 0;
+            this.leftOriginalDisplayControl.TitleText = "左側 原圖";
             // 
             // leftProcessedTabPage
             // 
             this.leftProcessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
-            this.leftProcessedTabPage.Controls.Add(this.leftProcessedPictureBox);
+            this.leftProcessedTabPage.Controls.Add(this.leftProcessedDisplayControl);
             this.leftProcessedTabPage.Location = new System.Drawing.Point(4, 24);
             this.leftProcessedTabPage.Name = "leftProcessedTabPage";
             this.leftProcessedTabPage.Padding = new System.Windows.Forms.Padding(12);
@@ -285,22 +274,19 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedTabPage.TabIndex = 1;
             this.leftProcessedTabPage.Text = "處理後";
             // 
-            // leftProcessedPictureBox
+            // leftProcessedDisplayControl
             // 
-            this.leftProcessedPictureBox.BackColor = System.Drawing.Color.White;
-            this.leftProcessedPictureBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.leftProcessedPictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.leftProcessedPictureBox.Location = new System.Drawing.Point(12, 12);
-            this.leftProcessedPictureBox.Name = "leftProcessedPictureBox";
-            this.leftProcessedPictureBox.Size = new System.Drawing.Size(328, 570);
-            this.leftProcessedPictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.leftProcessedPictureBox.TabIndex = 0;
-            this.leftProcessedPictureBox.TabStop = false;
+            this.leftProcessedDisplayControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftProcessedDisplayControl.Location = new System.Drawing.Point(12, 12);
+            this.leftProcessedDisplayControl.Name = "leftProcessedDisplayControl";
+            this.leftProcessedDisplayControl.Size = new System.Drawing.Size(328, 570);
+            this.leftProcessedDisplayControl.TabIndex = 0;
+            this.leftProcessedDisplayControl.TitleText = "左側 處理後";
             // 
             // leftObjectsTabPage
             // 
             this.leftObjectsTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
-            this.leftObjectsTabPage.Controls.Add(this.leftObjectsPictureBox);
+            this.leftObjectsTabPage.Controls.Add(this.leftObjectsDisplayControl);
             this.leftObjectsTabPage.Location = new System.Drawing.Point(4, 24);
             this.leftObjectsTabPage.Name = "leftObjectsTabPage";
             this.leftObjectsTabPage.Padding = new System.Windows.Forms.Padding(12);
@@ -308,22 +294,19 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftObjectsTabPage.TabIndex = 2;
             this.leftObjectsTabPage.Text = "物件結果";
             // 
-            // leftObjectsPictureBox
+            // leftObjectsDisplayControl
             // 
-            this.leftObjectsPictureBox.BackColor = System.Drawing.Color.White;
-            this.leftObjectsPictureBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.leftObjectsPictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.leftObjectsPictureBox.Location = new System.Drawing.Point(12, 12);
-            this.leftObjectsPictureBox.Name = "leftObjectsPictureBox";
-            this.leftObjectsPictureBox.Size = new System.Drawing.Size(328, 570);
-            this.leftObjectsPictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.leftObjectsPictureBox.TabIndex = 0;
-            this.leftObjectsPictureBox.TabStop = false;
+            this.leftObjectsDisplayControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftObjectsDisplayControl.Location = new System.Drawing.Point(12, 12);
+            this.leftObjectsDisplayControl.Name = "leftObjectsDisplayControl";
+            this.leftObjectsDisplayControl.Size = new System.Drawing.Size(328, 570);
+            this.leftObjectsDisplayControl.TabIndex = 0;
+            this.leftObjectsDisplayControl.TitleText = "左側 物件結果";
             // 
             // leftDebugTabPage
             // 
             this.leftDebugTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
-            this.leftDebugTabPage.Controls.Add(this.leftDebugPictureBox);
+            this.leftDebugTabPage.Controls.Add(this.leftDebugDisplayControl);
             this.leftDebugTabPage.Location = new System.Drawing.Point(4, 24);
             this.leftDebugTabPage.Name = "leftDebugTabPage";
             this.leftDebugTabPage.Padding = new System.Windows.Forms.Padding(12);
@@ -331,17 +314,14 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftDebugTabPage.TabIndex = 3;
             this.leftDebugTabPage.Text = "debug";
             // 
-            // leftDebugPictureBox
+            // leftDebugDisplayControl
             // 
-            this.leftDebugPictureBox.BackColor = System.Drawing.Color.White;
-            this.leftDebugPictureBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.leftDebugPictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.leftDebugPictureBox.Location = new System.Drawing.Point(12, 12);
-            this.leftDebugPictureBox.Name = "leftDebugPictureBox";
-            this.leftDebugPictureBox.Size = new System.Drawing.Size(328, 570);
-            this.leftDebugPictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.leftDebugPictureBox.TabIndex = 0;
-            this.leftDebugPictureBox.TabStop = false;
+            this.leftDebugDisplayControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftDebugDisplayControl.Location = new System.Drawing.Point(12, 12);
+            this.leftDebugDisplayControl.Name = "leftDebugDisplayControl";
+            this.leftDebugDisplayControl.Size = new System.Drawing.Size(328, 570);
+            this.leftDebugDisplayControl.TabIndex = 0;
+            this.leftDebugDisplayControl.TitleText = "左側 debug";
             // 
             // rightImageTabControl
             // 
@@ -360,7 +340,7 @@ namespace IntegratedImageProcessingApp.Forms
             // rightOriginalTabPage
             // 
             this.rightOriginalTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
-            this.rightOriginalTabPage.Controls.Add(this.rightOriginalPictureBox);
+            this.rightOriginalTabPage.Controls.Add(this.rightOriginalDisplayControl);
             this.rightOriginalTabPage.Location = new System.Drawing.Point(4, 24);
             this.rightOriginalTabPage.Name = "rightOriginalTabPage";
             this.rightOriginalTabPage.Padding = new System.Windows.Forms.Padding(12);
@@ -368,22 +348,19 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalTabPage.TabIndex = 0;
             this.rightOriginalTabPage.Text = "原圖";
             // 
-            // rightOriginalPictureBox
+            // rightOriginalDisplayControl
             // 
-            this.rightOriginalPictureBox.BackColor = System.Drawing.Color.White;
-            this.rightOriginalPictureBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.rightOriginalPictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.rightOriginalPictureBox.Location = new System.Drawing.Point(12, 12);
-            this.rightOriginalPictureBox.Name = "rightOriginalPictureBox";
-            this.rightOriginalPictureBox.Size = new System.Drawing.Size(328, 570);
-            this.rightOriginalPictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.rightOriginalPictureBox.TabIndex = 0;
-            this.rightOriginalPictureBox.TabStop = false;
+            this.rightOriginalDisplayControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightOriginalDisplayControl.Location = new System.Drawing.Point(12, 12);
+            this.rightOriginalDisplayControl.Name = "rightOriginalDisplayControl";
+            this.rightOriginalDisplayControl.Size = new System.Drawing.Size(328, 570);
+            this.rightOriginalDisplayControl.TabIndex = 0;
+            this.rightOriginalDisplayControl.TitleText = "右側 原圖";
             // 
             // rightProcessedTabPage
             // 
             this.rightProcessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
-            this.rightProcessedTabPage.Controls.Add(this.rightProcessedPictureBox);
+            this.rightProcessedTabPage.Controls.Add(this.rightProcessedDisplayControl);
             this.rightProcessedTabPage.Location = new System.Drawing.Point(4, 24);
             this.rightProcessedTabPage.Name = "rightProcessedTabPage";
             this.rightProcessedTabPage.Padding = new System.Windows.Forms.Padding(12);
@@ -391,22 +368,19 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedTabPage.TabIndex = 1;
             this.rightProcessedTabPage.Text = "處理後";
             // 
-            // rightProcessedPictureBox
+            // rightProcessedDisplayControl
             // 
-            this.rightProcessedPictureBox.BackColor = System.Drawing.Color.White;
-            this.rightProcessedPictureBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.rightProcessedPictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.rightProcessedPictureBox.Location = new System.Drawing.Point(12, 12);
-            this.rightProcessedPictureBox.Name = "rightProcessedPictureBox";
-            this.rightProcessedPictureBox.Size = new System.Drawing.Size(328, 570);
-            this.rightProcessedPictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.rightProcessedPictureBox.TabIndex = 0;
-            this.rightProcessedPictureBox.TabStop = false;
+            this.rightProcessedDisplayControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightProcessedDisplayControl.Location = new System.Drawing.Point(12, 12);
+            this.rightProcessedDisplayControl.Name = "rightProcessedDisplayControl";
+            this.rightProcessedDisplayControl.Size = new System.Drawing.Size(328, 570);
+            this.rightProcessedDisplayControl.TabIndex = 0;
+            this.rightProcessedDisplayControl.TitleText = "右側 處理後";
             // 
             // rightObjectsTabPage
             // 
             this.rightObjectsTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
-            this.rightObjectsTabPage.Controls.Add(this.rightObjectsPictureBox);
+            this.rightObjectsTabPage.Controls.Add(this.rightObjectsDisplayControl);
             this.rightObjectsTabPage.Location = new System.Drawing.Point(4, 24);
             this.rightObjectsTabPage.Name = "rightObjectsTabPage";
             this.rightObjectsTabPage.Padding = new System.Windows.Forms.Padding(12);
@@ -414,22 +388,19 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightObjectsTabPage.TabIndex = 2;
             this.rightObjectsTabPage.Text = "物件結果";
             // 
-            // rightObjectsPictureBox
+            // rightObjectsDisplayControl
             // 
-            this.rightObjectsPictureBox.BackColor = System.Drawing.Color.White;
-            this.rightObjectsPictureBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.rightObjectsPictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.rightObjectsPictureBox.Location = new System.Drawing.Point(12, 12);
-            this.rightObjectsPictureBox.Name = "rightObjectsPictureBox";
-            this.rightObjectsPictureBox.Size = new System.Drawing.Size(328, 570);
-            this.rightObjectsPictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.rightObjectsPictureBox.TabIndex = 0;
-            this.rightObjectsPictureBox.TabStop = false;
+            this.rightObjectsDisplayControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightObjectsDisplayControl.Location = new System.Drawing.Point(12, 12);
+            this.rightObjectsDisplayControl.Name = "rightObjectsDisplayControl";
+            this.rightObjectsDisplayControl.Size = new System.Drawing.Size(328, 570);
+            this.rightObjectsDisplayControl.TabIndex = 0;
+            this.rightObjectsDisplayControl.TitleText = "右側 物件結果";
             // 
             // rightDebugTabPage
             // 
             this.rightDebugTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
-            this.rightDebugTabPage.Controls.Add(this.rightDebugPictureBox);
+            this.rightDebugTabPage.Controls.Add(this.rightDebugDisplayControl);
             this.rightDebugTabPage.Location = new System.Drawing.Point(4, 24);
             this.rightDebugTabPage.Name = "rightDebugTabPage";
             this.rightDebugTabPage.Padding = new System.Windows.Forms.Padding(12);
@@ -437,17 +408,14 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightDebugTabPage.TabIndex = 3;
             this.rightDebugTabPage.Text = "debug";
             // 
-            // rightDebugPictureBox
+            // rightDebugDisplayControl
             // 
-            this.rightDebugPictureBox.BackColor = System.Drawing.Color.White;
-            this.rightDebugPictureBox.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.rightDebugPictureBox.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.rightDebugPictureBox.Location = new System.Drawing.Point(12, 12);
-            this.rightDebugPictureBox.Name = "rightDebugPictureBox";
-            this.rightDebugPictureBox.Size = new System.Drawing.Size(328, 570);
-            this.rightDebugPictureBox.SizeMode = System.Windows.Forms.PictureBoxSizeMode.Zoom;
-            this.rightDebugPictureBox.TabIndex = 0;
-            this.rightDebugPictureBox.TabStop = false;
+            this.rightDebugDisplayControl.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightDebugDisplayControl.Location = new System.Drawing.Point(12, 12);
+            this.rightDebugDisplayControl.Name = "rightDebugDisplayControl";
+            this.rightDebugDisplayControl.Size = new System.Drawing.Size(328, 570);
+            this.rightDebugDisplayControl.TabIndex = 0;
+            this.rightDebugDisplayControl.TitleText = "右側 debug";
             // 
             // rightPanel
             // 
@@ -534,24 +502,8 @@ namespace IntegratedImageProcessingApp.Forms
             this.centerPanel.ResumeLayout(false);
             this.imageLayoutPanel.ResumeLayout(false);
             this.leftImageTabControl.ResumeLayout(false);
-            this.leftOriginalTabPage.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.leftOriginalPictureBox)).EndInit();
-            this.leftProcessedTabPage.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.leftProcessedPictureBox)).EndInit();
-            this.leftObjectsTabPage.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.leftObjectsPictureBox)).EndInit();
-            this.leftDebugTabPage.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.leftDebugPictureBox)).EndInit();
-            this.rightImageTabControl.ResumeLayout(false);
-            this.rightOriginalTabPage.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.rightOriginalPictureBox)).EndInit();
-            this.rightProcessedTabPage.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.rightProcessedPictureBox)).EndInit();
-            this.rightObjectsTabPage.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.rightObjectsPictureBox)).EndInit();
-            this.rightDebugTabPage.ResumeLayout(false);
-            ((System.ComponentModel.ISupportInitialize)(this.rightDebugPictureBox)).EndInit();
-            this.rightPanel.ResumeLayout(false);
+            this.leftOriginalTabPage.ResumeLayout(false);            this.leftProcessedTabPage.ResumeLayout(false);            this.leftObjectsTabPage.ResumeLayout(false);            this.leftDebugTabPage.ResumeLayout(false);            this.rightImageTabControl.ResumeLayout(false);
+            this.rightOriginalTabPage.ResumeLayout(false);            this.rightProcessedTabPage.ResumeLayout(false);            this.rightObjectsTabPage.ResumeLayout(false);            this.rightDebugTabPage.ResumeLayout(false);            this.rightPanel.ResumeLayout(false);
             this.parameterPanel.ResumeLayout(false);
             this.statusStrip.ResumeLayout(false);
             this.statusStrip.PerformLayout();
@@ -560,3 +512,5 @@ namespace IntegratedImageProcessingApp.Forms
         }
     }
 }
+
+
