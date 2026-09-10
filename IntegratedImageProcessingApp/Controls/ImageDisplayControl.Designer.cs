@@ -40,7 +40,7 @@ namespace IntegratedImageProcessingApp.Controls
             // 
             // topPanel
             // 
-            this.topPanel.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(16)))), ((int)(((byte)(22)))), ((int)(((byte)(34)))));
+            this.topPanel.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(232)))), ((int)(((byte)(235)))), ((int)(((byte)(240)))));
             this.topPanel.Controls.Add(this.resolutionLabel);
             this.topPanel.Controls.Add(this.titleLabel);
             this.topPanel.Dock = System.Windows.Forms.DockStyle.Top;
@@ -54,7 +54,7 @@ namespace IntegratedImageProcessingApp.Controls
             // 
             this.resolutionLabel.AutoSize = true;
             this.resolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
-            this.resolutionLabel.ForeColor = System.Drawing.Color.Gainsboro;
+            this.resolutionLabel.ForeColor = System.Drawing.Color.Black;
             this.resolutionLabel.Location = new System.Drawing.Point(275, 8);
             this.resolutionLabel.Name = "resolutionLabel";
             this.resolutionLabel.Size = new System.Drawing.Size(55, 15);
@@ -66,7 +66,7 @@ namespace IntegratedImageProcessingApp.Controls
             this.titleLabel.AutoSize = true;
             this.titleLabel.Dock = System.Windows.Forms.DockStyle.Left;
             this.titleLabel.Font = new System.Drawing.Font("Microsoft JhengHei UI", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(136)));
-            this.titleLabel.ForeColor = System.Drawing.Color.White;
+            this.titleLabel.ForeColor = System.Drawing.Color.Black;
             this.titleLabel.Location = new System.Drawing.Point(10, 8);
             this.titleLabel.Name = "titleLabel";
             this.titleLabel.Size = new System.Drawing.Size(56, 15);
@@ -75,7 +75,7 @@ namespace IntegratedImageProcessingApp.Controls
             // 
             // viewerPanel
             // 
-            this.viewerPanel.BackColor = System.Drawing.Color.Black;
+            this.viewerPanel.BackColor = System.Drawing.Color.White;
             this.viewerPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.viewerPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.viewerPanel.Location = new System.Drawing.Point(0, 42);
@@ -86,7 +86,7 @@ namespace IntegratedImageProcessingApp.Controls
             // 
             // bottomPanel
             // 
-            this.bottomPanel.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(16)))), ((int)(((byte)(22)))), ((int)(((byte)(34)))));
+            this.bottomPanel.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(232)))), ((int)(((byte)(235)))), ((int)(((byte)(240)))));
             this.bottomPanel.Controls.Add(this.buttonFitToWindow);
             this.bottomPanel.Controls.Add(this.statusLabel);
             this.bottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
@@ -100,7 +100,7 @@ namespace IntegratedImageProcessingApp.Controls
             // 
             this.buttonFitToWindow.Dock = System.Windows.Forms.DockStyle.Right;
             this.buttonFitToWindow.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
-            this.buttonFitToWindow.ForeColor = System.Drawing.Color.White;
+            this.buttonFitToWindow.ForeColor = System.Drawing.Color.Black;
             this.buttonFitToWindow.Location = new System.Drawing.Point(240, 7);
             this.buttonFitToWindow.Name = "buttonFitToWindow";
             this.buttonFitToWindow.Size = new System.Drawing.Size(90, 28);
@@ -113,7 +113,7 @@ namespace IntegratedImageProcessingApp.Controls
             // 
             this.statusLabel.AutoSize = true;
             this.statusLabel.Dock = System.Windows.Forms.DockStyle.Left;
-            this.statusLabel.ForeColor = System.Drawing.Color.Gainsboro;
+            this.statusLabel.ForeColor = System.Drawing.Color.Black;
             this.statusLabel.Location = new System.Drawing.Point(10, 7);
             this.statusLabel.Name = "statusLabel";
             this.statusLabel.Size = new System.Drawing.Size(79, 15);

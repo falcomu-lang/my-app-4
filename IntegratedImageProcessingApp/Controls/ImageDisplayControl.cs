@@ -102,7 +102,7 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void viewerPanel_Paint(object sender, PaintEventArgs e)
         {
-            e.Graphics.Clear(Color.Black);
+            e.Graphics.Clear(Color.White);
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
             e.Graphics.SmoothingMode = SmoothingMode.HighSpeed;
