@@ -257,6 +257,8 @@ namespace IntegratedImageProcessingApp.Forms
             // leftOriginalDisplayHostPanel
             // 
             this.leftOriginalDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftOriginalDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.leftOriginalDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.leftOriginalDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftOriginalDisplayHostPanel.Name = "leftOriginalDisplayHostPanel";
             this.leftOriginalDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
@@ -275,6 +277,8 @@ namespace IntegratedImageProcessingApp.Forms
             // leftProcessedDisplayHostPanel
             // 
             this.leftProcessedDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftProcessedDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.leftProcessedDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.leftProcessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftProcessedDisplayHostPanel.Name = "leftProcessedDisplayHostPanel";
             this.leftProcessedDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
@@ -293,6 +297,8 @@ namespace IntegratedImageProcessingApp.Forms
             // leftObjectsDisplayHostPanel
             // 
             this.leftObjectsDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftObjectsDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.leftObjectsDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.leftObjectsDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftObjectsDisplayHostPanel.Name = "leftObjectsDisplayHostPanel";
             this.leftObjectsDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
@@ -311,6 +317,8 @@ namespace IntegratedImageProcessingApp.Forms
             // leftDebugDisplayHostPanel
             // 
             this.leftDebugDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftDebugDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.leftDebugDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.leftDebugDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftDebugDisplayHostPanel.Name = "leftDebugDisplayHostPanel";
             this.leftDebugDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
@@ -343,6 +351,8 @@ namespace IntegratedImageProcessingApp.Forms
             // rightOriginalDisplayHostPanel
             // 
             this.rightOriginalDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightOriginalDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.rightOriginalDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.rightOriginalDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightOriginalDisplayHostPanel.Name = "rightOriginalDisplayHostPanel";
             this.rightOriginalDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
@@ -361,6 +371,8 @@ namespace IntegratedImageProcessingApp.Forms
             // rightProcessedDisplayHostPanel
             // 
             this.rightProcessedDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightProcessedDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.rightProcessedDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.rightProcessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightProcessedDisplayHostPanel.Name = "rightProcessedDisplayHostPanel";
             this.rightProcessedDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
@@ -379,6 +391,8 @@ namespace IntegratedImageProcessingApp.Forms
             // rightObjectsDisplayHostPanel
             // 
             this.rightObjectsDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightObjectsDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.rightObjectsDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.rightObjectsDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightObjectsDisplayHostPanel.Name = "rightObjectsDisplayHostPanel";
             this.rightObjectsDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
@@ -397,6 +411,8 @@ namespace IntegratedImageProcessingApp.Forms
             // rightDebugDisplayHostPanel
             // 
             this.rightDebugDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightDebugDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.rightDebugDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.rightDebugDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightDebugDisplayHostPanel.Name = "rightDebugDisplayHostPanel";
             this.rightDebugDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
@@ -498,13 +514,12 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightPanel.ResumeLayout(false);
             this.parameterPanel.ResumeLayout(false);
             this.statusStrip.ResumeLayout(false);
-            this.statusStrip.PerformLayout();
-            this.InitializeDesignImageDisplayPlaceholders();
-            this.ResumeLayout(false);
+            this.statusStrip.PerformLayout();            this.ResumeLayout(false);
             this.PerformLayout();
         }
     }
 }
+
 
 
 
