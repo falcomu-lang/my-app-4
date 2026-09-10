@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
@@ -19,7 +20,84 @@ namespace IntegratedImageProcessingApp.Forms
         public MainForm()
         {
             InitializeComponent();
-            InitializeImageDisplayControls();
+            if (LicenseManager.UsageMode == LicenseUsageMode.Designtime)
+            {
+                InitializeDesignImageDisplayPlaceholders();
+            }
+            else
+            {
+                InitializeImageDisplayControls();
+            }
+        }
+
+        private void InitializeDesignImageDisplayPlaceholders()
+        {
+            CreateDesignImageDisplayPlaceholder(leftOriginalDisplayHostPanel, "左側 原圖");
+            CreateDesignImageDisplayPlaceholder(leftProcessedDisplayHostPanel, "左側 處理後");
+            CreateDesignImageDisplayPlaceholder(leftObjectsDisplayHostPanel, "左側 物件結果");
+            CreateDesignImageDisplayPlaceholder(leftDebugDisplayHostPanel, "左側 debug");
+            CreateDesignImageDisplayPlaceholder(rightOriginalDisplayHostPanel, "右側 原圖");
+            CreateDesignImageDisplayPlaceholder(rightProcessedDisplayHostPanel, "右側 處理後");
+            CreateDesignImageDisplayPlaceholder(rightObjectsDisplayHostPanel, "右側 物件結果");
+            CreateDesignImageDisplayPlaceholder(rightDebugDisplayHostPanel, "右側 debug");
+        }
+
+        private static void CreateDesignImageDisplayPlaceholder(Control host, string title)
+        {
+            var topPanel = new Panel();
+            var titleLabel = new Label();
+            var resolutionLabel = new Label();
+            var viewPanel = new Panel();
+            var bottomPanel = new Panel();
+            var statusLabel = new Label();
+            var fitButton = new Button();
+
+            host.Controls.Clear();
+            host.BackColor = Color.White;
+
+            topPanel.BackColor = Color.FromArgb(232, 235, 240);
+            topPanel.Dock = DockStyle.Top;
+            topPanel.Height = 42;
+            topPanel.Padding = new Padding(10, 8, 10, 8);
+
+            titleLabel.AutoSize = true;
+            titleLabel.Dock = DockStyle.Left;
+            titleLabel.Font = new Font("Microsoft JhengHei UI", 9F, FontStyle.Bold);
+            titleLabel.ForeColor = Color.Black;
+            titleLabel.Text = title;
+
+            resolutionLabel.AutoSize = true;
+            resolutionLabel.Dock = DockStyle.Right;
+            resolutionLabel.ForeColor = Color.Black;
+            resolutionLabel.Text = "0 x 0";
+
+            viewPanel.BackColor = Color.White;
+            viewPanel.BorderStyle = BorderStyle.FixedSingle;
+            viewPanel.Dock = DockStyle.Fill;
+
+            bottomPanel.BackColor = Color.FromArgb(232, 235, 240);
+            bottomPanel.Dock = DockStyle.Bottom;
+            bottomPanel.Height = 42;
+            bottomPanel.Padding = new Padding(10, 7, 10, 7);
+
+            statusLabel.AutoSize = true;
+            statusLabel.Dock = DockStyle.Left;
+            statusLabel.ForeColor = Color.Black;
+            statusLabel.Text = "尚未載入圖片";
+
+            fitButton.Dock = DockStyle.Right;
+            fitButton.FlatStyle = FlatStyle.Flat;
+            fitButton.ForeColor = Color.Black;
+            fitButton.Text = "重設視圖";
+            fitButton.Width = 90;
+
+            topPanel.Controls.Add(resolutionLabel);
+            topPanel.Controls.Add(titleLabel);
+            bottomPanel.Controls.Add(fitButton);
+            bottomPanel.Controls.Add(statusLabel);
+            host.Controls.Add(viewPanel);
+            host.Controls.Add(bottomPanel);
+            host.Controls.Add(topPanel);
         }
 
         private void InitializeImageDisplayControls()
