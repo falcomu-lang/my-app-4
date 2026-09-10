@@ -1,14 +1,46 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using IntegratedImageProcessingApp.Controls;
 
 namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm : Form
     {
+        private ImageDisplayControl leftOriginalDisplayControl;
+        private ImageDisplayControl leftProcessedDisplayControl;
+        private ImageDisplayControl leftObjectsDisplayControl;
+        private ImageDisplayControl leftDebugDisplayControl;
+        private ImageDisplayControl rightOriginalDisplayControl;
+        private ImageDisplayControl rightProcessedDisplayControl;
+        private ImageDisplayControl rightObjectsDisplayControl;
+        private ImageDisplayControl rightDebugDisplayControl;
+
         public MainForm()
         {
             InitializeComponent();
+            InitializeImageDisplayControls();
+        }
+
+        private void InitializeImageDisplayControls()
+        {
+            leftOriginalDisplayControl = CreateImageDisplayControl(leftOriginalDisplayHostPanel, "左側 原圖");
+            leftProcessedDisplayControl = CreateImageDisplayControl(leftProcessedDisplayHostPanel, "左側 處理後");
+            leftObjectsDisplayControl = CreateImageDisplayControl(leftObjectsDisplayHostPanel, "左側 物件結果");
+            leftDebugDisplayControl = CreateImageDisplayControl(leftDebugDisplayHostPanel, "左側 debug");
+            rightOriginalDisplayControl = CreateImageDisplayControl(rightOriginalDisplayHostPanel, "右側 原圖");
+            rightProcessedDisplayControl = CreateImageDisplayControl(rightProcessedDisplayHostPanel, "右側 處理後");
+            rightObjectsDisplayControl = CreateImageDisplayControl(rightObjectsDisplayHostPanel, "右側 物件結果");
+            rightDebugDisplayControl = CreateImageDisplayControl(rightDebugDisplayHostPanel, "右側 debug");
+        }
+
+        private static ImageDisplayControl CreateImageDisplayControl(Control host, string title)
+        {
+            var displayControl = new ImageDisplayControl();
+            displayControl.Dock = DockStyle.Fill;
+            displayControl.TitleText = title;
+            host.Controls.Add(displayControl);
+            return displayControl;
         }
 
         private void MainForm_Load(object sender, EventArgs e)
