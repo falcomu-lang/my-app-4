@@ -25,6 +25,8 @@
 - `讀取圖片`
   - Left function list item opens an `OpenFileDialog`.
   - Supported image filters: BMP, JPG/JPEG, PNG, TIF/TIFF, all files.
+  - Images are checked when loaded. If already grayscale, they are used directly.
+  - If a user accidentally selects a color image, it is converted to grayscale in memory before display; no temporary image file is saved and reloaded.
   - Selected image is loaded into both left and right `原圖` tabs.
   - Both sides automatically switch to `原圖`.
 
@@ -88,6 +90,7 @@ Height=0
 
 - `IntegratedImageProcessingApp\Controls\ImageDisplayControl.cs`
   - Runtime image loading.
+  - Ensures incoming images are grayscale so future analysis can assume grayscale input. Already-grayscale images are not converted again.
   - Viewer paint, zoom, pan, fit view.
   - ROI selection and ROI overlay drawing.
   - View sync event/state.
@@ -117,4 +120,5 @@ Height=0
 ## Notes For Next Work
 - Be careful with `MainForm.Designer.cs`; avoid helper method calls or custom-control declarations in the main designer file if Visual Studio Designer starts failing.
 - Prefer adding runtime behavior in `MainForm.cs` and reusable viewer behavior in `ImageDisplayControl.cs`.
+- Treat images inside the app as grayscale-only. Color input files should be converted in memory at the boundary before display or analysis; already-grayscale input should not be converted again.
 - There may be Visual Studio formatting-only changes in `MainForm.Designer.cs` or `MainForm.resx` after opening the designer. Inspect before committing.

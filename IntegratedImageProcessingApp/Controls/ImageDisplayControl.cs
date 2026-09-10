@@ -1,7 +1,9 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -162,7 +164,7 @@ namespace IntegratedImageProcessingApp.Controls
                     using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                     using (var image = Image.FromStream(stream))
                     {
-                        return new Bitmap(image);
+                        return CreateDisplayBitmap(image);
                     }
                 },
                 cancellationToken);
@@ -178,10 +180,16 @@ namespace IntegratedImageProcessingApp.Controls
 
         public void SetImage(Bitmap bitmap)
         {
+            Bitmap displayBitmap = EnsureGrayscaleBitmap(bitmap);
+            if (!ReferenceEquals(displayBitmap, bitmap))
+            {
+                bitmap.Dispose();
+            }
+
             lock (_imageLock)
             {
                 DisposeCurrentImage();
-                _sourceBitmap = bitmap;
+                _sourceBitmap = displayBitmap;
             }
 
             FitImageToView();
@@ -563,6 +571,163 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             return zoom;
+        }
+
+        private static Bitmap CreateDisplayBitmap(Image source)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException("source");
+            }
+
+            var bitmap = new Bitmap(source);
+            Bitmap displayBitmap = EnsureGrayscaleBitmap(bitmap);
+            if (!ReferenceEquals(displayBitmap, bitmap))
+            {
+                bitmap.Dispose();
+            }
+
+            return displayBitmap;
+        }
+
+        private static Bitmap EnsureGrayscaleBitmap(Bitmap bitmap)
+        {
+            if (bitmap == null)
+            {
+                throw new ArgumentNullException("bitmap");
+            }
+
+            if (IsGrayscaleBitmap(bitmap))
+            {
+                return bitmap;
+            }
+
+            Bitmap grayscaleBitmap = CreateGrayscaleBitmap(bitmap);
+            return grayscaleBitmap;
+        }
+
+        private static Bitmap CreateGrayscaleBitmap(Image source)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException("source");
+            }
+
+            var grayscaleBitmap = new Bitmap(source.Width, source.Height, PixelFormat.Format24bppRgb);
+            grayscaleBitmap.SetResolution(source.HorizontalResolution, source.VerticalResolution);
+
+            using (Graphics graphics = Graphics.FromImage(grayscaleBitmap))
+            using (var attributes = new ImageAttributes())
+            {
+                var colorMatrix = new ColorMatrix(new[]
+                {
+                    new[] { 0.299f, 0.299f, 0.299f, 0f, 0f },
+                    new[] { 0.587f, 0.587f, 0.587f, 0f, 0f },
+                    new[] { 0.114f, 0.114f, 0.114f, 0f, 0f },
+                    new[] { 0f, 0f, 0f, 1f, 0f },
+                    new[] { 0f, 0f, 0f, 0f, 1f }
+                });
+
+                attributes.SetColorMatrix(colorMatrix);
+                graphics.DrawImage(
+                    source,
+                    new Rectangle(0, 0, source.Width, source.Height),
+                    0,
+                    0,
+                    source.Width,
+                    source.Height,
+                    GraphicsUnit.Pixel,
+                    attributes);
+            }
+
+            return grayscaleBitmap;
+        }
+
+        private static bool IsGrayscaleBitmap(Bitmap bitmap)
+        {
+            if (bitmap == null)
+            {
+                return false;
+            }
+
+            if (bitmap.PixelFormat == PixelFormat.Format8bppIndexed && IsGrayscalePalette(bitmap.Palette))
+            {
+                return true;
+            }
+
+            PixelFormat pixelFormat = bitmap.PixelFormat;
+            if (pixelFormat == PixelFormat.Format24bppRgb ||
+                pixelFormat == PixelFormat.Format32bppRgb ||
+                pixelFormat == PixelFormat.Format32bppArgb ||
+                pixelFormat == PixelFormat.Format32bppPArgb)
+            {
+                return IsLockBitsGrayscale(bitmap, pixelFormat);
+            }
+
+            using (Bitmap readableBitmap = new Bitmap(bitmap.Width, bitmap.Height, PixelFormat.Format24bppRgb))
+            {
+                readableBitmap.SetResolution(bitmap.HorizontalResolution, bitmap.VerticalResolution);
+                using (Graphics graphics = Graphics.FromImage(readableBitmap))
+                {
+                    graphics.DrawImage(bitmap, 0, 0, bitmap.Width, bitmap.Height);
+                }
+
+                return IsLockBitsGrayscale(readableBitmap, PixelFormat.Format24bppRgb);
+            }
+        }
+
+        private static bool IsGrayscalePalette(ColorPalette palette)
+        {
+            foreach (Color color in palette.Entries)
+            {
+                if (color.R != color.G || color.G != color.B)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsLockBitsGrayscale(Bitmap bitmap, PixelFormat pixelFormat)
+        {
+            Rectangle bounds = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+            BitmapData data = null;
+
+            try
+            {
+                data = bitmap.LockBits(bounds, ImageLockMode.ReadOnly, pixelFormat);
+                int bytesPerPixel = Image.GetPixelFormatSize(pixelFormat) / 8;
+                int stride = data.Stride;
+                int rowBytes = bitmap.Width * bytesPerPixel;
+
+                byte[] pixels = new byte[Math.Abs(stride) * bitmap.Height];
+                Marshal.Copy(data.Scan0, pixels, 0, pixels.Length);
+
+                for (int y = 0; y < bitmap.Height; y++)
+                {
+                    int rowStart = y * Math.Abs(stride);
+                    for (int x = 0; x < rowBytes; x += bytesPerPixel)
+                    {
+                        byte blue = pixels[rowStart + x];
+                        byte green = pixels[rowStart + x + 1];
+                        byte red = pixels[rowStart + x + 2];
+                        if (red != green || green != blue)
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            }
+            finally
+            {
+                if (data != null)
+                {
+                    bitmap.UnlockBits(data);
+                }
+            }
         }
 
         private void OnViewChanged()
