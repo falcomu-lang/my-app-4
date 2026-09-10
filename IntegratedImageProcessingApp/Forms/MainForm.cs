@@ -2,6 +2,9 @@ using System;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
 
@@ -17,6 +20,7 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageDisplayControl rightProcessedDisplayControl;
         private ImageDisplayControl rightObjectsDisplayControl;
         private ImageDisplayControl rightDebugDisplayControl;
+        private bool isLoadingImage;
 
         public MainForm()
         {
@@ -79,8 +83,68 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
-            parameterPlaceholderLabel.Text = "這裡會顯示「" + selectedFunction + "」的參數設定與選項。";
+            parameterPlaceholderLabel.Text = selectedFunction == "讀取圖片"
+                ? "點選左側「讀取圖片」後，選擇要載入的圖片。"
+                : "這裡會顯示「" + selectedFunction + "」的參數設定與選項。";
             statusLabel.Text = "目前選擇：" + selectedFunction;
+        }
+
+        private async void FunctionListBox_MouseClick(object sender, MouseEventArgs e)
+        {
+            int clickedIndex = functionListBox.IndexFromPoint(e.Location);
+            if (clickedIndex == 0)
+            {
+                await OpenImageAsync();
+            }
+        }
+
+        private async Task OpenImageAsync()
+        {
+            if (isLoadingImage)
+            {
+                return;
+            }
+
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = "讀取圖片";
+                dialog.Filter = "圖片檔案|*.bmp;*.jpg;*.jpeg;*.png;*.tif;*.tiff|所有檔案|*.*";
+                dialog.Multiselect = false;
+
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+
+                isLoadingImage = true;
+                string fileName = Path.GetFileName(dialog.FileName);
+
+                try
+                {
+                    statusLabel.Text = "讀取圖片中：" + fileName;
+                    leftImageTabControl.SelectedTab = leftOriginalTabPage;
+                    rightImageTabControl.SelectedTab = rightOriginalTabPage;
+
+                    await leftOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
+                    await rightOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
+
+                    statusLabel.Text = "已讀取圖片：" + fileName;
+                }
+                catch (Exception ex)
+                {
+                    statusLabel.Text = "讀取圖片失敗";
+                    MessageBox.Show(
+                        this,
+                        "讀取圖片失敗：" + ex.Message,
+                        "讀取圖片",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    isLoadingImage = false;
+                }
+            }
         }
 
         private void FunctionListBox_DrawItem(object sender, DrawItemEventArgs e)
