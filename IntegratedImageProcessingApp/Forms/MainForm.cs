@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
@@ -20,14 +21,24 @@ namespace IntegratedImageProcessingApp.Forms
         public MainForm()
         {
             InitializeComponent();
-            if (LicenseManager.UsageMode == LicenseUsageMode.Designtime)
-            {
-                InitializeDesignImageDisplayPlaceholders();
-            }
-            else
+            InitializeDesignImageDisplayPlaceholders();
+
+            if (!IsRunningInDesigner())
             {
                 InitializeImageDisplayControls();
             }
+        }
+
+        private bool IsRunningInDesigner()
+        {
+            if (DesignMode || LicenseManager.UsageMode == LicenseUsageMode.Designtime)
+            {
+                return true;
+            }
+
+            string processName = Process.GetCurrentProcess().ProcessName;
+            return string.Equals(processName, "devenv", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(processName, "XDesProc", StringComparison.OrdinalIgnoreCase);
         }
 
         private void InitializeDesignImageDisplayPlaceholders()
@@ -114,6 +125,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static ImageDisplayControl CreateImageDisplayControl(Control host, string title)
         {
+            host.Controls.Clear();
+
             var displayControl = new ImageDisplayControl();
             displayControl.Dock = DockStyle.Fill;
             displayControl.TitleText = title;
