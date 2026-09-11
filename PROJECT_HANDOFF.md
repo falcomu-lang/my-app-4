@@ -55,6 +55,7 @@
     - The viewer paints original image preview/tiles first.
     - `MainForm` handles `LargeImageOverlayPaint` to draw cached overlay tiles and queue missing ROI-intersecting tiles for background calculation.
     - Do not compute edge masks synchronously inside Paint; doing so can freeze the UI when switching to the `處理後` tab.
+    - Overlay tile drawing validates destination/source rectangles and catches GDI+ `ArgumentException` so one invalid overlay draw does not crash painting.
     - Red result overlays are cached as transparent tile bitmaps and cleared when method/parameter/ROI changes.
 
 - Visible left/right view synchronization

@@ -1778,17 +1778,35 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static void DrawLargeProcessedOverlayTile(Graphics graphics, Bitmap overlay, Rectangle tileRect, float zoom, PointF offset)
         {
-            if (overlay == null)
+            if (overlay == null || overlay.Width <= 0 || overlay.Height <= 0 || tileRect.Width <= 0 || tileRect.Height <= 0 || zoom <= 0f)
             {
                 return;
             }
 
-            Rectangle destination = Rectangle.Round(RectangleF.FromLTRB(
-                (float)Math.Floor(offset.X + (tileRect.Left * zoom)),
-                (float)Math.Floor(offset.Y + (tileRect.Top * zoom)),
-                (float)Math.Ceiling(offset.X + (tileRect.Right * zoom)),
-                (float)Math.Ceiling(offset.Y + (tileRect.Bottom * zoom))));
-            graphics.DrawImage(overlay, destination, 0, 0, overlay.Width, overlay.Height, GraphicsUnit.Pixel);
+            int left = (int)Math.Floor(offset.X + (tileRect.Left * zoom));
+            int top = (int)Math.Floor(offset.Y + (tileRect.Top * zoom));
+            int right = (int)Math.Ceiling(offset.X + (tileRect.Right * zoom));
+            int bottom = (int)Math.Ceiling(offset.Y + (tileRect.Bottom * zoom));
+            if (right <= left)
+            {
+                right = left + 1;
+            }
+
+            if (bottom <= top)
+            {
+                bottom = top + 1;
+            }
+
+            var destination = Rectangle.FromLTRB(left, top, right, bottom);
+            var source = new Rectangle(0, 0, overlay.Width, overlay.Height);
+            try
+            {
+                graphics.DrawImage(overlay, destination, source, GraphicsUnit.Pixel);
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine(ex);
+            }
         }
 
         private Bitmap CreateCurrentProcessedImage()
