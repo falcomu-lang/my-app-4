@@ -1589,49 +1589,200 @@ namespace IntegratedImageProcessingApp.Forms
                     EnsureOdd(Math.Max(3, kernelSize)),
                     l2Gradient);
 
-                var mask = new bool[width, height];
-                byte[] edgeRow = new byte[width];
-                long edgeStride = edges.Step();
+                return CreateOpenCvFilteredMask(edges, maxGap, minEdgeLength, edgeSelection, null);
+            }
+        }
+
+        private static bool[,] CreateOpenCvFilteredMask(
+            Cv.Mat edgeMask, int maxGap, int minEdgeLength, string edgeSelection, Cv.Mat strength)
+        {
+            int width = edgeMask.Width;
+            int height = edgeMask.Height;
+            if (maxGap > 0)
+            {
+                int kernelSize = EnsureOdd(Math.Max(3, (maxGap * 2) + 1));
+                using (Cv.Mat kernel = Cv.Cv2.GetStructuringElement(Cv.MorphShapes.Rect, new Cv.Size(kernelSize, kernelSize)))
+                {
+                    Cv.Cv2.MorphologyEx(edgeMask, edgeMask, Cv.MorphTypes.Close, kernel);
+                }
+            }
+
+            bool requiresSelection = !string.Equals(edgeSelection, "All", StringComparison.OrdinalIgnoreCase);
+            if (minEdgeLength <= 1 && !requiresSelection)
+            {
+                return ConvertOpenCvBinaryMask(edgeMask);
+            }
+
+            using (var labels = new Cv.Mat())
+            using (var stats = new Cv.Mat())
+            using (var centroids = new Cv.Mat())
+            {
+                int labelCount = Cv.Cv2.ConnectedComponentsWithStats(
+                    edgeMask,
+                    labels,
+                    stats,
+                    centroids,
+                    Cv.PixelConnectivity.Connectivity8,
+                    Cv.MatType.CV_32SC1);
+                var accepted = new bool[labelCount];
+                var areas = new int[labelCount];
+                for (int label = 1; label < labelCount; label++)
+                {
+                    areas[label] = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Area);
+                    accepted[label] = areas[label] >= minEdgeLength;
+                }
+
+                var result = new bool[width, height];
+                int[] row = new int[width];
+                float[] strengthRow = strength != null && !strength.Empty() ? new float[width] : null;
+                var totalStrength = strengthRow == null ? null : new double[labelCount];
+                long stride = labels.Step();
+                if (!requiresSelection && totalStrength == null)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        Marshal.Copy(labels.Data + (int)(y * stride), row, 0, width);
+                        for (int x = 0; x < width; x++)
+                        {
+                            int label = row[x];
+                            result[x, y] = label > 0 && label < accepted.Length && accepted[label];
+                        }
+                    }
+
+                    return result;
+                }
+
                 for (int y = 0; y < height; y++)
                 {
-                    Marshal.Copy(edges.Data + (int)(y * edgeStride), edgeRow, 0, width);
+                    Marshal.Copy(labels.Data + (int)(y * stride), row, 0, width);
+                    if (strengthRow != null)
+                    {
+                        Marshal.Copy(strength.Data + (int)(y * strength.Step()), strengthRow, 0, width);
+                    }
+
                     for (int x = 0; x < width; x++)
                     {
-                        mask[x, y] = edgeRow[x] != 0;
+                        int label = row[x];
+                        if (label > 0 && label < accepted.Length && accepted[label] && totalStrength != null)
+                        {
+                            totalStrength[label] += strengthRow[x];
+                        }
                     }
                 }
 
-                mask = BridgeSmallGaps(mask, maxGap);
-                return FilterEdgeComponents(mask, CreateOpenCvMagnitudeForFiltering(blurred, kernelSize, l2Gradient), edgeSelection, minEdgeLength);
+                int selectedLabel = GetOpenCvSelectedLabel(edgeSelection, accepted, areas, totalStrength);
+                for (int y = 0; y < height; y++)
+                {
+                    Marshal.Copy(labels.Data + (int)(y * stride), row, 0, width);
+                    for (int x = 0; x < width; x++)
+                    {
+                        int label = row[x];
+                        result[x, y] = label > 0 && label < accepted.Length && accepted[label] &&
+                            (selectedLabel == 0 || label == selectedLabel);
+                    }
+                }
+
+                return result;
             }
+        }
+
+        private static int GetOpenCvSelectedLabel(string edgeSelection, bool[] accepted, int[] areas, double[] totalStrength)
+        {
+            if (string.Equals(edgeSelection, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                return 0;
+            }
+
+            int selected = 0;
+            for (int label = 1; label < accepted.Length; label++)
+            {
+                if (!accepted[label])
+                {
+                    continue;
+                }
+
+                if (selected == 0 ||
+                    (string.Equals(edgeSelection, "Last", StringComparison.OrdinalIgnoreCase) && label > selected) ||
+                    (string.Equals(edgeSelection, "Longest", StringComparison.OrdinalIgnoreCase) && areas[label] > areas[selected]) ||
+                    (string.Equals(edgeSelection, "Strongest", StringComparison.OrdinalIgnoreCase) &&
+                        (totalStrength == null ? areas[label] : totalStrength[label]) >
+                        (totalStrength == null ? areas[selected] : totalStrength[selected])))
+                {
+                    selected = label;
+                }
+            }
+
+            return selected;
+        }
+
+        private static bool[,] ConvertOpenCvBinaryMask(Cv.Mat source)
+        {
+            int width = source.Width;
+            int height = source.Height;
+            var result = new bool[width, height];
+            byte[] row = new byte[width];
+            long stride = source.Step();
+            for (int y = 0; y < height; y++)
+            {
+                Marshal.Copy(source.Data + (int)(y * stride), row, 0, width);
+                for (int x = 0; x < width; x++)
+                {
+                    result[x, y] = row[x] != 0;
+                }
+            }
+
+            return result;
         }
 
         private static bool[,] CreateOpenCvSobelMask(
             byte[,] gray, int threshold, string direction, int kernelSize, double scale, int delta,
             string outputMode, string edgeSelection, int minEdgeLength, int maxGap)
         {
-            int width = gray.GetLength(0);
-            int height = gray.GetLength(1);
             using (var source = CreateOpenCvGrayMat(gray))
             using (var gradientX = new Cv.Mat())
             using (var gradientY = new Cv.Mat())
+            using (var magnitude = new Cv.Mat())
+            using (var edgeMask = new Cv.Mat())
             {
                 int aperture = EnsureOdd(Math.Max(3, kernelSize));
                 Cv.Cv2.Sobel(source, gradientX, Cv.MatType.CV_32FC1, 1, 0, aperture);
                 Cv.Cv2.Sobel(source, gradientY, Cv.MatType.CV_32FC1, 0, 1, aperture);
-                int[,] magnitudes = CreateOpenCvSobelMagnitudes(
-                    gradientX, gradientY, direction, outputMode, scale, delta);
-                var mask = new bool[width, height];
-                for (int y = 1; y < height - 1; y++)
+
+                bool xOnly = string.Equals(outputMode, "XOnly", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(direction, "Horizontal", StringComparison.OrdinalIgnoreCase);
+                bool yOnly = string.Equals(outputMode, "YOnly", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(direction, "Vertical", StringComparison.OrdinalIgnoreCase);
+                if (xOnly)
                 {
-                    for (int x = 1; x < width - 1; x++)
-                    {
-                        mask[x, y] = magnitudes[x, y] >= threshold;
-                    }
+                    Cv.Cv2.Absdiff(gradientX, Cv.Scalar.All(0), magnitude);
+                }
+                else if (yOnly)
+                {
+                    Cv.Cv2.Absdiff(gradientY, Cv.Scalar.All(0), magnitude);
+                }
+                else
+                {
+                    Cv.Cv2.Magnitude(gradientX, gradientY, magnitude);
                 }
 
-                mask = BridgeSmallGaps(mask, maxGap);
-                return FilterEdgeComponents(mask, magnitudes, edgeSelection, minEdgeLength);
+                if (scale > 0)
+                {
+                    double sourceThreshold = (threshold - delta) / scale;
+                    Cv.Cv2.Threshold(magnitude, edgeMask, sourceThreshold, 255, Cv.ThresholdTypes.Binary);
+                    edgeMask.ConvertTo(edgeMask, Cv.MatType.CV_8UC1);
+                }
+                else if (delta >= threshold)
+                {
+                    edgeMask.Create(magnitude.Rows, magnitude.Cols, Cv.MatType.CV_8UC1);
+                    edgeMask.SetTo(Cv.Scalar.All(255));
+                }
+                else
+                {
+                    edgeMask.Create(magnitude.Rows, magnitude.Cols, Cv.MatType.CV_8UC1);
+                    edgeMask.SetTo(Cv.Scalar.All(0));
+                }
+
+                return CreateOpenCvFilteredMask(edgeMask, maxGap, minEdgeLength, edgeSelection, magnitude);
             }
         }
 
@@ -1639,38 +1790,57 @@ namespace IntegratedImageProcessingApp.Forms
             byte[,] gray, int contrastThreshold, int edgeWidth, int smoothing, string polarity,
             string searchDirection, string edgeSelection, int minEdgeLength, int maxGap, bool subPixel)
         {
-            int width = gray.GetLength(0);
-            int height = gray.GetLength(1);
             using (var source = CreateOpenCvGrayMat(gray))
             using (var blurred = new Cv.Mat())
             using (var gradientX = new Cv.Mat())
             using (var gradientY = new Cv.Mat())
+            using (var directedGradient = new Cv.Mat())
+            using (var absoluteX = new Cv.Mat())
+            using (var absoluteY = new Cv.Mat())
+            using (var pickX = new Cv.Mat())
+            using (var absoluteGradient = new Cv.Mat())
+            using (var edgeMask = new Cv.Mat())
             {
                 int blurSize = EnsureOdd(Math.Max(1, smoothing));
                 Cv.Cv2.GaussianBlur(source, blurred, new Cv.Size(blurSize, blurSize), Math.Max(0.1, smoothing / 2.0));
                 int aperture = EnsureOdd(Math.Max(3, edgeWidth));
                 Cv.Cv2.Sobel(blurred, gradientX, Cv.MatType.CV_32FC1, 1, 0, aperture);
                 Cv.Cv2.Sobel(blurred, gradientY, Cv.MatType.CV_32FC1, 0, 1, aperture);
-                float[] values = CreateOpenCvDirectedGradient(gradientX, gradientY, searchDirection);
-                int[,] magnitudes = new int[width, height];
-                var mask = new bool[width, height];
-                int radius = Math.Max(1, edgeWidth / 2);
-                for (int y = radius; y < height - radius; y++)
+
+                if (string.Equals(searchDirection, "Horizontal", StringComparison.OrdinalIgnoreCase))
                 {
-                    for (int x = radius; x < width - radius; x++)
-                    {
-                        float contrast = values[(y * width) + x];
-                        bool polarityAccepted = string.Equals(polarity, "Any", StringComparison.OrdinalIgnoreCase) ||
-                            (string.Equals(polarity, "BrightToDark", StringComparison.OrdinalIgnoreCase) && contrast < 0) ||
-                            (string.Equals(polarity, "DarkToBright", StringComparison.OrdinalIgnoreCase) && contrast > 0);
-                        int magnitude = (int)Math.Round(Math.Abs(contrast));
-                        magnitudes[x, y] = magnitude;
-                        mask[x, y] = polarityAccepted && magnitude >= contrastThreshold;
-                    }
+                    gradientX.CopyTo(directedGradient);
+                }
+                else if (string.Equals(searchDirection, "Vertical", StringComparison.OrdinalIgnoreCase))
+                {
+                    gradientY.CopyTo(directedGradient);
+                }
+                else
+                {
+                    Cv.Cv2.Absdiff(gradientX, Cv.Scalar.All(0), absoluteX);
+                    Cv.Cv2.Absdiff(gradientY, Cv.Scalar.All(0), absoluteY);
+                    Cv.Cv2.Compare(absoluteX, absoluteY, pickX, Cv.CmpType.GE);
+                    gradientY.CopyTo(directedGradient);
+                    gradientX.CopyTo(directedGradient, pickX);
                 }
 
-                mask = BridgeSmallGaps(mask, maxGap);
-                return FilterEdgeComponents(mask, magnitudes, edgeSelection, minEdgeLength);
+                if (string.Equals(polarity, "BrightToDark", StringComparison.OrdinalIgnoreCase))
+                {
+                    Cv.Cv2.Threshold(directedGradient, edgeMask, -contrastThreshold, 255, Cv.ThresholdTypes.BinaryInv);
+                }
+                else if (string.Equals(polarity, "DarkToBright", StringComparison.OrdinalIgnoreCase))
+                {
+                    Cv.Cv2.Threshold(directedGradient, edgeMask, contrastThreshold, 255, Cv.ThresholdTypes.Binary);
+                }
+                else
+                {
+                    Cv.Cv2.Absdiff(directedGradient, Cv.Scalar.All(0), absoluteGradient);
+                    Cv.Cv2.Threshold(absoluteGradient, edgeMask, contrastThreshold, 255, Cv.ThresholdTypes.Binary);
+                }
+
+                edgeMask.ConvertTo(edgeMask, Cv.MatType.CV_8UC1);
+
+                return CreateOpenCvFilteredMask(edgeMask, maxGap, minEdgeLength, edgeSelection, absoluteGradient);
             }
         }
 
@@ -1763,19 +1933,36 @@ namespace IntegratedImageProcessingApp.Forms
         {
             int width = blurred.Width;
             int height = blurred.Height;
-            var gray = new byte[width, height];
-            byte[] row = new byte[width];
-            long stride = blurred.Step();
-            for (int y = 0; y < height; y++)
+            using (var gradientX = new Cv.Mat())
+            using (var gradientY = new Cv.Mat())
+            using (var magnitude = new Cv.Mat())
             {
-                Marshal.Copy(blurred.Data + (int)(y * stride), row, 0, width);
-                for (int x = 0; x < width; x++)
+                int aperture = EnsureOdd(Math.Max(3, kernelSize));
+                Cv.Cv2.Sobel(blurred, gradientX, Cv.MatType.CV_32FC1, 1, 0, aperture);
+                Cv.Cv2.Sobel(blurred, gradientY, Cv.MatType.CV_32FC1, 0, 1, aperture);
+                if (l2Gradient)
                 {
-                    gray[x, y] = row[x];
+                    Cv.Cv2.Magnitude(gradientX, gradientY, magnitude);
                 }
-            }
+                else
+                {
+                    Cv.Cv2.Absdiff(gradientX, Cv.Scalar.All(0), gradientX);
+                    Cv.Cv2.Absdiff(gradientY, Cv.Scalar.All(0), gradientY);
+                    Cv.Cv2.Add(gradientX, gradientY, magnitude);
+                }
 
-            return CreateSobelMagnitudes(gray, kernelSize, l2Gradient, "Both");
+                float[] values = ReadOpenCvFloatMat(magnitude);
+                var result = new int[width, height];
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        result[x, y] = ClampInt((int)Math.Round(values[(y * width) + x]), 0, int.MaxValue);
+                    }
+                }
+
+                return result;
+            }
         }
 
         private bool[,] CreateLegacyLargeCannyMask(byte[,] gray, int lowThreshold, int highThreshold, int kernelSize, bool l2Gradient, int gaussianBlurSize, double gaussianSigma, string edgeSelection, int minEdgeLength, int maxGap)
