@@ -40,6 +40,7 @@
   - Large image display now reuses the tiled rendering approach from `my-app-2`:
     - `LargeImageSource` loads huge files through WIC.
     - WIC decoding must use `BitmapCacheOption.OnDemand`; `OnLoad` can throw `OutOfMemoryException` during decoder creation for images such as `16384 x 50000`.
+    - Preview generation uses `BitmapImage.DecodePixelWidth/DecodePixelHeight` and copies pixels directly into `LockBits`; avoid `TransformedBitmap.CopyPixels` with a huge intermediate byte array because it can still throw `OutOfMemoryException` on very large files.
     - Low zoom paints a progressive preview.
     - Higher zoom requests and draws `1024 x 1024` tiles on demand.
     - Tile drawing uses destination rounding and `WrapMode.TileFlipXY` to avoid visible seams.

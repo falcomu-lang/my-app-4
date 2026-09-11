@@ -17,6 +17,7 @@ namespace IntegratedImageProcessingApp.Controls
         private const int MaxTileCacheCount = 96;
 
         private readonly object _sync = new object();
+        private readonly string _filePath;
         private readonly FileStream _stream;
         private readonly SWMI.BitmapFrame _frame;
         private readonly Dictionary<string, Bitmap> _tileCache;
@@ -28,6 +29,7 @@ namespace IntegratedImageProcessingApp.Controls
 
         public LargeImageSource(string filePath)
         {
+            _filePath = filePath;
             _stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             var decoder = SWMI.BitmapDecoder.Create(_stream, SWMI.BitmapCreateOptions.PreservePixelFormat, SWMI.BitmapCacheOption.OnDemand);
             _frame = decoder.Frames[0];
@@ -499,9 +501,15 @@ namespace IntegratedImageProcessingApp.Controls
 
         private Bitmap CreateScaledBitmap(int decodeWidth, int decodeHeight)
         {
-            var preview = new SWMI.TransformedBitmap(
-                _frame,
-                new SWM.ScaleTransform((double)decodeWidth / Width, (double)decodeHeight / Height));
+            var preview = new SWMI.BitmapImage();
+            preview.BeginInit();
+            preview.CacheOption = SWMI.BitmapCacheOption.OnLoad;
+            preview.CreateOptions = SWMI.BitmapCreateOptions.PreservePixelFormat;
+            preview.UriSource = new Uri(_filePath, UriKind.Absolute);
+            preview.DecodePixelWidth = decodeWidth;
+            preview.DecodePixelHeight = decodeHeight;
+            preview.EndInit();
+            preview.Freeze();
             return ConvertToBitmap(preview);
         }
 
@@ -522,14 +530,11 @@ namespace IntegratedImageProcessingApp.Controls
         {
             var formatted = new SWMI.FormatConvertedBitmap(source, SWM.PixelFormats.Bgr32, null, 0);
             var stride = formatted.PixelWidth * 4;
-            var pixels = new byte[stride * formatted.PixelHeight];
-            formatted.CopyPixels(pixels, stride, 0);
-
             var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format32bppArgb);
             var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
             try
             {
-                Marshal.Copy(pixels, 0, data.Scan0, pixels.Length);
+                formatted.CopyPixels(new SW.Int32Rect(0, 0, formatted.PixelWidth, formatted.PixelHeight), data.Scan0, Math.Abs(data.Stride) * data.Height, data.Stride);
             }
             finally
             {
