@@ -64,6 +64,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string MoveDownImageProcessingStepMenuText = "      下移";
         private const int MaxLargeProcessedOverlayCacheCount = 128;
         private const int LargeProcessedOverlayTileSize = 128;
+        private const int LargeProcessedMaskChunkSize = 512;
         private const int MaxPendingLargeProcessedOverlayTiles = 2;
         private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
 
@@ -1693,30 +1694,88 @@ namespace IntegratedImageProcessingApp.Forms
                     bool[,] mask = null;
                     try
                     {
-                        Bitmap roiImage = null;
-                        try
+                        mask = new bool[roi.Width, roi.Height];
+                        Dictionary<string, string> parsedParameters = ParseImageProcessingParameters(parameters);
+                        int chunkCountX = (roi.Width + LargeProcessedMaskChunkSize - 1) / LargeProcessedMaskChunkSize;
+                        int chunkCountY = (roi.Height + LargeProcessedMaskChunkSize - 1) / LargeProcessedMaskChunkSize;
+                        int totalChunks = chunkCountX * chunkCountY;
+                        int completedChunks = 0;
+
+                        for (int chunkY = 0; chunkY < chunkCountY; chunkY++)
                         {
-                            roiImage = sharedSource.CreateRegionBitmap(roi);
-                        }
-                        catch (Exception ex)
-                        {
-                            if (!(ex is OutOfMemoryException) && !(ex is ArgumentException))
+                            for (int chunkX = 0; chunkX < chunkCountX; chunkX++)
                             {
-                                throw;
+                                lock (largeProcessedMaskLock)
+                                {
+                                    if (generation != largeProcessedMaskGeneration ||
+                                        !string.Equals(latestLargeProcessedMaskKey, maskKey, StringComparison.Ordinal))
+                                    {
+                                        return;
+                                    }
+                                }
+
+                                Rectangle chunkRect = Rectangle.Intersect(
+                                    roi,
+                                    new Rectangle(
+                                        roi.X + (chunkX * LargeProcessedMaskChunkSize),
+                                        roi.Y + (chunkY * LargeProcessedMaskChunkSize),
+                                        LargeProcessedMaskChunkSize,
+                                        LargeProcessedMaskChunkSize));
+                                if (chunkRect.Width <= 0 || chunkRect.Height <= 0)
+                                {
+                                    continue;
+                                }
+
+                                Bitmap chunkImage = null;
+                                try
+                                {
+                                    chunkImage = sharedSource.CreateRegionBitmap(chunkRect);
+                                }
+                                catch (Exception ex)
+                                {
+                                    if (!(ex is OutOfMemoryException) && !(ex is ArgumentException))
+                                    {
+                                        throw;
+                                    }
+
+                                    Debug.WriteLine(ex);
+                                    TryCreateRegionBitmapFromPreview(sharedSource, chunkRect, out chunkImage);
+                                }
+
+                                if (chunkImage == null)
+                                {
+                                    throw new InvalidOperationException("無法建立 ROI 區塊影像");
+                                }
+
+                                using (chunkImage)
+                                {
+                                    bool[,] chunkMask = CreateEdgeMask(chunkImage, method, parsedParameters);
+                                    CopyChunkMaskToRoiMask(mask, roi, chunkRect, chunkMask);
+                                }
+
+                                completedChunks++;
+                                if (completedChunks == 1 || completedChunks == totalChunks || completedChunks % 8 == 0)
+                                {
+                                    int progress = completedChunks;
+                                    BeginInvoke(
+                                        new Action(
+                                            delegate
+                                            {
+                                                lock (largeProcessedMaskLock)
+                                                {
+                                                    if (generation != largeProcessedMaskGeneration ||
+                                                        !string.Equals(latestLargeProcessedMaskKey, maskKey, StringComparison.Ordinal))
+                                                    {
+                                                        return;
+                                                    }
+                                                }
+
+                                                statusLabel.Text = "影像處理運算中...ROI Mask " +
+                                                    progress.ToString(CultureInfo.InvariantCulture) + "/" +
+                                                    totalChunks.ToString(CultureInfo.InvariantCulture);
+                                            }));
+                                }
                             }
-
-                            Debug.WriteLine(ex);
-                            TryCreateRegionBitmapFromPreview(sharedSource, roi, out roiImage);
-                        }
-
-                        if (roiImage == null)
-                        {
-                            throw new InvalidOperationException("無法建立 ROI 影像");
-                        }
-
-                        using (roiImage)
-                        {
-                            mask = CreateEdgeMask(roiImage, method, ParseImageProcessingParameters(parameters));
                         }
 
                         BeginInvoke(
@@ -1780,6 +1839,34 @@ namespace IntegratedImageProcessingApp.Forms
                 roi.Y.ToString(CultureInfo.InvariantCulture),
                 roi.Width.ToString(CultureInfo.InvariantCulture),
                 roi.Height.ToString(CultureInfo.InvariantCulture));
+        }
+
+        private static void CopyChunkMaskToRoiMask(bool[,] roiMask, Rectangle roi, Rectangle chunkRect, bool[,] chunkMask)
+        {
+            int chunkWidth = Math.Min(chunkRect.Width, chunkMask.GetLength(0));
+            int chunkHeight = Math.Min(chunkRect.Height, chunkMask.GetLength(1));
+            int offsetX = chunkRect.X - roi.X;
+            int offsetY = chunkRect.Y - roi.Y;
+            int roiMaskWidth = roiMask.GetLength(0);
+            int roiMaskHeight = roiMask.GetLength(1);
+
+            for (int y = 0; y < chunkHeight; y++)
+            {
+                int targetY = offsetY + y;
+                if (targetY < 0 || targetY >= roiMaskHeight)
+                {
+                    continue;
+                }
+
+                for (int x = 0; x < chunkWidth; x++)
+                {
+                    int targetX = offsetX + x;
+                    if (targetX >= 0 && targetX < roiMaskWidth)
+                    {
+                        roiMask[targetX, targetY] = chunkMask[x, y];
+                    }
+                }
+            }
         }
 
         private void ProcessedDisplayControl_LargeImageOverlayPaint(object sender, LargeImageOverlayPaintEventArgs e)
