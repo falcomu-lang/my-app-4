@@ -34,6 +34,7 @@ namespace IntegratedImageProcessingApp.Controls
             _stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             var decoder = SWMI.BitmapDecoder.Create(_stream, SWMI.BitmapCreateOptions.PreservePixelFormat, SWMI.BitmapCacheOption.OnDemand);
             _frame = decoder.Frames[0];
+            _frame.Freeze();
             Width = _frame.PixelWidth;
             Height = _frame.PixelHeight;
             _tileCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
