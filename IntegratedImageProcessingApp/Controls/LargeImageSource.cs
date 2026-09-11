@@ -109,6 +109,32 @@ namespace IntegratedImageProcessingApp.Controls
             return CreateTileBitmap(normalized);
         }
 
+        public bool TryCreateRegionBitmapFromCachedTile(Rectangle sourceRect, out Bitmap region)
+        {
+            region = null;
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                Rectangle normalized = NormalizeRect(sourceRect);
+                Rectangle tileRect = GetVisibleTileBounds(normalized);
+                string key = CreateTileKey(tileRect);
+                Bitmap cachedTile;
+                if (!_tileCache.TryGetValue(key, out cachedTile))
+                {
+                    return false;
+                }
+
+                Rectangle localRect = new Rectangle(
+                    normalized.X - tileRect.X,
+                    normalized.Y - tileRect.Y,
+                    normalized.Width,
+                    normalized.Height);
+                region = cachedTile.Clone(localRect, PixelFormat.Format32bppArgb);
+                TouchKey(key);
+                return true;
+            }
+        }
+
         public PreviewBitmap GetBestPreview(float zoom)
         {
             lock (_sync)

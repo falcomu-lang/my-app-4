@@ -1740,7 +1740,43 @@ namespace IntegratedImageProcessingApp.Forms
                     Bitmap overlay = null;
                     try
                     {
-                        using (Bitmap tile = sharedSource.CreateRegionBitmap(tileRect))
+                        Bitmap tile;
+                        if (!sharedSource.TryCreateRegionBitmapFromCachedTile(tileRect, out tile))
+                        {
+                            sharedSource.QueueTile(
+                                tileRect,
+                                delegate
+                                {
+                                    try
+                                    {
+                                        BeginInvoke(
+                                            new Action(
+                                                delegate
+                                                {
+                                                    leftProcessedDisplayControl.InvalidateImageView();
+                                                    rightProcessedDisplayControl.InvalidateImageView();
+                                                }));
+                                    }
+                                    catch (ObjectDisposedException)
+                                    {
+                                    }
+                                    catch (InvalidOperationException)
+                                    {
+                                    }
+                                });
+                            BeginInvoke(
+                                new Action(
+                                    delegate
+                                    {
+                                        pendingLargeProcessedOverlayTiles.Remove(cacheKey);
+                                        statusLabel.Text = "等待原圖區塊載入後再處理...";
+                                        leftProcessedDisplayControl.InvalidateImageView();
+                                        rightProcessedDisplayControl.InvalidateImageView();
+                                    }));
+                            return;
+                        }
+
+                        using (tile)
                         {
                             bool[,] mask = CreateEdgeMask(tile, method, ParseImageProcessingParameters(parameters));
                             overlay = CreateRedOverlayTile(mask);
