@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using SW = System.Windows;
 using SWM = System.Windows.Media;
@@ -14,8 +15,6 @@ namespace IntegratedImageProcessingApp.Controls
     public sealed class LargeImageSource : IDisposable
     {
         private const int TileSourceSize = 1024;
-        private const int MaxTileCacheCount = 96;
-
         private readonly object _sync = new object();
         private readonly string _filePath;
         private readonly FileStream _stream;
@@ -24,6 +23,7 @@ namespace IntegratedImageProcessingApp.Controls
         private readonly LinkedList<string> _tileOrder;
         private readonly HashSet<string> _pendingTiles;
         private readonly List<PreviewLevel> _previewLevels;
+        private readonly int _maxTileCacheCount;
         private int _referenceCount = 1;
         private bool _previewBuildQueued;
         private bool _disposed;
@@ -36,6 +36,8 @@ namespace IntegratedImageProcessingApp.Controls
             _frame = decoder.Frames[0];
             Width = _frame.PixelWidth;
             Height = _frame.PixelHeight;
+            _maxTileCacheCount = checked(((Width + TileSourceSize - 1) / TileSourceSize) *
+                ((Height + TileSourceSize - 1) / TileSourceSize) + 16);
             _tileCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
             _tileOrder = new LinkedList<string>();
             _pendingTiles = new HashSet<string>(StringComparer.Ordinal);
@@ -47,6 +49,34 @@ namespace IntegratedImageProcessingApp.Controls
         public int Width { get; private set; }
 
         public int Height { get; private set; }
+
+        public void PreloadAllTiles(CancellationToken cancellationToken)
+        {
+            for (int y = 0; y < Height; y += TileSourceSize)
+            {
+                for (int x = 0; x < Width; x += TileSourceSize)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Rectangle tileRect = new Rectangle(
+                        x,
+                        y,
+                        Math.Min(TileSourceSize, Width - x),
+                        Math.Min(TileSourceSize, Height - y));
+                    string key = CreateTileKey(tileRect);
+                    lock (_sync)
+                    {
+                        ThrowIfDisposed();
+                        if (_tileCache.ContainsKey(key))
+                        {
+                            TouchKey(key);
+                            continue;
+                        }
+
+                        AddTileToCacheUnsafe(key, CreateTileBitmap(tileRect));
+                    }
+                }
+            }
+        }
 
         public LargeImageSource AddReference()
         {
@@ -679,7 +709,7 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void TrimCache()
         {
-            while (_tileOrder.Count > MaxTileCacheCount)
+            while (_tileOrder.Count > _maxTileCacheCount)
             {
                 var last = _tileOrder.Last;
                 if (last == null)
@@ -727,14 +757,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         private Bitmap CreateScaledBitmap(int decodeWidth, int decodeHeight)
         {
-            var preview = new SWMI.BitmapImage();
-            preview.BeginInit();
-            preview.CacheOption = SWMI.BitmapCacheOption.OnLoad;
-            preview.CreateOptions = SWMI.BitmapCreateOptions.PreservePixelFormat;
-            preview.UriSource = new Uri(_filePath, UriKind.Absolute);
-            preview.DecodePixelWidth = decodeWidth;
-            preview.DecodePixelHeight = decodeHeight;
-            preview.EndInit();
+            double scaleX = (double)decodeWidth / Width;
+            double scaleY = (double)decodeHeight / Height;
+            var transform = new SWM.ScaleTransform(scaleX, scaleY);
+            transform.Freeze();
+            var preview = new SWMI.TransformedBitmap(_frame, transform);
             preview.Freeze();
             return ConvertToBitmap(preview);
         }

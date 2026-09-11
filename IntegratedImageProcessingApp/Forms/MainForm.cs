@@ -47,6 +47,10 @@ namespace IntegratedImageProcessingApp.Forms
         private bool[,] latestLargeProcessedMask;
         private Rectangle latestLargeProcessedMaskRoi;
         private string latestLargeProcessedMaskKey;
+        private readonly object largeRoiGrayCacheLock = new object();
+        private LargeImageSource largeRoiGrayCacheSource;
+        private Rectangle largeRoiGrayCacheRoi;
+        private byte[,] largeRoiGrayCache;
         private bool isLargeProcessedMaskBuilding;
         private int largeProcessedMaskGeneration;
         private bool processedImageDirty = true;
@@ -1461,6 +1465,38 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private void ClearLargeRoiGrayCache()
+        {
+            lock (largeRoiGrayCacheLock)
+            {
+                largeRoiGrayCacheSource = null;
+                largeRoiGrayCacheRoi = Rectangle.Empty;
+                largeRoiGrayCache = null;
+            }
+        }
+
+        private byte[,] GetOrCreateLargeRoiGrayCache(LargeImageSource source, Rectangle roi)
+        {
+            lock (largeRoiGrayCacheLock)
+            {
+                if (ReferenceEquals(largeRoiGrayCacheSource, source) &&
+                    largeRoiGrayCacheRoi.Equals(roi) &&
+                    largeRoiGrayCache != null)
+                {
+                    return largeRoiGrayCache;
+                }
+            }
+
+            byte[,] gray = source.CreateGrayRegionFromTiles(roi);
+            lock (largeRoiGrayCacheLock)
+            {
+                largeRoiGrayCacheSource = source;
+                largeRoiGrayCacheRoi = roi;
+                largeRoiGrayCache = gray;
+                return gray;
+            }
+        }
+
         private void ClearLargeProcessedOverlayBitmapsOnly()
         {
             foreach (Bitmap overlay in largeProcessedOverlayCache.Values)
@@ -1713,7 +1749,7 @@ namespace IntegratedImageProcessingApp.Forms
                         // not pay the per-chunk bitmap/array setup cost.
                         if ((long)roi.Width * roi.Height <= MaxSinglePassLargeRoiPixels)
                         {
-                            byte[,] gray = sharedSource.CreateGrayRegionFromTiles(roi);
+                            byte[,] gray = GetOrCreateLargeRoiGrayCache(sharedSource, roi);
                             mask = CreateEdgeMask(gray, method, parsedParameters);
 
                             PublishCompletedLargeProcessedMask(mask, roi, maskKey, generation);
@@ -3389,7 +3425,14 @@ namespace IntegratedImageProcessingApp.Forms
             long sourcePixels = (long)imageSize.Width * imageSize.Height;
             if (sourcePixels > 50000000L)
             {
-                var sharedSource = await Task.Run(() => new LargeImageSource(filePath), cancellationToken);
+                var sharedSource = await Task.Run(
+                    () =>
+                    {
+                        var source = new LargeImageSource(filePath);
+                        source.PreloadAllTiles(cancellationToken);
+                        return source;
+                    },
+                    cancellationToken);
                 try
                 {
                     leftOriginalDisplayControl.SetSharedLargeImageSource(sharedSource);
@@ -3404,8 +3447,28 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            await leftOriginalDisplayControl.LoadImageFromFileAsync(filePath, cancellationToken);
-            await rightOriginalDisplayControl.LoadImageFromFileAsync(filePath, cancellationToken);
+            Bitmap loadedBitmap = await Task.Run(
+                () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (var image = Image.FromStream(stream, false, false))
+                    {
+                        return new Bitmap(image);
+                    }
+                },
+                cancellationToken);
+            try
+            {
+                leftOriginalDisplayControl.SetDisplayImage(loadedBitmap, false);
+                rightOriginalDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
+            }
+            finally
+            {
+                // SetDisplayImage takes ownership of the bitmap passed to it.
+                // The first bitmap is owned by the left control after the call.
+                loadedBitmap = null;
+            }
         }
 
         private void FunctionListBox_DrawItem(object sender, DrawItemEventArgs e)
