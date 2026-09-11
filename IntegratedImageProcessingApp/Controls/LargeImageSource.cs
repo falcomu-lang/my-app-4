@@ -757,9 +757,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         private Bitmap CreateScaledBitmap(int decodeWidth, int decodeHeight)
         {
-            double scaleX = (double)decodeWidth / Width;
-            double scaleY = (double)decodeHeight / Height;
-            var transform = new SWM.ScaleTransform(scaleX, scaleY);
+            decodeWidth = Math.Max(1, Math.Min(65535, decodeWidth));
+            decodeHeight = Math.Max(1, Math.Min(65535, decodeHeight));
+            double scale = Math.Min((double)decodeWidth / Width, (double)decodeHeight / Height);
+            scale = Math.Max(double.Epsilon, Math.Min(1d, scale));
+            var transform = new SWM.ScaleTransform(scale, scale);
             transform.Freeze();
             var preview = new SWMI.TransformedBitmap(_frame, transform);
             preview.Freeze();
@@ -782,7 +784,12 @@ namespace IntegratedImageProcessingApp.Controls
         private static Bitmap ConvertToBitmap(SWMI.BitmapSource source)
         {
             var formatted = new SWMI.FormatConvertedBitmap(source, SWM.PixelFormats.Bgr32, null, 0);
-            var stride = formatted.PixelWidth * 4;
+            if (formatted.PixelWidth <= 0 || formatted.PixelHeight <= 0 ||
+                formatted.PixelWidth > 65535 || formatted.PixelHeight > 65535)
+            {
+                throw new ArgumentException("WIC 預覽影像尺寸無效。", "source");
+            }
+
             var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format32bppArgb);
             var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
             try
