@@ -1737,10 +1737,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 Bitmap chunkImage = null;
                                 try
                                 {
-                                    if (!sharedSource.TryCreateRegionBitmapFromCachedTile(paddedChunkRect, out chunkImage))
-                                    {
-                                        chunkImage = sharedSource.CreateRegionBitmap(paddedChunkRect);
-                                    }
+                                    chunkImage = sharedSource.CreateRegionBitmapFromTiles(paddedChunkRect);
                                 }
                                 catch (Exception ex)
                                 {

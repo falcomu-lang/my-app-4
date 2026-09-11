@@ -109,6 +109,77 @@ namespace IntegratedImageProcessingApp.Controls
             return CreateTileBitmap(normalized);
         }
 
+        // Build a region from the 1024px source tiles so adjacent processing
+        // chunks reuse decoded pixels instead of decoding overlapping regions.
+        public Bitmap CreateRegionBitmapFromTiles(Rectangle sourceRect)
+        {
+            Rectangle normalized;
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                normalized = NormalizeRect(sourceRect);
+            }
+
+            var result = new Bitmap(normalized.Width, normalized.Height, PixelFormat.Format32bppArgb);
+            using (Graphics graphics = Graphics.FromImage(result))
+            {
+                graphics.Clear(Color.Black);
+                lock (_sync)
+                {
+                    ThrowIfDisposed();
+                    int firstTileX = (normalized.Left / TileSourceSize) * TileSourceSize;
+                    int firstTileY = (normalized.Top / TileSourceSize) * TileSourceSize;
+                    int lastTileX = ((normalized.Right - 1) / TileSourceSize) * TileSourceSize;
+                    int lastTileY = ((normalized.Bottom - 1) / TileSourceSize) * TileSourceSize;
+
+                    for (int tileY = firstTileY; tileY <= lastTileY; tileY += TileSourceSize)
+                    {
+                        for (int tileX = firstTileX; tileX <= lastTileX; tileX += TileSourceSize)
+                        {
+                            Rectangle tileRect = new Rectangle(
+                                tileX,
+                                tileY,
+                                Math.Min(TileSourceSize, Width - tileX),
+                                Math.Min(TileSourceSize, Height - tileY));
+                            string key = CreateTileKey(tileRect);
+                            Bitmap tile;
+                            if (!_tileCache.TryGetValue(key, out tile))
+                            {
+                                tile = CreateTileBitmap(tileRect);
+                                AddTileToCacheUnsafe(key, tile);
+                                tile = _tileCache[key];
+                            }
+                            else
+                            {
+                                TouchKey(key);
+                            }
+
+                            Rectangle copyRect = Rectangle.Intersect(normalized, tileRect);
+                            if (copyRect.Width <= 0 || copyRect.Height <= 0)
+                            {
+                                continue;
+                            }
+
+                            Rectangle sourcePart = new Rectangle(
+                                copyRect.X - tileRect.X,
+                                copyRect.Y - tileRect.Y,
+                                copyRect.Width,
+                                copyRect.Height);
+                            Rectangle destination = new Rectangle(
+                                copyRect.X - normalized.X,
+                                copyRect.Y - normalized.Y,
+                                copyRect.Width,
+                                copyRect.Height);
+                            graphics.DrawImage(tile, destination, sourcePart.X, sourcePart.Y,
+                                sourcePart.Width, sourcePart.Height, GraphicsUnit.Pixel);
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
         public bool TryCreateRegionBitmapFromCachedTile(Rectangle sourceRect, out Bitmap region)
         {
             region = null;
