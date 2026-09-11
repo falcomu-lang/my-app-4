@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,11 +29,31 @@ namespace IntegratedImageProcessingApp.Forms
         private readonly SystemParameterIniService systemParameterService;
         private SystemParameterSettings systemParameters;
         private bool roiMenuExpanded;
+        private string expandedRoiText;
+        private int selectedRoiIndex = -1;
+        private bool imageProcessingMenuExpanded;
+        private string expandedImageProcessingStepText;
+        private TreeView imageProcessingFlowTreeView;
+        private FlowLayoutPanel imageProcessingParameterPanel;
+        private int selectedImageProcessingStepIndex = -1;
+        private bool isUpdatingImageProcessingFlowTree;
+        private bool isLoadingImageProcessingParameters;
+        private System.Windows.Forms.Timer imageProcessingDebounceTimer;
+        private Bitmap latestProcessedImage;
+        private bool processedImageDirty = true;
+        private bool hasSharedImageViewState;
+        private ImageViewState sharedImageViewState;
 
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
-        private const string SetRoiMenuText = "  設定 ROI";
-        private const string CancelRoiMenuText = "  取消 ROI";
+        private const string AddRoiMenuText = "  新增 ROI";
+        private const string DeleteRoiMenuText = "      刪除";
+        private const string ImageProcessingMenuText = "影像處理";
+        private const string AddImageProcessingMenuText = "  新增影像處理";
+        private const string DeleteImageProcessingStepMenuText = "      刪除";
+        private const string MoveUpImageProcessingStepMenuText = "      上移";
+        private const string MoveDownImageProcessingStepMenuText = "      下移";
+        private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
 
         public MainForm()
         {
@@ -99,6 +122,9 @@ namespace IntegratedImageProcessingApp.Forms
 
             leftOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
             rightOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
+            imageProcessingDebounceTimer = new System.Windows.Forms.Timer();
+            imageProcessingDebounceTimer.Interval = 200;
+            imageProcessingDebounceTimer.Tick += ImageProcessingDebounceTimer_Tick;
         }
 
         private void ImageDisplayControl_ViewChanged(object sender, EventArgs e)
@@ -135,6 +161,8 @@ namespace IntegratedImageProcessingApp.Forms
             isSyncingImageView = true;
             try
             {
+                sharedImageViewState = source.ViewState;
+                hasSharedImageViewState = true;
                 target.ApplyViewState(source.ViewState);
             }
             finally
@@ -145,7 +173,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void VisibleImageTabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
-            SyncVisibleImageDisplaysFromLeft();
+            UpdateVisibleProcessedImageIfNeeded();
+            BeginInvoke(new Action(ApplySharedImageViewStateToVisibleControls));
         }
 
         private void SyncVisibleImageDisplaysFromLeft()
@@ -165,7 +194,61 @@ namespace IntegratedImageProcessingApp.Forms
             isSyncingImageView = true;
             try
             {
+                sharedImageViewState = leftVisible.ViewState;
+                hasSharedImageViewState = true;
                 rightVisible.ApplyViewState(leftVisible.ViewState);
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
+        }
+
+        private void ApplySharedImageViewStateToVisibleControls()
+        {
+            if (isSyncingImageView)
+            {
+                return;
+            }
+
+            ImageDisplayControl leftVisible = GetVisibleLeftImageDisplayControl();
+            ImageDisplayControl rightVisible = GetVisibleRightImageDisplayControl();
+            if (leftVisible == null || rightVisible == null)
+            {
+                return;
+            }
+
+            if (!hasSharedImageViewState)
+            {
+                if (leftVisible.HasImage)
+                {
+                    sharedImageViewState = leftVisible.ViewState;
+                    hasSharedImageViewState = true;
+                }
+                else if (rightVisible.HasImage)
+                {
+                    sharedImageViewState = rightVisible.ViewState;
+                    hasSharedImageViewState = true;
+                }
+            }
+
+            if (!hasSharedImageViewState)
+            {
+                return;
+            }
+
+            isSyncingImageView = true;
+            try
+            {
+                if (leftVisible.HasImage)
+                {
+                    leftVisible.ApplyViewState(sharedImageViewState);
+                }
+
+                if (rightVisible.HasImage)
+                {
+                    rightVisible.ApplyViewState(sharedImageViewState);
+                }
             }
             finally
             {
@@ -244,16 +327,48 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 parameterPlaceholderLabel.Text = "點選左側「讀取圖片」後，選擇要載入的圖片。";
             }
-            else if (selectedFunction == RoiMenuText || selectedFunction == SetRoiMenuText)
+            else if (selectedFunction == RoiMenuText)
             {
-                parameterPlaceholderLabel.Text = "展開「指定 ROI」後點選「設定 ROI」，在左邊或右邊的原圖拖曳矩形。確認後 ROI 只會保留在右邊原圖，並寫入 SystemParameters.ini。";
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "展開「指定 ROI」後可新增 ROI。";
             }
-            else if (selectedFunction == CancelRoiMenuText)
+            else if (selectedFunction == AddRoiMenuText)
             {
-                parameterPlaceholderLabel.Text = "取消目前保存的 ROI，並更新 SystemParameters.ini。";
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "按下「新增 ROI」後，在左邊或右邊的原圖拖曳矩形。確認後會加入 ROI 清單並寫入 SystemParameters.ini。";
+            }
+            else if (IsRoiMenuItem(selectedFunction))
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = selectedFunction.Trim() + " 是目前選用的 ROI。影像處理會套用這個 ROI。";
+            }
+            else if (IsRoiCommandMenuItem(selectedFunction))
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "刪除目前選到的 ROI。";
+            }
+            else if (selectedFunction == ImageProcessingMenuText)
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "展開「影像處理」後，可新增影像處理流程。";
+            }
+            else if (selectedFunction == AddImageProcessingMenuText)
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "按下「新增影像處理」會新增一個尚未決定演算法的處理步驟。";
+            }
+            else if (IsImageProcessingStepMenuItem(selectedFunction))
+            {
+                ShowImageProcessingFlowTree(selectedFunction);
+            }
+            else if (IsImageProcessingStepCommandMenuItem(selectedFunction))
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "這裡會放置影像處理步驟的編輯命令。";
             }
             else
             {
+                HideImageProcessingFlowTree();
                 parameterPlaceholderLabel.Text = "這裡會顯示「" + selectedFunction + "」的參數設定與選項。";
             }
 
@@ -277,13 +392,33 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ToggleRoiMenu();
             }
-            else if (selectedFunction == SetRoiMenuText)
+            else if (selectedFunction == AddRoiMenuText)
             {
-                BeginRoiSelection();
+                BeginAddRoiSelection();
             }
-            else if (selectedFunction == CancelRoiMenuText)
+            else if (IsRoiMenuItem(selectedFunction))
             {
-                CancelSavedRoi();
+                ToggleRoiItemMenu(selectedFunction);
+            }
+            else if (IsRoiCommandMenuItem(selectedFunction))
+            {
+                HandleRoiCommand(selectedFunction);
+            }
+            else if (selectedFunction == ImageProcessingMenuText)
+            {
+                ToggleImageProcessingMenu();
+            }
+            else if (selectedFunction == AddImageProcessingMenuText)
+            {
+                AddImageProcessingStep();
+            }
+            else if (IsImageProcessingStepMenuItem(selectedFunction))
+            {
+                ToggleImageProcessingStepMenu(selectedFunction);
+            }
+            else if (IsImageProcessingStepCommandMenuItem(selectedFunction))
+            {
+                HandleImageProcessingStepCommand(selectedFunction);
             }
         }
 
@@ -298,21 +433,1728 @@ namespace IntegratedImageProcessingApp.Forms
                 int roiIndex = functionListBox.Items.IndexOf(RoiMenuText);
                 if (roiIndex >= 0)
                 {
-                    functionListBox.Items.Insert(roiIndex + 1, SetRoiMenuText);
-                    functionListBox.Items.Insert(roiIndex + 2, CancelRoiMenuText);
+                    functionListBox.Items.Insert(roiIndex + 1, AddRoiMenuText);
                     roiMenuExpanded = true;
+                    RebuildVisibleRoiItems();
                 }
             }
         }
 
         private void RemoveRoiSubMenuItems()
         {
-            functionListBox.Items.Remove(SetRoiMenuText);
-            functionListBox.Items.Remove(CancelRoiMenuText);
+            RemoveRoiSubMenuItemsFromListBox();
             roiMenuExpanded = false;
         }
 
-        private void BeginRoiSelection()
+        private void RemoveRoiSubMenuItemsFromListBox()
+        {
+            for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
+            {
+                string itemText = functionListBox.Items[index] as string;
+                if (itemText == AddRoiMenuText || IsRoiMenuItem(itemText) || IsRoiCommandMenuItem(itemText))
+                {
+                    functionListBox.Items.RemoveAt(index);
+                }
+            }
+
+            expandedRoiText = null;
+        }
+
+        private void RebuildVisibleRoiItems()
+        {
+            if (!roiMenuExpanded)
+            {
+                return;
+            }
+
+            RemoveRoiSubMenuItemsFromListBox();
+
+            int insertIndex = functionListBox.Items.IndexOf(RoiMenuText) + 1;
+            functionListBox.Items.Insert(insertIndex, AddRoiMenuText);
+            insertIndex++;
+            for (int index = 0; index < systemParameters.RoiRegions.Count; index++)
+            {
+                functionListBox.Items.Insert(insertIndex, CreateRoiText(index + 1));
+                insertIndex++;
+            }
+        }
+
+        private void ToggleRoiItemMenu(string roiText)
+        {
+            selectedRoiIndex = GetRoiIndex(roiText);
+            ApplySelectedRoiOverlay();
+            MarkProcessedImageDirty();
+            ScheduleProcessedImageUpdateIfVisible();
+
+            if (expandedRoiText == roiText)
+            {
+                RemoveRoiCommandMenuItems();
+                return;
+            }
+
+            RemoveRoiCommandMenuItems();
+
+            int roiItemIndex = functionListBox.Items.IndexOf(roiText);
+            if (roiItemIndex >= 0)
+            {
+                functionListBox.Items.Insert(roiItemIndex + 1, DeleteRoiMenuText);
+                expandedRoiText = roiText;
+            }
+        }
+
+        private void RemoveRoiCommandMenuItems()
+        {
+            functionListBox.Items.Remove(DeleteRoiMenuText);
+            expandedRoiText = null;
+        }
+
+        private void HandleRoiCommand(string selectedFunction)
+        {
+            if (selectedFunction == DeleteRoiMenuText)
+            {
+                DeleteSelectedRoi();
+            }
+        }
+
+        private void DeleteSelectedRoi()
+        {
+            int roiIndex = GetRoiIndex(expandedRoiText);
+            if (roiIndex < 0 || roiIndex >= systemParameters.RoiRegions.Count)
+            {
+                return;
+            }
+
+            DialogResult result = MessageBox.Show(
+                this,
+                "是否要刪除該項 ROI？",
+                "刪除 ROI",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result != DialogResult.Yes)
+            {
+                statusLabel.Text = "已取消刪除 ROI";
+                return;
+            }
+
+            systemParameters.RoiRegions.RemoveAt(roiIndex);
+            selectedRoiIndex = Math.Min(roiIndex, systemParameters.RoiRegions.Count - 1);
+            SyncLegacyRoiFromSelectedRoi();
+            SaveSystemParameters();
+            RebuildVisibleRoiItems();
+            ApplySelectedRoiOverlay();
+            ClearProcessedPreviewImages();
+            ScheduleProcessedImageUpdateIfVisible();
+            statusLabel.Text = "已刪除 ROI " + (roiIndex + 1);
+        }
+
+        private static string CreateRoiText(int roiNumber)
+        {
+            return "    ROI " + roiNumber;
+        }
+
+        private static bool IsRoiMenuItem(string menuText)
+        {
+            if (string.IsNullOrEmpty(menuText))
+            {
+                return false;
+            }
+
+            string trimmedText = menuText.Trim();
+            if (!trimmedText.StartsWith("ROI ", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int roiNumber;
+            return int.TryParse(trimmedText.Substring("ROI ".Length), out roiNumber);
+        }
+
+        private static bool IsRoiCommandMenuItem(string menuText)
+        {
+            return menuText == DeleteRoiMenuText;
+        }
+
+        private int GetRoiIndex(string roiText)
+        {
+            if (!IsRoiMenuItem(roiText))
+            {
+                return -1;
+            }
+
+            int roiNumber;
+            return int.TryParse(roiText.Trim().Substring("ROI ".Length), out roiNumber)
+                ? roiNumber - 1
+                : -1;
+        }
+
+        private void ToggleImageProcessingMenu()
+        {
+            if (imageProcessingMenuExpanded)
+            {
+                RemoveImageProcessingSubMenuItems();
+            }
+            else
+            {
+                int imageProcessingIndex = functionListBox.Items.IndexOf(ImageProcessingMenuText);
+                if (imageProcessingIndex >= 0)
+                {
+                    functionListBox.Items.Insert(imageProcessingIndex + 1, AddImageProcessingMenuText);
+                    imageProcessingMenuExpanded = true;
+                    RebuildVisibleImageProcessingSteps();
+                }
+            }
+        }
+
+        private void AddImageProcessingStep()
+        {
+            RemoveImageProcessingStepCommandMenuItems();
+
+            systemParameters.ImageProcessingSteps.Add(new ImageProcessingStepSettings());
+            SaveSystemParameters();
+            string stepText = CreateImageProcessingStepText(systemParameters.ImageProcessingSteps.Count);
+            int insertIndex = GetImageProcessingStepInsertIndex();
+            functionListBox.Items.Insert(insertIndex, stepText);
+            functionListBox.SelectedItem = stepText;
+            statusLabel.Text = "已新增" + stepText.Trim();
+        }
+
+        private int GetImageProcessingStepInsertIndex()
+        {
+            int insertIndex = functionListBox.Items.IndexOf(AddImageProcessingMenuText) + 1;
+            while (insertIndex < functionListBox.Items.Count &&
+                IsImageProcessingStepMenuItem(functionListBox.Items[insertIndex] as string))
+            {
+                insertIndex++;
+            }
+
+            return insertIndex;
+        }
+
+        private void ToggleImageProcessingStepMenu(string stepText)
+        {
+            if (expandedImageProcessingStepText == stepText)
+            {
+                RemoveImageProcessingStepCommandMenuItems();
+                return;
+            }
+
+            RemoveImageProcessingStepCommandMenuItems();
+
+            int stepIndex = functionListBox.Items.IndexOf(stepText);
+            if (stepIndex >= 0)
+            {
+                functionListBox.Items.Insert(stepIndex + 1, DeleteImageProcessingStepMenuText);
+                functionListBox.Items.Insert(stepIndex + 2, MoveUpImageProcessingStepMenuText);
+                functionListBox.Items.Insert(stepIndex + 3, MoveDownImageProcessingStepMenuText);
+                expandedImageProcessingStepText = stepText;
+            }
+        }
+
+        private void RemoveImageProcessingSubMenuItems()
+        {
+            RemoveImageProcessingSubMenuItemsFromListBox();
+            imageProcessingMenuExpanded = false;
+        }
+
+        private void RemoveImageProcessingSubMenuItemsFromListBox()
+        {
+            for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
+            {
+                string itemText = functionListBox.Items[index] as string;
+                if (itemText == AddImageProcessingMenuText || IsImageProcessingStepMenuItem(itemText))
+                {
+                    functionListBox.Items.RemoveAt(index);
+                }
+            }
+
+        }
+
+        private void RemoveImageProcessingStepCommandMenuItems()
+        {
+            functionListBox.Items.Remove(DeleteImageProcessingStepMenuText);
+            functionListBox.Items.Remove(MoveUpImageProcessingStepMenuText);
+            functionListBox.Items.Remove(MoveDownImageProcessingStepMenuText);
+            expandedImageProcessingStepText = null;
+        }
+
+        private void HandleImageProcessingStepCommand(string selectedFunction)
+        {
+            if (string.IsNullOrEmpty(expandedImageProcessingStepText))
+            {
+                return;
+            }
+
+            if (selectedFunction == DeleteImageProcessingStepMenuText)
+            {
+                DeleteImageProcessingStep();
+            }
+            else if (selectedFunction == MoveUpImageProcessingStepMenuText)
+            {
+                MoveImageProcessingStep(-1);
+            }
+            else if (selectedFunction == MoveDownImageProcessingStepMenuText)
+            {
+                MoveImageProcessingStep(1);
+            }
+        }
+
+        private void DeleteImageProcessingStep()
+        {
+            string stepText = expandedImageProcessingStepText;
+            DialogResult result = MessageBox.Show(
+                this,
+                "是否要刪除該項處理？",
+                "刪除影像處理",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (result != DialogResult.Yes)
+            {
+                statusLabel.Text = "已取消刪除";
+                return;
+            }
+
+            RemoveImageProcessingStepCommandMenuItems();
+            functionListBox.Items.Remove(stepText);
+            int stepIndex = GetImageProcessingStepIndex(stepText);
+            if (stepIndex >= 0 && stepIndex < systemParameters.ImageProcessingSteps.Count)
+            {
+                systemParameters.ImageProcessingSteps.RemoveAt(stepIndex);
+                SaveSystemParameters();
+            }
+
+            selectedImageProcessingStepIndex = Math.Min(selectedImageProcessingStepIndex, systemParameters.ImageProcessingSteps.Count - 1);
+            MarkProcessedImageDirty();
+            if (!HasPreviewableImageProcessingStep())
+            {
+                ClearProcessedPreviewImages();
+            }
+            else
+            {
+                ScheduleProcessedImageUpdateIfVisible();
+            }
+
+            RebuildVisibleImageProcessingSteps();
+            statusLabel.Text = "已刪除" + stepText.Trim();
+        }
+
+        private void MoveImageProcessingStep(int direction)
+        {
+            string stepText = expandedImageProcessingStepText;
+            RemoveImageProcessingStepCommandMenuItems();
+
+            int stepIndex = GetImageProcessingStepIndex(stepText);
+            int targetIndex = stepIndex + direction;
+            if (stepIndex < 0 || targetIndex < 0 || targetIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                statusLabel.Text = stepText.Trim() + (direction < 0 ? " 目前已在最上方" : " 目前已在最下方");
+                ToggleImageProcessingStepMenu(stepText);
+                return;
+            }
+
+            ImageProcessingStepSettings step = systemParameters.ImageProcessingSteps[stepIndex];
+            systemParameters.ImageProcessingSteps.RemoveAt(stepIndex);
+            systemParameters.ImageProcessingSteps.Insert(targetIndex, step);
+            SaveSystemParameters();
+            RebuildVisibleImageProcessingSteps();
+            string movedStepText = CreateImageProcessingStepText(targetIndex + 1);
+            functionListBox.SelectedItem = movedStepText;
+            ToggleImageProcessingStepMenu(movedStepText);
+            statusLabel.Text = "已移動" + movedStepText.Trim();
+        }
+
+        private void RebuildVisibleImageProcessingSteps()
+        {
+            if (!imageProcessingMenuExpanded)
+            {
+                return;
+            }
+
+            RemoveImageProcessingStepCommandMenuItems();
+            RemoveImageProcessingSubMenuItemsFromListBox();
+
+            int insertIndex = functionListBox.Items.IndexOf(ImageProcessingMenuText) + 1;
+            functionListBox.Items.Insert(insertIndex, AddImageProcessingMenuText);
+            insertIndex++;
+            for (int index = 0; index < systemParameters.ImageProcessingSteps.Count; index++)
+            {
+                functionListBox.Items.Insert(insertIndex, CreateImageProcessingStepText(index + 1));
+                insertIndex++;
+            }
+        }
+
+        private int GetImageProcessingStepIndex(string stepText)
+        {
+            if (!IsImageProcessingStepMenuItem(stepText))
+            {
+                return -1;
+            }
+
+            string trimmedText = stepText.Trim();
+            int prefixLength = "處理".Length;
+            int suffixIndex = trimmedText.IndexOf('(');
+            if (suffixIndex <= prefixLength)
+            {
+                return -1;
+            }
+
+            int stepNumber;
+            return int.TryParse(trimmedText.Substring(prefixLength, suffixIndex - prefixLength), out stepNumber)
+                ? stepNumber - 1
+                : -1;
+        }
+
+        private string CreateImageProcessingStepText(int stepNumber)
+        {
+            string method = string.Empty;
+            int stepIndex = stepNumber - 1;
+            if (stepIndex >= 0 && stepIndex < systemParameters.ImageProcessingSteps.Count)
+            {
+                method = systemParameters.ImageProcessingSteps[stepIndex].Method;
+            }
+
+            string methodText = string.IsNullOrWhiteSpace(method) ? "未決定" : method;
+            return "    處理" + stepNumber + "(" + methodText + ")";
+        }
+
+        private void ShowImageProcessingFlowTree(string stepText)
+        {
+            selectedImageProcessingStepIndex = GetImageProcessingStepIndex(stepText);
+            if (selectedImageProcessingStepIndex < 0 ||
+                selectedImageProcessingStepIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                HideImageProcessingFlowTree();
+                return;
+            }
+
+            EnsureImageProcessingFlowTreeView();
+            parameterPlaceholderLabel.Visible = false;
+
+            string method = systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Method;
+            if (IsEdgeDetectionMethod(method))
+            {
+                ShowImageProcessingParameterPanel(method);
+                rightPanelTitleLabel.Text = stepText.Trim() + " 參數";
+            }
+            else
+            {
+                HideImageProcessingParameterPanel();
+                imageProcessingFlowTreeView.Visible = true;
+                SelectImageProcessingFlowNode(method);
+                rightPanelTitleLabel.Text = stepText.Trim() + " 流程";
+            }
+
+            statusLabel.Text = "目前選擇：" + stepText.Trim();
+        }
+
+        private void HideImageProcessingFlowTree()
+        {
+            selectedImageProcessingStepIndex = -1;
+            parameterPlaceholderLabel.Visible = true;
+            if (imageProcessingFlowTreeView != null)
+            {
+                imageProcessingFlowTreeView.Visible = false;
+            }
+
+            HideImageProcessingParameterPanel();
+        }
+
+        private void EnsureImageProcessingFlowTreeView()
+        {
+            if (imageProcessingFlowTreeView != null)
+            {
+                return;
+            }
+
+            imageProcessingFlowTreeView = new TreeView();
+            imageProcessingFlowTreeView.BorderStyle = BorderStyle.None;
+            imageProcessingFlowTreeView.Dock = DockStyle.Fill;
+            imageProcessingFlowTreeView.FullRowSelect = true;
+            imageProcessingFlowTreeView.HideSelection = false;
+            imageProcessingFlowTreeView.BackColor = parameterPanel.BackColor;
+            imageProcessingFlowTreeView.ForeColor = Color.FromArgb(39, 46, 56);
+            imageProcessingFlowTreeView.AfterSelect += ImageProcessingFlowTreeView_AfterSelect;
+            parameterPanel.Controls.Add(imageProcessingFlowTreeView);
+            imageProcessingFlowTreeView.BringToFront();
+
+            AddImageProcessingFlowNode("Edge Detection", "Polarity Edge", "Canny Edge", "Sobel Edge");
+            AddImageProcessingFlowNode("Threshold", "Global Threshold", "Adaptive Threshold", "Otsu Threshold");
+            AddImageProcessingFlowNode("Morphology", "Erode", "Dilate", "Open", "Close", "Fill Hole");
+            AddImageProcessingFlowNode("Contour Analysis", "Find Contours", "Contour Hierarchy");
+            AddImageProcessingFlowNode("Feature Filter", "Area Filter", "Width / Height Filter", "Circularity Filter", "Position Filter");
+            AddImageProcessingFlowNode("Object Selector", "Largest Object", "Smallest Object", "Object By Index", "Best Match Object");
+            AddImageProcessingFlowNode("Object Result", "Bounding Box", "Center Point", "Area", "Width / Height", "Angle", "Count");
+            imageProcessingFlowTreeView.ExpandAll();
+        }
+
+        private void AddImageProcessingFlowNode(string category, params string[] methods)
+        {
+            TreeNode categoryNode = imageProcessingFlowTreeView.Nodes.Add(category);
+            categoryNode.Tag = category;
+            foreach (string method in methods)
+            {
+                TreeNode methodNode = categoryNode.Nodes.Add(method);
+                methodNode.Tag = method;
+            }
+        }
+
+        private void SelectImageProcessingFlowNode(string method)
+        {
+            isUpdatingImageProcessingFlowTree = true;
+            try
+            {
+                imageProcessingFlowTreeView.SelectedNode = FindImageProcessingFlowNode(method);
+            }
+            finally
+            {
+                isUpdatingImageProcessingFlowTree = false;
+            }
+        }
+
+        private TreeNode FindImageProcessingFlowNode(string method)
+        {
+            if (string.IsNullOrWhiteSpace(method))
+            {
+                return null;
+            }
+
+            foreach (TreeNode node in imageProcessingFlowTreeView.Nodes)
+            {
+                TreeNode foundNode = FindImageProcessingFlowNode(node, method);
+                if (foundNode != null)
+                {
+                    return foundNode;
+                }
+            }
+
+            return null;
+        }
+
+        private static TreeNode FindImageProcessingFlowNode(TreeNode node, string method)
+        {
+            if (string.Equals(node.Tag as string, method, StringComparison.Ordinal))
+            {
+                return node;
+            }
+
+            foreach (TreeNode childNode in node.Nodes)
+            {
+                TreeNode foundNode = FindImageProcessingFlowNode(childNode, method);
+                if (foundNode != null)
+                {
+                    return foundNode;
+                }
+            }
+
+            return null;
+        }
+
+        private void ImageProcessingFlowTreeView_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            if (isUpdatingImageProcessingFlowTree ||
+                selectedImageProcessingStepIndex < 0 ||
+                selectedImageProcessingStepIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                return;
+            }
+
+            string method = e.Node.Tag as string;
+            if (e.Node.Nodes.Count > 0)
+            {
+                return;
+            }
+
+            systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Method = method;
+            systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters = CreateDefaultImageProcessingParameters(method);
+            SaveSystemParameters();
+            MarkProcessedImageDirty();
+            ScheduleProcessedImageUpdateIfVisible();
+            UpdateVisibleImageProcessingStepText(selectedImageProcessingStepIndex);
+            if (IsEdgeDetectionMethod(method))
+            {
+                ShowImageProcessingParameterPanel(method);
+                rightPanelTitleLabel.Text = "處理" + (selectedImageProcessingStepIndex + 1) + "(" + method + ") 參數";
+            }
+
+            statusLabel.Text = "已設定處理" + (selectedImageProcessingStepIndex + 1) + "：" + method;
+        }
+
+        private void UpdateVisibleImageProcessingStepText(int stepIndex)
+        {
+            string oldStepText = CreateImageProcessingStepText(stepIndex + 1);
+            for (int itemIndex = 0; itemIndex < functionListBox.Items.Count; itemIndex++)
+            {
+                string itemText = functionListBox.Items[itemIndex] as string;
+                if (GetImageProcessingStepIndex(itemText) == stepIndex)
+                {
+                    functionListBox.Items[itemIndex] = oldStepText;
+                    functionListBox.SelectedIndex = itemIndex;
+                    break;
+                }
+            }
+        }
+
+        private void ShowImageProcessingParameterPanel(string method)
+        {
+            EnsureImageProcessingParameterPanel();
+            imageProcessingFlowTreeView.Visible = false;
+            parameterPlaceholderLabel.Visible = false;
+            imageProcessingParameterPanel.Visible = true;
+            imageProcessingParameterPanel.Controls.Clear();
+
+            isLoadingImageProcessingParameters = true;
+            try
+            {
+                AddParameterHeader(method);
+                AddReselectMethodButton();
+
+                if (method == "Polarity Edge")
+                {
+                    AddComboParameter("Polarity", "邊緣方向", new[] { "BrightToDark", "DarkToBright", "Any" }, "Any");
+                    AddNumericParameter("ContrastThreshold", "對比門檻", "20");
+                    AddNumericParameter("EdgeWidth", "邊緣寬度", "3");
+                    AddNumericParameter("Smoothing", "平滑", "1");
+                    AddComboParameter("SearchDirection", "搜尋方向", new[] { "Horizontal", "Vertical", "Any" }, "Any");
+                    AddComboParameter("EdgeSelection", "邊緣選取", new[] { "First", "Last", "Strongest", "All" }, "Strongest");
+                    AddCheckParameter("SubPixel", "次像素定位", false);
+                    AddNumericParameter("MinEdgeLength", "最小邊緣長度", "10");
+                    AddNumericParameter("MaxGap", "最大斷點間距", "2");
+                }
+                else if (method == "Canny Edge")
+                {
+                    AddNumericParameter("LowThreshold", "低門檻", "50");
+                    AddNumericParameter("HighThreshold", "高門檻", "150");
+                    AddComboParameter("KernelSize", "核心大小", KernelSizeOptions, "3");
+                    AddCheckParameter("L2Gradient", "L2 梯度", false);
+                    AddComboParameter("GaussianBlurSize", "高斯模糊大小", KernelSizeOptions, "5");
+                    AddNumericParameter("GaussianSigma", "高斯 Sigma", "1.4");
+                    AddComboParameter("EdgeSelection", "邊緣選取", new[] { "All", "Strongest", "Longest" }, "All");
+                    AddNumericParameter("MinEdgeLength", "最小邊緣長度", "10");
+                    AddNumericParameter("MaxGap", "最大斷點間距", "2");
+                }
+                else if (method == "Sobel Edge")
+                {
+                    AddComboParameter("Direction", "方向", new[] { "Both", "X", "Y" }, "Both");
+                    AddComboParameter("KernelSize", "核心大小", KernelSizeOptions, "3");
+                    AddNumericParameter("Scale", "Scale", "1");
+                    AddNumericParameter("Delta", "Delta", "0");
+                    AddComboParameter("OutputMode", "輸出模式", new[] { "Magnitude", "Absolute", "XOnly", "YOnly" }, "Magnitude");
+                    AddNumericParameter("Threshold", "邊緣門檻", "30");
+                    AddComboParameter("EdgeSelection", "邊緣選取", new[] { "All", "Strongest", "Longest" }, "All");
+                    AddNumericParameter("MinEdgeLength", "最小邊緣長度", "10");
+                    AddNumericParameter("MaxGap", "最大斷點間距", "2");
+                }
+            }
+            finally
+            {
+                isLoadingImageProcessingParameters = false;
+            }
+        }
+
+        private void EnsureImageProcessingParameterPanel()
+        {
+            if (imageProcessingParameterPanel != null)
+            {
+                return;
+            }
+
+            imageProcessingParameterPanel = new FlowLayoutPanel();
+            imageProcessingParameterPanel.Dock = DockStyle.Fill;
+            imageProcessingParameterPanel.FlowDirection = FlowDirection.TopDown;
+            imageProcessingParameterPanel.WrapContents = false;
+            imageProcessingParameterPanel.AutoScroll = true;
+            imageProcessingParameterPanel.BackColor = parameterPanel.BackColor;
+            parameterPanel.Controls.Add(imageProcessingParameterPanel);
+            imageProcessingParameterPanel.BringToFront();
+        }
+
+        private void HideImageProcessingParameterPanel()
+        {
+            if (imageProcessingParameterPanel != null)
+            {
+                imageProcessingParameterPanel.Visible = false;
+            }
+        }
+
+        private void AddParameterHeader(string method)
+        {
+            var label = new Label();
+            label.AutoSize = false;
+            label.Width = parameterPanel.Width - 12;
+            label.Height = 32;
+            label.Font = new Font(Font, FontStyle.Bold);
+            label.Text = method;
+            imageProcessingParameterPanel.Controls.Add(label);
+        }
+
+        private void AddReselectMethodButton()
+        {
+            var button = new Button();
+            button.Width = parameterPanel.Width - 18;
+            button.Height = 30;
+            button.Text = "重新選擇方法";
+            button.Click += delegate
+            {
+                HideImageProcessingParameterPanel();
+                imageProcessingFlowTreeView.Visible = true;
+                rightPanelTitleLabel.Text = "處理" + (selectedImageProcessingStepIndex + 1) + " 流程";
+            };
+            imageProcessingParameterPanel.Controls.Add(button);
+        }
+
+        private void AddNumericParameter(string key, string labelText, string defaultValue)
+        {
+            decimal defaultNumber = ParseDecimalOrDefault(defaultValue, 0);
+            decimal value = ParseDecimalOrDefault(GetImageProcessingParameterValue(key, defaultValue), defaultNumber);
+            decimal minimum;
+            decimal maximum;
+            decimal increment;
+            GetNumericParameterRange(key, out minimum, out maximum, out increment);
+
+            var label = CreateParameterLabel(labelText);
+            var numericUpDown = new NumericUpDown();
+            numericUpDown.Width = parameterPanel.Width - 18;
+            numericUpDown.Minimum = minimum;
+            numericUpDown.Maximum = maximum;
+            numericUpDown.Increment = increment;
+            numericUpDown.DecimalPlaces = key == "Scale" || key == "GaussianSigma" ? 2 : 0;
+            numericUpDown.Value = Clamp(value, minimum, maximum);
+            numericUpDown.Tag = key;
+            numericUpDown.ValueChanged += delegate(object sender, EventArgs e)
+            {
+                if (!isLoadingImageProcessingParameters)
+                {
+                    var control = (NumericUpDown)sender;
+                    SaveImageProcessingParameter(control.Tag as string, control.Value.ToString(CultureInfo.InvariantCulture));
+                }
+            };
+            numericUpDown.MouseWheel += NumericParameter_MouseWheel;
+
+            imageProcessingParameterPanel.Controls.Add(label);
+            imageProcessingParameterPanel.Controls.Add(numericUpDown);
+        }
+
+        private void AddComboParameter(string key, string labelText, string[] values, string defaultValue)
+        {
+            var label = CreateParameterLabel(labelText);
+            var comboBox = new ComboBox();
+            comboBox.Width = parameterPanel.Width - 18;
+            comboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboBox.Items.AddRange(values);
+            comboBox.Tag = key;
+            comboBox.SelectedItem = GetImageProcessingParameterValue(key, defaultValue);
+            if (comboBox.SelectedIndex < 0)
+            {
+                comboBox.SelectedItem = defaultValue;
+            }
+
+            comboBox.SelectedIndexChanged += delegate(object sender, EventArgs e)
+            {
+                if (!isLoadingImageProcessingParameters)
+                {
+                    SaveImageProcessingParameter(((ComboBox)sender).Tag as string, ((ComboBox)sender).SelectedItem as string);
+                }
+            };
+
+            imageProcessingParameterPanel.Controls.Add(label);
+            imageProcessingParameterPanel.Controls.Add(comboBox);
+        }
+
+        private void AddCheckParameter(string key, string labelText, bool defaultValue)
+        {
+            var checkBox = new CheckBox();
+            checkBox.Width = parameterPanel.Width - 18;
+            checkBox.Height = 28;
+            checkBox.Text = labelText;
+            checkBox.Tag = key;
+            checkBox.Checked = string.Equals(GetImageProcessingParameterValue(key, defaultValue ? "true" : "false"), "true", StringComparison.OrdinalIgnoreCase);
+            checkBox.CheckedChanged += delegate(object sender, EventArgs e)
+            {
+                if (!isLoadingImageProcessingParameters)
+                {
+                    SaveImageProcessingParameter(((CheckBox)sender).Tag as string, ((CheckBox)sender).Checked ? "true" : "false");
+                }
+            };
+            imageProcessingParameterPanel.Controls.Add(checkBox);
+        }
+
+        private Label CreateParameterLabel(string text)
+        {
+            var label = new Label();
+            label.AutoSize = false;
+            label.Width = parameterPanel.Width - 18;
+            label.Height = 22;
+            label.Margin = new Padding(3, 8, 3, 0);
+            label.Text = text;
+            return label;
+        }
+
+        private void NumericParameter_MouseWheel(object sender, MouseEventArgs e)
+        {
+            var numericUpDown = sender as NumericUpDown;
+            if (numericUpDown == null)
+            {
+                return;
+            }
+
+            ((HandledMouseEventArgs)e).Handled = true;
+            decimal multiplier = (ModifierKeys & Keys.Shift) == Keys.Shift ? 10 : 1;
+            decimal delta = e.Delta > 0 ? numericUpDown.Increment * multiplier : -numericUpDown.Increment * multiplier;
+            numericUpDown.Value = Clamp(numericUpDown.Value + delta, numericUpDown.Minimum, numericUpDown.Maximum);
+        }
+
+        private static void GetNumericParameterRange(string key, out decimal minimum, out decimal maximum, out decimal increment)
+        {
+            minimum = 0;
+            maximum = 99999;
+            increment = 1;
+
+            if (key == "ContrastThreshold" || key == "LowThreshold" || key == "HighThreshold" || key == "Threshold")
+            {
+                maximum = 255;
+            }
+            else if (key == "EdgeWidth")
+            {
+                minimum = 1;
+                maximum = 99;
+            }
+            else if (key == "Smoothing")
+            {
+                maximum = 31;
+            }
+            else if (key == "MaxGap")
+            {
+                maximum = 999;
+            }
+            else if (key == "Scale")
+            {
+                maximum = 100;
+                increment = 0.1M;
+            }
+            else if (key == "GaussianSigma")
+            {
+                maximum = 100;
+                increment = 0.1M;
+            }
+            else if (key == "Delta")
+            {
+                minimum = -255;
+                maximum = 255;
+            }
+        }
+
+        private static decimal ParseDecimalOrDefault(string value, decimal defaultValue)
+        {
+            decimal parsedValue;
+            return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out parsedValue)
+                ? parsedValue
+                : defaultValue;
+        }
+
+        private static decimal Clamp(decimal value, decimal minimum, decimal maximum)
+        {
+            if (value < minimum)
+            {
+                return minimum;
+            }
+
+            if (value > maximum)
+            {
+                return maximum;
+            }
+
+            return value;
+        }
+
+        private string GetImageProcessingParameterValue(string key, string defaultValue)
+        {
+            Dictionary<string, string> parameters = ParseImageProcessingParameters(GetSelectedImageProcessingStepParameters());
+            string value;
+            return parameters.TryGetValue(key, out value) ? value : defaultValue;
+        }
+
+        private string GetSelectedImageProcessingStepParameters()
+        {
+            return selectedImageProcessingStepIndex >= 0 && selectedImageProcessingStepIndex < systemParameters.ImageProcessingSteps.Count
+                ? systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters
+                : string.Empty;
+        }
+
+        private void SaveImageProcessingParameter(string key, string value)
+        {
+            if (string.IsNullOrEmpty(key) ||
+                selectedImageProcessingStepIndex < 0 ||
+                selectedImageProcessingStepIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                return;
+            }
+
+            Dictionary<string, string> parameters = ParseImageProcessingParameters(systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters);
+            parameters[key] = value ?? string.Empty;
+            systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters = FormatImageProcessingParameters(parameters);
+            SaveSystemParameters();
+            MarkProcessedImageDirty();
+            ScheduleProcessedImageUpdateIfVisible();
+            statusLabel.Text = "已更新處理" + (selectedImageProcessingStepIndex + 1) + " 參數";
+        }
+
+        private static Dictionary<string, string> ParseImageProcessingParameters(string parameterText)
+        {
+            var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(parameterText))
+            {
+                return parameters;
+            }
+
+            string[] pairs = parameterText.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string pair in pairs)
+            {
+                int separator = pair.IndexOf('=');
+                if (separator <= 0)
+                {
+                    continue;
+                }
+
+                string key = pair.Substring(0, separator).Trim();
+                string value = pair.Substring(separator + 1).Trim();
+                parameters[key] = value;
+            }
+
+            return parameters;
+        }
+
+        private static string FormatImageProcessingParameters(Dictionary<string, string> parameters)
+        {
+            var parts = new List<string>();
+            foreach (KeyValuePair<string, string> parameter in parameters)
+            {
+                parts.Add(parameter.Key + "=" + parameter.Value);
+            }
+
+            return string.Join(";", parts.ToArray());
+        }
+
+        private static string CreateDefaultImageProcessingParameters(string method)
+        {
+            if (method == "Polarity Edge")
+            {
+                return "Polarity=Any;ContrastThreshold=20;EdgeWidth=3;Smoothing=1;SearchDirection=Any;EdgeSelection=Strongest;SubPixel=false;MinEdgeLength=10;MaxGap=2";
+            }
+
+            if (method == "Canny Edge")
+            {
+                return "LowThreshold=50;HighThreshold=150;KernelSize=3;L2Gradient=false;GaussianBlurSize=5;GaussianSigma=1.4;EdgeSelection=All;MinEdgeLength=10;MaxGap=2";
+            }
+
+            if (method == "Sobel Edge")
+            {
+                return "Direction=Both;KernelSize=3;Scale=1;Delta=0;OutputMode=Magnitude;Threshold=30;EdgeSelection=All;MinEdgeLength=10;MaxGap=2";
+            }
+
+            return string.Empty;
+        }
+
+        private static bool IsEdgeDetectionMethod(string method)
+        {
+            return method == "Polarity Edge" ||
+                method == "Canny Edge" ||
+                method == "Sobel Edge";
+        }
+
+        private bool HasPreviewableImageProcessingStep()
+        {
+            return FindFirstPreviewableImageProcessingStepIndex() >= 0;
+        }
+
+        private void MarkProcessedImageDirty()
+        {
+            processedImageDirty = true;
+            if (latestProcessedImage != null)
+            {
+                latestProcessedImage.Dispose();
+                latestProcessedImage = null;
+            }
+        }
+
+        private void ClearProcessedPreviewImages()
+        {
+            MarkProcessedImageDirty();
+            isSyncingImageView = true;
+            try
+            {
+                leftProcessedDisplayControl.ClearRoiOverlay();
+                rightProcessedDisplayControl.ClearRoiOverlay();
+                leftProcessedDisplayControl.ClearImage();
+                rightProcessedDisplayControl.ClearImage();
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
+        }
+
+        private void ScheduleProcessedImageUpdateIfVisible()
+        {
+            if (!IsAnyProcessedTabVisible() || imageProcessingDebounceTimer == null)
+            {
+                return;
+            }
+
+            imageProcessingDebounceTimer.Stop();
+            imageProcessingDebounceTimer.Start();
+        }
+
+        private async void ImageProcessingDebounceTimer_Tick(object sender, EventArgs e)
+        {
+            imageProcessingDebounceTimer.Stop();
+            await UpdateVisibleProcessedImageIfNeededAsync();
+        }
+
+        private void UpdateVisibleProcessedImageIfNeeded()
+        {
+            if (!IsAnyProcessedTabVisible())
+            {
+                return;
+            }
+
+            BeginInvoke(new Action(async () => await UpdateVisibleProcessedImageIfNeededAsync()));
+        }
+
+        private async Task UpdateVisibleProcessedImageIfNeededAsync()
+        {
+            if (!IsAnyProcessedTabVisible())
+            {
+                return;
+            }
+
+            if (processedImageDirty || latestProcessedImage == null)
+            {
+                Bitmap processedImage = await Task.Run(() => CreateCurrentProcessedImage());
+                if (processedImage == null)
+                {
+                    ClearProcessedPreviewImages();
+                    statusLabel.Text = "請先載入圖片、指定 ROI，並選擇可預覽的處理方法";
+                    return;
+                }
+
+                if (latestProcessedImage != null)
+                {
+                    latestProcessedImage.Dispose();
+                }
+
+                latestProcessedImage = processedImage;
+                processedImageDirty = false;
+            }
+
+            ApplyLatestProcessedImageToVisibleTabs();
+        }
+
+        private bool IsAnyProcessedTabVisible()
+        {
+            return leftImageTabControl.SelectedTab == leftProcessedTabPage ||
+                rightImageTabControl.SelectedTab == rightProcessedTabPage;
+        }
+
+        private void ApplyLatestProcessedImageToVisibleTabs()
+        {
+            if (latestProcessedImage == null)
+            {
+                return;
+            }
+
+            isSyncingImageView = true;
+            try
+            {
+                if (leftImageTabControl.SelectedTab == leftProcessedTabPage)
+                {
+                    leftProcessedDisplayControl.SetDisplayImage(new Bitmap(latestProcessedImage), true);
+                    Rectangle? roi = GetSelectedRoi();
+                    if (roi.HasValue)
+                    {
+                        leftProcessedDisplayControl.SetRoiOverlay(roi.Value);
+                    }
+                }
+
+                if (rightImageTabControl.SelectedTab == rightProcessedTabPage)
+                {
+                    rightProcessedDisplayControl.SetDisplayImage(new Bitmap(latestProcessedImage), true);
+                    Rectangle? roi = GetSelectedRoi();
+                    if (roi.HasValue)
+                    {
+                        rightProcessedDisplayControl.SetRoiOverlay(roi.Value);
+                    }
+                }
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
+
+            ApplySharedImageViewStateToVisibleControls();
+        }
+
+        private Bitmap CreateCurrentProcessedImage()
+        {
+            Rectangle? selectedRoi = GetSelectedRoi();
+            if (!selectedRoi.HasValue ||
+                selectedRoi.Value.Width <= 0 ||
+                selectedRoi.Value.Height <= 0 ||
+                selectedImageProcessingStepIndex < 0 ||
+                selectedImageProcessingStepIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                return null;
+            }
+
+            ImageProcessingStepSettings step = systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex];
+            if (!IsEdgeDetectionMethod(step.Method))
+            {
+                return null;
+            }
+
+            using (Bitmap sourceImage = rightOriginalDisplayControl.CloneImage())
+            {
+                if (sourceImage == null)
+                {
+                    return null;
+                }
+
+                Rectangle roi = Rectangle.Intersect(selectedRoi.Value, new Rectangle(0, 0, sourceImage.Width, sourceImage.Height));
+                if (roi.Width <= 0 || roi.Height <= 0)
+                {
+                    return null;
+                }
+
+                using (Bitmap roiImage = sourceImage.Clone(roi, PixelFormat.Format24bppRgb))
+                {
+                    bool[,] mask = CreateEdgeMask(roiImage, step.Method, ParseImageProcessingParameters(step.Parameters));
+                    return CreateRedOverlayImage(sourceImage, roi, mask);
+                }
+            }
+        }
+
+        private static bool[,] CreateEdgeMask(Bitmap image, string method, Dictionary<string, string> parameters)
+        {
+            byte[,] gray = CreateGrayValues(image);
+            if (method == "Canny Edge")
+            {
+                int lowThreshold = GetIntParameter(parameters, "LowThreshold", 50);
+                int highThreshold = GetIntParameter(parameters, "HighThreshold", 150);
+                int kernelSize = GetIntParameter(parameters, "KernelSize", 3);
+                bool l2Gradient = GetBoolParameter(parameters, "L2Gradient", false);
+                int gaussianBlurSize = GetIntParameter(parameters, "GaussianBlurSize", 5);
+                double gaussianSigma = GetDoubleParameter(parameters, "GaussianSigma", 1.4);
+                string edgeSelection = GetStringParameter(parameters, "EdgeSelection", "All");
+                int minEdgeLength = GetIntParameter(parameters, "MinEdgeLength", 10);
+                int maxGap = GetIntParameter(parameters, "MaxGap", 2);
+                return CreateSimpleCannyMask(
+                    gray,
+                    lowThreshold,
+                    highThreshold,
+                    kernelSize,
+                    l2Gradient,
+                    gaussianBlurSize,
+                    gaussianSigma,
+                    edgeSelection,
+                    minEdgeLength,
+                    maxGap);
+            }
+
+            if (method == "Sobel Edge")
+            {
+                int kernelSize = GetIntParameter(parameters, "KernelSize", 3);
+                double scale = GetDoubleParameter(parameters, "Scale", 1);
+                int delta = GetIntParameter(parameters, "Delta", 0);
+                string direction = GetStringParameter(parameters, "Direction", "Both");
+                string outputMode = GetStringParameter(parameters, "OutputMode", "Magnitude");
+                int threshold = GetIntParameter(parameters, "Threshold", 30);
+                string edgeSelection = GetStringParameter(parameters, "EdgeSelection", "All");
+                int minEdgeLength = GetIntParameter(parameters, "MinEdgeLength", 10);
+                int maxGap = GetIntParameter(parameters, "MaxGap", 2);
+                return CreateSobelMask(
+                    gray,
+                    threshold,
+                    direction,
+                    kernelSize,
+                    scale,
+                    delta,
+                    outputMode,
+                    edgeSelection,
+                    minEdgeLength,
+                    maxGap);
+            }
+
+            int contrastThreshold = GetIntParameter(parameters, "ContrastThreshold", 20);
+            int edgeWidth = GetIntParameter(parameters, "EdgeWidth", 3);
+            int smoothing = GetIntParameter(parameters, "Smoothing", 1);
+            string polarity = GetStringParameter(parameters, "Polarity", "Any");
+            string searchDirection = GetStringParameter(parameters, "SearchDirection", "Any");
+            string polarityEdgeSelection = GetStringParameter(parameters, "EdgeSelection", "Strongest");
+            int polarityMinEdgeLength = GetIntParameter(parameters, "MinEdgeLength", 10);
+            int polarityMaxGap = GetIntParameter(parameters, "MaxGap", 2);
+            bool subPixel = GetBoolParameter(parameters, "SubPixel", false);
+            return CreatePolarityEdgeMask(
+                gray,
+                contrastThreshold,
+                edgeWidth,
+                smoothing,
+                polarity,
+                searchDirection,
+                polarityEdgeSelection,
+                polarityMinEdgeLength,
+                polarityMaxGap,
+                subPixel);
+        }
+
+        private static byte[,] CreateGrayValues(Bitmap image)
+        {
+            var gray = new byte[image.Width, image.Height];
+            for (int y = 0; y < image.Height; y++)
+            {
+                for (int x = 0; x < image.Width; x++)
+                {
+                    Color color = image.GetPixel(x, y);
+                    gray[x, y] = (byte)((color.R + color.G + color.B) / 3);
+                }
+            }
+
+            return gray;
+        }
+
+        private static bool[,] CreateSimpleCannyMask(
+            byte[,] gray,
+            int lowThreshold,
+            int highThreshold,
+            int kernelSize,
+            bool l2Gradient,
+            int gaussianBlurSize,
+            double gaussianSigma,
+            string edgeSelection,
+            int minEdgeLength,
+            int maxGap)
+        {
+            byte[,] blurredGray = ApplyGaussianBlur(gray, gaussianBlurSize, gaussianSigma);
+            int[,] magnitudes = CreateSobelMagnitudes(blurredGray, kernelSize, l2Gradient, "Both");
+            int width = gray.GetLength(0);
+            int height = gray.GetLength(1);
+            var result = new bool[width, height];
+            for (int y = 1; y < height - 1; y++)
+            {
+                for (int x = 1; x < width - 1; x++)
+                {
+                    bool strong = magnitudes[x, y] >= highThreshold;
+                    bool weakConnected = magnitudes[x, y] >= lowThreshold && HasNeighborAboveThreshold(magnitudes, x, y, highThreshold);
+                    if (strong || weakConnected)
+                    {
+                        result[x, y] = true;
+                    }
+                }
+            }
+
+            result = BridgeSmallGaps(result, maxGap);
+            result = FilterEdgeComponents(result, magnitudes, edgeSelection, minEdgeLength);
+            return result;
+        }
+
+        private static bool[,] CreateSobelMask(byte[,] gray, int threshold, string direction)
+        {
+            return CreateSobelMask(gray, threshold, direction, 3, 1, 0, "Magnitude", "All", 0, 0);
+        }
+
+        private static bool[,] CreateSobelMask(
+            byte[,] gray,
+            int threshold,
+            string direction,
+            int kernelSize,
+            double scale,
+            int delta,
+            string outputMode,
+            string edgeSelection,
+            int minEdgeLength,
+            int maxGap)
+        {
+            int width = gray.GetLength(0);
+            int height = gray.GetLength(1);
+            string magnitudeDirection = string.Equals(outputMode, "XOnly", StringComparison.OrdinalIgnoreCase)
+                ? "X"
+                : string.Equals(outputMode, "YOnly", StringComparison.OrdinalIgnoreCase) ? "Y" : direction;
+            bool l2Gradient = string.Equals(outputMode, "Magnitude", StringComparison.OrdinalIgnoreCase);
+            int[,] magnitudes = CreateSobelMagnitudes(gray, kernelSize, l2Gradient, magnitudeDirection);
+            var mask = new bool[width, height];
+            for (int y = 1; y < height - 1; y++)
+            {
+                for (int x = 1; x < width - 1; x++)
+                {
+                    int scaledMagnitude = ClampInt((int)Math.Round((magnitudes[x, y] * scale) + delta), 0, int.MaxValue);
+                    mask[x, y] = scaledMagnitude >= threshold;
+                    magnitudes[x, y] = scaledMagnitude;
+                }
+            }
+
+            mask = BridgeSmallGaps(mask, maxGap);
+            return FilterEdgeComponents(mask, magnitudes, edgeSelection, minEdgeLength);
+        }
+
+        private static bool[,] CreatePolarityEdgeMask(
+            byte[,] gray,
+            int contrastThreshold,
+            int edgeWidth,
+            int smoothing,
+            string polarity,
+            string searchDirection,
+            string edgeSelection,
+            int minEdgeLength,
+            int maxGap,
+            bool subPixel)
+        {
+            byte[,] workingGray = ApplyGaussianBlur(gray, smoothing, Math.Max(0.1, smoothing / 2.0));
+            int kernelSize = Math.Max(3, edgeWidth | 1);
+            int[,] magnitudes = CreateSobelMagnitudes(workingGray, kernelSize, subPixel, searchDirection);
+            int width = gray.GetLength(0);
+            int height = gray.GetLength(1);
+            var mask = new bool[width, height];
+            int radius = Math.Max(1, edgeWidth / 2);
+            for (int y = radius; y < height - radius; y++)
+            {
+                for (int x = radius; x < width - radius; x++)
+                {
+                    int before = GetAverageGray(workingGray, x, y, radius, searchDirection, true);
+                    int after = GetAverageGray(workingGray, x, y, radius, searchDirection, false);
+                    int contrast = after - before;
+                    bool polarityAccepted =
+                        string.Equals(polarity, "Any", StringComparison.OrdinalIgnoreCase) ||
+                        (string.Equals(polarity, "BrightToDark", StringComparison.OrdinalIgnoreCase) && contrast < 0) ||
+                        (string.Equals(polarity, "DarkToBright", StringComparison.OrdinalIgnoreCase) && contrast > 0);
+                    mask[x, y] = polarityAccepted && Math.Abs(contrast) >= contrastThreshold;
+                    magnitudes[x, y] = Math.Max(magnitudes[x, y], Math.Abs(contrast));
+                }
+            }
+
+            mask = BridgeSmallGaps(mask, maxGap);
+            return FilterEdgeComponents(mask, magnitudes, edgeSelection, minEdgeLength);
+        }
+
+        private static int GetAverageGray(byte[,] gray, int x, int y, int radius, string direction, bool before)
+        {
+            int sum = 0;
+            int count = 0;
+            for (int offset = 1; offset <= radius; offset++)
+            {
+                int sampleX = x;
+                int sampleY = y;
+                int signedOffset = before ? -offset : offset;
+                if (string.Equals(direction, "Horizontal", StringComparison.OrdinalIgnoreCase))
+                {
+                    sampleX = x + signedOffset;
+                }
+                else if (string.Equals(direction, "Vertical", StringComparison.OrdinalIgnoreCase))
+                {
+                    sampleY = y + signedOffset;
+                }
+                else
+                {
+                    sampleX = x + signedOffset;
+                    sampleY = y + signedOffset;
+                }
+
+                sampleX = ClampInt(sampleX, 0, gray.GetLength(0) - 1);
+                sampleY = ClampInt(sampleY, 0, gray.GetLength(1) - 1);
+                sum += gray[sampleX, sampleY];
+                count++;
+            }
+
+            return count > 0 ? sum / count : gray[x, y];
+        }
+
+        private static int[,] CreateSobelMagnitudes(byte[,] gray, int kernelSize, bool l2Gradient, string direction)
+        {
+            int width = gray.GetLength(0);
+            int height = gray.GetLength(1);
+            var magnitudes = new int[width, height];
+            int radius = Math.Max(1, kernelSize / 2);
+            for (int y = radius; y < height - radius; y++)
+            {
+                for (int x = radius; x < width - radius; x++)
+                {
+                    int gx = 0;
+                    int gy = 0;
+                    for (int offsetY = -radius; offsetY <= radius; offsetY++)
+                    {
+                        for (int offsetX = -radius; offsetX <= radius; offsetX++)
+                        {
+                            int value = gray[x + offsetX, y + offsetY];
+                            gx += value * offsetX;
+                            gy += value * offsetY;
+                        }
+                    }
+
+                    if (string.Equals(direction, "X", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(direction, "Vertical", StringComparison.OrdinalIgnoreCase))
+                    {
+                        magnitudes[x, y] = Math.Abs(gx);
+                    }
+                    else if (string.Equals(direction, "Y", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(direction, "Horizontal", StringComparison.OrdinalIgnoreCase))
+                    {
+                        magnitudes[x, y] = Math.Abs(gy);
+                    }
+                    else if (l2Gradient)
+                    {
+                        magnitudes[x, y] = (int)Math.Sqrt((gx * gx) + (gy * gy));
+                    }
+                    else
+                    {
+                        magnitudes[x, y] = Math.Abs(gx) + Math.Abs(gy);
+                    }
+                }
+            }
+
+            return magnitudes;
+        }
+
+        private static byte[,] ApplyGaussianBlur(byte[,] gray, int blurSize, double sigma)
+        {
+            int width = gray.GetLength(0);
+            int height = gray.GetLength(1);
+            int radius = Math.Max(0, blurSize / 2);
+            if (radius == 0)
+            {
+                return gray;
+            }
+
+            double sigmaFactor = Math.Max(0.1, sigma);
+            var blurred = new byte[width, height];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    double weightedSum = 0;
+                    double weightSum = 0;
+                    for (int offsetY = -radius; offsetY <= radius; offsetY++)
+                    {
+                        for (int offsetX = -radius; offsetX <= radius; offsetX++)
+                        {
+                            int sampleX = ClampInt(x + offsetX, 0, width - 1);
+                            int sampleY = ClampInt(y + offsetY, 0, height - 1);
+                            double distance = (offsetX * offsetX) + (offsetY * offsetY);
+                            double weight = Math.Exp(-distance / (2 * sigmaFactor * sigmaFactor));
+                            weightedSum += gray[sampleX, sampleY] * weight;
+                            weightSum += weight;
+                        }
+                    }
+
+                    blurred[x, y] = (byte)ClampInt((int)Math.Round(weightedSum / weightSum), 0, 255);
+                }
+            }
+
+            return blurred;
+        }
+
+        private static bool HasNeighborAboveThreshold(int[,] magnitudes, int x, int y, int threshold)
+        {
+            for (int offsetY = -1; offsetY <= 1; offsetY++)
+            {
+                for (int offsetX = -1; offsetX <= 1; offsetX++)
+                {
+                    if ((offsetX != 0 || offsetY != 0) && magnitudes[x + offsetX, y + offsetY] >= threshold)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool[,] BridgeSmallGaps(bool[,] mask, int maxGap)
+        {
+            if (maxGap <= 0)
+            {
+                return mask;
+            }
+
+            int width = mask.GetLength(0);
+            int height = mask.GetLength(1);
+            var bridged = (bool[,])mask.Clone();
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (mask[x, y])
+                    {
+                        continue;
+                    }
+
+                    if (HasEdgePairWithinGap(mask, x, y, maxGap, true) ||
+                        HasEdgePairWithinGap(mask, x, y, maxGap, false))
+                    {
+                        bridged[x, y] = true;
+                    }
+                }
+            }
+
+            return bridged;
+        }
+
+        private static bool HasEdgePairWithinGap(bool[,] mask, int x, int y, int maxGap, bool horizontal)
+        {
+            int width = mask.GetLength(0);
+            int height = mask.GetLength(1);
+            for (int gap = 1; gap <= maxGap; gap++)
+            {
+                int beforeX = horizontal ? x - gap : x;
+                int beforeY = horizontal ? y : y - gap;
+                int afterX = horizontal ? x + gap : x;
+                int afterY = horizontal ? y : y + gap;
+                if (beforeX >= 0 && beforeY >= 0 && afterX < width && afterY < height &&
+                    mask[beforeX, beforeY] && mask[afterX, afterY])
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool[,] FilterEdgeComponents(bool[,] mask, int[,] magnitudes, string edgeSelection, int minEdgeLength)
+        {
+            var components = GetEdgeComponents(mask, magnitudes, Math.Max(0, minEdgeLength));
+            int width = mask.GetLength(0);
+            int height = mask.GetLength(1);
+            var filtered = new bool[width, height];
+            if (components.Count == 0)
+            {
+                return filtered;
+            }
+
+            if (string.Equals(edgeSelection, "Strongest", StringComparison.OrdinalIgnoreCase))
+            {
+                components.Sort((left, right) => right.Strength.CompareTo(left.Strength));
+                PaintComponent(filtered, components[0]);
+                return filtered;
+            }
+
+            if (string.Equals(edgeSelection, "First", StringComparison.OrdinalIgnoreCase))
+            {
+                components.Sort(CompareComponentsByPosition);
+                PaintComponent(filtered, components[0]);
+                return filtered;
+            }
+
+            if (string.Equals(edgeSelection, "Last", StringComparison.OrdinalIgnoreCase))
+            {
+                components.Sort(CompareComponentsByPosition);
+                PaintComponent(filtered, components[components.Count - 1]);
+                return filtered;
+            }
+
+            if (string.Equals(edgeSelection, "Longest", StringComparison.OrdinalIgnoreCase))
+            {
+                components.Sort((left, right) => right.Points.Count.CompareTo(left.Points.Count));
+                PaintComponent(filtered, components[0]);
+                return filtered;
+            }
+
+            foreach (EdgeComponent component in components)
+            {
+                PaintComponent(filtered, component);
+            }
+
+            return filtered;
+        }
+
+        private static List<EdgeComponent> GetEdgeComponents(bool[,] mask, int[,] magnitudes, int minEdgeLength)
+        {
+            int width = mask.GetLength(0);
+            int height = mask.GetLength(1);
+            var visited = new bool[width, height];
+            var components = new List<EdgeComponent>();
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (!mask[x, y] || visited[x, y])
+                    {
+                        continue;
+                    }
+
+                    EdgeComponent component = CollectEdgeComponent(mask, magnitudes, visited, x, y);
+                    if (component.Points.Count >= minEdgeLength)
+                    {
+                        components.Add(component);
+                    }
+                }
+            }
+
+            return components;
+        }
+
+        private static int CompareComponentsByPosition(EdgeComponent left, EdgeComponent right)
+        {
+            Point leftPoint = left.FirstPoint;
+            Point rightPoint = right.FirstPoint;
+            int yComparison = leftPoint.Y.CompareTo(rightPoint.Y);
+            return yComparison != 0 ? yComparison : leftPoint.X.CompareTo(rightPoint.X);
+        }
+
+        private static EdgeComponent CollectEdgeComponent(bool[,] mask, int[,] magnitudes, bool[,] visited, int startX, int startY)
+        {
+            int width = mask.GetLength(0);
+            int height = mask.GetLength(1);
+            var component = new EdgeComponent();
+            var queue = new Queue<Point>();
+            queue.Enqueue(new Point(startX, startY));
+            visited[startX, startY] = true;
+
+            while (queue.Count > 0)
+            {
+                Point point = queue.Dequeue();
+                component.Points.Add(point);
+                component.Strength += magnitudes[point.X, point.Y];
+                for (int offsetY = -1; offsetY <= 1; offsetY++)
+                {
+                    for (int offsetX = -1; offsetX <= 1; offsetX++)
+                    {
+                        if (offsetX == 0 && offsetY == 0)
+                        {
+                            continue;
+                        }
+
+                        int nextX = point.X + offsetX;
+                        int nextY = point.Y + offsetY;
+                        if (nextX >= 0 && nextY >= 0 && nextX < width && nextY < height &&
+                            mask[nextX, nextY] && !visited[nextX, nextY])
+                        {
+                            visited[nextX, nextY] = true;
+                            queue.Enqueue(new Point(nextX, nextY));
+                        }
+                    }
+                }
+            }
+
+            return component;
+        }
+
+        private static void PaintComponent(bool[,] target, EdgeComponent component)
+        {
+            foreach (Point point in component.Points)
+            {
+                target[point.X, point.Y] = true;
+            }
+        }
+
+        private static bool HasNeighbor(bool[,] mask, int x, int y)
+        {
+            for (int offsetY = -1; offsetY <= 1; offsetY++)
+            {
+                for (int offsetX = -1; offsetX <= 1; offsetX++)
+                {
+                    if ((offsetX != 0 || offsetY != 0) && mask[x + offsetX, y + offsetY])
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static Bitmap CreateRedOverlayImage(Bitmap sourceImage, Rectangle roi, bool[,] mask)
+        {
+            var result = new Bitmap(sourceImage);
+            for (int y = 0; y < roi.Height; y++)
+            {
+                for (int x = 0; x < roi.Width; x++)
+                {
+                    if (mask[x, y])
+                    {
+                        result.SetPixel(roi.X + x, roi.Y + y, Color.Red);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static int GetIntParameter(Dictionary<string, string> parameters, string key, int defaultValue)
+        {
+            string value;
+            int parsedValue;
+            return parameters.TryGetValue(key, out value) && int.TryParse(value, out parsedValue)
+                ? parsedValue
+                : defaultValue;
+        }
+
+        private static double GetDoubleParameter(Dictionary<string, string> parameters, string key, double defaultValue)
+        {
+            string value;
+            double parsedValue;
+            return parameters.TryGetValue(key, out value) &&
+                double.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out parsedValue)
+                ? parsedValue
+                : defaultValue;
+        }
+
+        private static bool GetBoolParameter(Dictionary<string, string> parameters, string key, bool defaultValue)
+        {
+            string value;
+            bool parsedValue;
+            return parameters.TryGetValue(key, out value) && bool.TryParse(value, out parsedValue)
+                ? parsedValue
+                : defaultValue;
+        }
+
+        private static string GetStringParameter(Dictionary<string, string> parameters, string key, string defaultValue)
+        {
+            string value;
+            return parameters.TryGetValue(key, out value) ? value : defaultValue;
+        }
+
+        private static int ClampInt(int value, int minimum, int maximum)
+        {
+            if (value < minimum)
+            {
+                return minimum;
+            }
+
+            if (value > maximum)
+            {
+                return maximum;
+            }
+
+            return value;
+        }
+
+        private class EdgeComponent
+        {
+            public EdgeComponent()
+            {
+                Points = new List<Point>();
+            }
+
+            public List<Point> Points { get; private set; }
+
+            public int Strength { get; set; }
+
+            public Point FirstPoint
+            {
+                get
+                {
+                    Point firstPoint = Points.Count > 0 ? Points[0] : Point.Empty;
+                    foreach (Point point in Points)
+                    {
+                        if (point.Y < firstPoint.Y || (point.Y == firstPoint.Y && point.X < firstPoint.X))
+                        {
+                            firstPoint = point;
+                        }
+                    }
+
+                    return firstPoint;
+                }
+            }
+        }
+
+        private void BeginAddRoiSelection()
         {
             bool enabled = false;
             if (leftImageTabControl.SelectedTab == leftOriginalTabPage && leftOriginalDisplayControl.HasImage)
@@ -359,25 +2201,67 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             rightImageTabControl.SelectedTab = rightOriginalTabPage;
-            rightOriginalDisplayControl.SetRoiOverlay(e.Roi);
-            systemParameters.RoiEnabled = true;
-            systemParameters.Roi = e.Roi;
+            systemParameters.RoiRegions.Add(new RoiRegionSettings { Bounds = e.Roi });
+            selectedRoiIndex = systemParameters.RoiRegions.Count - 1;
+            SyncLegacyRoiFromSelectedRoi();
             SaveSystemParameters();
+            RebuildVisibleRoiItems();
+            functionListBox.SelectedItem = CreateRoiText(selectedRoiIndex + 1);
+            ApplySelectedRoiOverlay();
+            MarkProcessedImageDirty();
+            ScheduleProcessedImageUpdateIfVisible();
             statusLabel.Text = string.Format(
-                "已保留 ROI：X={0}, Y={1}, W={2}, H={3}",
+                "已新增 ROI {0}：X={1}, Y={2}, W={3}, H={4}",
+                selectedRoiIndex + 1,
                 e.Roi.X,
                 e.Roi.Y,
                 e.Roi.Width,
                 e.Roi.Height);
         }
 
-        private void CancelSavedRoi()
+        private void ApplySelectedRoiOverlay()
         {
-            rightOriginalDisplayControl.ClearRoiOverlay();
-            systemParameters.RoiEnabled = false;
-            systemParameters.Roi = Rectangle.Empty;
-            SaveSystemParameters();
-            statusLabel.Text = "已取消 ROI 設定";
+            Rectangle? roi = GetSelectedRoi();
+            if (!roi.HasValue)
+            {
+                rightOriginalDisplayControl.ClearRoiOverlay();
+                leftProcessedDisplayControl.ClearRoiOverlay();
+                rightProcessedDisplayControl.ClearRoiOverlay();
+                return;
+            }
+
+            rightOriginalDisplayControl.SetRoiOverlay(roi.Value);
+            if (leftImageTabControl.SelectedTab == leftProcessedTabPage)
+            {
+                leftProcessedDisplayControl.SetRoiOverlay(roi.Value);
+            }
+
+            if (rightImageTabControl.SelectedTab == rightProcessedTabPage)
+            {
+                rightProcessedDisplayControl.SetRoiOverlay(roi.Value);
+            }
+        }
+
+        private Rectangle? GetSelectedRoi()
+        {
+            if (systemParameters.RoiRegions.Count == 0)
+            {
+                return null;
+            }
+
+            if (selectedRoiIndex < 0 || selectedRoiIndex >= systemParameters.RoiRegions.Count)
+            {
+                selectedRoiIndex = 0;
+            }
+
+            return systemParameters.RoiRegions[selectedRoiIndex].Bounds;
+        }
+
+        private void SyncLegacyRoiFromSelectedRoi()
+        {
+            Rectangle? roi = GetSelectedRoi();
+            systemParameters.RoiEnabled = roi.HasValue;
+            systemParameters.Roi = roi.HasValue ? roi.Value : Rectangle.Empty;
         }
 
         private async Task RestoreSystemParametersAsync()
@@ -401,22 +2285,74 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             RestoreSavedRoiOverlay();
+            await PrepareProcessedPreviewFromSettingsAsync();
         }
 
         private void RestoreSavedRoiOverlay()
         {
+            selectedRoiIndex = systemParameters.RoiRegions.Count > 0 ? 0 : -1;
+            SyncLegacyRoiFromSelectedRoi();
             if (!systemParameters.RoiEnabled || systemParameters.Roi.Width <= 0 || systemParameters.Roi.Height <= 0)
             {
                 return;
             }
 
-            rightOriginalDisplayControl.SetRoiOverlay(systemParameters.Roi);
+            ApplySelectedRoiOverlay();
             statusLabel.Text = string.Format(
-                "已還原 ROI：X={0}, Y={1}, W={2}, H={3}",
+                "已還原 ROI 1：X={0}, Y={1}, W={2}, H={3}",
                 systemParameters.Roi.X,
                 systemParameters.Roi.Y,
                 systemParameters.Roi.Width,
                 systemParameters.Roi.Height);
+        }
+
+        private async Task PrepareProcessedPreviewFromSettingsAsync()
+        {
+            int previewStepIndex = FindFirstPreviewableImageProcessingStepIndex();
+            SyncLegacyRoiFromSelectedRoi();
+            if (previewStepIndex < 0 || !systemParameters.RoiEnabled || !rightOriginalDisplayControl.HasImage)
+            {
+                return;
+            }
+
+            selectedImageProcessingStepIndex = previewStepIndex;
+            MarkProcessedImageDirty();
+            Bitmap processedImage = await Task.Run(() => CreateCurrentProcessedImage());
+            if (processedImage == null)
+            {
+                return;
+            }
+
+            latestProcessedImage = processedImage;
+            processedImageDirty = false;
+            isSyncingImageView = true;
+            try
+            {
+                leftProcessedDisplayControl.SetDisplayImage(new Bitmap(latestProcessedImage), true);
+                leftProcessedDisplayControl.SetRoiOverlay(systemParameters.Roi);
+                rightProcessedDisplayControl.SetDisplayImage(new Bitmap(latestProcessedImage), true);
+                rightProcessedDisplayControl.SetRoiOverlay(systemParameters.Roi);
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
+
+            ApplySharedImageViewStateToVisibleControls();
+            statusLabel.Text = "已準備處理後影像：處理" + (previewStepIndex + 1);
+        }
+
+        private int FindFirstPreviewableImageProcessingStepIndex()
+        {
+            for (int index = 0; index < systemParameters.ImageProcessingSteps.Count; index++)
+            {
+                if (IsEdgeDetectionMethod(systemParameters.ImageProcessingSteps[index].Method))
+                {
+                    return index;
+                }
+            }
+
+            return -1;
         }
 
         private void SaveSystemParameters()
@@ -451,9 +2387,15 @@ namespace IntegratedImageProcessingApp.Forms
                     leftImageTabControl.SelectedTab = leftOriginalTabPage;
                     rightImageTabControl.SelectedTab = rightOriginalTabPage;
                     rightOriginalDisplayControl.ClearRoiOverlay();
+                    leftProcessedDisplayControl.ClearRoiOverlay();
+                    rightProcessedDisplayControl.ClearRoiOverlay();
                     systemParameters.LastImagePath = dialog.FileName;
                     systemParameters.RoiEnabled = false;
                     systemParameters.Roi = Rectangle.Empty;
+                    systemParameters.RoiRegions.Clear();
+                    selectedRoiIndex = -1;
+                    RebuildVisibleRoiItems();
+                    MarkProcessedImageDirty();
 
                     await leftOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
                     await rightOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
@@ -496,7 +2438,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             Rectangle textBounds = new Rectangle(
-                e.Bounds.Left + (IsRoiSubMenuItem(functionListBox.Items[e.Index].ToString()) ? 30 : 12),
+                e.Bounds.Left + GetFunctionMenuIndent(functionListBox.Items[e.Index].ToString()),
                 e.Bounds.Top,
                 e.Bounds.Width - 24,
                 e.Bounds.Height);
@@ -510,9 +2452,47 @@ namespace IntegratedImageProcessingApp.Forms
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
         }
 
-        private static bool IsRoiSubMenuItem(string menuText)
+        private static int GetFunctionMenuIndent(string menuText)
         {
-            return menuText == SetRoiMenuText || menuText == CancelRoiMenuText;
+            if (IsImageProcessingStepCommandMenuItem(menuText) || IsRoiCommandMenuItem(menuText))
+            {
+                return 66;
+            }
+
+            if (IsImageProcessingStepMenuItem(menuText) || IsRoiMenuItem(menuText))
+            {
+                return 48;
+            }
+
+            if (menuText == AddRoiMenuText ||
+                menuText == AddImageProcessingMenuText)
+            {
+                return 30;
+            }
+
+            return 12;
+        }
+
+        private static bool IsImageProcessingStepCommandMenuItem(string menuText)
+        {
+            return menuText == DeleteImageProcessingStepMenuText ||
+                menuText == MoveUpImageProcessingStepMenuText ||
+                menuText == MoveDownImageProcessingStepMenuText;
+        }
+
+        private static bool IsImageProcessingStepMenuItem(string menuText)
+        {
+            if (string.IsNullOrEmpty(menuText))
+            {
+                return false;
+            }
+
+            string trimmedText = menuText.Trim();
+            int prefixLength = "處理".Length;
+            int suffixStartIndex = trimmedText.IndexOf('(');
+            return trimmedText.StartsWith("處理", StringComparison.Ordinal) &&
+                suffixStartIndex > prefixLength &&
+                trimmedText.EndsWith(")", StringComparison.Ordinal);
         }
     }
 }

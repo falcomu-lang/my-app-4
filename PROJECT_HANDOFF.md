@@ -37,22 +37,72 @@
   - Status text shows zoom, offset, and image coordinate information.
   - Behavior is modeled after the viewer interaction in:
     `C:\Users\falcomu\Documents\Codex\程式撰寫 專案資料夾\攝影機影像擷取\my-app-2`
+  - Large image display now reuses the tiled rendering approach from `my-app-2`:
+    - `LargeImageSource` loads huge files through WIC.
+    - Low zoom paints a progressive preview.
+    - Higher zoom requests and draws `1024 x 1024` tiles on demand.
+    - Tile drawing uses destination rounding and `WrapMode.TileFlipXY` to avoid visible seams.
+  - Current large-image support is focused on original-image display and ROI coordinate selection. Full-resolution processed preview should also move to a tiled/mask-overlay path before treating very large processed results as complete.
 
 - Visible left/right view synchronization
-  - Zoom/pan/reset sync only between the currently visible left and right image controls.
-  - Hidden tabs are not updated to avoid unnecessary work when more images are added later.
-  - When switching visible tabs, the visible right viewer can sync from the visible left viewer if both have images.
+  - Zoom/pan/reset sync between the currently visible left and right image controls.
+  - The app keeps a shared image view state. When either left or right tab changes, the newly visible image control applies the same zoom/pan state so left/right image scale and position remain exactly aligned.
+  - Hidden tabs are not refreshed unless needed, but when they become visible they must match the shared zoom/pan state.
+  - Updating processed previews must preserve and reapply this shared zoom/pan state.
+  - Programmatic processed-image replacement is wrapped with the view-sync guard. This prevents a first-time processed tab update from firing `ViewChanged` after its internal fit and overwriting the user's shared zoom/pan state.
+  - Viewer size/page changes do not auto-fit an already-loaded image. `ImageDisplayControl_SizeChanged` only invalidates/repaints, so switching tabs or layout pages should not reset zoom or pan. Fit-to-view is reserved for loading a new image, replacing with a different-size image, or the user pressing the reset/fit button.
 
 - `指定 ROI`
   - Left function item expands/collapses child items at runtime:
-    - `設定 ROI`
-    - `取消 ROI`
-  - `設定 ROI` enables ROI drawing on currently visible `原圖` viewers that already have an image.
+    - `新增 ROI`
+    - `ROI 1`, `ROI 2`, `ROI 3`, ...
+  - `新增 ROI` enables ROI drawing on currently visible `原圖` viewers that already have an image.
   - User drags a green rectangle on left or right `原圖`.
   - When mouse is released, a confirmation dialog asks whether to keep the ROI.
-  - Confirmed ROI is always displayed only on the right `原圖`.
-  - ROI is stored in image coordinates, so it stays fitted to the image while the right viewer zooms/pans/resets.
-  - `取消 ROI` clears the right-side ROI and updates settings.
+  - Confirmed ROI is appended to the ROI list and stored in image coordinates.
+  - Selecting `ROI N` makes it the active ROI, shows its green overlay on the right `原圖`, and makes image processing previews use that ROI.
+  - Selecting `ROI N` expands a child command:
+    - `刪除`
+  - `刪除` asks for confirmation before removing that ROI.
+  - ROI list state is persisted in `SystemParameters.ini` under `[ROIs]`; legacy single `[ROI]` values are still loaded and converted into `ROI 1`.
+
+- `影像處理`
+  - Left function item expands/collapses child items at runtime.
+  - Initial child item is `新增影像處理`; there are no processing steps until the user adds them.
+  - Each click on `新增影像處理` appends a new processing step shown as `處理N(未決定)` when no algorithm has been selected yet.
+  - Selecting a processing step expands `刪除`, `上移`, and `下移`.
+  - `刪除` asks for confirmation with `是否要刪除該項處理？` before removing the step.
+  - Selecting a processing step also shows a right-side runtime `TreeView` for the expected image processing flow.
+  - The flow tree currently contains these top-level categories:
+    - `Edge Detection`
+    - `Threshold`
+    - `Morphology`
+    - `Contour Analysis`
+    - `Feature Filter`
+    - `Object Selector`
+    - `Object Result`
+  - Clicking a flow tree node is treated as the accepted method for the selected processing step, saves it to INI, and updates the left menu display from `處理N(未決定)` to `處理N(MethodName)`.
+  - Edge Detection methods currently have right-side parameter panels:
+    - `Polarity Edge`: `Polarity`, `ContrastThreshold`, `EdgeWidth`, `Smoothing`, `SearchDirection`, `EdgeSelection`, `SubPixel`, `MinEdgeLength`, `MaxGap`.
+    - `Canny Edge`: `LowThreshold`, `HighThreshold`, `KernelSize`, `L2Gradient`, `GaussianBlurSize`, `GaussianSigma`, `EdgeSelection`, `MinEdgeLength`, `MaxGap`.
+    - `Sobel Edge`: `Direction`, `KernelSize`, `Scale`, `Delta`, `OutputMode`, `Threshold`, `EdgeSelection`, `MinEdgeLength`, `MaxGap`.
+  - Kernel-size options are shared by Canny/Sobel-related controls: `3`, `5`, `7`, `9`, `11`, `13`, `15`.
+  - Selecting one of those methods switches the right side from the flow tree to its parameter editor. The `重新選擇方法` button returns to the flow tree.
+  - Parameter edits are saved immediately into each step's `StepN.Parameters` INI field.
+  - Numeric parameters use `NumericUpDown` controls. Mouse wheel adjusts values directly; holding Shift increases the step size by 10x.
+  - Processing previews run only inside the saved ROI, but the `處理後` image remains full-frame. Pixels outside ROI stay as the original grayscale image; detected `true` pixels inside ROI are drawn in red.
+  - The green ROI overlay is also shown on processed images so users can see exactly where the operation was applied.
+  - Processed previews are resource-conscious:
+    - Parameter/method/ROI changes mark the processed image as dirty.
+    - If a left or right `處理後` tab is visible, updates are debounced by 200 ms and computed once.
+    - Only visible `處理後` tabs are refreshed immediately.
+    - If no `處理後` tab is visible, the result is computed later when the user switches to a `處理後` tab.
+    - Updating a processed preview preserves the user's current zoom/pan when the new result has the same image size.
+    - If there is no previewable image-processing step left, both processed viewers are cleared so stale red overlays are never shown.
+  - Current preview implementations use simple in-app masks for Edge Detection methods. `Polarity Edge`, `Canny Edge`, and `Sobel Edge` all display red edge overlays, and their visible UI parameters are connected to preview calculation.
+  - Canny `GaussianBlurSize`/`GaussianSigma` and Polarity `Smoothing` flow through `ApplyGaussianBlur`, which uses Gaussian distance weighting.
+  - Processing step numbers are display positions only. When deleting or moving steps, the visible `處理1`, `處理2`, `處理3` numbering is regenerated, but each step's underlying method/parameters move with that step.
+  - Processing workflow state is persisted in `SystemParameters.ini` under `[ImageProcessing]` so future algorithm selections can be restored and reordered safely.
 
 ## System Parameters
 - Runtime settings are saved to an INI text file:
@@ -70,11 +120,17 @@ X=0
 Y=0
 Width=0
 Height=0
+
+[ImageProcessing]
+Count=0
+Step1.Method=
+Step1.Parameters=
 ```
 
 - On startup:
   - If `LastImagePath` exists, the app reloads the previous image into both `原圖` viewers.
   - If ROI is enabled and valid, the right `原圖` restores the ROI overlay.
+  - If image processing steps are saved and at least one step is previewable, the app prepares the `處理後` image from the saved ROI/method/parameters so both left/right processed tabs have an image ready after startup.
 
 ## Important Files
 - `IntegratedImageProcessingApp\Forms\MainForm.cs`
@@ -82,6 +138,7 @@ Height=0
   - Image load flow.
   - Visible viewer sync.
   - ROI workflow.
+  - Image processing step list, reorder/delete actions, and right-side flow tree selection.
   - Startup restore from INI.
 
 - `IntegratedImageProcessingApp\Forms\MainForm.Designer.cs`
@@ -91,15 +148,22 @@ Height=0
 - `IntegratedImageProcessingApp\Controls\ImageDisplayControl.cs`
   - Runtime image loading.
   - Ensures incoming images are grayscale so future analysis can assume grayscale input. Already-grayscale images are not converted again.
+  - Exposes current image cloning and color display-image setting for processed red overlay previews, with optional view preservation.
+  - Uses `LargeImageSource` for huge image files so the viewer can paint preview/tile regions instead of creating one massive `Bitmap`.
   - Viewer paint, zoom, pan, fit view.
   - ROI selection and ROI overlay drawing.
   - View sync event/state.
+
+- `IntegratedImageProcessingApp\Controls\LargeImageSource.cs`
+  - Ported from `C:\Users\falcomu\Documents\Codex\程式撰寫 專案資料夾\攝影機影像擷取\my-app-2\CameraCaptureApp\Controls\LargeImageSource.cs`.
+  - WIC-backed preview and tile source for huge images.
 
 - `IntegratedImageProcessingApp\Services\SystemParameterIniService.cs`
   - Simple INI load/save service.
 
 - `IntegratedImageProcessingApp\Services\SystemParameterSettings.cs`
   - Settings model for image path and ROI.
+  - Also stores image processing workflow steps, including each step's future method and parameters.
 
 ## Latest Commits
 - `24e6a88 Persist ROI settings to ini`

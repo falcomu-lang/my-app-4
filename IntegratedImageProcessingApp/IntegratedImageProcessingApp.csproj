@@ -36,7 +36,9 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
+    <Reference Include="PresentationCore" />
     <Reference Include="System.Windows.Forms" />
+    <Reference Include="WindowsBase" />
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
@@ -49,6 +51,7 @@
     <Compile Include="Controls\ImageDisplayControl.Designer.cs">
       <DependentUpon>ImageDisplayControl.cs</DependentUpon>
     </Compile>
+    <Compile Include="Controls\LargeImageSource.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Services\SystemParameterIniService.cs" />
     <Compile Include="Services\SystemParameterSettings.cs" />
