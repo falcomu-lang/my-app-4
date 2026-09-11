@@ -761,6 +761,14 @@ namespace IntegratedImageProcessingApp.Controls
             decodeHeight = Math.Max(1, Math.Min(65535, decodeHeight));
             double scale = Math.Min((double)decodeWidth / Width, (double)decodeHeight / Height);
             scale = Math.Max(double.Epsilon, Math.Min(1d, scale));
+
+            // Avoid passing very large WIC frames through GDI+. Build the small
+            // preview directly from source tiles instead.
+            if ((long)Width * Height > 50000000L)
+            {
+                return CreateScaledBitmapFromTiles(scale, decodeWidth, decodeHeight);
+            }
+
             var transform = new SWM.ScaleTransform(scale, scale);
             transform.Freeze();
             var preview = new SWMI.TransformedBitmap(_frame, transform);
