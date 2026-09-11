@@ -15,6 +15,7 @@ namespace IntegratedImageProcessingApp.Controls
     public sealed class LargeImageSource : IDisposable
     {
         private const int TileSourceSize = 1024;
+        private const int MaxDisplayTileCacheCount = 96;
         private readonly object _sync = new object();
         private readonly string _filePath;
         private readonly FileStream _stream;
@@ -23,7 +24,6 @@ namespace IntegratedImageProcessingApp.Controls
         private readonly LinkedList<string> _tileOrder;
         private readonly HashSet<string> _pendingTiles;
         private readonly List<PreviewLevel> _previewLevels;
-        private readonly int _maxTileCacheCount;
         private int _referenceCount = 1;
         private bool _previewBuildQueued;
         private bool _disposed;
@@ -36,8 +36,6 @@ namespace IntegratedImageProcessingApp.Controls
             _frame = decoder.Frames[0];
             Width = _frame.PixelWidth;
             Height = _frame.PixelHeight;
-            _maxTileCacheCount = checked(((Width + TileSourceSize - 1) / TileSourceSize) *
-                ((Height + TileSourceSize - 1) / TileSourceSize) + 16);
             _tileCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
             _tileOrder = new LinkedList<string>();
             _pendingTiles = new HashSet<string>(StringComparer.Ordinal);
@@ -709,7 +707,7 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void TrimCache()
         {
-            while (_tileOrder.Count > _maxTileCacheCount)
+            while (_tileOrder.Count > MaxDisplayTileCacheCount)
             {
                 var last = _tileOrder.Last;
                 if (last == null)

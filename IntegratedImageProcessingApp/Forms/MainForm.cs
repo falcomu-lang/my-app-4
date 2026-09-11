@@ -3428,9 +3428,8 @@ namespace IntegratedImageProcessingApp.Forms
                 var sharedSource = await Task.Run(
                     () =>
                     {
-                        var source = new LargeImageSource(filePath);
-                        source.PreloadAllTiles(cancellationToken);
-                        return source;
+                        cancellationToken.ThrowIfCancellationRequested();
+                        return new LargeImageSource(filePath);
                     },
                     cancellationToken);
                 try
