@@ -758,7 +758,6 @@ namespace IntegratedImageProcessingApp.Controls
             cropped.Source = _frame;
             cropped.SourceRect = new SW.Int32Rect(sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height);
             cropped.EndInit();
-            cropped.Freeze();
             return ConvertToBitmap(cropped);
         }
 
