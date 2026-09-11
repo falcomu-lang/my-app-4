@@ -99,11 +99,14 @@ namespace IntegratedImageProcessingApp.Controls
 
         public Bitmap CreateRegionBitmap(Rectangle sourceRect)
         {
+            Rectangle normalized;
             lock (_sync)
             {
                 ThrowIfDisposed();
-                return CreateTileBitmap(NormalizeRect(sourceRect));
+                normalized = NormalizeRect(sourceRect);
             }
+
+            return CreateTileBitmap(normalized);
         }
 
         public PreviewBitmap GetBestPreview(float zoom)

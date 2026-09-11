@@ -57,8 +57,8 @@ namespace IntegratedImageProcessingApp.Forms
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
         private const int MaxLargeProcessedOverlayCacheCount = 128;
-        private const int LargeProcessedOverlayTileSize = 256;
-        private const int MaxPendingLargeProcessedOverlayTiles = 4;
+        private const int LargeProcessedOverlayTileSize = 128;
+        private const int MaxPendingLargeProcessedOverlayTiles = 2;
         private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
 
         public MainForm()
@@ -1760,7 +1760,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     overlay = null;
                                     statusLabel.Text = pendingLargeProcessedOverlayTiles.Count > 0
                                         ? "影像處理運算中...等待 " + pendingLargeProcessedOverlayTiles.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊"
-                                        : "影像處理完成";
+                                        : "影像處理完成，已顯示 " + largeProcessedOverlayCache.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊";
                                     leftProcessedDisplayControl.InvalidateImageView();
                                     rightProcessedDisplayControl.InvalidateImageView();
                                 }));
@@ -1774,6 +1774,8 @@ namespace IntegratedImageProcessingApp.Forms
                                 {
                                     pendingLargeProcessedOverlayTiles.Remove(cacheKey);
                                     statusLabel.Text = "影像處理失敗：" + ex.Message;
+                                    leftProcessedDisplayControl.InvalidateImageView();
+                                    rightProcessedDisplayControl.InvalidateImageView();
                                 }));
                     }
                     finally
