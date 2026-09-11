@@ -754,9 +754,12 @@ namespace IntegratedImageProcessingApp.Controls
                 throw new ArgumentOutOfRangeException("sourceRect", "單次 WIC 轉換只能處理一個原圖 tile。");
             }
 
-            var cropped = new SWMI.CroppedBitmap(
-                _frame,
-                new SW.Int32Rect(sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height));
+            var cropped = new SWMI.CroppedBitmap();
+            cropped.BeginInit();
+            cropped.Source = _frame;
+            cropped.SourceRect = new SW.Int32Rect(sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height);
+            cropped.EndInit();
+            cropped.Freeze();
             return ConvertToBitmap(cropped);
         }
 
@@ -838,6 +841,13 @@ namespace IntegratedImageProcessingApp.Controls
                 formatted.PixelWidth > 65535 || formatted.PixelHeight > 65535)
             {
                 throw new ArgumentException("WIC 預覽影像尺寸無效。", "source");
+            }
+
+            if (formatted.PixelWidth > TileSourceSize || formatted.PixelHeight > TileSourceSize)
+            {
+                throw new InvalidOperationException(
+                    "WIC 未依要求回傳單一 tile，已拒絕建立超大型 Bitmap：" +
+                    formatted.PixelWidth + "x" + formatted.PixelHeight);
             }
 
             var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format32bppArgb);
