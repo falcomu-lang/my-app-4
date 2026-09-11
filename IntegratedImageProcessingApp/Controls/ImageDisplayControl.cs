@@ -214,31 +214,9 @@ namespace IntegratedImageProcessingApp.Controls
             int version = Interlocked.Increment(ref _imageVersion);
             StatusText = "讀取圖片中...";
 
-            Bitmap loadedBitmap = await Task.Run(
-                () =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                    using (var image = Image.FromStream(stream, false, false))
-                    {
-                        long sourcePixels = (long)image.Width * image.Height;
-                        if (sourcePixels > MaxDisplayPixels)
-                        {
-                            return null;
-                        }
-
-                        return CreateDisplayBitmap(image);
-                    }
-                },
-                cancellationToken);
-
-            if (cancellationToken.IsCancellationRequested || version != _imageVersion)
-            {
-                loadedBitmap.Dispose();
-                return;
-            }
-
-            if (loadedBitmap == null)
+            Size imageSize = await Task.Run(() => LargeImageSource.ReadImageSize(filePath), cancellationToken);
+            long sourcePixels = (long)imageSize.Width * imageSize.Height;
+            if (sourcePixels > MaxDisplayPixels)
             {
                 var largeImageSource = await Task.Run(() => new LargeImageSource(filePath), cancellationToken);
                 if (cancellationToken.IsCancellationRequested || version != _imageVersion)
@@ -248,6 +226,55 @@ namespace IntegratedImageProcessingApp.Controls
                 }
 
                 SetLargeImageSource(largeImageSource);
+                return;
+            }
+
+            Bitmap loadedBitmap;
+            try
+            {
+                loadedBitmap = await Task.Run(
+                    () =>
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                        using (var image = Image.FromStream(stream, false, false))
+                        {
+                            return CreateDisplayBitmap(image);
+                        }
+                    },
+                    cancellationToken);
+            }
+            catch (ArgumentException)
+            {
+                var largeImageSource = await Task.Run(() => new LargeImageSource(filePath), cancellationToken);
+                if (cancellationToken.IsCancellationRequested || version != _imageVersion)
+                {
+                    largeImageSource.Dispose();
+                    return;
+                }
+
+                SetLargeImageSource(largeImageSource);
+                return;
+            }
+            catch (OutOfMemoryException)
+            {
+                var largeImageSource = await Task.Run(() => new LargeImageSource(filePath), cancellationToken);
+                if (cancellationToken.IsCancellationRequested || version != _imageVersion)
+                {
+                    largeImageSource.Dispose();
+                    return;
+                }
+
+                SetLargeImageSource(largeImageSource);
+                return;
+            }
+
+            if (cancellationToken.IsCancellationRequested || version != _imageVersion)
+            {
+                if (loadedBitmap != null)
+                {
+                    loadedBitmap.Dispose();
+                }
                 return;
             }
 

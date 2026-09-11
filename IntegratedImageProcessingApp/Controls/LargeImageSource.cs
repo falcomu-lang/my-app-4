@@ -47,6 +47,16 @@ namespace IntegratedImageProcessingApp.Controls
 
         public int Height { get; private set; }
 
+        public static Size ReadImageSize(string filePath)
+        {
+            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                var decoder = SWMI.BitmapDecoder.Create(stream, SWMI.BitmapCreateOptions.PreservePixelFormat, SWMI.BitmapCacheOption.OnDemand);
+                SWMI.BitmapFrame frame = decoder.Frames[0];
+                return new Size(frame.PixelWidth, frame.PixelHeight);
+            }
+        }
+
         public Rectangle GetVisibleTileBounds(Rectangle sourceRect)
         {
             var normalized = NormalizeRect(sourceRect);
