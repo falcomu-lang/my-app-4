@@ -310,7 +310,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.functionListBox.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(39)))), ((int)(((byte)(46)))), ((int)(((byte)(56)))));
             this.functionListBox.FormattingEnabled = true;
             this.functionListBox.IntegralHeight = false;
-            this.functionListBox.ItemHeight = 38;
+            this.functionListBox.ItemHeight = 30;
             this.functionListBox.Items.AddRange(new object[] {
             "讀取圖片",
             "指定 ROI",

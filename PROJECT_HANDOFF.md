@@ -27,6 +27,7 @@
   - Supported image filters: BMP, JPG/JPEG, PNG, TIF/TIFF, all files.
   - Images are checked when loaded. If already grayscale, they are used directly.
   - If a user accidentally selects a color image, it is converted to grayscale in memory before display; no temporary image file is saved and reloaded.
+  - Large-image source tiles are decoded as `Gray8`. The WIC source format is checked; non-grayscale inputs are explicitly converted to `Gray8` before display or analysis.
   - Selected image is loaded into both left and right `原圖` tabs.
   - Both sides automatically switch to `原圖`.
 
@@ -59,9 +60,9 @@
     - `LargeImageSource.CreateRegionBitmap` must not hold the shared source lock while WIC decodes a region; otherwise overlay calculation can block original image tile refresh and appear stuck.
     - Processed overlay calculation should prefer `LargeImageSource.TryCreateRegionBitmapFromCachedTile`. It crops from already-cached `1024 x 1024` source tiles instead of asking WIC to decode many tiny overlay regions. If the source tile is missing, queue the source tile and retry on repaint.
     - If the high-resolution source tile is not cached yet, processed overlay falls back to `LargeImageSource.GetBestPreview(0f)` so the `處理後` tab does not stay blank with an endless pending count. When the high-resolution tile finishes loading through `QueueTile`, the preview overlay cache is invalidated and recalculated.
-    - Current preferred large-image processed preview flow: build one ROI-level boolean mask for the selected processing step, then render red overlay tiles from that mask. The display path should not be responsible for running the edge algorithm per visible tile; pan/zoom should only redraw from the prepared mask.
-    - ROI mask creation is chunked (`1024 x 1024`) inside the selected ROI. Do not create one full ROI bitmap for large images; each chunk is processed and copied back into the ROI-level mask, with progress shown as `ROI Mask n/total`.
-    - Large ROI mask chunks now use `1024 x 1024` chunks with algorithm-dependent padding/overlap. Run the edge algorithm on the padded chunk, then copy only the core chunk area back into the ROI mask to avoid visible seams at chunk boundaries.
+    - Current preferred large-image processed preview flow: build one ROI-level boolean mask for each selected processing step, then render red overlay tiles from that mask. The display path must not run edge algorithms per visible tile; pan/zoom redraws only from the prepared mask.
+    - The current configuration processes the entire ROI in one OpenCV pass (`MaxSinglePassLargeRoiPixels = long.MaxValue`) to keep one continuous algorithm result. This is correct for the result but can require several GB of native and managed memory for a huge ROI; do not assume it will be instantaneous or safe for arbitrary ROI sizes.
+    - A chunked `1024 x 1024` implementation with padding remains in the code as a fallback path if the single-pass limit is lowered later. Padding must be retained if it is re-enabled to avoid visual seams.
     - Clearing the red overlay tile bitmap cache must not clear the completed ROI-level mask; otherwise the processed view can finish, invalidate, then start building the same mask again.
     - Overlay generation uses `LockBits` batch access for grayscale extraction and red transparent overlay creation; avoid `GetPixel`/`SetPixel` in this path because it makes large-image processing appear stuck.
     - Overlay tile drawing validates destination/source rectangles and catches GDI+ `ArgumentException` so one invalid overlay draw does not crash painting.
@@ -77,24 +78,25 @@
   - Viewer size/page changes do not auto-fit an already-loaded image. `ImageDisplayControl_SizeChanged` only invalidates/repaints, so switching tabs or layout pages should not reset zoom or pan. Fit-to-view is reserved for loading a new image, replacing with a different-size image, or the user pressing the reset/fit button.
 
 - `指定 ROI`
-  - Left function item expands/collapses child items at runtime:
-    - `新增 ROI`
-    - `ROI 1`, `ROI 2`, `ROI 3`, ...
+  - Left-click `指定 ROI` expands/collapses `ROI 1`, `ROI 2`, `ROI 3`, ... .
+  - Right-click `指定 ROI` shows `新增 ROI` and `顯示全部`.
+  - Right-click an existing `ROI N` shows `刪除`.
   - `新增 ROI` enables ROI drawing on currently visible `原圖` viewers that already have an image.
   - User drags a green rectangle on left or right `原圖`.
   - When mouse is released, a confirmation dialog asks whether to keep the ROI.
   - Confirmed ROI is appended to the ROI list and stored in image coordinates.
-  - Selecting `ROI N` makes it the active ROI, shows its green overlay on the right `原圖`, and makes image processing previews use that ROI.
-  - Selecting `ROI N` expands a child command:
-    - `刪除`
+  - Selecting `ROI N` makes it the active ROI and shows its green overlay. Processing previews apply the selected step to every saved ROI; the processed image remains full-frame.
   - `刪除` asks for confirmation before removing that ROI.
   - ROI list state is persisted in `SystemParameters.ini` under `[ROIs]`; legacy single `[ROI]` values are still loaded and converted into `ROI 1`.
 
 - `影像處理`
   - Left function item expands/collapses child items at runtime.
-  - Initial child item is `新增影像處理`; there are no processing steps until the user adds them.
-  - Each click on `新增影像處理` appends a new processing step shown as `處理N(未決定)` when no algorithm has been selected yet.
-  - Selecting a processing step expands `刪除`, `上移`, and `下移`.
+  - Right-click `影像處理` shows `新增影像處理`; there are no processing steps until the user adds one.
+  - Each add appends a new step shown as `處理N(未決定)` when no algorithm has been selected yet.
+  - Right-click a processing step shows `上移`, `下移`, `命名`, `刪除`.
+  - Ctrl-select two or more processing steps and/or groups, then right-click to create a named group.
+  - Groups are recursive: a group may contain steps and child groups. Left-click a group expands/collapses it; selecting a group renders the combined independent results of every descendant step. Each step still processes the original ROI, not the result of a preceding step.
+  - Right-click a group shows `上移`, `下移`, `命名`, `解除群組`, `刪除`. `解除群組` preserves and lifts its contents one level; `刪除` deletes its full descendant tree after confirmation.
   - `刪除` asks for confirmation with `是否要刪除該項處理？` before removing the step.
   - Selecting a processing step also shows a right-side runtime `TreeView` for the expected image processing flow.
   - The flow tree currently contains these top-level categories:
@@ -114,7 +116,7 @@
   - Selecting one of those methods switches the right side from the flow tree to its parameter editor. The `重新選擇方法` button returns to the flow tree.
   - Parameter edits are saved immediately into each step's `StepN.Parameters` INI field.
   - Numeric parameters use `NumericUpDown` controls. Mouse wheel adjusts values directly; holding Shift increases the step size by 10x.
-  - Processing previews run only inside the saved ROI, but the `處理後` image remains full-frame. Pixels outside ROI stay as the original grayscale image; detected `true` pixels inside ROI are drawn in red.
+  - Processing previews run only inside saved ROIs, but the `處理後` image remains full-frame. Pixels outside ROIs stay as the original grayscale image; detected `true` pixels inside ROIs are drawn in red.
   - The green ROI overlay is also shown on processed images so users can see exactly where the operation was applied.
   - Processed previews are resource-conscious:
     - Parameter/method/ROI changes mark the processed image as dirty.
@@ -125,8 +127,8 @@
     - If there is no previewable image-processing step left, both processed viewers are cleared so stale red overlays are never shown.
     - While processing preview is being computed, the lower status bar shows `影像處理運算中...`.
     - In large-image mode, `處理後` does not create a full-size processed bitmap. It renders `LargeImageSource` base tiles plus ROI-local red mask overlay tiles.
-  - Current preview implementations use simple in-app masks for Edge Detection methods. `Polarity Edge`, `Canny Edge`, and `Sobel Edge` all display red edge overlays, and their visible UI parameters are connected to preview calculation.
-  - Canny `GaussianBlurSize`/`GaussianSigma` and Polarity `Smoothing` flow through `ApplyGaussianBlur`, which uses Gaussian distance weighting.
+  - `Polarity Edge`, `Canny Edge`, and `Sobel Edge` use OpenCvSharp/OpenCV for all active paths: small-image preview, large-image ROI mask, and large-image fallback preview. The retired hand-written C# edge algorithms were removed.
+  - Small-image ROI extraction reads Gray8 data directly where possible. Color inputs are safely converted to grayscale at the boundary.
   - Processing step numbers are display positions only. When deleting or moving steps, the visible `處理1`, `處理2`, `處理3` numbering is regenerated, but each step's underlying method/parameters move with that step.
   - Processing workflow state is persisted in `SystemParameters.ini` under `[ImageProcessing]` so future algorithm selections can be restored and reordered safely.
 
@@ -149,14 +151,20 @@ Height=0
 
 [ImageProcessing]
 Count=0
+GroupCount=0
+Step1.DisplayName=
+Step1.GroupId=
 Step1.Method=
 Step1.Parameters=
+Group1.Id=
+Group1.ParentGroupId=
+Group1.DisplayName=
 ```
 
 - On startup:
   - If `LastImagePath` exists, the app reloads the previous image into both `原圖` viewers.
   - If ROI is enabled and valid, the right `原圖` restores the ROI overlay.
-  - If image processing steps are saved and at least one step is previewable, the app prepares the `處理後` image from the saved ROI/method/parameters so both left/right processed tabs have an image ready after startup.
+  - If image processing steps are saved and at least one step is previewable, the app prepares the `處理後` image from the saved ROIs/method/parameters so both left/right processed tabs have an image ready after startup.
 
 ## Important Files
 - `IntegratedImageProcessingApp\Forms\MainForm.cs`
@@ -164,7 +172,7 @@ Step1.Parameters=
   - Image load flow.
   - Visible viewer sync.
   - ROI workflow.
-  - Image processing step list, reorder/delete actions, and right-side flow tree selection.
+  - Image processing tree, recursive groups, context menus, OpenCV preview dispatch, and right-side flow tree selection.
   - Startup restore from INI.
 
 - `IntegratedImageProcessingApp\Forms\MainForm.Designer.cs`
@@ -182,7 +190,10 @@ Step1.Parameters=
 
 - `IntegratedImageProcessingApp\Controls\LargeImageSource.cs`
   - Ported from `C:\Users\falcomu\Documents\Codex\程式撰寫 專案資料夾\攝影機影像擷取\my-app-2\CameraCaptureApp\Controls\LargeImageSource.cs`.
-  - WIC-backed preview and tile source for huge images.
+  - WIC-backed `Gray8` preview and tile source for huge images; safely converts color sources to grayscale.
+
+- `IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj` and `packages.config`
+  - OpenCvSharp plus explicit .NET Framework runtime dependencies: `System.Runtime.CompilerServices.Unsafe 6.0.0`, `System.Memory`, `System.Buffers`, and `System.Numerics.Vectors`. Do not remove these references: OpenCvSharp needs them at runtime.
 
 - `IntegratedImageProcessingApp\Services\SystemParameterIniService.cs`
   - Simple INI load/save service.
@@ -192,6 +203,7 @@ Step1.Parameters=
   - Also stores image processing workflow steps, including each step's future method and parameters.
 
 ## Latest Commits
+- `9d8040c Optimize OpenCV edge postprocessing`
 - `24e6a88 Persist ROI settings to ini`
 - `17199a5 Add ROI selection workflow`
 - `086e836 Sync visible image viewer state`
@@ -211,4 +223,6 @@ Step1.Parameters=
 - Be careful with `MainForm.Designer.cs`; avoid helper method calls or custom-control declarations in the main designer file if Visual Studio Designer starts failing.
 - Prefer adding runtime behavior in `MainForm.cs` and reusable viewer behavior in `ImageDisplayControl.cs`.
 - Treat images inside the app as grayscale-only. Color input files should be converted in memory at the boundary before display or analysis; already-grayscale input should not be converted again.
+- All active edge detection must stay on the shared OpenCV implementations. Do not restore the retired hand-written C# Canny/Sobel/Polarity code.
+- For a huge full-frame ROI (for example `16384 x 50000`), a one-pass OpenCV Canny/Sobel/Polarity operation needs multiple large temporary Mats. The current full-ROI setting prioritizes continuous results over memory use; test target image sizes before relying on it in production.
 - There may be Visual Studio formatting-only changes in `MainForm.Designer.cs` or `MainForm.resx` after opening the designer. Inspect before committing.

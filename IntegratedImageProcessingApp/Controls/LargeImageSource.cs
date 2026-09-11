@@ -37,6 +37,7 @@ namespace IntegratedImageProcessingApp.Controls
             _frame.Freeze();
             Width = _frame.PixelWidth;
             Height = _frame.PixelHeight;
+            SourceIsGrayscale = IsGrayscalePixelFormat(_frame.Format);
             _tileCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
             _tileOrder = new LinkedList<string>();
             _pendingTiles = new HashSet<string>(StringComparer.Ordinal);
@@ -48,6 +49,8 @@ namespace IntegratedImageProcessingApp.Controls
         public int Width { get; private set; }
 
         public int Height { get; private set; }
+
+        public bool SourceIsGrayscale { get; private set; }
 
         public void PreloadAllTiles(CancellationToken cancellationToken)
         {
@@ -834,7 +837,9 @@ namespace IntegratedImageProcessingApp.Controls
 
         private static Bitmap ConvertToBitmap(SWMI.BitmapSource source)
         {
-            var formatted = new SWMI.FormatConvertedBitmap(source, SWM.PixelFormats.Bgr32, null, 0);
+            // Gray sources remain one channel; color sources are explicitly
+            // converted to Gray8 here before either display or OpenCV sees them.
+            var formatted = new SWMI.FormatConvertedBitmap(source, SWM.PixelFormats.Gray8, null, 0);
             if (formatted.PixelWidth <= 0 || formatted.PixelHeight <= 0 ||
                 formatted.PixelWidth > 65535 || formatted.PixelHeight > 65535)
             {
@@ -848,7 +853,14 @@ namespace IntegratedImageProcessingApp.Controls
                     formatted.PixelWidth + "x" + formatted.PixelHeight);
             }
 
-            var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format32bppArgb);
+            var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format8bppIndexed);
+            ColorPalette palette = bitmap.Palette;
+            for (int index = 0; index < palette.Entries.Length; index++)
+            {
+                palette.Entries[index] = Color.FromArgb(index, index, index);
+            }
+
+            bitmap.Palette = palette;
             var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
             try
             {
@@ -864,6 +876,16 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             return bitmap;
+        }
+
+        private static bool IsGrayscalePixelFormat(SWM.PixelFormat format)
+        {
+            return format == SWM.PixelFormats.BlackWhite ||
+                format == SWM.PixelFormats.Gray2 ||
+                format == SWM.PixelFormats.Gray4 ||
+                format == SWM.PixelFormats.Gray8 ||
+                format == SWM.PixelFormats.Gray16 ||
+                format == SWM.PixelFormats.Gray32Float;
         }
 
         private static int ReadGrayFromBitmap(Bitmap bitmap, int x, int y)

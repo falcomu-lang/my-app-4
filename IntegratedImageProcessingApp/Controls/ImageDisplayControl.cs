@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -36,6 +37,7 @@ namespace IntegratedImageProcessingApp.Controls
         private Point _roiStartPoint;
         private Point _roiCurrentPoint;
         private Rectangle? _roiOverlay;
+        private Rectangle[] _roiOverlays = new Rectangle[0];
         private bool _tileRefreshPending;
         private DateTime _lastPanInvalidateUtc = DateTime.MinValue;
         private DateTime _lastZoomUtc = DateTime.MinValue;
@@ -213,6 +215,34 @@ namespace IntegratedImageProcessingApp.Controls
             lock (_imageLock)
             {
                 _roiOverlay = NormalizeImageRectangle(roi);
+                _roiOverlays = new Rectangle[0];
+            }
+
+            viewerPanel.Invalidate();
+        }
+
+        public void SetRoiOverlays(IEnumerable<Rectangle> rois)
+        {
+            if (rois == null)
+            {
+                ClearRoiOverlay();
+                return;
+            }
+
+            var overlays = new List<Rectangle>();
+            foreach (Rectangle roi in rois)
+            {
+                Rectangle normalized = NormalizeImageRectangle(roi);
+                if (normalized.Width > 0 && normalized.Height > 0)
+                {
+                    overlays.Add(normalized);
+                }
+            }
+
+            lock (_imageLock)
+            {
+                _roiOverlay = null;
+                _roiOverlays = overlays.ToArray();
             }
 
             viewerPanel.Invalidate();
@@ -223,6 +253,7 @@ namespace IntegratedImageProcessingApp.Controls
             lock (_imageLock)
             {
                 _roiOverlay = null;
+                _roiOverlays = new Rectangle[0];
             }
 
             viewerPanel.Invalidate();
@@ -436,6 +467,7 @@ namespace IntegratedImageProcessingApp.Controls
             float zoom;
             PointF offset;
             Rectangle? roiOverlay;
+            Rectangle[] roiOverlays;
             lock (_imageLock)
             {
                 bitmap = _sourceBitmap;
@@ -443,6 +475,7 @@ namespace IntegratedImageProcessingApp.Controls
                 zoom = _zoom;
                 offset = _imageOffset;
                 roiOverlay = _roiOverlay;
+                roiOverlays = _roiOverlays;
             }
 
             if ((bitmap == null && largeImageSource == null) || zoom <= 0f)
@@ -462,6 +495,7 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             DrawRoiOverlay(e.Graphics, roiOverlay, zoom, offset);
+            DrawRoiOverlays(e.Graphics, roiOverlays, zoom, offset);
             DrawActiveRoiSelection(e.Graphics);
         }
 
@@ -929,6 +963,23 @@ namespace IntegratedImageProcessingApp.Controls
                     viewRectangle.Y,
                     viewRectangle.Width,
                     viewRectangle.Height);
+            }
+        }
+
+        private static void DrawRoiOverlays(Graphics graphics, Rectangle[] roiOverlays, float zoom, PointF offset)
+        {
+            if (roiOverlays == null || roiOverlays.Length == 0)
+            {
+                return;
+            }
+
+            using (var pen = new Pen(Color.LimeGreen, 2f))
+            {
+                foreach (Rectangle roi in roiOverlays)
+                {
+                    RectangleF viewRectangle = ImageRectangleToViewRectangle(roi, zoom, offset);
+                    graphics.DrawRectangle(pen, viewRectangle.X, viewRectangle.Y, viewRectangle.Width, viewRectangle.Height);
+                }
             }
         }
 
