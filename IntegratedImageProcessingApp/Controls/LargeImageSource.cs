@@ -228,18 +228,20 @@ namespace IntegratedImageProcessingApp.Controls
                         try
                         {
                             int bytesPerPixel = Math.Max(1, Image.GetPixelFormatSize(tile.PixelFormat) / 8);
+                            int sourceStride = Math.Abs(data.Stride);
+                            byte[] sourceRow = new byte[sourceStride];
                             for (int y = copyRect.Top; y < copyRect.Bottom; y++)
                             {
                                 int sourceY = y - tileRect.Top;
                                 int targetY = y - normalized.Top;
-                                IntPtr row = data.Scan0 + (sourceY * data.Stride);
+                                Marshal.Copy(data.Scan0 + (sourceY * data.Stride), sourceRow, 0, sourceStride);
                                 for (int x = copyRect.Left; x < copyRect.Right; x++)
                                 {
                                     int sourceX = x - tileRect.Left;
                                     int offset = sourceX * bytesPerPixel;
-                                    byte b = Marshal.ReadByte(row, offset);
-                                    byte g = bytesPerPixel > 1 ? Marshal.ReadByte(row, offset + 1) : b;
-                                    byte r = bytesPerPixel > 2 ? Marshal.ReadByte(row, offset + 2) : b;
+                                    byte b = sourceRow[offset];
+                                    byte g = bytesPerPixel > 1 ? sourceRow[offset + 1] : b;
+                                    byte r = bytesPerPixel > 2 ? sourceRow[offset + 2] : b;
                                     result[x - normalized.Left, targetY] = (byte)((r + g + b) / 3);
                                 }
                             }
