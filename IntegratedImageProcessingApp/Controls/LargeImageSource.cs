@@ -841,8 +841,9 @@ namespace IntegratedImageProcessingApp.Controls
             try
             {
                 int destinationStride = Math.Abs(data.Stride);
+                int destinationRowBytes = checked(bitmap.Width * 3);
                 byte[] sourceRow = new byte[sourceStride];
-                byte[] destinationRow = new byte[destinationStride];
+                byte[] destinationRow = new byte[destinationRowBytes];
                 for (int y = 0; y < bitmap.Height; y++)
                 {
                     formatted.CopyPixels(
@@ -859,7 +860,7 @@ namespace IntegratedImageProcessingApp.Controls
                         destinationRow[destinationOffset + 2] = sourceRow[sourceOffsetX + 2];
                     }
 
-                    Marshal.Copy(destinationRow, 0, data.Scan0 + (y * data.Stride), destinationStride);
+                    Marshal.Copy(destinationRow, 0, data.Scan0 + (y * data.Stride), destinationRowBytes);
                 }
             }
             finally
