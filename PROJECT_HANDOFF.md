@@ -39,6 +39,7 @@
     `C:\Users\falcomu\Documents\Codex\程式撰寫 專案資料夾\攝影機影像擷取\my-app-2`
   - Large image display now reuses the tiled rendering approach from `my-app-2`:
     - `LargeImageSource` loads huge files through WIC.
+    - WIC decoding must use `BitmapCacheOption.OnDemand`; `OnLoad` can throw `OutOfMemoryException` during decoder creation for images such as `16384 x 50000`.
     - Low zoom paints a progressive preview.
     - Higher zoom requests and draws `1024 x 1024` tiles on demand.
     - Tile drawing uses destination rounding and `WrapMode.TileFlipXY` to avoid visible seams.

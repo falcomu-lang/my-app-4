@@ -29,7 +29,7 @@ namespace IntegratedImageProcessingApp.Controls
         public LargeImageSource(string filePath)
         {
             _stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var decoder = SWMI.BitmapDecoder.Create(_stream, SWMI.BitmapCreateOptions.PreservePixelFormat, SWMI.BitmapCacheOption.OnLoad);
+            var decoder = SWMI.BitmapDecoder.Create(_stream, SWMI.BitmapCreateOptions.PreservePixelFormat, SWMI.BitmapCacheOption.OnDemand);
             _frame = decoder.Frames[0];
             Width = _frame.PixelWidth;
             Height = _frame.PixelHeight;
@@ -400,8 +400,6 @@ namespace IntegratedImageProcessingApp.Controls
             AddPreviewLevel(1024);
             AddPreviewLevel(2048);
             AddPreviewLevel(4096);
-            AddPreviewLevel(8192);
-            AddPreviewLevel(10000);
             _previewLevels.Sort((a, b) => b.Scale.CompareTo(a.Scale));
         }
 
