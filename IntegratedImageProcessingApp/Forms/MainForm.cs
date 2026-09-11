@@ -1660,7 +1660,8 @@ namespace IntegratedImageProcessingApp.Forms
             string maskKey = CreateLargeProcessedMaskKey(roi, step);
             lock (largeProcessedMaskLock)
             {
-                if (string.Equals(latestLargeProcessedMaskKey, maskKey, StringComparison.Ordinal) && latestLargeProcessedMask != null)
+                if (string.Equals(latestLargeProcessedMaskKey, maskKey, StringComparison.Ordinal) &&
+                    latestLargeProcessedMask != null && !isLargeProcessedMaskBuilding)
                 {
                     return;
                 }
@@ -1765,6 +1766,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 if (completedChunks == 1 || completedChunks == totalChunks || completedChunks % 8 == 0)
                                 {
                                     int progress = completedChunks;
+                                    bool publishPartialMask = completedChunks == 1 || completedChunks % 8 == 0;
                                     BeginInvoke(
                                         new Action(
                                             delegate
@@ -1776,11 +1778,25 @@ namespace IntegratedImageProcessingApp.Forms
                                                     {
                                                         return;
                                                     }
+
+                                                    // Publish completed chunks immediately. The paint path only reads
+                                                    // the already-written cells, so large ROIs become visible while
+                                                    // the remaining chunks continue in the background.
+                                                    if (publishPartialMask)
+                                                    {
+                                                        latestLargeProcessedMask = mask;
+                                                        latestLargeProcessedMaskRoi = roi;
+                                                    }
                                                 }
 
                                                 statusLabel.Text = "影像處理運算中...ROI Mask " +
                                                     progress.ToString(CultureInfo.InvariantCulture) + "/" +
                                                     totalChunks.ToString(CultureInfo.InvariantCulture);
+                                                if (publishPartialMask)
+                                                {
+                                                    leftProcessedDisplayControl.InvalidateImageView();
+                                                    rightProcessedDisplayControl.InvalidateImageView();
+                                                }
                                             }));
                                 }
                             }
