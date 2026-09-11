@@ -6,6 +6,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -56,6 +57,8 @@ namespace IntegratedImageProcessingApp.Forms
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
         private const int MaxLargeProcessedOverlayCacheCount = 128;
+        private const int LargeProcessedOverlayTileSize = 256;
+        private const int MaxPendingLargeProcessedOverlayTiles = 4;
         private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
 
         public MainForm()
@@ -1648,19 +1651,18 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            const int overlayTileSize = 1024;
-            int startTileX = (visibleRoi.Left / overlayTileSize) * overlayTileSize;
-            int endTileX = ((visibleRoi.Right + overlayTileSize - 1) / overlayTileSize) * overlayTileSize;
-            int startTileY = (visibleRoi.Top / overlayTileSize) * overlayTileSize;
-            int endTileY = ((visibleRoi.Bottom + overlayTileSize - 1) / overlayTileSize) * overlayTileSize;
+            int startTileX = (visibleRoi.Left / LargeProcessedOverlayTileSize) * LargeProcessedOverlayTileSize;
+            int endTileX = ((visibleRoi.Right + LargeProcessedOverlayTileSize - 1) / LargeProcessedOverlayTileSize) * LargeProcessedOverlayTileSize;
+            int startTileY = (visibleRoi.Top / LargeProcessedOverlayTileSize) * LargeProcessedOverlayTileSize;
+            int endTileY = ((visibleRoi.Bottom + LargeProcessedOverlayTileSize - 1) / LargeProcessedOverlayTileSize) * LargeProcessedOverlayTileSize;
 
-            for (int tileY = startTileY; tileY < endTileY; tileY += overlayTileSize)
+            for (int tileY = startTileY; tileY < endTileY; tileY += LargeProcessedOverlayTileSize)
             {
-                for (int tileX = startTileX; tileX < endTileX; tileX += overlayTileSize)
+                for (int tileX = startTileX; tileX < endTileX; tileX += LargeProcessedOverlayTileSize)
                 {
                     Rectangle tileRect = Rectangle.Intersect(
                         visibleRoi,
-                        new Rectangle(tileX, tileY, overlayTileSize, overlayTileSize));
+                        new Rectangle(tileX, tileY, LargeProcessedOverlayTileSize, LargeProcessedOverlayTileSize));
                     if (tileRect.Width <= 0 || tileRect.Height <= 0)
                     {
                         continue;
@@ -1668,7 +1670,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                     Bitmap overlay;
                     string cacheKey = CreateLargeProcessedOverlayCacheKey(tileRect, step);
-                    if (largeProcessedOverlayCache.TryGetValue(cacheKey, out overlay))
+                    if (TryGetLargeProcessedOverlayFromCache(cacheKey, out overlay))
                     {
                         DrawLargeProcessedOverlayTile(e.Graphics, overlay, tileRect, e.Zoom, e.Offset);
                     }
@@ -1678,6 +1680,28 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                 }
             }
+        }
+
+        private bool TryGetLargeProcessedOverlayFromCache(string cacheKey, out Bitmap overlay)
+        {
+            if (largeProcessedOverlayCache.TryGetValue(cacheKey, out overlay))
+            {
+                try
+                {
+                    if (overlay != null && overlay.Width > 0 && overlay.Height > 0)
+                    {
+                        return true;
+                    }
+                }
+                catch (ArgumentException)
+                {
+                }
+
+                largeProcessedOverlayCache.Remove(cacheKey);
+            }
+
+            overlay = null;
+            return false;
         }
 
         private string CreateLargeProcessedOverlayCacheKey(Rectangle tileRect, ImageProcessingStepSettings step)
@@ -1699,11 +1723,16 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (pendingLargeProcessedOverlayTiles.Count >= MaxPendingLargeProcessedOverlayTiles)
+            {
+                return;
+            }
+
             pendingLargeProcessedOverlayTiles.Add(cacheKey);
             string method = step.Method;
             string parameters = step.Parameters;
             LargeImageSource sharedSource = source.AddReference();
-            statusLabel.Text = "影像處理運算中...";
+            statusLabel.Text = "影像處理運算中...等待 " + pendingLargeProcessedOverlayTiles.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊";
 
             Task.Run(
                 delegate
@@ -1729,7 +1758,9 @@ namespace IntegratedImageProcessingApp.Forms
 
                                     largeProcessedOverlayCache[cacheKey] = overlay;
                                     overlay = null;
-                                    statusLabel.Text = "影像處理完成";
+                                    statusLabel.Text = pendingLargeProcessedOverlayTiles.Count > 0
+                                        ? "影像處理運算中...等待 " + pendingLargeProcessedOverlayTiles.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊"
+                                        : "影像處理完成";
                                     leftProcessedDisplayControl.InvalidateImageView();
                                     rightProcessedDisplayControl.InvalidateImageView();
                                 }));
@@ -1762,15 +1793,32 @@ namespace IntegratedImageProcessingApp.Forms
             int width = mask.GetLength(0);
             int height = mask.GetLength(1);
             var overlay = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-            for (int y = 0; y < height; y++)
+            BitmapData data = overlay.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            try
             {
-                for (int x = 0; x < width; x++)
+                int stride = data.Stride;
+                byte[] row = new byte[Math.Abs(stride)];
+                for (int y = 0; y < height; y++)
                 {
-                    if (mask[x, y])
+                    Array.Clear(row, 0, row.Length);
+                    for (int x = 0; x < width; x++)
                     {
-                        overlay.SetPixel(x, y, Color.Red);
+                        if (mask[x, y])
+                        {
+                            int offset = x * 4;
+                            row[offset] = 0;
+                            row[offset + 1] = 0;
+                            row[offset + 2] = 255;
+                            row[offset + 3] = 255;
+                        }
                     }
+
+                    Marshal.Copy(row, 0, data.Scan0 + (y * stride), row.Length);
                 }
+            }
+            finally
+            {
+                overlay.UnlockBits(data);
             }
 
             return overlay;
@@ -1778,7 +1826,20 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static void DrawLargeProcessedOverlayTile(Graphics graphics, Bitmap overlay, Rectangle tileRect, float zoom, PointF offset)
         {
-            if (overlay == null || overlay.Width <= 0 || overlay.Height <= 0 || tileRect.Width <= 0 || tileRect.Height <= 0 || zoom <= 0f)
+            int overlayWidth;
+            int overlayHeight;
+            try
+            {
+                overlayWidth = overlay != null ? overlay.Width : 0;
+                overlayHeight = overlay != null ? overlay.Height : 0;
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine(ex);
+                return;
+            }
+
+            if (overlayWidth <= 0 || overlayHeight <= 0 || tileRect.Width <= 0 || tileRect.Height <= 0 || zoom <= 0f)
             {
                 return;
             }
@@ -1798,7 +1859,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             var destination = Rectangle.FromLTRB(left, top, right, bottom);
-            var source = new Rectangle(0, 0, overlay.Width, overlay.Height);
+            var source = new Rectangle(0, 0, overlayWidth, overlayHeight);
             try
             {
                 graphics.DrawImage(overlay, destination, source, GraphicsUnit.Pixel);
@@ -1924,12 +1985,32 @@ namespace IntegratedImageProcessingApp.Forms
         private static byte[,] CreateGrayValues(Bitmap image)
         {
             var gray = new byte[image.Width, image.Height];
-            for (int y = 0; y < image.Height; y++)
+            using (var readable = new Bitmap(image.Width, image.Height, PixelFormat.Format32bppArgb))
             {
-                for (int x = 0; x < image.Width; x++)
+                using (Graphics graphics = Graphics.FromImage(readable))
                 {
-                    Color color = image.GetPixel(x, y);
-                    gray[x, y] = (byte)((color.R + color.G + color.B) / 3);
+                    graphics.DrawImageUnscaled(image, 0, 0);
+                }
+
+                BitmapData data = readable.LockBits(new Rectangle(0, 0, readable.Width, readable.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                try
+                {
+                    int stride = data.Stride;
+                    int rowBytes = readable.Width * 4;
+                    byte[] row = new byte[rowBytes];
+                    for (int y = 0; y < readable.Height; y++)
+                    {
+                        Marshal.Copy(data.Scan0 + (y * stride), row, 0, rowBytes);
+                        for (int x = 0; x < readable.Width; x++)
+                        {
+                            int offset = x * 4;
+                            gray[x, y] = (byte)((row[offset + 2] + row[offset + 1] + row[offset]) / 3);
+                        }
+                    }
+                }
+                finally
+                {
+                    readable.UnlockBits(data);
                 }
             }
 
