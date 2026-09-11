@@ -1713,10 +1713,8 @@ namespace IntegratedImageProcessingApp.Forms
                         // not pay the per-chunk bitmap/array setup cost.
                         if ((long)roi.Width * roi.Height <= MaxSinglePassLargeRoiPixels)
                         {
-                            using (Bitmap roiImage = sharedSource.CreateRegionBitmapFromTiles(roi))
-                            {
-                                mask = CreateEdgeMask(roiImage, method, parsedParameters);
-                            }
+                            byte[,] gray = sharedSource.CreateGrayRegionFromTiles(roi);
+                            mask = CreateEdgeMask(gray, method, parsedParameters);
 
                             PublishCompletedLargeProcessedMask(mask, roi, maskKey, generation);
                             mask = null;
@@ -2467,7 +2465,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static bool[,] CreateEdgeMask(Bitmap image, string method, Dictionary<string, string> parameters)
         {
-            byte[,] gray = CreateGrayValues(image);
+            return CreateEdgeMask(CreateGrayValues(image), method, parameters);
+        }
+
+        private static bool[,] CreateEdgeMask(byte[,] gray, string method, Dictionary<string, string> parameters)
+        {
             if (method == "Canny Edge")
             {
                 int lowThreshold = GetIntParameter(parameters, "LowThreshold", 50);

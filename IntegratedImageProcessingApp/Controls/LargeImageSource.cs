@@ -180,6 +180,81 @@ namespace IntegratedImageProcessingApp.Controls
             return result;
         }
 
+        public byte[,] CreateGrayRegionFromTiles(Rectangle sourceRect)
+        {
+            Rectangle normalized;
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                normalized = NormalizeRect(sourceRect);
+            }
+
+            var result = new byte[normalized.Width, normalized.Height];
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                int firstTileX = (normalized.Left / TileSourceSize) * TileSourceSize;
+                int firstTileY = (normalized.Top / TileSourceSize) * TileSourceSize;
+                int lastTileX = ((normalized.Right - 1) / TileSourceSize) * TileSourceSize;
+                int lastTileY = ((normalized.Bottom - 1) / TileSourceSize) * TileSourceSize;
+
+                for (int tileY = firstTileY; tileY <= lastTileY; tileY += TileSourceSize)
+                {
+                    for (int tileX = firstTileX; tileX <= lastTileX; tileX += TileSourceSize)
+                    {
+                        Rectangle tileRect = new Rectangle(
+                            tileX,
+                            tileY,
+                            Math.Min(TileSourceSize, Width - tileX),
+                            Math.Min(TileSourceSize, Height - tileY));
+                        string key = CreateTileKey(tileRect);
+                        Bitmap tile;
+                        if (!_tileCache.TryGetValue(key, out tile))
+                        {
+                            tile = CreateTileBitmap(tileRect);
+                            AddTileToCacheUnsafe(key, tile);
+                            tile = _tileCache[key];
+                        }
+                        else
+                        {
+                            TouchKey(key);
+                        }
+
+                        Rectangle copyRect = Rectangle.Intersect(normalized, tileRect);
+                        BitmapData data = tile.LockBits(
+                            new Rectangle(0, 0, tile.Width, tile.Height),
+                            ImageLockMode.ReadOnly,
+                            tile.PixelFormat);
+                        try
+                        {
+                            int bytesPerPixel = Math.Max(1, Image.GetPixelFormatSize(tile.PixelFormat) / 8);
+                            for (int y = copyRect.Top; y < copyRect.Bottom; y++)
+                            {
+                                int sourceY = y - tileRect.Top;
+                                int targetY = y - normalized.Top;
+                                IntPtr row = data.Scan0 + (sourceY * data.Stride);
+                                for (int x = copyRect.Left; x < copyRect.Right; x++)
+                                {
+                                    int sourceX = x - tileRect.Left;
+                                    int offset = sourceX * bytesPerPixel;
+                                    byte b = Marshal.ReadByte(row, offset);
+                                    byte g = bytesPerPixel > 1 ? Marshal.ReadByte(row, offset + 1) : b;
+                                    byte r = bytesPerPixel > 2 ? Marshal.ReadByte(row, offset + 2) : b;
+                                    result[x - normalized.Left, targetY] = (byte)((r + g + b) / 3);
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            tile.UnlockBits(data);
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
         public bool TryCreateRegionBitmapFromCachedTile(Rectangle sourceRect, out Bitmap region)
         {
             region = null;
