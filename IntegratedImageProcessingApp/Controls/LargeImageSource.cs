@@ -749,6 +749,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         private Bitmap CreateTileBitmap(Rectangle sourceRect)
         {
+            if (sourceRect.Width > TileSourceSize || sourceRect.Height > TileSourceSize)
+            {
+                throw new ArgumentOutOfRangeException("sourceRect", "單次 WIC 轉換只能處理一個原圖 tile。");
+            }
+
             var cropped = new SWMI.CroppedBitmap(
                 _frame,
                 new SW.Int32Rect(sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height));
@@ -835,36 +840,15 @@ namespace IntegratedImageProcessingApp.Controls
                 throw new ArgumentException("WIC 預覽影像尺寸無效。", "source");
             }
 
-            var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format24bppRgb);
-            var sourceStride = formatted.PixelWidth * 4;
+            var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format32bppArgb);
             var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
             try
             {
-                int destinationStride = Math.Abs(data.Stride);
-                int destinationRowBytes = checked(bitmap.Width * 3);
-                byte[] sourcePixels = new byte[checked(sourceStride * formatted.PixelHeight)];
-                byte[] destinationRow = new byte[destinationRowBytes];
                 formatted.CopyPixels(
                     new SW.Int32Rect(0, 0, formatted.PixelWidth, formatted.PixelHeight),
-                    sourcePixels,
-                    sourceStride,
-                    sourcePixels.Length);
-                int copyWidth = Math.Min(bitmap.Width, formatted.PixelWidth);
-                int copyHeight = Math.Min(bitmap.Height, formatted.PixelHeight);
-                for (int y = 0; y < copyHeight; y++)
-                {
-                    Array.Clear(destinationRow, 0, destinationRow.Length);
-                    for (int x = 0; x < copyWidth; x++)
-                    {
-                        int sourceOffsetX = (y * sourceStride) + (x * 4);
-                        int destinationOffset = x * 3;
-                        destinationRow[destinationOffset] = sourcePixels[sourceOffsetX];
-                        destinationRow[destinationOffset + 1] = sourcePixels[sourceOffsetX + 1];
-                        destinationRow[destinationOffset + 2] = sourcePixels[sourceOffsetX + 2];
-                    }
-
-                    Marshal.Copy(destinationRow, 0, data.Scan0 + (y * data.Stride), destinationRowBytes);
-                }
+                    data.Scan0,
+                    Math.Abs(data.Stride) * data.Height,
+                    data.Stride);
             }
             finally
             {
