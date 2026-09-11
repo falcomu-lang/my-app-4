@@ -65,6 +65,9 @@ namespace IntegratedImageProcessingApp.Forms
         private const int MaxLargeProcessedOverlayCacheCount = 128;
         private const int LargeProcessedOverlayTileSize = 128;
         private const int LargeProcessedMaskChunkSize = 1024;
+        // The algorithm must see the complete ROI so connected edges and
+        // component filtering have the same result as a single full-image run.
+        private const long MaxSinglePassLargeRoiPixels = long.MaxValue;
         private const int MaxPendingLargeProcessedOverlayTiles = 2;
         private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
 
@@ -1703,8 +1706,24 @@ namespace IntegratedImageProcessingApp.Forms
                     bool[,] mask = null;
                     try
                     {
-                        mask = new bool[roi.Width, roi.Height];
                         Dictionary<string, string> parsedParameters = ParseImageProcessingParameters(parameters);
+
+                        // Most ROIs are small compared with the source image. Process
+                        // those in one pass so the edge algorithm runs once and does
+                        // not pay the per-chunk bitmap/array setup cost.
+                        if ((long)roi.Width * roi.Height <= MaxSinglePassLargeRoiPixels)
+                        {
+                            using (Bitmap roiImage = sharedSource.CreateRegionBitmapFromTiles(roi))
+                            {
+                                mask = CreateEdgeMask(roiImage, method, parsedParameters);
+                            }
+
+                            PublishCompletedLargeProcessedMask(mask, roi, maskKey, generation);
+                            mask = null;
+                            return;
+                        }
+
+                        mask = new bool[roi.Width, roi.Height];
                         int padding = GetLargeProcessedChunkPadding(method, parsedParameters);
                         int chunkCountX = (roi.Width + LargeProcessedMaskChunkSize - 1) / LargeProcessedMaskChunkSize;
                         int chunkCountY = (roi.Height + LargeProcessedMaskChunkSize - 1) / LargeProcessedMaskChunkSize;
@@ -1859,6 +1878,31 @@ namespace IntegratedImageProcessingApp.Forms
                         sharedSource.ReleaseReference();
                     }
                 });
+        }
+
+        private void PublishCompletedLargeProcessedMask(bool[,] mask, Rectangle roi, string maskKey, int generation)
+        {
+            BeginInvoke(
+                new Action(
+                    delegate
+                    {
+                        lock (largeProcessedMaskLock)
+                        {
+                            if (generation != largeProcessedMaskGeneration ||
+                                !string.Equals(latestLargeProcessedMaskKey, maskKey, StringComparison.Ordinal))
+                            {
+                                return;
+                            }
+
+                            latestLargeProcessedMask = mask;
+                            latestLargeProcessedMaskRoi = roi;
+                            isLargeProcessedMaskBuilding = false;
+                        }
+
+                        statusLabel.Text = "大圖 ROI Mask 建立完成";
+                        leftProcessedDisplayControl.InvalidateImageView();
+                        rightProcessedDisplayControl.InvalidateImageView();
+                    }));
         }
 
         private string CreateLargeProcessedMaskKey(Rectangle roi, ImageProcessingStepSettings step)
