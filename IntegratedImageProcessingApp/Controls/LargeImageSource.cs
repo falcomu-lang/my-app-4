@@ -844,14 +844,17 @@ namespace IntegratedImageProcessingApp.Controls
                 int destinationRowBytes = checked(bitmap.Width * 3);
                 byte[] sourceRow = new byte[sourceStride];
                 byte[] destinationRow = new byte[destinationRowBytes];
-                for (int y = 0; y < bitmap.Height; y++)
+                int copyWidth = Math.Min(bitmap.Width, sourceRow.Length / 4);
+                int copyHeight = Math.Min(bitmap.Height, formatted.PixelHeight);
+                for (int y = 0; y < copyHeight; y++)
                 {
                     formatted.CopyPixels(
-                        new SW.Int32Rect(0, y, formatted.PixelWidth, 1),
+                        new SW.Int32Rect(0, y, copyWidth, 1),
                         sourceRow,
                         sourceStride,
-                        sourceStride);
-                    for (int x = 0; x < bitmap.Width; x++)
+                        sourceRow.Length);
+                    Array.Clear(destinationRow, 0, destinationRow.Length);
+                    for (int x = 0; x < copyWidth; x++)
                     {
                         int sourceOffsetX = x * 4;
                         int destinationOffset = x * 3;
