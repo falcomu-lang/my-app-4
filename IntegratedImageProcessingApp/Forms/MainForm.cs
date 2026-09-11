@@ -43,6 +43,12 @@ namespace IntegratedImageProcessingApp.Forms
         private Bitmap latestProcessedImage;
         private readonly Dictionary<string, Bitmap> largeProcessedOverlayCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
         private readonly HashSet<string> pendingLargeProcessedOverlayTiles = new HashSet<string>(StringComparer.Ordinal);
+        private readonly object largeProcessedMaskLock = new object();
+        private bool[,] latestLargeProcessedMask;
+        private Rectangle latestLargeProcessedMaskRoi;
+        private string latestLargeProcessedMaskKey;
+        private bool isLargeProcessedMaskBuilding;
+        private int largeProcessedMaskGeneration;
         private bool processedImageDirty = true;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
@@ -1440,6 +1446,19 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ClearLargeProcessedOverlayCache()
         {
+            ClearLargeProcessedOverlayBitmapsOnly();
+            lock (largeProcessedMaskLock)
+            {
+                latestLargeProcessedMask = null;
+                latestLargeProcessedMaskRoi = Rectangle.Empty;
+                latestLargeProcessedMaskKey = null;
+                isLargeProcessedMaskBuilding = false;
+                largeProcessedMaskGeneration++;
+            }
+        }
+
+        private void ClearLargeProcessedOverlayBitmapsOnly()
+        {
             foreach (Bitmap overlay in largeProcessedOverlayCache.Values)
             {
                 overlay.Dispose();
@@ -1615,6 +1634,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                 leftProcessedDisplayControl.SetRoiOverlay(roi.Value);
                 rightProcessedDisplayControl.SetRoiOverlay(roi.Value);
+                StartLargeProcessedMaskBuild(sharedSource, roi.Value, systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex]);
             }
             finally
             {
@@ -1627,6 +1647,139 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ApplySharedImageViewStateToVisibleControls();
+        }
+
+        private void StartLargeProcessedMaskBuild(LargeImageSource source, Rectangle roi, ImageProcessingStepSettings step)
+        {
+            if (source == null || roi.Width <= 0 || roi.Height <= 0 || step == null || !IsEdgeDetectionMethod(step.Method))
+            {
+                return;
+            }
+
+            string maskKey = CreateLargeProcessedMaskKey(roi, step);
+            lock (largeProcessedMaskLock)
+            {
+                if (string.Equals(latestLargeProcessedMaskKey, maskKey, StringComparison.Ordinal) && latestLargeProcessedMask != null)
+                {
+                    return;
+                }
+
+                if (isLargeProcessedMaskBuilding && string.Equals(latestLargeProcessedMaskKey, maskKey, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                latestLargeProcessedMask = null;
+                latestLargeProcessedMaskRoi = roi;
+                latestLargeProcessedMaskKey = maskKey;
+                isLargeProcessedMaskBuilding = true;
+                largeProcessedMaskGeneration++;
+            }
+
+            int generation;
+            lock (largeProcessedMaskLock)
+            {
+                generation = largeProcessedMaskGeneration;
+            }
+
+            string method = step.Method;
+            string parameters = step.Parameters;
+            LargeImageSource sharedSource = source.AddReference();
+            statusLabel.Text = "影像處理運算中...建立 ROI Mask";
+
+            Task.Run(
+                delegate
+                {
+                    bool[,] mask = null;
+                    try
+                    {
+                        Bitmap roiImage = null;
+                        try
+                        {
+                            roiImage = sharedSource.CreateRegionBitmap(roi);
+                        }
+                        catch (Exception ex)
+                        {
+                            if (!(ex is OutOfMemoryException) && !(ex is ArgumentException))
+                            {
+                                throw;
+                            }
+
+                            Debug.WriteLine(ex);
+                            TryCreateRegionBitmapFromPreview(sharedSource, roi, out roiImage);
+                        }
+
+                        if (roiImage == null)
+                        {
+                            throw new InvalidOperationException("無法建立 ROI 影像");
+                        }
+
+                        using (roiImage)
+                        {
+                            mask = CreateEdgeMask(roiImage, method, ParseImageProcessingParameters(parameters));
+                        }
+
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    lock (largeProcessedMaskLock)
+                                    {
+                                        if (generation != largeProcessedMaskGeneration ||
+                                            !string.Equals(latestLargeProcessedMaskKey, maskKey, StringComparison.Ordinal))
+                                        {
+                                            return;
+                                        }
+
+                                        latestLargeProcessedMask = mask;
+                                        latestLargeProcessedMaskRoi = roi;
+                                        isLargeProcessedMaskBuilding = false;
+                                        mask = null;
+                                    }
+
+                                    statusLabel.Text = "大圖 ROI Mask 建立完成";
+                                    leftProcessedDisplayControl.InvalidateImageView();
+                                    rightProcessedDisplayControl.InvalidateImageView();
+                                }));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    lock (largeProcessedMaskLock)
+                                    {
+                                        if (generation == largeProcessedMaskGeneration)
+                                        {
+                                            isLargeProcessedMaskBuilding = false;
+                                        }
+                                    }
+
+                                    statusLabel.Text = "大圖 ROI Mask 建立失敗：" + ex.Message;
+                                    leftProcessedDisplayControl.InvalidateImageView();
+                                    rightProcessedDisplayControl.InvalidateImageView();
+                                }));
+                    }
+                    finally
+                    {
+                        mask = null;
+                        sharedSource.ReleaseReference();
+                    }
+                });
+        }
+
+        private string CreateLargeProcessedMaskKey(Rectangle roi, ImageProcessingStepSettings step)
+        {
+            return string.Join(
+                "|",
+                step.Method,
+                step.Parameters,
+                roi.X.ToString(CultureInfo.InvariantCulture),
+                roi.Y.ToString(CultureInfo.InvariantCulture),
+                roi.Width.ToString(CultureInfo.InvariantCulture),
+                roi.Height.ToString(CultureInfo.InvariantCulture));
         }
 
         private void ProcessedDisplayControl_LargeImageOverlayPaint(object sender, LargeImageOverlayPaintEventArgs e)
@@ -1648,6 +1801,26 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle visibleRoi = Rectangle.Intersect(e.VisibleSourceRect, selectedRoi.Value);
             if (visibleRoi.Width <= 0 || visibleRoi.Height <= 0)
             {
+                return;
+            }
+
+            bool[,] mask;
+            Rectangle maskRoi;
+            bool isBuilding;
+            lock (largeProcessedMaskLock)
+            {
+                mask = latestLargeProcessedMask;
+                maskRoi = latestLargeProcessedMaskRoi;
+                isBuilding = isLargeProcessedMaskBuilding;
+            }
+
+            if (mask == null || !maskRoi.Equals(selectedRoi.Value))
+            {
+                if (!isBuilding)
+                {
+                    StartLargeProcessedMaskBuild(e.Source, selectedRoi.Value, step);
+                }
+
                 return;
             }
 
@@ -1676,7 +1849,14 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     else
                     {
-                        QueueLargeProcessedOverlayTile(e.Source, tileRect, step, cacheKey);
+                        overlay = CreateRedOverlayTileFromMask(mask, maskRoi, tileRect);
+                        if (largeProcessedOverlayCache.Count >= MaxLargeProcessedOverlayCacheCount)
+                        {
+                            ClearLargeProcessedOverlayBitmapsOnly();
+                        }
+
+                        largeProcessedOverlayCache[cacheKey] = overlay;
+                        DrawLargeProcessedOverlayTile(e.Graphics, overlay, tileRect, e.Zoom, e.Offset);
                     }
                 }
             }
@@ -1938,6 +2118,51 @@ namespace IntegratedImageProcessingApp.Forms
                             row[offset + 1] = 0;
                             row[offset + 2] = 255;
                             row[offset + 3] = 255;
+                        }
+                    }
+
+                    Marshal.Copy(row, 0, data.Scan0 + (y * stride), row.Length);
+                }
+            }
+            finally
+            {
+                overlay.UnlockBits(data);
+            }
+
+            return overlay;
+        }
+
+        private static Bitmap CreateRedOverlayTileFromMask(bool[,] mask, Rectangle maskRoi, Rectangle tileRect)
+        {
+            int width = tileRect.Width;
+            int height = tileRect.Height;
+            var overlay = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            BitmapData data = overlay.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            try
+            {
+                int stride = data.Stride;
+                byte[] row = new byte[Math.Abs(stride)];
+                int maskWidth = mask.GetLength(0);
+                int maskHeight = mask.GetLength(1);
+                int maskStartX = tileRect.X - maskRoi.X;
+                int maskStartY = tileRect.Y - maskRoi.Y;
+                for (int y = 0; y < height; y++)
+                {
+                    Array.Clear(row, 0, row.Length);
+                    int maskY = maskStartY + y;
+                    if (maskY >= 0 && maskY < maskHeight)
+                    {
+                        for (int x = 0; x < width; x++)
+                        {
+                            int maskX = maskStartX + x;
+                            if (maskX >= 0 && maskX < maskWidth && mask[maskX, maskY])
+                            {
+                                int offset = x * 4;
+                                row[offset] = 0;
+                                row[offset + 1] = 0;
+                                row[offset + 2] = 255;
+                                row[offset + 3] = 255;
+                            }
                         }
                     }
 
