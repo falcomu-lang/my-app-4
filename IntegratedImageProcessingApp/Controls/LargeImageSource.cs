@@ -837,27 +837,26 @@ namespace IntegratedImageProcessingApp.Controls
 
             var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format24bppRgb);
             var sourceStride = formatted.PixelWidth * 4;
-            var sourcePixels = new byte[sourceStride * formatted.PixelHeight];
-            formatted.CopyPixels(
-                new SW.Int32Rect(0, 0, formatted.PixelWidth, formatted.PixelHeight),
-                sourcePixels,
-                sourceStride,
-                sourceStride);
             var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
             try
             {
                 int destinationStride = Math.Abs(data.Stride);
+                byte[] sourceRow = new byte[sourceStride];
                 byte[] destinationRow = new byte[destinationStride];
                 for (int y = 0; y < bitmap.Height; y++)
                 {
-                    int sourceOffset = y * sourceStride;
+                    formatted.CopyPixels(
+                        new SW.Int32Rect(0, y, formatted.PixelWidth, 1),
+                        sourceRow,
+                        sourceStride,
+                        sourceStride);
                     for (int x = 0; x < bitmap.Width; x++)
                     {
-                        int sourceOffsetX = sourceOffset + (x * 4);
+                        int sourceOffsetX = x * 4;
                         int destinationOffset = x * 3;
-                        destinationRow[destinationOffset] = sourcePixels[sourceOffsetX];
-                        destinationRow[destinationOffset + 1] = sourcePixels[sourceOffsetX + 1];
-                        destinationRow[destinationOffset + 2] = sourcePixels[sourceOffsetX + 2];
+                        destinationRow[destinationOffset] = sourceRow[sourceOffsetX];
+                        destinationRow[destinationOffset + 1] = sourceRow[sourceOffsetX + 1];
+                        destinationRow[destinationOffset + 2] = sourceRow[sourceOffsetX + 2];
                     }
 
                     Marshal.Copy(destinationRow, 0, data.Scan0 + (y * data.Stride), destinationStride);
