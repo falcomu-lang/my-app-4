@@ -30,10 +30,11 @@
   - Selected image is loaded into both left and right `原圖` tabs.
   - Both sides automatically switch to `原圖`.
 
-- Image viewer interaction
-  - Mouse wheel zoom.
-  - Left-button drag pan.
-  - Fit/reset view button.
+  - Image viewer interaction
+    - Mouse wheel zoom.
+    - Left-button drag pan.
+    - Fit/reset view button.
+    - Fit/reset emits a dedicated sync event so pressing reset on either visible side resets the opposite visible side too.
   - Status text shows zoom, offset, and image coordinate information.
   - Behavior is modeled after the viewer interaction in:
     `C:\Users\falcomu\Documents\Codex\程式撰寫 專案資料夾\攝影機影像擷取\my-app-2`
@@ -42,7 +43,7 @@
     - WIC decoding must use `BitmapCacheOption.OnDemand`; `OnLoad` can throw `OutOfMemoryException` during decoder creation for images such as `16384 x 50000`.
     - Preview generation uses `BitmapImage.DecodePixelWidth/DecodePixelHeight` and copies pixels directly into `LockBits`; avoid `TransformedBitmap.CopyPixels` with a huge intermediate byte array because it can still throw `OutOfMemoryException` on very large files.
     - Low zoom paints a progressive preview.
-    - Higher zoom requests and draws `1024 x 1024` tiles on demand.
+    - Higher zoom requests and draws `1024 x 1024` tiles on demand. Tile rendering begins at about `0.08x`, so `0.1x`/`0.12x` should sharpen once tiles finish loading instead of staying on the preview forever.
     - Tile drawing uses destination rounding and `WrapMode.TileFlipXY` to avoid visible seams.
   - Current large-image support is focused on original-image display and ROI coordinate selection. Full-resolution processed preview should also move to a tiled/mask-overlay path before treating very large processed results as complete.
 

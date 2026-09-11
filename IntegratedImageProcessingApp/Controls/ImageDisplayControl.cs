@@ -13,8 +13,8 @@ namespace IntegratedImageProcessingApp.Controls
     public partial class ImageDisplayControl : UserControl
     {
         private const int TileSourceSize = 1024;
-        private const float TileRenderZoomThreshold = 0.12f;
-        private const float TilePreviewHandoffRatio = 1.02f;
+        private const float TileRenderZoomThreshold = 0.08f;
+        private const float TilePreviewHandoffRatio = 0.95f;
         private const float CachedTilePanZoomThreshold = 0.22f;
         private const int MaxCachedTilesWhilePanning = 48;
         private const int TileRefreshIntervalMs = 33;
@@ -37,6 +37,7 @@ namespace IntegratedImageProcessingApp.Controls
         private bool _tileRefreshPending;
 
         public event EventHandler ViewChanged;
+        public event EventHandler FitViewRequested;
         public event EventHandler<RoiSelectedEventArgs> RoiSelected;
 
         public ImageDisplayControl()
@@ -129,6 +130,31 @@ namespace IntegratedImageProcessingApp.Controls
             finally
             {
                 _suppressViewChanged = false;
+            }
+        }
+
+        public void ResetViewToFit(bool notify)
+        {
+            if (!HasImage)
+            {
+                return;
+            }
+
+            bool previousSuppressViewChanged = _suppressViewChanged;
+            _suppressViewChanged = !notify;
+            try
+            {
+                FitImageToView();
+                UpdateStatusLabel();
+                viewerPanel.Invalidate();
+                if (notify)
+                {
+                    OnViewChanged();
+                }
+            }
+            finally
+            {
+                _suppressViewChanged = previousSuppressViewChanged;
             }
         }
 
@@ -469,10 +495,12 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void buttonFitToWindow_Click(object sender, EventArgs e)
         {
-            FitImageToView();
-            UpdateStatusLabel();
-            viewerPanel.Invalidate();
-            OnViewChanged();
+            ResetViewToFit(true);
+            EventHandler handler = FitViewRequested;
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
         }
 
         private void FitImageToView()

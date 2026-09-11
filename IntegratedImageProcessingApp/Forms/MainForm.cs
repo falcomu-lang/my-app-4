@@ -117,6 +117,15 @@ namespace IntegratedImageProcessingApp.Forms
             rightObjectsDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightDebugDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
 
+            leftOriginalDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            leftProcessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            leftObjectsDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            leftDebugDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            rightOriginalDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            rightProcessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            rightObjectsDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            rightDebugDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+
             leftImageTabControl.SelectedIndexChanged += VisibleImageTabControl_SelectedIndexChanged;
             rightImageTabControl.SelectedIndexChanged += VisibleImageTabControl_SelectedIndexChanged;
 
@@ -175,6 +184,49 @@ namespace IntegratedImageProcessingApp.Forms
         {
             UpdateVisibleProcessedImageIfNeeded();
             BeginInvoke(new Action(ApplySharedImageViewStateToVisibleControls));
+        }
+
+        private void ImageDisplayControl_FitViewRequested(object sender, EventArgs e)
+        {
+            if (isSyncingImageView)
+            {
+                return;
+            }
+
+            var source = sender as ImageDisplayControl;
+            if (source == null || !source.HasImage)
+            {
+                return;
+            }
+
+            ImageDisplayControl leftVisible = GetVisibleLeftImageDisplayControl();
+            ImageDisplayControl rightVisible = GetVisibleRightImageDisplayControl();
+            ImageDisplayControl target = null;
+
+            if (ReferenceEquals(source, leftVisible))
+            {
+                target = rightVisible;
+            }
+            else if (ReferenceEquals(source, rightVisible))
+            {
+                target = leftVisible;
+            }
+
+            isSyncingImageView = true;
+            try
+            {
+                if (target != null && target.HasImage)
+                {
+                    target.ResetViewToFit(false);
+                }
+
+                sharedImageViewState = source.ViewState;
+                hasSharedImageViewState = true;
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
         }
 
         private void SyncVisibleImageDisplaysFromLeft()
