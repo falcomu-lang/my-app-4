@@ -51,6 +51,10 @@ namespace IntegratedImageProcessingApp.Forms
         private LargeImageSource largeRoiGrayCacheSource;
         private Rectangle largeRoiGrayCacheRoi;
         private byte[,] largeRoiGrayCache;
+        private readonly object largeCannyCacheLock = new object();
+        private byte[,] largeCannyCacheGray;
+        private string largeCannyMagnitudeCacheKey;
+        private int[,] largeCannyMagnitudeCache;
         private bool isLargeProcessedMaskBuilding;
         private int largeProcessedMaskGeneration;
         private bool processedImageDirty = true;
@@ -1497,6 +1501,49 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private bool[,] CreateLargeEdgeMask(byte[,] gray, string method, Dictionary<string, string> parameters)
+        {
+            if (method != "Canny Edge")
+            {
+                return CreateEdgeMask(gray, method, parameters);
+            }
+
+            int lowThreshold = GetIntParameter(parameters, "LowThreshold", 50);
+            int highThreshold = GetIntParameter(parameters, "HighThreshold", 150);
+            int kernelSize = GetIntParameter(parameters, "KernelSize", 3);
+            bool l2Gradient = GetBoolParameter(parameters, "L2Gradient", false);
+            int gaussianBlurSize = GetIntParameter(parameters, "GaussianBlurSize", 5);
+            double gaussianSigma = GetDoubleParameter(parameters, "GaussianSigma", 1.4);
+            string edgeSelection = GetStringParameter(parameters, "EdgeSelection", "All");
+            int minEdgeLength = GetIntParameter(parameters, "MinEdgeLength", 10);
+            int maxGap = GetIntParameter(parameters, "MaxGap", 2);
+            string magnitudeKey = gaussianBlurSize.ToString(CultureInfo.InvariantCulture) + "|" +
+                gaussianSigma.ToString("R", CultureInfo.InvariantCulture) + "|" +
+                kernelSize.ToString(CultureInfo.InvariantCulture) + "|" +
+                l2Gradient.ToString(CultureInfo.InvariantCulture);
+            int[,] magnitudes;
+            lock (largeCannyCacheLock)
+            {
+                if (ReferenceEquals(largeCannyCacheGray, gray) &&
+                    string.Equals(largeCannyMagnitudeCacheKey, magnitudeKey, StringComparison.Ordinal) &&
+                    largeCannyMagnitudeCache != null)
+                {
+                    magnitudes = largeCannyMagnitudeCache;
+                }
+                else
+                {
+                    byte[,] blurredGray = ApplyGaussianBlur(gray, gaussianBlurSize, gaussianSigma);
+                    magnitudes = CreateSobelMagnitudes(blurredGray, kernelSize, l2Gradient, "Both");
+                    largeCannyCacheGray = gray;
+                    largeCannyMagnitudeCacheKey = magnitudeKey;
+                    largeCannyMagnitudeCache = magnitudes;
+                }
+            }
+
+            return CreateCannyMaskFromMagnitudes(
+                magnitudes, lowThreshold, highThreshold, edgeSelection, minEdgeLength, maxGap);
+        }
+
         private void ClearLargeProcessedOverlayBitmapsOnly()
         {
             foreach (Bitmap overlay in largeProcessedOverlayCache.Values)
@@ -1750,7 +1797,7 @@ namespace IntegratedImageProcessingApp.Forms
                         if ((long)roi.Width * roi.Height <= MaxSinglePassLargeRoiPixels)
                         {
                             byte[,] gray = GetOrCreateLargeRoiGrayCache(sharedSource, roi);
-                            mask = CreateEdgeMask(gray, method, parsedParameters);
+                            mask = CreateLargeEdgeMask(gray, method, parsedParameters);
 
                             PublishCompletedLargeProcessedMask(mask, roi, maskKey, generation);
                             mask = null;
@@ -2625,8 +2672,20 @@ namespace IntegratedImageProcessingApp.Forms
         {
             byte[,] blurredGray = ApplyGaussianBlur(gray, gaussianBlurSize, gaussianSigma);
             int[,] magnitudes = CreateSobelMagnitudes(blurredGray, kernelSize, l2Gradient, "Both");
-            int width = gray.GetLength(0);
-            int height = gray.GetLength(1);
+            return CreateCannyMaskFromMagnitudes(
+                magnitudes, lowThreshold, highThreshold, edgeSelection, minEdgeLength, maxGap);
+        }
+
+        private static bool[,] CreateCannyMaskFromMagnitudes(
+            int[,] magnitudes,
+            int lowThreshold,
+            int highThreshold,
+            string edgeSelection,
+            int minEdgeLength,
+            int maxGap)
+        {
+            int width = magnitudes.GetLength(0);
+            int height = magnitudes.GetLength(1);
             var result = new bool[width, height];
             for (int y = 1; y < height - 1; y++)
             {
