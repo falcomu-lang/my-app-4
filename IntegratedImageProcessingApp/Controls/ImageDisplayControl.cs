@@ -19,6 +19,7 @@ namespace IntegratedImageProcessingApp.Controls
         private const int MaxCachedTilesWhilePanning = 96;
         private const int TileRefreshIntervalMs = 33;
         private const int PanInvalidateIntervalMs = 16;
+        private const int ZoomSettleIntervalMs = 180;
         private const long MaxDisplayPixels = 50000000L;
         private readonly object _imageLock = new object();
         private readonly System.Windows.Forms.Timer _tileRefreshTimer;
@@ -37,6 +38,7 @@ namespace IntegratedImageProcessingApp.Controls
         private Rectangle? _roiOverlay;
         private bool _tileRefreshPending;
         private DateTime _lastPanInvalidateUtc = DateTime.MinValue;
+        private DateTime _lastZoomUtc = DateTime.MinValue;
 
         public event EventHandler ViewChanged;
         public event EventHandler FitViewRequested;
@@ -354,8 +356,28 @@ namespace IntegratedImageProcessingApp.Controls
 
             FitImageToView();
             UpdateStatusLabel();
+            _lastZoomUtc = DateTime.UtcNow;
             viewerPanel.Invalidate();
             OnViewChanged();
+            Task.Delay(ZoomSettleIntervalMs).ContinueWith(
+                delegate
+                {
+                    if (IsDisposed || (DateTime.UtcNow - _lastZoomUtc).TotalMilliseconds < ZoomSettleIntervalMs)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        BeginInvoke(new Action(delegate { viewerPanel.Invalidate(); }));
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+                });
         }
 
         public void SetDisplayImage(Bitmap bitmap, bool preserveView)
@@ -684,7 +706,8 @@ namespace IntegratedImageProcessingApp.Controls
                 graphics.InterpolationMode = _isPanning ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
                 DrawPreviewRegion(graphics, preview.Bitmap, preview.Scale, visibleSourceRect, zoom, offset);
                 graphics.InterpolationMode = previousInterpolation;
-                if (!ShouldRenderTiles(zoom, preview.Scale) ||
+                if (IsZoomSettling() ||
+                    !ShouldRenderTiles(zoom, preview.Scale) ||
                     (_isPanning && !ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect)))
                 {
                     return;
@@ -814,6 +837,11 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             return zoom > (previewScale * TilePreviewHandoffRatio);
+        }
+
+        private bool IsZoomSettling()
+        {
+            return (DateTime.UtcNow - _lastZoomUtc).TotalMilliseconds < ZoomSettleIntervalMs;
         }
 
         private static bool ShouldDrawCachedTilesWhilePanning(float zoom, Rectangle visibleSourceRect)
