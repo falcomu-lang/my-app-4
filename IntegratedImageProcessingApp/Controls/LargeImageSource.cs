@@ -765,7 +765,60 @@ namespace IntegratedImageProcessingApp.Controls
             transform.Freeze();
             var preview = new SWMI.TransformedBitmap(_frame, transform);
             preview.Freeze();
-            return ConvertToBitmap(preview);
+            try
+            {
+                return ConvertToBitmap(preview);
+            }
+            catch (ArgumentException)
+            {
+                return CreateScaledBitmapFromTiles(scale, decodeWidth, decodeHeight);
+            }
+        }
+
+        private Bitmap CreateScaledBitmapFromTiles(double scale, int decodeWidth, int decodeHeight)
+        {
+            int outputWidth = Math.Max(1, Math.Min(4096, (int)Math.Round(Width * scale)));
+            int outputHeight = Math.Max(1, Math.Min(4096, (int)Math.Round(Height * scale)));
+            var result = new Bitmap(outputWidth, outputHeight, PixelFormat.Format32bppArgb);
+            using (Graphics graphics = Graphics.FromImage(result))
+            {
+                graphics.Clear(Color.Black);
+                lock (_sync)
+                {
+                    for (int y = 0; y < Height; y += TileSourceSize)
+                    {
+                        for (int x = 0; x < Width; x += TileSourceSize)
+                        {
+                            Rectangle tileRect = new Rectangle(
+                                x,
+                                y,
+                                Math.Min(TileSourceSize, Width - x),
+                                Math.Min(TileSourceSize, Height - y));
+                            string key = CreateTileKey(tileRect);
+                            Bitmap tile;
+                            if (!_tileCache.TryGetValue(key, out tile))
+                            {
+                                tile = CreateTileBitmap(tileRect);
+                                AddTileToCacheUnsafe(key, tile);
+                                tile = _tileCache[key];
+                            }
+                            else
+                            {
+                                TouchKey(key);
+                            }
+
+                            Rectangle destination = new Rectangle(
+                                Math.Max(0, (int)Math.Round(tileRect.X * scale)),
+                                Math.Max(0, (int)Math.Round(tileRect.Y * scale)),
+                                Math.Max(1, (int)Math.Round(tileRect.Width * scale)),
+                                Math.Max(1, (int)Math.Round(tileRect.Height * scale)));
+                            graphics.DrawImage(tile, destination);
+                        }
+                    }
+                }
+            }
+
+            return result;
         }
 
         private void ThrowIfDisposed()
