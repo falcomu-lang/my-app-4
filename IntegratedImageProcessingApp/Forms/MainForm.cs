@@ -41,6 +41,7 @@ namespace IntegratedImageProcessingApp.Forms
         private System.Windows.Forms.Timer imageProcessingDebounceTimer;
         private Bitmap latestProcessedImage;
         private readonly Dictionary<string, Bitmap> largeProcessedOverlayCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
+        private readonly HashSet<string> pendingLargeProcessedOverlayTiles = new HashSet<string>(StringComparer.Ordinal);
         private bool processedImageDirty = true;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
@@ -1442,6 +1443,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             largeProcessedOverlayCache.Clear();
+            pendingLargeProcessedOverlayTiles.Clear();
         }
 
         private void ClearProcessedPreviewImages()
@@ -1664,15 +1666,23 @@ namespace IntegratedImageProcessingApp.Forms
                         continue;
                     }
 
-                    Bitmap overlay = GetLargeProcessedOverlayTile(e.Source, tileRect, step);
-                    DrawLargeProcessedOverlayTile(e.Graphics, overlay, tileRect, e.Zoom, e.Offset);
+                    Bitmap overlay;
+                    string cacheKey = CreateLargeProcessedOverlayCacheKey(tileRect, step);
+                    if (largeProcessedOverlayCache.TryGetValue(cacheKey, out overlay))
+                    {
+                        DrawLargeProcessedOverlayTile(e.Graphics, overlay, tileRect, e.Zoom, e.Offset);
+                    }
+                    else
+                    {
+                        QueueLargeProcessedOverlayTile(e.Source, tileRect, step, cacheKey);
+                    }
                 }
             }
         }
 
-        private Bitmap GetLargeProcessedOverlayTile(LargeImageSource source, Rectangle tileRect, ImageProcessingStepSettings step)
+        private string CreateLargeProcessedOverlayCacheKey(Rectangle tileRect, ImageProcessingStepSettings step)
         {
-            string key = string.Join(
+            return string.Join(
                 "|",
                 step.Method,
                 step.Parameters,
@@ -1680,24 +1690,71 @@ namespace IntegratedImageProcessingApp.Forms
                 tileRect.Y.ToString(CultureInfo.InvariantCulture),
                 tileRect.Width.ToString(CultureInfo.InvariantCulture),
                 tileRect.Height.ToString(CultureInfo.InvariantCulture));
-            Bitmap overlay;
-            if (largeProcessedOverlayCache.TryGetValue(key, out overlay))
+        }
+
+        private void QueueLargeProcessedOverlayTile(LargeImageSource source, Rectangle tileRect, ImageProcessingStepSettings step, string cacheKey)
+        {
+            if (pendingLargeProcessedOverlayTiles.Contains(cacheKey))
             {
-                return overlay;
+                return;
             }
 
-            using (Bitmap tile = source.CreateRegionBitmap(tileRect))
-            {
-                bool[,] mask = CreateEdgeMask(tile, step.Method, ParseImageProcessingParameters(step.Parameters));
-                overlay = CreateRedOverlayTile(mask);
-                if (largeProcessedOverlayCache.Count >= MaxLargeProcessedOverlayCacheCount)
+            pendingLargeProcessedOverlayTiles.Add(cacheKey);
+            string method = step.Method;
+            string parameters = step.Parameters;
+            LargeImageSource sharedSource = source.AddReference();
+            statusLabel.Text = "影像處理運算中...";
+
+            Task.Run(
+                delegate
                 {
-                    ClearLargeProcessedOverlayCache();
-                }
+                    Bitmap overlay = null;
+                    try
+                    {
+                        using (Bitmap tile = sharedSource.CreateRegionBitmap(tileRect))
+                        {
+                            bool[,] mask = CreateEdgeMask(tile, method, ParseImageProcessingParameters(parameters));
+                            overlay = CreateRedOverlayTile(mask);
+                        }
 
-                largeProcessedOverlayCache[key] = overlay;
-                return overlay;
-            }
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    pendingLargeProcessedOverlayTiles.Remove(cacheKey);
+                                    if (largeProcessedOverlayCache.Count >= MaxLargeProcessedOverlayCacheCount)
+                                    {
+                                        ClearLargeProcessedOverlayCache();
+                                    }
+
+                                    largeProcessedOverlayCache[cacheKey] = overlay;
+                                    overlay = null;
+                                    statusLabel.Text = "影像處理完成";
+                                    leftProcessedDisplayControl.InvalidateImageView();
+                                    rightProcessedDisplayControl.InvalidateImageView();
+                                }));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    pendingLargeProcessedOverlayTiles.Remove(cacheKey);
+                                    statusLabel.Text = "影像處理失敗：" + ex.Message;
+                                }));
+                    }
+                    finally
+                    {
+                        if (overlay != null)
+                        {
+                            overlay.Dispose();
+                        }
+
+                        sharedSource.ReleaseReference();
+                    }
+                });
         }
 
         private static Bitmap CreateRedOverlayTile(bool[,] mask)

@@ -45,13 +45,16 @@
     - `ImageDisplayControl.LoadImageFromFileAsync` reads dimensions with WIC first. Huge images must go directly to `LargeImageSource`; do not call GDI+ `Image.FromStream` just to inspect size because it can throw `ArgumentException` before the tiled path starts.
     - Low zoom paints a progressive preview.
     - Higher zoom requests and draws `1024 x 1024` tiles on demand. Tile rendering begins at about `0.08x`, so `0.1x`/`0.12x` should sharpen once tiles finish loading instead of staying on the preview forever.
+    - While panning at `0.08x` or higher, the active viewer still draws cached high-resolution tiles and queues missing tiles. This keeps the dragged viewer from becoming blurrier than the synced opposite viewer at `0.1x`-`0.19x`.
+    - Panning invalidation is throttled to roughly 16 ms to reduce uneven drag feel between left/right viewers.
     - Tile drawing uses destination rounding and `WrapMode.TileFlipXY` to avoid visible seams.
     - Huge image files are loaded into one shared `LargeImageSource` for the left/right original viewers. Processed viewers also reference that same source, so the app does not open/decode the same huge image separately for each side/tab.
     - `LargeImageSource` uses reference counting through `AddReference`/`ReleaseReference`; do not dispose a shared source directly from a control.
   - Large-image processed previews use the same tiled display path:
     - Processed viewers load the original large image through `LargeImageSource`.
     - The viewer paints original image preview/tiles first.
-    - `MainForm` handles `LargeImageOverlayPaint` to compute edge masks only for visible ROI-intersecting tile regions.
+    - `MainForm` handles `LargeImageOverlayPaint` to draw cached overlay tiles and queue missing ROI-intersecting tiles for background calculation.
+    - Do not compute edge masks synchronously inside Paint; doing so can freeze the UI when switching to the `處理後` tab.
     - Red result overlays are cached as transparent tile bitmaps and cleared when method/parameter/ROI changes.
 
 - Visible left/right view synchronization

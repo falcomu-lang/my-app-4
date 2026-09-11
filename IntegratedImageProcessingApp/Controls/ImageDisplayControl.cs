@@ -15,9 +15,10 @@ namespace IntegratedImageProcessingApp.Controls
         private const int TileSourceSize = 1024;
         private const float TileRenderZoomThreshold = 0.08f;
         private const float TilePreviewHandoffRatio = 0.95f;
-        private const float CachedTilePanZoomThreshold = 0.22f;
-        private const int MaxCachedTilesWhilePanning = 48;
+        private const float CachedTilePanZoomThreshold = 0.08f;
+        private const int MaxCachedTilesWhilePanning = 96;
         private const int TileRefreshIntervalMs = 33;
+        private const int PanInvalidateIntervalMs = 16;
         private const long MaxDisplayPixels = 50000000L;
         private readonly object _imageLock = new object();
         private readonly System.Windows.Forms.Timer _tileRefreshTimer;
@@ -35,6 +36,7 @@ namespace IntegratedImageProcessingApp.Controls
         private Point _roiCurrentPoint;
         private Rectangle? _roiOverlay;
         private bool _tileRefreshPending;
+        private DateTime _lastPanInvalidateUtc = DateTime.MinValue;
 
         public event EventHandler ViewChanged;
         public event EventHandler FitViewRequested;
@@ -221,6 +223,11 @@ namespace IntegratedImageProcessingApp.Controls
                 _roiOverlay = null;
             }
 
+            viewerPanel.Invalidate();
+        }
+
+        public void InvalidateImageView()
+        {
             viewerPanel.Invalidate();
         }
 
@@ -492,6 +499,7 @@ namespace IntegratedImageProcessingApp.Controls
 
             _isPanning = true;
             _lastMousePoint = e.Location;
+            _lastPanInvalidateUtc = DateTime.MinValue;
             viewerPanel.Cursor = Cursors.Hand;
         }
 
@@ -519,7 +527,7 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             UpdateStatusLabel();
-            viewerPanel.Invalidate();
+            InvalidateViewerWhilePanning();
             OnViewChanged();
         }
 
@@ -698,7 +706,7 @@ namespace IntegratedImageProcessingApp.Controls
                     {
                         DrawTile(graphics, tile, tileRect, zoom, offset, _isPanning);
                     }
-                    else if (!_isPanning)
+                    else if (!_isPanning || ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect))
                     {
                         RequestTile(source, tileRect);
                     }
@@ -818,6 +826,18 @@ namespace IntegratedImageProcessingApp.Controls
             int tileColumns = ((visibleSourceRect.Width + TileSourceSize - 1) / TileSourceSize) + 1;
             int tileRows = ((visibleSourceRect.Height + TileSourceSize - 1) / TileSourceSize) + 1;
             return tileColumns * tileRows <= MaxCachedTilesWhilePanning;
+        }
+
+        private void InvalidateViewerWhilePanning()
+        {
+            DateTime now = DateTime.UtcNow;
+            if ((now - _lastPanInvalidateUtc).TotalMilliseconds < PanInvalidateIntervalMs)
+            {
+                return;
+            }
+
+            _lastPanInvalidateUtc = now;
+            viewerPanel.Invalidate();
         }
 
         private void ScheduleTileRefresh()
