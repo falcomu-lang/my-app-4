@@ -835,11 +835,33 @@ namespace IntegratedImageProcessingApp.Controls
                 throw new ArgumentException("WIC 預覽影像尺寸無效。", "source");
             }
 
-            var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format32bppArgb);
+            var bitmap = new Bitmap(formatted.PixelWidth, formatted.PixelHeight, PixelFormat.Format24bppRgb);
+            var sourceStride = formatted.PixelWidth * 4;
+            var sourcePixels = new byte[sourceStride * formatted.PixelHeight];
+            formatted.CopyPixels(
+                new SW.Int32Rect(0, 0, formatted.PixelWidth, formatted.PixelHeight),
+                sourcePixels,
+                sourceStride,
+                sourceStride);
             var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
             try
             {
-                formatted.CopyPixels(new SW.Int32Rect(0, 0, formatted.PixelWidth, formatted.PixelHeight), data.Scan0, Math.Abs(data.Stride) * data.Height, data.Stride);
+                int destinationStride = Math.Abs(data.Stride);
+                byte[] destinationRow = new byte[destinationStride];
+                for (int y = 0; y < bitmap.Height; y++)
+                {
+                    int sourceOffset = y * sourceStride;
+                    for (int x = 0; x < bitmap.Width; x++)
+                    {
+                        int sourceOffsetX = sourceOffset + (x * 4);
+                        int destinationOffset = x * 3;
+                        destinationRow[destinationOffset] = sourcePixels[sourceOffsetX];
+                        destinationRow[destinationOffset + 1] = sourcePixels[sourceOffsetX + 1];
+                        destinationRow[destinationOffset + 2] = sourcePixels[sourceOffsetX + 2];
+                    }
+
+                    Marshal.Copy(destinationRow, 0, data.Scan0 + (y * data.Stride), destinationStride);
+                }
             }
             finally
             {
