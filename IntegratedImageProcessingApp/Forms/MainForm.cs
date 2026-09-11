@@ -64,7 +64,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string MoveDownImageProcessingStepMenuText = "      下移";
         private const int MaxLargeProcessedOverlayCacheCount = 128;
         private const int LargeProcessedOverlayTileSize = 128;
-        private const int LargeProcessedMaskChunkSize = 512;
+        private const int LargeProcessedMaskChunkSize = 1024;
         private const int MaxPendingLargeProcessedOverlayTiles = 2;
         private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
 
@@ -1696,6 +1696,7 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         mask = new bool[roi.Width, roi.Height];
                         Dictionary<string, string> parsedParameters = ParseImageProcessingParameters(parameters);
+                        int padding = GetLargeProcessedChunkPadding(method, parsedParameters);
                         int chunkCountX = (roi.Width + LargeProcessedMaskChunkSize - 1) / LargeProcessedMaskChunkSize;
                         int chunkCountY = (roi.Height + LargeProcessedMaskChunkSize - 1) / LargeProcessedMaskChunkSize;
                         int totalChunks = chunkCountX * chunkCountY;
@@ -1726,10 +1727,20 @@ namespace IntegratedImageProcessingApp.Forms
                                     continue;
                                 }
 
+                                Rectangle paddedChunkRect = Rectangle.Intersect(
+                                    new Rectangle(0, 0, sharedSource.Width, sharedSource.Height),
+                                    Rectangle.FromLTRB(
+                                        chunkRect.Left - padding,
+                                        chunkRect.Top - padding,
+                                        chunkRect.Right + padding,
+                                        chunkRect.Bottom + padding));
                                 Bitmap chunkImage = null;
                                 try
                                 {
-                                    chunkImage = sharedSource.CreateRegionBitmap(chunkRect);
+                                    if (!sharedSource.TryCreateRegionBitmapFromCachedTile(paddedChunkRect, out chunkImage))
+                                    {
+                                        chunkImage = sharedSource.CreateRegionBitmap(paddedChunkRect);
+                                    }
                                 }
                                 catch (Exception ex)
                                 {
@@ -1739,7 +1750,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     }
 
                                     Debug.WriteLine(ex);
-                                    TryCreateRegionBitmapFromPreview(sharedSource, chunkRect, out chunkImage);
+                                    TryCreateRegionBitmapFromPreview(sharedSource, paddedChunkRect, out chunkImage);
                                 }
 
                                 if (chunkImage == null)
@@ -1750,7 +1761,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 using (chunkImage)
                                 {
                                     bool[,] chunkMask = CreateEdgeMask(chunkImage, method, parsedParameters);
-                                    CopyChunkMaskToRoiMask(mask, roi, chunkRect, chunkMask);
+                                    CopyChunkMaskToRoiMask(mask, roi, paddedChunkRect, chunkRect, chunkMask);
                                 }
 
                                 completedChunks++;
@@ -1841,14 +1852,47 @@ namespace IntegratedImageProcessingApp.Forms
                 roi.Height.ToString(CultureInfo.InvariantCulture));
         }
 
-        private static void CopyChunkMaskToRoiMask(bool[,] roiMask, Rectangle roi, Rectangle chunkRect, bool[,] chunkMask)
+        private static int GetLargeProcessedChunkPadding(string method, Dictionary<string, string> parameters)
+        {
+            if (method == "Canny Edge")
+            {
+                int gaussianBlurSize = EnsureOdd(GetIntParameter(parameters, "GaussianBlurSize", 5));
+                int kernelSize = EnsureOdd(GetIntParameter(parameters, "KernelSize", 3));
+                int maxGap = GetIntParameter(parameters, "MaxGap", 2);
+                return Math.Max(4, (gaussianBlurSize / 2) + (kernelSize / 2) + maxGap + 4);
+            }
+
+            if (method == "Sobel Edge")
+            {
+                int kernelSize = EnsureOdd(GetIntParameter(parameters, "KernelSize", 3));
+                int maxGap = GetIntParameter(parameters, "MaxGap", 2);
+                return Math.Max(4, (kernelSize / 2) + maxGap + 4);
+            }
+
+            int edgeWidth = EnsureOdd(GetIntParameter(parameters, "EdgeWidth", 3));
+            int smoothing = EnsureOdd(GetIntParameter(parameters, "Smoothing", 1));
+            int polarityMaxGap = GetIntParameter(parameters, "MaxGap", 2);
+            return Math.Max(4, (edgeWidth / 2) + (smoothing / 2) + polarityMaxGap + 4);
+        }
+
+        private static int EnsureOdd(int value)
+        {
+            int normalized = Math.Max(1, value);
+            return normalized % 2 == 0 ? normalized + 1 : normalized;
+        }
+
+        private static void CopyChunkMaskToRoiMask(bool[,] roiMask, Rectangle roi, Rectangle processedRect, Rectangle chunkRect, bool[,] chunkMask)
         {
             int chunkWidth = Math.Min(chunkRect.Width, chunkMask.GetLength(0));
             int chunkHeight = Math.Min(chunkRect.Height, chunkMask.GetLength(1));
             int offsetX = chunkRect.X - roi.X;
             int offsetY = chunkRect.Y - roi.Y;
+            int maskOffsetX = chunkRect.X - processedRect.X;
+            int maskOffsetY = chunkRect.Y - processedRect.Y;
             int roiMaskWidth = roiMask.GetLength(0);
             int roiMaskHeight = roiMask.GetLength(1);
+            int chunkMaskWidth = chunkMask.GetLength(0);
+            int chunkMaskHeight = chunkMask.GetLength(1);
 
             for (int y = 0; y < chunkHeight; y++)
             {
@@ -1861,9 +1905,16 @@ namespace IntegratedImageProcessingApp.Forms
                 for (int x = 0; x < chunkWidth; x++)
                 {
                     int targetX = offsetX + x;
-                    if (targetX >= 0 && targetX < roiMaskWidth)
+                    int sourceX = maskOffsetX + x;
+                    int sourceY = maskOffsetY + y;
+                    if (targetX >= 0 &&
+                        targetX < roiMaskWidth &&
+                        sourceX >= 0 &&
+                        sourceX < chunkMaskWidth &&
+                        sourceY >= 0 &&
+                        sourceY < chunkMaskHeight)
                     {
-                        roiMask[targetX, targetY] = chunkMask[x, y];
+                        roiMask[targetX, targetY] = chunkMask[sourceX, sourceY];
                     }
                 }
             }
@@ -2094,7 +2145,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     pendingLargeProcessedOverlayTiles.Remove(cacheKey);
                                     if (largeProcessedOverlayCache.Count >= MaxLargeProcessedOverlayCacheCount)
                                     {
-                                        ClearLargeProcessedOverlayCache();
+                                        ClearLargeProcessedOverlayBitmapsOnly();
                                     }
 
                                     largeProcessedOverlayCache[cacheKey] = overlay;
