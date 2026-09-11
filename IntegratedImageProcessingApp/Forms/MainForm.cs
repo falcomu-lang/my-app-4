@@ -1520,16 +1520,24 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            // Large images use LargeImageSource plus a cached ROI mask instead of
+            // latestProcessedImage. Treat that pipeline as complete once it has
+            // been prepared; otherwise every refresh would start it again.
+            if (rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                if (processedImageDirty)
+                {
+                    statusLabel.Text = "影像處理運算中...";
+                    PrepareLargeProcessedPreview();
+                    processedImageDirty = false;
+                }
+
+                return;
+            }
+
             if (processedImageDirty || latestProcessedImage == null)
             {
                 statusLabel.Text = "影像處理運算中...";
-                if (rightOriginalDisplayControl.IsLargeImageMode)
-                {
-                    PrepareLargeProcessedPreview();
-                    processedImageDirty = false;
-                    statusLabel.Text = "大圖影像處理完成";
-                    return;
-                }
 
                 Bitmap processedImage = await Task.Run(() => CreateCurrentProcessedImage());
                 if (processedImage == null)
