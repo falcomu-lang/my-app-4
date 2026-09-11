@@ -58,6 +58,7 @@
     - Large processed overlay tiles are `128 x 128` and queue at most 2 background tile calculations at once so large ROIs do not flood the thread pool.
     - `LargeImageSource.CreateRegionBitmap` must not hold the shared source lock while WIC decodes a region; otherwise overlay calculation can block original image tile refresh and appear stuck.
     - Processed overlay calculation should prefer `LargeImageSource.TryCreateRegionBitmapFromCachedTile`. It crops from already-cached `1024 x 1024` source tiles instead of asking WIC to decode many tiny overlay regions. If the source tile is missing, queue the source tile and retry on repaint.
+    - If the high-resolution source tile is not cached yet, processed overlay falls back to `LargeImageSource.GetBestPreview(0f)` so the `處理後` tab does not stay blank with an endless pending count. When the high-resolution tile finishes loading through `QueueTile`, the preview overlay cache is invalidated and recalculated.
     - Overlay generation uses `LockBits` batch access for grayscale extraction and red transparent overlay creation; avoid `GetPixel`/`SetPixel` in this path because it makes large-image processing appear stuck.
     - Overlay tile drawing validates destination/source rectangles and catches GDI+ `ArgumentException` so one invalid overlay draw does not crash painting.
     - Overlay cache reads validate that cached `Bitmap` instances are still usable; disposed/invalid entries are removed and recalculated to avoid GDI+ `ArgumentException` during Paint.

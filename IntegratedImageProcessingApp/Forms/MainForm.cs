@@ -1741,7 +1741,13 @@ namespace IntegratedImageProcessingApp.Forms
                     try
                     {
                         Bitmap tile;
+                        bool usedPreviewTile = false;
                         if (!sharedSource.TryCreateRegionBitmapFromCachedTile(tileRect, out tile))
+                        {
+                            usedPreviewTile = TryCreateRegionBitmapFromPreview(sharedSource, tileRect, out tile);
+                        }
+
+                        if (tile == null)
                         {
                             sharedSource.QueueTile(
                                 tileRect,
@@ -1774,6 +1780,38 @@ namespace IntegratedImageProcessingApp.Forms
                                         rightProcessedDisplayControl.InvalidateImageView();
                                     }));
                             return;
+                        }
+
+                        if (usedPreviewTile)
+                        {
+                            sharedSource.QueueTile(
+                                tileRect,
+                                delegate
+                                {
+                                    try
+                                    {
+                                        BeginInvoke(
+                                            new Action(
+                                                delegate
+                                                {
+                                                    Bitmap staleOverlay;
+                                                    if (largeProcessedOverlayCache.TryGetValue(cacheKey, out staleOverlay))
+                                                    {
+                                                        largeProcessedOverlayCache.Remove(cacheKey);
+                                                        staleOverlay.Dispose();
+                                                    }
+
+                                                    leftProcessedDisplayControl.InvalidateImageView();
+                                                    rightProcessedDisplayControl.InvalidateImageView();
+                                                }));
+                                    }
+                                    catch (ObjectDisposedException)
+                                    {
+                                    }
+                                    catch (InvalidOperationException)
+                                    {
+                                    }
+                                });
                         }
 
                         using (tile)
@@ -1824,6 +1862,58 @@ namespace IntegratedImageProcessingApp.Forms
                         sharedSource.ReleaseReference();
                     }
                 });
+        }
+
+        private static bool TryCreateRegionBitmapFromPreview(LargeImageSource source, Rectangle sourceRect, out Bitmap region)
+        {
+            region = null;
+            LargeImageSource.PreviewBitmap preview = null;
+            try
+            {
+                preview = source.GetBestPreview(0f);
+                if (preview == null || preview.Bitmap == null || preview.Scale <= 0f)
+                {
+                    return false;
+                }
+
+                Rectangle previewRect = Rectangle.FromLTRB(
+                    Math.Max(0, Math.Min(preview.Bitmap.Width - 1, (int)Math.Floor(sourceRect.Left * preview.Scale))),
+                    Math.Max(0, Math.Min(preview.Bitmap.Height - 1, (int)Math.Floor(sourceRect.Top * preview.Scale))),
+                    Math.Max(1, Math.Min(preview.Bitmap.Width, (int)Math.Ceiling(sourceRect.Right * preview.Scale))),
+                    Math.Max(1, Math.Min(preview.Bitmap.Height, (int)Math.Ceiling(sourceRect.Bottom * preview.Scale))));
+                if (previewRect.Right <= previewRect.Left || previewRect.Bottom <= previewRect.Top)
+                {
+                    return false;
+                }
+
+                region = new Bitmap(sourceRect.Width, sourceRect.Height, PixelFormat.Format32bppArgb);
+                using (Graphics graphics = Graphics.FromImage(region))
+                {
+                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+                    graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                    graphics.DrawImage(preview.Bitmap, new Rectangle(0, 0, region.Width, region.Height), previewRect, GraphicsUnit.Pixel);
+                }
+
+                return true;
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine(ex);
+                if (region != null)
+                {
+                    region.Dispose();
+                    region = null;
+                }
+
+                return false;
+            }
+            finally
+            {
+                if (preview != null)
+                {
+                    preview.Dispose();
+                }
+            }
         }
 
         private static Bitmap CreateRedOverlayTile(bool[,] mask)
