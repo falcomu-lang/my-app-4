@@ -46,7 +46,13 @@
     - Low zoom paints a progressive preview.
     - Higher zoom requests and draws `1024 x 1024` tiles on demand. Tile rendering begins at about `0.08x`, so `0.1x`/`0.12x` should sharpen once tiles finish loading instead of staying on the preview forever.
     - Tile drawing uses destination rounding and `WrapMode.TileFlipXY` to avoid visible seams.
-  - Current large-image support is focused on original-image display and ROI coordinate selection. Full-resolution processed preview should also move to a tiled/mask-overlay path before treating very large processed results as complete.
+    - Huge image files are loaded into one shared `LargeImageSource` for the left/right original viewers. Processed viewers also reference that same source, so the app does not open/decode the same huge image separately for each side/tab.
+    - `LargeImageSource` uses reference counting through `AddReference`/`ReleaseReference`; do not dispose a shared source directly from a control.
+  - Large-image processed previews use the same tiled display path:
+    - Processed viewers load the original large image through `LargeImageSource`.
+    - The viewer paints original image preview/tiles first.
+    - `MainForm` handles `LargeImageOverlayPaint` to compute edge masks only for visible ROI-intersecting tile regions.
+    - Red result overlays are cached as transparent tile bitmaps and cleared when method/parameter/ROI changes.
 
 - Visible left/right view synchronization
   - Zoom/pan/reset sync between the currently visible left and right image controls.
@@ -103,6 +109,8 @@
     - If no `處理後` tab is visible, the result is computed later when the user switches to a `處理後` tab.
     - Updating a processed preview preserves the user's current zoom/pan when the new result has the same image size.
     - If there is no previewable image-processing step left, both processed viewers are cleared so stale red overlays are never shown.
+    - While processing preview is being computed, the lower status bar shows `影像處理運算中...`.
+    - In large-image mode, `處理後` does not create a full-size processed bitmap. It renders `LargeImageSource` base tiles plus ROI-local red mask overlay tiles.
   - Current preview implementations use simple in-app masks for Edge Detection methods. `Polarity Edge`, `Canny Edge`, and `Sobel Edge` all display red edge overlays, and their visible UI parameters are connected to preview calculation.
   - Canny `GaussianBlurSize`/`GaussianSigma` and Polarity `Smoothing` flow through `ApplyGaussianBlur`, which uses Gaussian distance weighting.
   - Processing step numbers are display positions only. When deleting or moving steps, the visible `處理1`, `處理2`, `處理3` numbering is regenerated, but each step's underlying method/parameters move with that step.

@@ -11,7 +11,7 @@ using SWMI = System.Windows.Media.Imaging;
 
 namespace IntegratedImageProcessingApp.Controls
 {
-    internal sealed class LargeImageSource : IDisposable
+    public sealed class LargeImageSource : IDisposable
     {
         private const int TileSourceSize = 1024;
         private const int MaxTileCacheCount = 96;
@@ -24,6 +24,7 @@ namespace IntegratedImageProcessingApp.Controls
         private readonly LinkedList<string> _tileOrder;
         private readonly HashSet<string> _pendingTiles;
         private readonly List<PreviewLevel> _previewLevels;
+        private int _referenceCount = 1;
         private bool _previewBuildQueued;
         private bool _disposed;
 
@@ -47,6 +48,35 @@ namespace IntegratedImageProcessingApp.Controls
 
         public int Height { get; private set; }
 
+        public LargeImageSource AddReference()
+        {
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                _referenceCount++;
+                return this;
+            }
+        }
+
+        public void ReleaseReference()
+        {
+            lock (_sync)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _referenceCount--;
+                if (_referenceCount > 0)
+                {
+                    return;
+                }
+            }
+
+            Dispose();
+        }
+
         public static Size ReadImageSize(string filePath)
         {
             using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
@@ -65,6 +95,15 @@ namespace IntegratedImageProcessingApp.Controls
             var width = Math.Min(TileSourceSize, Width - tileX);
             var height = Math.Min(TileSourceSize, Height - tileY);
             return new Rectangle(tileX, tileY, width, height);
+        }
+
+        public Bitmap CreateRegionBitmap(Rectangle sourceRect)
+        {
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                return CreateTileBitmap(NormalizeRect(sourceRect));
+            }
         }
 
         public PreviewBitmap GetBestPreview(float zoom)
@@ -639,7 +678,7 @@ namespace IntegratedImageProcessingApp.Controls
             public List<int> SampleIndexes { get; private set; }
         }
 
-        internal sealed class PreviewBitmap : IDisposable
+        public sealed class PreviewBitmap : IDisposable
         {
             private readonly bool _ownsBitmap;
 

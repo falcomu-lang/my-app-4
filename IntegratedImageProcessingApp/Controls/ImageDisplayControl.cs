@@ -38,6 +38,7 @@ namespace IntegratedImageProcessingApp.Controls
 
         public event EventHandler ViewChanged;
         public event EventHandler FitViewRequested;
+        public event EventHandler<LargeImageOverlayPaintEventArgs> LargeImageOverlayPaint;
         public event EventHandler<RoiSelectedEventArgs> RoiSelected;
 
         public ImageDisplayControl()
@@ -87,6 +88,25 @@ namespace IntegratedImageProcessingApp.Controls
                 {
                     return _sourceBitmap != null || _largeImageSource != null;
                 }
+            }
+        }
+
+        public bool IsLargeImageMode
+        {
+            get
+            {
+                lock (_imageLock)
+                {
+                    return _largeImageSource != null;
+                }
+            }
+        }
+
+        public LargeImageSource GetSharedLargeImageSource()
+        {
+            lock (_imageLock)
+            {
+                return _largeImageSource != null ? _largeImageSource.AddReference() : null;
             }
         }
 
@@ -301,6 +321,16 @@ namespace IntegratedImageProcessingApp.Controls
             OnViewChanged();
         }
 
+        public void SetSharedLargeImageSource(LargeImageSource largeImageSource)
+        {
+            if (largeImageSource == null)
+            {
+                throw new ArgumentNullException("largeImageSource");
+            }
+
+            SetLargeImageSource(largeImageSource.AddReference());
+        }
+
         public void SetImage(Bitmap bitmap)
         {
             Bitmap displayBitmap = EnsureGrayscaleBitmap(bitmap);
@@ -397,7 +427,9 @@ namespace IntegratedImageProcessingApp.Controls
             }
             else
             {
-                DrawLargeImage(e.Graphics, largeImageSource, zoom, offset);
+                Rectangle visibleSourceRect;
+                DrawLargeImage(e.Graphics, largeImageSource, zoom, offset, out visibleSourceRect);
+                OnLargeImageOverlayPaint(e.Graphics, largeImageSource, visibleSourceRect, zoom, offset);
             }
 
             DrawRoiOverlay(e.Graphics, roiOverlay, zoom, offset);
@@ -624,14 +656,15 @@ namespace IntegratedImageProcessingApp.Controls
             return false;
         }
 
-        private void DrawLargeImage(Graphics graphics, LargeImageSource source, float zoom, PointF offset)
+        private void DrawLargeImage(Graphics graphics, LargeImageSource source, float zoom, PointF offset, out Rectangle visibleSourceRect)
         {
+            visibleSourceRect = Rectangle.Empty;
             if (source == null)
             {
                 return;
             }
 
-            Rectangle visibleSourceRect = GetVisibleSourceRectangle(source.Width, source.Height, viewerPanel.ClientRectangle, zoom, offset);
+            visibleSourceRect = GetVisibleSourceRectangle(source.Width, source.Height, viewerPanel.ClientRectangle, zoom, offset);
             if (visibleSourceRect.Width <= 0 || visibleSourceRect.Height <= 0)
             {
                 return;
@@ -671,6 +704,16 @@ namespace IntegratedImageProcessingApp.Controls
                     }
                 }
             }
+        }
+
+        private void OnLargeImageOverlayPaint(Graphics graphics, LargeImageSource source, Rectangle visibleSourceRect, float zoom, PointF offset)
+        {
+            if (LargeImageOverlayPaint == null || source == null || visibleSourceRect.Width <= 0 || visibleSourceRect.Height <= 0)
+            {
+                return;
+            }
+
+            LargeImageOverlayPaint(this, new LargeImageOverlayPaintEventArgs(graphics, source, visibleSourceRect, zoom, offset));
         }
 
         private static Rectangle GetVisibleSourceRectangle(int imageWidth, int imageHeight, Rectangle viewBounds, float zoom, PointF offset)
@@ -1167,7 +1210,7 @@ namespace IntegratedImageProcessingApp.Controls
 
             if (_largeImageSource != null)
             {
-                _largeImageSource.Dispose();
+                _largeImageSource.ReleaseReference();
                 _largeImageSource = null;
             }
         }
@@ -1194,5 +1237,27 @@ namespace IntegratedImageProcessingApp.Controls
         }
 
         public Rectangle Roi { get; private set; }
+    }
+
+    public class LargeImageOverlayPaintEventArgs : EventArgs
+    {
+        public LargeImageOverlayPaintEventArgs(Graphics graphics, LargeImageSource source, Rectangle visibleSourceRect, float zoom, PointF offset)
+        {
+            Graphics = graphics;
+            Source = source;
+            VisibleSourceRect = visibleSourceRect;
+            Zoom = zoom;
+            Offset = offset;
+        }
+
+        public Graphics Graphics { get; private set; }
+
+        public LargeImageSource Source { get; private set; }
+
+        public Rectangle VisibleSourceRect { get; private set; }
+
+        public float Zoom { get; private set; }
+
+        public PointF Offset { get; private set; }
     }
 }

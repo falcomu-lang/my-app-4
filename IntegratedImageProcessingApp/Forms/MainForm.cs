@@ -40,6 +40,7 @@ namespace IntegratedImageProcessingApp.Forms
         private bool isLoadingImageProcessingParameters;
         private System.Windows.Forms.Timer imageProcessingDebounceTimer;
         private Bitmap latestProcessedImage;
+        private readonly Dictionary<string, Bitmap> largeProcessedOverlayCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
         private bool processedImageDirty = true;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
@@ -53,6 +54,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
+        private const int MaxLargeProcessedOverlayCacheCount = 128;
         private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
 
         public MainForm()
@@ -131,6 +133,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             leftOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
             rightOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
+            leftProcessedDisplayControl.LargeImageOverlayPaint += ProcessedDisplayControl_LargeImageOverlayPaint;
+            rightProcessedDisplayControl.LargeImageOverlayPaint += ProcessedDisplayControl_LargeImageOverlayPaint;
             imageProcessingDebounceTimer = new System.Windows.Forms.Timer();
             imageProcessingDebounceTimer.Interval = 200;
             imageProcessingDebounceTimer.Tick += ImageProcessingDebounceTimer_Tick;
@@ -1422,11 +1426,22 @@ namespace IntegratedImageProcessingApp.Forms
         private void MarkProcessedImageDirty()
         {
             processedImageDirty = true;
+            ClearLargeProcessedOverlayCache();
             if (latestProcessedImage != null)
             {
                 latestProcessedImage.Dispose();
                 latestProcessedImage = null;
             }
+        }
+
+        private void ClearLargeProcessedOverlayCache()
+        {
+            foreach (Bitmap overlay in largeProcessedOverlayCache.Values)
+            {
+                overlay.Dispose();
+            }
+
+            largeProcessedOverlayCache.Clear();
         }
 
         private void ClearProcessedPreviewImages()
@@ -1482,6 +1497,15 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (processedImageDirty || latestProcessedImage == null)
             {
+                statusLabel.Text = "影像處理運算中...";
+                if (rightOriginalDisplayControl.IsLargeImageMode)
+                {
+                    PrepareLargeProcessedPreview();
+                    processedImageDirty = false;
+                    statusLabel.Text = "大圖影像處理完成";
+                    return;
+                }
+
                 Bitmap processedImage = await Task.Run(() => CreateCurrentProcessedImage());
                 if (processedImage == null)
                 {
@@ -1500,6 +1524,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ApplyLatestProcessedImageToVisibleTabs();
+            statusLabel.Text = "影像處理完成";
         }
 
         private bool IsAnyProcessedTabVisible()
@@ -1544,6 +1569,169 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ApplySharedImageViewStateToVisibleControls();
+        }
+
+        private void PrepareLargeProcessedPreview()
+        {
+            if (string.IsNullOrWhiteSpace(systemParameters.LastImagePath) || !File.Exists(systemParameters.LastImagePath))
+            {
+                return;
+            }
+
+            Rectangle? roi = GetSelectedRoi();
+            if (!roi.HasValue || selectedImageProcessingStepIndex < 0 ||
+                selectedImageProcessingStepIndex >= systemParameters.ImageProcessingSteps.Count ||
+                !IsEdgeDetectionMethod(systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Method))
+            {
+                ClearProcessedPreviewImages();
+                return;
+            }
+
+            isSyncingImageView = true;
+            LargeImageSource sharedSource = null;
+            try
+            {
+                sharedSource = rightOriginalDisplayControl.GetSharedLargeImageSource();
+                if (sharedSource == null)
+                {
+                    ClearProcessedPreviewImages();
+                    return;
+                }
+
+                if (!leftProcessedDisplayControl.IsLargeImageMode)
+                {
+                    leftProcessedDisplayControl.SetSharedLargeImageSource(sharedSource);
+                }
+
+                if (!rightProcessedDisplayControl.IsLargeImageMode)
+                {
+                    rightProcessedDisplayControl.SetSharedLargeImageSource(sharedSource);
+                }
+
+                leftProcessedDisplayControl.SetRoiOverlay(roi.Value);
+                rightProcessedDisplayControl.SetRoiOverlay(roi.Value);
+            }
+            finally
+            {
+                if (sharedSource != null)
+                {
+                    sharedSource.ReleaseReference();
+                }
+
+                isSyncingImageView = false;
+            }
+
+            ApplySharedImageViewStateToVisibleControls();
+        }
+
+        private void ProcessedDisplayControl_LargeImageOverlayPaint(object sender, LargeImageOverlayPaintEventArgs e)
+        {
+            Rectangle? selectedRoi = GetSelectedRoi();
+            if (!selectedRoi.HasValue ||
+                selectedImageProcessingStepIndex < 0 ||
+                selectedImageProcessingStepIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                return;
+            }
+
+            ImageProcessingStepSettings step = systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex];
+            if (!IsEdgeDetectionMethod(step.Method))
+            {
+                return;
+            }
+
+            Rectangle visibleRoi = Rectangle.Intersect(e.VisibleSourceRect, selectedRoi.Value);
+            if (visibleRoi.Width <= 0 || visibleRoi.Height <= 0)
+            {
+                return;
+            }
+
+            const int overlayTileSize = 1024;
+            int startTileX = (visibleRoi.Left / overlayTileSize) * overlayTileSize;
+            int endTileX = ((visibleRoi.Right + overlayTileSize - 1) / overlayTileSize) * overlayTileSize;
+            int startTileY = (visibleRoi.Top / overlayTileSize) * overlayTileSize;
+            int endTileY = ((visibleRoi.Bottom + overlayTileSize - 1) / overlayTileSize) * overlayTileSize;
+
+            for (int tileY = startTileY; tileY < endTileY; tileY += overlayTileSize)
+            {
+                for (int tileX = startTileX; tileX < endTileX; tileX += overlayTileSize)
+                {
+                    Rectangle tileRect = Rectangle.Intersect(
+                        visibleRoi,
+                        new Rectangle(tileX, tileY, overlayTileSize, overlayTileSize));
+                    if (tileRect.Width <= 0 || tileRect.Height <= 0)
+                    {
+                        continue;
+                    }
+
+                    Bitmap overlay = GetLargeProcessedOverlayTile(e.Source, tileRect, step);
+                    DrawLargeProcessedOverlayTile(e.Graphics, overlay, tileRect, e.Zoom, e.Offset);
+                }
+            }
+        }
+
+        private Bitmap GetLargeProcessedOverlayTile(LargeImageSource source, Rectangle tileRect, ImageProcessingStepSettings step)
+        {
+            string key = string.Join(
+                "|",
+                step.Method,
+                step.Parameters,
+                tileRect.X.ToString(CultureInfo.InvariantCulture),
+                tileRect.Y.ToString(CultureInfo.InvariantCulture),
+                tileRect.Width.ToString(CultureInfo.InvariantCulture),
+                tileRect.Height.ToString(CultureInfo.InvariantCulture));
+            Bitmap overlay;
+            if (largeProcessedOverlayCache.TryGetValue(key, out overlay))
+            {
+                return overlay;
+            }
+
+            using (Bitmap tile = source.CreateRegionBitmap(tileRect))
+            {
+                bool[,] mask = CreateEdgeMask(tile, step.Method, ParseImageProcessingParameters(step.Parameters));
+                overlay = CreateRedOverlayTile(mask);
+                if (largeProcessedOverlayCache.Count >= MaxLargeProcessedOverlayCacheCount)
+                {
+                    ClearLargeProcessedOverlayCache();
+                }
+
+                largeProcessedOverlayCache[key] = overlay;
+                return overlay;
+            }
+        }
+
+        private static Bitmap CreateRedOverlayTile(bool[,] mask)
+        {
+            int width = mask.GetLength(0);
+            int height = mask.GetLength(1);
+            var overlay = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (mask[x, y])
+                    {
+                        overlay.SetPixel(x, y, Color.Red);
+                    }
+                }
+            }
+
+            return overlay;
+        }
+
+        private static void DrawLargeProcessedOverlayTile(Graphics graphics, Bitmap overlay, Rectangle tileRect, float zoom, PointF offset)
+        {
+            if (overlay == null)
+            {
+                return;
+            }
+
+            Rectangle destination = Rectangle.Round(RectangleF.FromLTRB(
+                (float)Math.Floor(offset.X + (tileRect.Left * zoom)),
+                (float)Math.Floor(offset.Y + (tileRect.Top * zoom)),
+                (float)Math.Ceiling(offset.X + (tileRect.Right * zoom)),
+                (float)Math.Ceiling(offset.Y + (tileRect.Bottom * zoom))));
+            graphics.DrawImage(overlay, destination, 0, 0, overlay.Width, overlay.Height, GraphicsUnit.Pixel);
         }
 
         private Bitmap CreateCurrentProcessedImage()
@@ -2324,8 +2512,7 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     leftImageTabControl.SelectedTab = leftOriginalTabPage;
                     rightImageTabControl.SelectedTab = rightOriginalTabPage;
-                    await leftOriginalDisplayControl.LoadImageFromFileAsync(systemParameters.LastImagePath, CancellationToken.None);
-                    await rightOriginalDisplayControl.LoadImageFromFileAsync(systemParameters.LastImagePath, CancellationToken.None);
+                    await LoadImageIntoOriginalDisplaysAsync(systemParameters.LastImagePath, CancellationToken.None);
                     SyncVisibleImageDisplaysFromLeft();
                     statusLabel.Text = "已還原上次圖片：" + Path.GetFileName(systemParameters.LastImagePath);
                 }
@@ -2369,6 +2556,16 @@ namespace IntegratedImageProcessingApp.Forms
 
             selectedImageProcessingStepIndex = previewStepIndex;
             MarkProcessedImageDirty();
+            if (rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                statusLabel.Text = "影像處理運算中...";
+                PrepareLargeProcessedPreview();
+                processedImageDirty = false;
+                statusLabel.Text = "已準備大圖處理後影像：處理" + (previewStepIndex + 1);
+                return;
+            }
+
+            statusLabel.Text = "影像處理運算中...";
             Bitmap processedImage = await Task.Run(() => CreateCurrentProcessedImage());
             if (processedImage == null)
             {
@@ -2449,8 +2646,7 @@ namespace IntegratedImageProcessingApp.Forms
                     RebuildVisibleRoiItems();
                     MarkProcessedImageDirty();
 
-                    await leftOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
-                    await rightOriginalDisplayControl.LoadImageFromFileAsync(dialog.FileName, CancellationToken.None);
+                    await LoadImageIntoOriginalDisplaysAsync(dialog.FileName, CancellationToken.None);
                     SyncVisibleImageDisplaysFromLeft();
                     SaveSystemParameters();
 
@@ -2471,6 +2667,31 @@ namespace IntegratedImageProcessingApp.Forms
                     isLoadingImage = false;
                 }
             }
+        }
+
+        private async Task LoadImageIntoOriginalDisplaysAsync(string filePath, CancellationToken cancellationToken)
+        {
+            Size imageSize = await Task.Run(() => LargeImageSource.ReadImageSize(filePath), cancellationToken);
+            long sourcePixels = (long)imageSize.Width * imageSize.Height;
+            if (sourcePixels > 50000000L)
+            {
+                var sharedSource = await Task.Run(() => new LargeImageSource(filePath), cancellationToken);
+                try
+                {
+                    leftOriginalDisplayControl.SetSharedLargeImageSource(sharedSource);
+                    rightOriginalDisplayControl.SetSharedLargeImageSource(sharedSource);
+                    statusLabel.Text = "已載入大圖共用切圖來源";
+                }
+                finally
+                {
+                    sharedSource.ReleaseReference();
+                }
+
+                return;
+            }
+
+            await leftOriginalDisplayControl.LoadImageFromFileAsync(filePath, cancellationToken);
+            await rightOriginalDisplayControl.LoadImageFromFileAsync(filePath, cancellationToken);
         }
 
         private void FunctionListBox_DrawItem(object sender, DrawItemEventArgs e)
