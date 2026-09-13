@@ -18,19 +18,23 @@ namespace IntegratedImageProcessingApp.Forms
         private System.Windows.Forms.TableLayoutPanel imageLayoutPanel;
         private System.Windows.Forms.TabControl leftImageTabControl;
         private System.Windows.Forms.TabPage leftOriginalTabPage;
+        private System.Windows.Forms.TabPage leftPreprocessedTabPage;
         private System.Windows.Forms.TabPage leftProcessedTabPage;
         private System.Windows.Forms.TabPage leftObjectsTabPage;
         private System.Windows.Forms.TabPage leftDebugTabPage;
         private System.Windows.Forms.TabControl rightImageTabControl;
         private System.Windows.Forms.TabPage rightOriginalTabPage;
+        private System.Windows.Forms.TabPage rightPreprocessedTabPage;
         private System.Windows.Forms.TabPage rightProcessedTabPage;
         private System.Windows.Forms.TabPage rightObjectsTabPage;
         private System.Windows.Forms.TabPage rightDebugTabPage;
         private System.Windows.Forms.Panel leftOriginalDisplayHostPanel;
+        private System.Windows.Forms.Panel leftPreprocessedDisplayHostPanel;
         private System.Windows.Forms.Panel leftProcessedDisplayHostPanel;
         private System.Windows.Forms.Panel leftObjectsDisplayHostPanel;
         private System.Windows.Forms.Panel leftDebugDisplayHostPanel;
         private System.Windows.Forms.Panel rightOriginalDisplayHostPanel;
+        private System.Windows.Forms.Panel rightPreprocessedDisplayHostPanel;
         private System.Windows.Forms.Panel rightProcessedDisplayHostPanel;
         private System.Windows.Forms.Panel rightObjectsDisplayHostPanel;
         private System.Windows.Forms.Panel rightDebugDisplayHostPanel;
@@ -124,6 +128,8 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalPreviewTopPanel = new System.Windows.Forms.Panel();
             this.leftOriginalPreviewResolutionLabel = new System.Windows.Forms.Label();
             this.leftOriginalPreviewTitleLabel = new System.Windows.Forms.Label();
+            this.leftPreprocessedTabPage = new System.Windows.Forms.TabPage();
+            this.leftPreprocessedDisplayHostPanel = new System.Windows.Forms.Panel();
             this.leftProcessedTabPage = new System.Windows.Forms.TabPage();
             this.leftProcessedDisplayHostPanel = new System.Windows.Forms.Panel();
             this.leftProcessedPreviewViewPanel = new System.Windows.Forms.Panel();
@@ -161,6 +167,8 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalPreviewTopPanel = new System.Windows.Forms.Panel();
             this.rightOriginalPreviewResolutionLabel = new System.Windows.Forms.Label();
             this.rightOriginalPreviewTitleLabel = new System.Windows.Forms.Label();
+            this.rightPreprocessedTabPage = new System.Windows.Forms.TabPage();
+            this.rightPreprocessedDisplayHostPanel = new System.Windows.Forms.Panel();
             this.rightProcessedTabPage = new System.Windows.Forms.TabPage();
             this.rightProcessedDisplayHostPanel = new System.Windows.Forms.Panel();
             this.rightProcessedPreviewViewPanel = new System.Windows.Forms.Panel();
@@ -204,6 +212,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalDisplayHostPanel.SuspendLayout();
             this.leftOriginalPreviewBottomPanel.SuspendLayout();
             this.leftOriginalPreviewTopPanel.SuspendLayout();
+            this.leftPreprocessedTabPage.SuspendLayout();
             this.leftProcessedTabPage.SuspendLayout();
             this.leftProcessedDisplayHostPanel.SuspendLayout();
             this.leftProcessedPreviewBottomPanel.SuspendLayout();
@@ -221,6 +230,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalDisplayHostPanel.SuspendLayout();
             this.rightOriginalPreviewBottomPanel.SuspendLayout();
             this.rightOriginalPreviewTopPanel.SuspendLayout();
+            this.rightPreprocessedTabPage.SuspendLayout();
             this.rightProcessedTabPage.SuspendLayout();
             this.rightProcessedDisplayHostPanel.SuspendLayout();
             this.rightProcessedPreviewBottomPanel.SuspendLayout();
@@ -314,6 +324,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.functionListBox.Items.AddRange(new object[] {
             "讀取圖片",
             "指定 ROI",
+            "影像前處理",
             "影像處理",
             "亮度 / 對比",
             "濾波與銳化",
@@ -371,6 +382,7 @@ namespace IntegratedImageProcessingApp.Forms
             // leftImageTabControl
             // 
             this.leftImageTabControl.Controls.Add(this.leftOriginalTabPage);
+            this.leftImageTabControl.Controls.Add(this.leftPreprocessedTabPage);
             this.leftImageTabControl.Controls.Add(this.leftProcessedTabPage);
             this.leftImageTabControl.Controls.Add(this.leftObjectsTabPage);
             this.leftImageTabControl.Controls.Add(this.leftDebugTabPage);
@@ -485,6 +497,27 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalPreviewTitleLabel.Size = new System.Drawing.Size(58, 15);
             this.leftOriginalPreviewTitleLabel.TabIndex = 0;
             this.leftOriginalPreviewTitleLabel.Text = "左側 原圖";
+            //
+            // leftPreprocessedTabPage
+            //
+            this.leftPreprocessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
+            this.leftPreprocessedTabPage.Controls.Add(this.leftPreprocessedDisplayHostPanel);
+            this.leftPreprocessedTabPage.Location = new System.Drawing.Point(4, 24);
+            this.leftPreprocessedTabPage.Name = "leftPreprocessedTabPage";
+            this.leftPreprocessedTabPage.Padding = new System.Windows.Forms.Padding(12);
+            this.leftPreprocessedTabPage.Size = new System.Drawing.Size(352, 594);
+            this.leftPreprocessedTabPage.TabIndex = 1;
+            this.leftPreprocessedTabPage.Text = "前處理";
+            //
+            // leftPreprocessedDisplayHostPanel
+            //
+            this.leftPreprocessedDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.leftPreprocessedDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.leftPreprocessedDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.leftPreprocessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
+            this.leftPreprocessedDisplayHostPanel.Name = "leftPreprocessedDisplayHostPanel";
+            this.leftPreprocessedDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
+            this.leftPreprocessedDisplayHostPanel.TabIndex = 0;
             // 
             // leftProcessedTabPage
             // 
@@ -801,6 +834,7 @@ namespace IntegratedImageProcessingApp.Forms
             // rightImageTabControl
             // 
             this.rightImageTabControl.Controls.Add(this.rightOriginalTabPage);
+            this.rightImageTabControl.Controls.Add(this.rightPreprocessedTabPage);
             this.rightImageTabControl.Controls.Add(this.rightProcessedTabPage);
             this.rightImageTabControl.Controls.Add(this.rightObjectsTabPage);
             this.rightImageTabControl.Controls.Add(this.rightDebugTabPage);
@@ -915,6 +949,27 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalPreviewTitleLabel.Size = new System.Drawing.Size(58, 15);
             this.rightOriginalPreviewTitleLabel.TabIndex = 0;
             this.rightOriginalPreviewTitleLabel.Text = "右側 原圖";
+            //
+            // rightPreprocessedTabPage
+            //
+            this.rightPreprocessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
+            this.rightPreprocessedTabPage.Controls.Add(this.rightPreprocessedDisplayHostPanel);
+            this.rightPreprocessedTabPage.Location = new System.Drawing.Point(4, 24);
+            this.rightPreprocessedTabPage.Name = "rightPreprocessedTabPage";
+            this.rightPreprocessedTabPage.Padding = new System.Windows.Forms.Padding(12);
+            this.rightPreprocessedTabPage.Size = new System.Drawing.Size(352, 594);
+            this.rightPreprocessedTabPage.TabIndex = 1;
+            this.rightPreprocessedTabPage.Text = "前處理";
+            //
+            // rightPreprocessedDisplayHostPanel
+            //
+            this.rightPreprocessedDisplayHostPanel.BackColor = System.Drawing.Color.White;
+            this.rightPreprocessedDisplayHostPanel.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.rightPreprocessedDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.rightPreprocessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
+            this.rightPreprocessedDisplayHostPanel.Name = "rightPreprocessedDisplayHostPanel";
+            this.rightPreprocessedDisplayHostPanel.Size = new System.Drawing.Size(328, 570);
+            this.rightPreprocessedDisplayHostPanel.TabIndex = 0;
             // 
             // rightProcessedTabPage
             // 
@@ -1319,6 +1374,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalPreviewBottomPanel.PerformLayout();
             this.leftOriginalPreviewTopPanel.ResumeLayout(false);
             this.leftOriginalPreviewTopPanel.PerformLayout();
+            this.leftPreprocessedTabPage.ResumeLayout(false);
             this.leftProcessedTabPage.ResumeLayout(false);
             this.leftProcessedDisplayHostPanel.ResumeLayout(false);
             this.leftProcessedPreviewBottomPanel.ResumeLayout(false);
@@ -1344,6 +1400,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalPreviewBottomPanel.PerformLayout();
             this.rightOriginalPreviewTopPanel.ResumeLayout(false);
             this.rightOriginalPreviewTopPanel.PerformLayout();
+            this.rightPreprocessedTabPage.ResumeLayout(false);
             this.rightProcessedTabPage.ResumeLayout(false);
             this.rightProcessedDisplayHostPanel.ResumeLayout(false);
             this.rightProcessedPreviewBottomPanel.ResumeLayout(false);

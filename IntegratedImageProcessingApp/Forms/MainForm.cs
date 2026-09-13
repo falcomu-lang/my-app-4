@@ -20,10 +20,12 @@ namespace IntegratedImageProcessingApp.Forms
     public partial class MainForm : Form
     {
         private ImageDisplayControl leftOriginalDisplayControl;
+        private ImageDisplayControl leftPreprocessedDisplayControl;
         private ImageDisplayControl leftProcessedDisplayControl;
         private ImageDisplayControl leftObjectsDisplayControl;
         private ImageDisplayControl leftDebugDisplayControl;
         private ImageDisplayControl rightOriginalDisplayControl;
+        private ImageDisplayControl rightPreprocessedDisplayControl;
         private ImageDisplayControl rightProcessedDisplayControl;
         private ImageDisplayControl rightObjectsDisplayControl;
         private ImageDisplayControl rightDebugDisplayControl;
@@ -57,21 +59,30 @@ namespace IntegratedImageProcessingApp.Forms
         // making a second full-image managed mask just to paint red overlays.
         private readonly Dictionary<string, Cv.Mat> largeProcessedBinaryMasks = new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
         private readonly HashSet<string> largeProcessedMaskBuildKeys = new HashSet<string>(StringComparer.Ordinal);
+        // One full-size OpenCV edge operation already uses several source-size
+        // buffers. Serializing it prevents parameter changes from starting a
+        // second competing Sobel/Canny operation before the first one exits.
+        private readonly SemaphoreSlim largeNativeProcessingGate = new SemaphoreSlim(1, 1);
         private readonly object largeRoiGrayCacheLock = new object();
         private LargeImageSource largeRoiGrayCacheSource;
         private Rectangle largeRoiGrayCacheRoi;
         private byte[,] largeRoiGrayCache;
         private Cv.Mat largeRoiOpenCvGrayCache;
+        // This is deliberately separate from LargeImageSource's WIC tiles.
+        // Tiles own responsive rendering; this Mat owns fast ROI processing.
+        private LargeImageSource largeOpenCvSourceGrayCacheSource;
+        private Cv.Mat largeOpenCvSourceGrayCache;
         private int largeProcessedMaskGeneration;
-        private long lastRoiProcessingElapsedMilliseconds;
         private long lastImageProcessingElapsedMilliseconds;
         private long lastDisplayProcessingElapsedMilliseconds;
+        private bool includeImageProcessingTimeOnNextDisplay;
         private bool processedImageDirty = true;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
 
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
+        private const string ImagePreprocessingMenuText = "影像前處理";
         private const string ImageProcessingMenuText = "影像處理";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
@@ -87,6 +98,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const int MaxPendingLargeProcessedViewportOverlays = 4;
         private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
         private static readonly string[] CannyKernelSizeOptions = new[] { "3", "5", "7" };
+        private static readonly string[] SobelKernelSizeOptions = new[] { "1", "3", "5", "7" };
 
         private enum FunctionMenuIcon
         {
@@ -132,16 +144,45 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void InitializeImageDisplayControls()
         {
+            AddPreprocessedImageTabs();
             leftOriginalDisplayControl = CreateImageDisplayControl(leftOriginalDisplayHostPanel, "左側 原圖");
+            leftPreprocessedDisplayControl = CreateImageDisplayControl(leftPreprocessedDisplayHostPanel, "左側 前處理");
             leftProcessedDisplayControl = CreateImageDisplayControl(leftProcessedDisplayHostPanel, "左側 處理後");
             leftObjectsDisplayControl = CreateImageDisplayControl(leftObjectsDisplayHostPanel, "左側 物件結果");
             leftDebugDisplayControl = CreateImageDisplayControl(leftDebugDisplayHostPanel, "左側 debug");
             rightOriginalDisplayControl = CreateImageDisplayControl(rightOriginalDisplayHostPanel, "右側 原圖");
+            rightPreprocessedDisplayControl = CreateImageDisplayControl(rightPreprocessedDisplayHostPanel, "右側 前處理");
             rightProcessedDisplayControl = CreateImageDisplayControl(rightProcessedDisplayHostPanel, "右側 處理後");
             rightObjectsDisplayControl = CreateImageDisplayControl(rightObjectsDisplayHostPanel, "右側 物件結果");
             rightDebugDisplayControl = CreateImageDisplayControl(rightDebugDisplayHostPanel, "右側 debug");
 
             WireImageDisplaySynchronization();
+        }
+
+        private void AddPreprocessedImageTabs()
+        {
+            if (leftPreprocessedTabPage != null && rightPreprocessedTabPage != null)
+            {
+                return;
+            }
+
+            leftPreprocessedTabPage = CreateImageTabPage("leftPreprocessedTabPage", "前處理", out leftPreprocessedDisplayHostPanel);
+            rightPreprocessedTabPage = CreateImageTabPage("rightPreprocessedTabPage", "前處理", out rightPreprocessedDisplayHostPanel);
+            leftImageTabControl.TabPages.Insert(leftImageTabControl.TabPages.IndexOf(leftProcessedTabPage), leftPreprocessedTabPage);
+            rightImageTabControl.TabPages.Insert(rightImageTabControl.TabPages.IndexOf(rightProcessedTabPage), rightPreprocessedTabPage);
+        }
+
+        private static TabPage CreateImageTabPage(string name, string text, out Panel hostPanel)
+        {
+            var tabPage = new TabPage();
+            tabPage.Name = name;
+            tabPage.Text = text;
+            tabPage.BackColor = Color.FromArgb(250, 251, 253);
+            tabPage.Padding = new Padding(12);
+            hostPanel = new Panel();
+            hostPanel.Dock = DockStyle.Fill;
+            tabPage.Controls.Add(hostPanel);
+            return tabPage;
         }
 
         private static ImageDisplayControl CreateImageDisplayControl(Control host, string title)
@@ -158,19 +199,23 @@ namespace IntegratedImageProcessingApp.Forms
         private void WireImageDisplaySynchronization()
         {
             leftOriginalDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            leftPreprocessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftProcessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftObjectsDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftDebugDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightOriginalDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            rightPreprocessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightProcessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightObjectsDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightDebugDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
 
             leftOriginalDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            leftPreprocessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftProcessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftObjectsDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftDebugDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightOriginalDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            rightPreprocessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightProcessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightObjectsDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightDebugDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
@@ -366,6 +411,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return leftOriginalDisplayControl;
             }
 
+            if (leftImageTabControl.SelectedTab == leftPreprocessedTabPage)
+            {
+                return leftPreprocessedDisplayControl;
+            }
+
             if (leftImageTabControl.SelectedTab == leftProcessedTabPage)
             {
                 return leftProcessedDisplayControl;
@@ -389,6 +439,11 @@ namespace IntegratedImageProcessingApp.Forms
             if (rightImageTabControl.SelectedTab == rightOriginalTabPage)
             {
                 return rightOriginalDisplayControl;
+            }
+
+            if (rightImageTabControl.SelectedTab == rightPreprocessedTabPage)
+            {
+                return rightPreprocessedDisplayControl;
             }
 
             if (rightImageTabControl.SelectedTab == rightProcessedTabPage)
@@ -445,6 +500,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 HideImageProcessingFlowTree();
                 parameterPlaceholderLabel.Text = "展開「影像處理」後，可新增影像處理流程。";
+            }
+            else if (selectedFunction == ImagePreprocessingMenuText)
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "這裡會放置影像前處理的設定。";
             }
             else if (GetImageProcessingGroupId(selectedFunction) != null)
             {
@@ -1781,13 +1841,11 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     AddComboParameter("Polarity", "邊緣方向", new[] { "BrightToDark", "DarkToBright", "Any" }, "Any");
                     AddNumericParameter("ContrastThreshold", "對比門檻", "20");
-                    AddNumericParameter("EdgeWidth", "邊緣寬度", "3");
+                    AddComboParameter("CoreWidth", "核心大小", new[] { "3", "5", "7" }, "3");
                     AddNumericParameter("Smoothing", "平滑", "1");
-                    AddComboParameter("SearchDirection", "搜尋方向", new[] { "Horizontal", "Vertical", "Any" }, "Any");
-                    AddComboParameter("EdgeSelection", "邊緣選取", new[] { "First", "Last", "Strongest", "All" }, "Strongest");
-                    AddCheckParameter("SubPixel", "次像素定位", false);
-                    AddNumericParameter("MinEdgeLength", "最小邊緣長度", "10");
-                    AddNumericParameter("MaxGap", "最大斷點間距", "2");
+                    AddNumericParameter("GaussianSigma", "Gaussian Sigma", "0.5");
+                    AddComboParameter("SearchDirection", "灰階變化方向", new[] { "X", "Y", "Any" }, "Any");
+                    AddComboParameter("BorderType", "ROI 邊界處理", new[] { "Reflect", "Replicate", "Constant" }, "Reflect");
                 }
                 else if (method == "Canny Edge")
                 {
@@ -1800,15 +1858,9 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else if (method == "Sobel Edge")
                 {
-                    AddComboParameter("Direction", "方向", new[] { "Both", "X", "Y" }, "Both");
-                    AddComboParameter("KernelSize", "核心大小", KernelSizeOptions, "3");
-                    AddNumericParameter("Scale", "Scale", "1");
-                    AddNumericParameter("Delta", "Delta", "0");
-                    AddComboParameter("OutputMode", "輸出模式", new[] { "Magnitude", "Absolute", "XOnly", "YOnly" }, "Magnitude");
+                    AddComboParameter("Direction", "灰階變化方向", new[] { "X", "Y", "Any" }, "Any");
+                    AddComboParameter("KernelSize", "核心大小", SobelKernelSizeOptions, "3");
                     AddNumericParameter("Threshold", "邊緣門檻", "30");
-                    AddComboParameter("EdgeSelection", "邊緣選取", new[] { "All", "Strongest", "Longest" }, "All");
-                    AddNumericParameter("MinEdgeLength", "最小邊緣長度", "10");
-                    AddNumericParameter("MaxGap", "最大斷點間距", "2");
                 }
             }
             finally
@@ -1979,7 +2031,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 maximum = 255;
             }
-            else if (key == "EdgeWidth")
+            else if (key == "CoreWidth")
             {
                 minimum = 1;
                 maximum = 99;
@@ -2036,6 +2088,13 @@ namespace IntegratedImageProcessingApp.Forms
         {
             Dictionary<string, string> parameters = ParseImageProcessingParameters(GetSelectedImageProcessingStepParameters());
             string value;
+            if (key == "CoreWidth" &&
+                !parameters.ContainsKey("CoreWidth") &&
+                parameters.TryGetValue("EdgeWidth", out value))
+            {
+                return value;
+            }
+
             return parameters.TryGetValue(key, out value) ? value : defaultValue;
         }
 
@@ -2056,9 +2115,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             Dictionary<string, string> parameters = ParseImageProcessingParameters(systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters);
+            bool removedLegacyCoreWidth = key == "CoreWidth" && parameters.Remove("EdgeWidth");
             string previousValue;
             if (parameters.TryGetValue(key, out previousValue) &&
-                string.Equals(previousValue, value ?? string.Empty, StringComparison.Ordinal))
+                string.Equals(previousValue, value ?? string.Empty, StringComparison.Ordinal) &&
+                !removedLegacyCoreWidth)
             {
                 return;
             }
@@ -2111,7 +2172,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (method == "Polarity Edge")
             {
-                return "Polarity=Any;ContrastThreshold=20;EdgeWidth=3;Smoothing=1;SearchDirection=Any;EdgeSelection=Strongest;SubPixel=false;MinEdgeLength=10;MaxGap=2";
+                return "Polarity=Any;ContrastThreshold=20;CoreWidth=3;Smoothing=1;GaussianSigma=0.5;SearchDirection=Any;BorderType=Reflect";
             }
 
             if (method == "Canny Edge")
@@ -2121,7 +2182,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (method == "Sobel Edge")
             {
-                return "Direction=Both;KernelSize=3;Scale=1;Delta=0;OutputMode=Magnitude;Threshold=30;EdgeSelection=All;MinEdgeLength=10;MaxGap=2";
+                return "Direction=Any;KernelSize=3;Threshold=30";
             }
 
             return string.Empty;
@@ -2243,6 +2304,13 @@ namespace IntegratedImageProcessingApp.Forms
         {
             lock (largeRoiGrayCacheLock)
             {
+                if (largeOpenCvSourceGrayCache != null)
+                {
+                    largeOpenCvSourceGrayCache.Dispose();
+                    largeOpenCvSourceGrayCache = null;
+                }
+
+                largeOpenCvSourceGrayCacheSource = null;
                 if (largeRoiOpenCvGrayCache != null)
                 {
                     largeRoiOpenCvGrayCache.Dispose();
@@ -2285,13 +2353,7 @@ namespace IntegratedImageProcessingApp.Forms
                     gray,
                     GetIntParameter(parameters, "Threshold", 30),
                     GetStringParameter(parameters, "Direction", "Both"),
-                    GetIntParameter(parameters, "KernelSize", 3),
-                    GetDoubleParameter(parameters, "Scale", 1),
-                    GetIntParameter(parameters, "Delta", 0),
-                    GetStringParameter(parameters, "OutputMode", "Magnitude"),
-                    GetStringParameter(parameters, "EdgeSelection", "All"),
-                    GetIntParameter(parameters, "MinEdgeLength", 10),
-                    GetIntParameter(parameters, "MaxGap", 2));
+                    GetIntParameter(parameters, "KernelSize", 3));
             }
 
             if (method == "Polarity Edge")
@@ -2299,14 +2361,12 @@ namespace IntegratedImageProcessingApp.Forms
                 return CreateOpenCvPolarityMask(
                     gray,
                     GetIntParameter(parameters, "ContrastThreshold", 20),
-                    GetIntParameter(parameters, "EdgeWidth", 3),
+                    GetPolarityCoreWidth(parameters),
                     GetIntParameter(parameters, "Smoothing", 1),
                     GetStringParameter(parameters, "Polarity", "Any"),
                     GetStringParameter(parameters, "SearchDirection", "Any"),
-                    GetStringParameter(parameters, "EdgeSelection", "Strongest"),
-                    GetIntParameter(parameters, "MinEdgeLength", 10),
-                    GetIntParameter(parameters, "MaxGap", 2),
-                    GetBoolParameter(parameters, "SubPixel", false));
+                    GetDoubleParameter(parameters, "GaussianSigma", 0.5),
+                    GetStringParameter(parameters, "BorderType", "Reflect"));
             }
 
             int lowThreshold = GetIntParameter(parameters, "LowThreshold", 50);
@@ -2531,60 +2591,18 @@ namespace IntegratedImageProcessingApp.Forms
         }
 
         private static bool[,] CreateOpenCvSobelMask(
-            byte[,] gray, int threshold, string direction, int kernelSize, double scale, int delta,
-            string outputMode, string edgeSelection, int minEdgeLength, int maxGap)
+            byte[,] gray, int threshold, string direction, int kernelSize)
         {
             using (var source = CreateOpenCvGrayMat(gray))
-            using (var gradientX = new Cv.Mat())
-            using (var gradientY = new Cv.Mat())
-            using (var magnitude = new Cv.Mat())
-            using (var edgeMask = new Cv.Mat())
+            using (var edgeMask = CreateOpenCvSobelBinaryMask(source, threshold, direction, kernelSize))
             {
-                int aperture = EnsureOdd(Math.Max(3, kernelSize));
-                Cv.Cv2.Sobel(source, gradientX, Cv.MatType.CV_32FC1, 1, 0, aperture);
-                Cv.Cv2.Sobel(source, gradientY, Cv.MatType.CV_32FC1, 0, 1, aperture);
-
-                bool xOnly = string.Equals(outputMode, "XOnly", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(direction, "Horizontal", StringComparison.OrdinalIgnoreCase);
-                bool yOnly = string.Equals(outputMode, "YOnly", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(direction, "Vertical", StringComparison.OrdinalIgnoreCase);
-                if (xOnly)
-                {
-                    Cv.Cv2.Absdiff(gradientX, Cv.Scalar.All(0), magnitude);
-                }
-                else if (yOnly)
-                {
-                    Cv.Cv2.Absdiff(gradientY, Cv.Scalar.All(0), magnitude);
-                }
-                else
-                {
-                    Cv.Cv2.Magnitude(gradientX, gradientY, magnitude);
-                }
-
-                if (scale > 0)
-                {
-                    double sourceThreshold = (threshold - delta) / scale;
-                    Cv.Cv2.Threshold(magnitude, edgeMask, sourceThreshold, 255, Cv.ThresholdTypes.Binary);
-                    edgeMask.ConvertTo(edgeMask, Cv.MatType.CV_8UC1);
-                }
-                else if (delta >= threshold)
-                {
-                    edgeMask.Create(magnitude.Rows, magnitude.Cols, Cv.MatType.CV_8UC1);
-                    edgeMask.SetTo(Cv.Scalar.All(255));
-                }
-                else
-                {
-                    edgeMask.Create(magnitude.Rows, magnitude.Cols, Cv.MatType.CV_8UC1);
-                    edgeMask.SetTo(Cv.Scalar.All(0));
-                }
-
-                return CreateOpenCvFilteredMask(edgeMask, maxGap, minEdgeLength, edgeSelection, magnitude);
+                return ConvertOpenCvBinaryMask(edgeMask);
             }
         }
 
         private static bool[,] CreateOpenCvPolarityMask(
             byte[,] gray, int contrastThreshold, int edgeWidth, int smoothing, string polarity,
-            string searchDirection, string edgeSelection, int minEdgeLength, int maxGap, bool subPixel)
+            string searchDirection, double gaussianSigma, string borderType)
         {
             using (var source = CreateOpenCvGrayMat(gray))
             using (var blurred = new Cv.Mat())
@@ -2598,16 +2616,17 @@ namespace IntegratedImageProcessingApp.Forms
             using (var edgeMask = new Cv.Mat())
             {
                 int blurSize = EnsureOdd(Math.Max(1, smoothing));
-                Cv.Cv2.GaussianBlur(source, blurred, new Cv.Size(blurSize, blurSize), Math.Max(0.1, smoothing / 2.0));
-                int aperture = EnsureOdd(Math.Max(3, edgeWidth));
+                Cv.Cv2.GaussianBlur(source, blurred, new Cv.Size(blurSize, blurSize), Math.Max(0.1, gaussianSigma), 0, GetOpenCvBorderType(borderType));
+                int aperture = NormalizeSobelKernelSize(edgeWidth);
                 Cv.Cv2.Sobel(blurred, gradientX, Cv.MatType.CV_32FC1, 1, 0, aperture);
                 Cv.Cv2.Sobel(blurred, gradientY, Cv.MatType.CV_32FC1, 0, 1, aperture);
 
-                if (string.Equals(searchDirection, "Horizontal", StringComparison.OrdinalIgnoreCase))
+                string normalizedDirection = NormalizePolaritySearchDirection(searchDirection);
+                if (normalizedDirection == "X")
                 {
                     gradientX.CopyTo(directedGradient);
                 }
-                else if (string.Equals(searchDirection, "Vertical", StringComparison.OrdinalIgnoreCase))
+                else if (normalizedDirection == "Y")
                 {
                     gradientY.CopyTo(directedGradient);
                 }
@@ -2636,7 +2655,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                 edgeMask.ConvertTo(edgeMask, Cv.MatType.CV_8UC1);
 
-                return CreateOpenCvFilteredMask(edgeMask, maxGap, minEdgeLength, edgeSelection, absoluteGradient);
+                return ConvertOpenCvBinaryMask(edgeMask);
             }
         }
 
@@ -3049,7 +3068,9 @@ namespace IntegratedImageProcessingApp.Forms
             string method = step.Method;
             string parameters = step.Parameters;
             LargeImageSource sharedSource = source.AddReference();
-            statusLabel.Text = "影像處理運算中...建立 ROI Mask";
+            statusLabel.Text = CanUseNativeEdgeMask(method, null)
+                ? "影像處理運算中...使用 OpenCV " + method
+                : "影像處理運算中...";
 
             Task.Run(
                 delegate
@@ -3064,38 +3085,56 @@ namespace IntegratedImageProcessingApp.Forms
                         // not pay the per-chunk bitmap/array setup cost.
                         if ((long)roi.Width * roi.Height <= MaxSinglePassLargeRoiPixels)
                         {
-                            if (CanUseNativeCannyMask(method, parsedParameters))
+                            if (CanUseNativeEdgeMask(method, parsedParameters))
                             {
-                                Stopwatch roiStopwatch = Stopwatch.StartNew();
-                                using (Cv.Mat nativeGray = GetOrCreateLargeRoiOpenCvGrayCache(sharedSource, roi))
+                                largeNativeProcessingGate.Wait();
+                                try
                                 {
-                                    long roiElapsedMilliseconds = roiStopwatch.ElapsedMilliseconds;
+                                    // A changed parameter invalidates this queued
+                                    // request before it enters the expensive core.
                                     if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
                                     {
                                         return;
                                     }
 
-                                    Stopwatch imageProcessingStopwatch = Stopwatch.StartNew();
-                                    Cv.Mat binaryMask = CreateOpenCvCannyBinaryMask(
-                                        nativeGray,
-                                        GetIntParameter(parsedParameters, "LowThreshold", 50),
-                                        GetIntParameter(parsedParameters, "HighThreshold", 150),
-                                        GetIntParameter(parsedParameters, "KernelSize", 3),
-                                        GetBoolParameter(parsedParameters, "L2Gradient", false),
-                                        GetIntParameter(parsedParameters, "GaussianBlurSize", 5),
-                                        GetDoubleParameter(parsedParameters, "GaussianSigma", 1.4),
-                                        GetIntParameter(parsedParameters, "MinEdgeLength", 10),
-                                        GetIntParameter(parsedParameters, "MaxGap", 2));
-                                    // Publish the original-resolution result immediately.
-                                    // A display overview must never delay precise tiles.
-                                    PublishCompletedLargeProcessedBinaryMask(
-                                        binaryMask,
-                                        roi,
-                                        maskKey,
-                                        generation,
-                                        roiElapsedMilliseconds,
-                                        imageProcessingStopwatch.ElapsedMilliseconds);
-                                    binaryMask = null;
+                                    BeginInvoke(
+                                        new Action(
+                                            delegate
+                                            {
+                                                statusLabel.Text = "影像處理運算中...OpenCV 原圖準備";
+                                            }));
+                                    using (Cv.Mat nativeGray = GetOrCreateLargeRoiOpenCvGrayCache(sharedSource, roi))
+                                    {
+                                        if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
+                                        {
+                                            return;
+                                        }
+
+                                        BeginInvoke(
+                                            new Action(
+                                                delegate
+                                                {
+                                                    statusLabel.Text = "影像處理運算中...使用 OpenCV " + method;
+                                                }));
+                                        Stopwatch imageProcessingStopwatch = Stopwatch.StartNew();
+                                        Cv.Mat binaryMask = CreateNativeLargeEdgeBinaryMask(
+                                            nativeGray,
+                                            method,
+                                            parsedParameters);
+                                        // Publish the original-resolution result immediately.
+                                        // A display overview must never delay precise tiles.
+                                        PublishCompletedLargeProcessedBinaryMask(
+                                            binaryMask,
+                                            roi,
+                                            maskKey,
+                                            generation,
+                                            imageProcessingStopwatch.ElapsedMilliseconds);
+                                        binaryMask = null;
+                                    }
+                                }
+                                finally
+                                {
+                                    largeNativeProcessingGate.Release();
                                 }
 
                                 return;
@@ -3339,7 +3378,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return Math.Max(4, (kernelSize / 2) + maxGap + 4);
             }
 
-            int edgeWidth = EnsureOdd(GetIntParameter(parameters, "EdgeWidth", 3));
+            int edgeWidth = EnsureOdd(GetPolarityCoreWidth(parameters));
             int smoothing = EnsureOdd(GetIntParameter(parameters, "Smoothing", 1));
             int polarityMaxGap = GetIntParameter(parameters, "MaxGap", 2);
             return Math.Max(4, (edgeWidth / 2) + (smoothing / 2) + polarityMaxGap + 4);
@@ -3511,37 +3550,70 @@ namespace IntegratedImageProcessingApp.Forms
         {
             lock (largeRoiGrayCacheLock)
             {
-                if (ReferenceEquals(largeRoiGrayCacheSource, source) &&
-                    largeRoiGrayCacheRoi.Equals(roi) &&
-                    largeRoiOpenCvGrayCache != null &&
-                    !largeRoiOpenCvGrayCache.Empty())
+                if (ReferenceEquals(largeOpenCvSourceGrayCacheSource, source) &&
+                    largeOpenCvSourceGrayCache != null &&
+                    !largeOpenCvSourceGrayCache.Empty())
                 {
-                    // Canny only reads this image. A full clone here costs
-                    // hundreds of MB for a large ROI and made later steps much
-                    // slower than the first one. A sub-matrix header retains
-                    // the native buffer without copying any pixels.
-                    return new Cv.Mat(
-                        largeRoiOpenCvGrayCache,
-                        new Cv.Rect(0, 0, largeRoiOpenCvGrayCache.Width, largeRoiOpenCvGrayCache.Height));
+                    return CreateLargeRoiMatView(largeOpenCvSourceGrayCache, roi);
                 }
             }
 
-            byte[,] gray = GetOrCreateLargeRoiGrayCache(source, roi);
-            Cv.Mat openCvGray = CreateOpenCvGrayMat(gray);
-            lock (largeRoiGrayCacheLock)
+            // Decode outside the cache lock. Startup prewarming must not block
+            // a later processing request while OpenCV reads a large source.
+            Cv.Mat fullGray = null;
+            try
             {
-                if (largeRoiOpenCvGrayCache != null)
+                fullGray = Cv.Cv2.ImRead(source.FilePath, Cv.ImreadModes.Grayscale);
+                if (fullGray == null ||
+                    fullGray.Empty() ||
+                    fullGray.Width != source.Width ||
+                    fullGray.Height != source.Height ||
+                    fullGray.Type() != Cv.MatType.CV_8UC1)
                 {
-                    largeRoiOpenCvGrayCache.Dispose();
+                    throw new InvalidOperationException("OpenCV 回傳的灰階原圖尺寸或格式不正確。");
                 }
 
-                largeRoiGrayCacheSource = source;
-                largeRoiGrayCacheRoi = roi;
-                largeRoiOpenCvGrayCache = openCvGray;
-                return new Cv.Mat(
-                    largeRoiOpenCvGrayCache,
-                    new Cv.Rect(0, 0, largeRoiOpenCvGrayCache.Width, largeRoiOpenCvGrayCache.Height));
+                lock (largeRoiGrayCacheLock)
+                {
+                    if (ReferenceEquals(largeOpenCvSourceGrayCacheSource, source) &&
+                        largeOpenCvSourceGrayCache != null &&
+                        !largeOpenCvSourceGrayCache.Empty())
+                    {
+                        fullGray.Dispose();
+                        fullGray = null;
+                        return CreateLargeRoiMatView(largeOpenCvSourceGrayCache, roi);
+                    }
+
+                    if (largeOpenCvSourceGrayCache != null)
+                    {
+                        largeOpenCvSourceGrayCache.Dispose();
+                    }
+
+                    largeOpenCvSourceGrayCache = fullGray;
+                    largeOpenCvSourceGrayCacheSource = source;
+                    fullGray = null;
+                    return CreateLargeRoiMatView(largeOpenCvSourceGrayCache, roi);
+                }
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("OpenCV full-image decode failed: " + ex);
+                throw new InvalidOperationException(
+                    "OpenCV 無法建立完整灰階原圖，已停止處理，未使用舊的 ROI tile 備援流程。",
+                    ex);
+            }
+            finally
+            {
+                if (fullGray != null)
+                {
+                    fullGray.Dispose();
+                }
+            }
+        }
+
+        private static Cv.Mat CreateLargeRoiMatView(Cv.Mat source, Rectangle roi)
+        {
+            return new Cv.Mat(source, new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height));
         }
 
         private void PaintLargeProcessedBinaryViewportOverlay(
@@ -3593,7 +3665,8 @@ namespace IntegratedImageProcessingApp.Forms
                 TrimLargeProcessedOverlayCache();
                 largeProcessedOverlayCache[cacheKey] = overlay;
                 lastDisplayProcessingElapsedMilliseconds = displayStopwatch.ElapsedMilliseconds;
-                UpdateProcessingTimingStatus();
+                UpdateProcessingTimingStatus(includeImageProcessingTimeOnNextDisplay);
+                includeImageProcessingTimeOnNextDisplay = false;
                 DrawLargeProcessedOverlayTile(e.Graphics, overlay, visibleRoi, e.Zoom, e.Offset);
                 return;
             }
@@ -3829,6 +3902,181 @@ namespace IntegratedImageProcessingApp.Forms
             return kernelSize <= 5 ? 5 : 7;
         }
 
+        private static Cv.Mat CreateOpenCvPolarityBinaryMask(
+            Cv.Mat source,
+            int contrastThreshold,
+            int edgeWidth,
+            int smoothing,
+            string polarity,
+            string searchDirection,
+            double gaussianSigma,
+            string borderType)
+        {
+            using (var blurred = new Cv.Mat())
+            using (var gradientX = new Cv.Mat())
+            using (var gradientY = new Cv.Mat())
+            using (var edgeMask = new Cv.Mat())
+            using (var secondaryMask = new Cv.Mat())
+            {
+                int blurSize = EnsureOdd(Math.Max(1, smoothing));
+                Cv.Cv2.GaussianBlur(
+                    source,
+                    blurred,
+                    new Cv.Size(blurSize, blurSize),
+                    Math.Max(0.1, gaussianSigma),
+                    0,
+                    GetOpenCvBorderType(borderType));
+                int aperture = NormalizeSobelKernelSize(edgeWidth);
+                // A 7x7 Sobel can exceed Int16 at scale 1.  Keep the faster,
+                // smaller Int16 pipeline and scale both the gradient and the
+                // comparison threshold by the same ratio instead of moving
+                // every full-image buffer to 32-bit float.
+                double gradientScale = aperture == 7 ? 1.0 / 16.0 : 1.0;
+                double scaledContrastThreshold = contrastThreshold * gradientScale;
+                Cv.MatType gradientType = Cv.MatType.CV_16SC1;
+
+                string normalizedDirection = NormalizePolaritySearchDirection(searchDirection);
+                bool horizontalOnly = normalizedDirection == "X";
+                bool verticalOnly = normalizedDirection == "Y";
+                if (!verticalOnly)
+                {
+                    Cv.Cv2.Sobel(blurred, gradientX, gradientType, 1, 0, aperture, gradientScale);
+                    CreateOpenCvPolarityComparison(gradientX, edgeMask, polarity, scaledContrastThreshold);
+                }
+
+                if (!horizontalOnly)
+                {
+                    Cv.Cv2.Sobel(blurred, gradientY, gradientType, 0, 1, aperture, gradientScale);
+                    CreateOpenCvPolarityComparison(
+                        gradientY,
+                        (horizontalOnly || verticalOnly) ? edgeMask : secondaryMask,
+                        polarity,
+                        scaledContrastThreshold);
+                }
+
+                if (!horizontalOnly && !verticalOnly)
+                {
+                    Cv.Cv2.BitwiseOr(edgeMask, secondaryMask, edgeMask);
+                }
+
+                return edgeMask.Clone();
+            }
+        }
+
+        private static Cv.Mat CreateOpenCvSobelBinaryMask(
+            Cv.Mat source,
+            int threshold,
+            string direction,
+            int kernelSize)
+        {
+            using (var gradientX = new Cv.Mat())
+            using (var gradientY = new Cv.Mat())
+            using (var edgeMask = new Cv.Mat())
+            using (var secondaryMask = new Cv.Mat())
+            {
+                int aperture = NormalizeSobelKernelSize(kernelSize);
+                double gradientScale = aperture == 7 ? 1.0 / 16.0 : 1.0;
+                double scaledThreshold = threshold * gradientScale;
+                string normalizedDirection = NormalizePolaritySearchDirection(direction);
+                bool xOnly = normalizedDirection == "X";
+                bool yOnly = normalizedDirection == "Y";
+
+                if (!yOnly)
+                {
+                    Cv.Cv2.Sobel(source, gradientX, Cv.MatType.CV_16SC1, 1, 0, aperture, gradientScale);
+                    CreateOpenCvPolarityComparison(gradientX, edgeMask, "Any", scaledThreshold);
+                }
+
+                if (!xOnly)
+                {
+                    Cv.Cv2.Sobel(source, gradientY, Cv.MatType.CV_16SC1, 0, 1, aperture, gradientScale);
+                    CreateOpenCvPolarityComparison(
+                        gradientY,
+                        (xOnly || yOnly) ? edgeMask : secondaryMask,
+                        "Any",
+                        scaledThreshold);
+                }
+
+                if (!xOnly && !yOnly)
+                {
+                    Cv.Cv2.BitwiseOr(edgeMask, secondaryMask, edgeMask);
+                }
+
+                return edgeMask.Clone();
+            }
+        }
+
+        private static void CreateOpenCvPolarityComparison(
+            Cv.Mat gradient,
+            Cv.Mat destination,
+            string polarity,
+            double contrastThreshold)
+        {
+            if (string.Equals(polarity, "BrightToDark", StringComparison.OrdinalIgnoreCase))
+            {
+                Cv.Cv2.Compare(gradient, -contrastThreshold, destination, Cv.CmpType.LT);
+                return;
+            }
+
+            if (string.Equals(polarity, "DarkToBright", StringComparison.OrdinalIgnoreCase))
+            {
+                Cv.Cv2.Compare(gradient, contrastThreshold, destination, Cv.CmpType.GT);
+                return;
+            }
+
+            // The absolute value is only needed for the Any polarity case.
+            // Reuse the gradient buffer instead of allocating another full Mat.
+            Cv.Cv2.Absdiff(gradient, Cv.Scalar.All(0), gradient);
+            Cv.Cv2.Compare(gradient, contrastThreshold, destination, Cv.CmpType.GT);
+        }
+
+        private static string NormalizePolaritySearchDirection(string direction)
+        {
+            if (string.Equals(direction, "Horizontal", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(direction, "X", StringComparison.OrdinalIgnoreCase))
+            {
+                return "X";
+            }
+
+            if (string.Equals(direction, "Vertical", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(direction, "Y", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Y";
+            }
+
+            return "Any";
+        }
+
+        private static Cv.BorderTypes GetOpenCvBorderType(string borderType)
+        {
+            if (string.Equals(borderType, "Replicate", StringComparison.OrdinalIgnoreCase))
+            {
+                return Cv.BorderTypes.Replicate;
+            }
+
+            if (string.Equals(borderType, "Constant", StringComparison.OrdinalIgnoreCase))
+            {
+                return Cv.BorderTypes.Constant;
+            }
+
+            return Cv.BorderTypes.Reflect101;
+        }
+
+        private static int NormalizeSobelKernelSize(int kernelSize)
+        {
+            if (kernelSize <= 1)
+            {
+                return 1;
+            }
+
+            if (kernelSize <= 3)
+            {
+                return 3;
+            }
+
+            return kernelSize <= 5 ? 5 : 7;
+        }
+
         private static Cv.Mat CreateOpenCvFilteredBinaryMask(Cv.Mat edgeMask, int maxGap, int minEdgeLength)
         {
             ApplyOpenCvMaskClosing(edgeMask, maxGap);
@@ -3956,9 +4204,50 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private static bool CanUseNativeCannyMask(string method, Dictionary<string, string> parameters)
+        private static bool CanUseNativeEdgeMask(string method, Dictionary<string, string> parameters)
         {
-            return string.Equals(method, "Canny Edge", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(method, "Canny Edge", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(method, "Polarity Edge", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(method, "Sobel Edge", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static Cv.Mat CreateNativeLargeEdgeBinaryMask(
+            Cv.Mat source,
+            string method,
+            Dictionary<string, string> parameters)
+        {
+            if (string.Equals(method, "Sobel Edge", StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateOpenCvSobelBinaryMask(
+                    source,
+                    GetIntParameter(parameters, "Threshold", 30),
+                    GetStringParameter(parameters, "Direction", "Any"),
+                    GetIntParameter(parameters, "KernelSize", 3));
+            }
+
+            if (string.Equals(method, "Polarity Edge", StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateOpenCvPolarityBinaryMask(
+                    source,
+                    GetIntParameter(parameters, "ContrastThreshold", 20),
+                    GetPolarityCoreWidth(parameters),
+                    GetIntParameter(parameters, "Smoothing", 1),
+                    GetStringParameter(parameters, "Polarity", "Any"),
+                    GetStringParameter(parameters, "SearchDirection", "Any"),
+                    GetDoubleParameter(parameters, "GaussianSigma", 0.5),
+                    GetStringParameter(parameters, "BorderType", "Reflect"));
+            }
+
+            return CreateOpenCvCannyBinaryMask(
+                source,
+                GetIntParameter(parameters, "LowThreshold", 50),
+                GetIntParameter(parameters, "HighThreshold", 150),
+                GetIntParameter(parameters, "KernelSize", 3),
+                GetBoolParameter(parameters, "L2Gradient", false),
+                GetIntParameter(parameters, "GaussianBlurSize", 5),
+                GetDoubleParameter(parameters, "GaussianSigma", 1.4),
+                GetIntParameter(parameters, "MinEdgeLength", 10),
+                GetIntParameter(parameters, "MaxGap", 2));
         }
 
         private void PublishCompletedLargeProcessedBinaryMask(
@@ -3966,7 +4255,6 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle roi,
             string maskKey,
             int generation,
-            long roiProcessingElapsedMilliseconds,
             long processingElapsedMilliseconds)
         {
             BeginInvoke(
@@ -3994,21 +4282,31 @@ namespace IntegratedImageProcessingApp.Forms
 
                         QueueLargeProcessedBinaryOverview(mask, roi, maskKey, generation);
 
-                        lastRoiProcessingElapsedMilliseconds = roiProcessingElapsedMilliseconds;
                         lastImageProcessingElapsedMilliseconds = processingElapsedMilliseconds;
-                        UpdateProcessingTimingStatus();
+                        // Defer the timing message until the first actual
+                        // viewport render. Subsequent cache/display updates
+                        // must not imply that the algorithm ran again.
+                        includeImageProcessingTimeOnNextDisplay = true;
                         leftProcessedDisplayControl.InvalidateImageView();
                         rightProcessedDisplayControl.InvalidateImageView();
                     }));
         }
 
-        private void UpdateProcessingTimingStatus()
+        private void UpdateProcessingTimingStatus(bool includeImageProcessingTime)
         {
+            if (includeImageProcessingTime)
+            {
+                statusLabel.Text = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "影像處理時間：{0} ms｜顯示時間：{1} ms",
+                    lastImageProcessingElapsedMilliseconds,
+                    lastDisplayProcessingElapsedMilliseconds);
+                return;
+            }
+
             statusLabel.Text = string.Format(
                 CultureInfo.InvariantCulture,
-                "ROI 處理時間：{0} ms｜影像處理時間：{1} ms｜顯示時間：{2} ms",
-                lastRoiProcessingElapsedMilliseconds,
-                lastImageProcessingElapsedMilliseconds,
+                "顯示時間：{0} ms",
                 lastDisplayProcessingElapsedMilliseconds);
         }
 
@@ -4665,26 +4963,18 @@ namespace IntegratedImageProcessingApp.Forms
                     gray,
                     GetIntParameter(parameters, "Threshold", 30),
                     GetStringParameter(parameters, "Direction", "Both"),
-                    GetIntParameter(parameters, "KernelSize", 3),
-                    GetDoubleParameter(parameters, "Scale", 1),
-                    GetIntParameter(parameters, "Delta", 0),
-                    GetStringParameter(parameters, "OutputMode", "Magnitude"),
-                    GetStringParameter(parameters, "EdgeSelection", "All"),
-                    GetIntParameter(parameters, "MinEdgeLength", 10),
-                    GetIntParameter(parameters, "MaxGap", 2));
+                    GetIntParameter(parameters, "KernelSize", 3));
             }
 
             return CreateOpenCvPolarityMask(
                 gray,
                 GetIntParameter(parameters, "ContrastThreshold", 20),
-                GetIntParameter(parameters, "EdgeWidth", 3),
+                GetPolarityCoreWidth(parameters),
                 GetIntParameter(parameters, "Smoothing", 1),
                 GetStringParameter(parameters, "Polarity", "Any"),
                 GetStringParameter(parameters, "SearchDirection", "Any"),
-                GetStringParameter(parameters, "EdgeSelection", "Strongest"),
-                GetIntParameter(parameters, "MinEdgeLength", 10),
-                GetIntParameter(parameters, "MaxGap", 2),
-                GetBoolParameter(parameters, "SubPixel", false));
+                GetDoubleParameter(parameters, "GaussianSigma", 0.5),
+                GetStringParameter(parameters, "BorderType", "Reflect"));
         }
 
         private static byte[,] CreateGrayValues(Bitmap image)
@@ -4773,6 +5063,14 @@ namespace IntegratedImageProcessingApp.Forms
             return parameters.TryGetValue(key, out value) && int.TryParse(value, out parsedValue)
                 ? parsedValue
                 : defaultValue;
+        }
+
+        private static int GetPolarityCoreWidth(Dictionary<string, string> parameters)
+        {
+            return GetIntParameter(
+                parameters,
+                "CoreWidth",
+                GetIntParameter(parameters, "EdgeWidth", 3));
         }
 
         private static double GetDoubleParameter(Dictionary<string, string> parameters, string key, double defaultValue)
@@ -4887,6 +5185,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 leftOriginalDisplayControl.ClearRoiOverlay();
                 rightOriginalDisplayControl.ClearRoiOverlay();
+                leftPreprocessedDisplayControl.ClearRoiOverlay();
+                rightPreprocessedDisplayControl.ClearRoiOverlay();
                 leftProcessedDisplayControl.ClearRoiOverlay();
                 rightProcessedDisplayControl.ClearRoiOverlay();
                 return;
@@ -4894,6 +5194,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             leftOriginalDisplayControl.SetRoiOverlay(roi.Value);
             rightOriginalDisplayControl.SetRoiOverlay(roi.Value);
+            leftPreprocessedDisplayControl.SetRoiOverlay(roi.Value);
+            rightPreprocessedDisplayControl.SetRoiOverlay(roi.Value);
             leftProcessedDisplayControl.SetRoiOverlay(roi.Value);
             rightProcessedDisplayControl.SetRoiOverlay(roi.Value);
         }
@@ -4945,6 +5247,7 @@ namespace IntegratedImageProcessingApp.Forms
             selectedImageProcessingStepIndex = -1;
             selectedImageProcessingGroupId = null;
             processedImageDirty = false;
+            QueueConfiguredRoiImagePreparation();
         }
 
         private void RestoreSavedRoiOverlay()
@@ -4963,6 +5266,69 @@ namespace IntegratedImageProcessingApp.Forms
                 systemParameters.Roi.Y,
                 systemParameters.Roi.Width,
                 systemParameters.Roi.Height);
+        }
+
+        private void QueueConfiguredRoiImagePreparation()
+        {
+            if (!rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                return;
+            }
+
+            LargeImageSource source = rightOriginalDisplayControl.GetSharedLargeImageSource();
+            if (source == null)
+            {
+                return;
+            }
+
+            Rectangle imageBounds = new Rectangle(0, 0, source.Width, source.Height);
+            var configuredRois = systemParameters.RoiRegions
+                .Select(region => Rectangle.Intersect(region.Bounds, imageBounds))
+                .Where(roi => roi.Width > 0 && roi.Height > 0)
+                .ToList();
+            if (configuredRois.Count == 0)
+            {
+                source.ReleaseReference();
+                return;
+            }
+
+            statusLabel.Text = "正在產生ROI的影像準備";
+            Task.Run(
+                delegate
+                {
+                    Stopwatch roiPreparationStopwatch = Stopwatch.StartNew();
+                    try
+                    {
+                        // The first call creates the one shared OpenCV gray
+                        // source. Every configured ROI afterwards is a cheap
+                        // header-only view over the same native image.
+                        foreach (Rectangle roi in configuredRois)
+                        {
+                            using (Cv.Mat ignored = GetOrCreateLargeRoiOpenCvGrayCache(source, roi))
+                            {
+                            }
+                        }
+
+                        long elapsedMilliseconds = roiPreparationStopwatch.ElapsedMilliseconds;
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    statusLabel.Text = "ROI 處理時間：" +
+                                        elapsedMilliseconds.ToString(CultureInfo.InvariantCulture) +
+                                        " ms（已準備 " +
+                                        configuredRois.Count.ToString(CultureInfo.InvariantCulture) + " 個 ROI）";
+                                }));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                    }
+                    finally
+                    {
+                        source.ReleaseReference();
+                    }
+                });
         }
 
         private async Task PrepareProcessedPreviewFromSettingsAsync()
@@ -5056,6 +5422,8 @@ namespace IntegratedImageProcessingApp.Forms
                     leftImageTabControl.SelectedTab = leftOriginalTabPage;
                     rightImageTabControl.SelectedTab = rightOriginalTabPage;
                     rightOriginalDisplayControl.ClearRoiOverlay();
+                    leftPreprocessedDisplayControl.ClearRoiOverlay();
+                    rightPreprocessedDisplayControl.ClearRoiOverlay();
                     leftProcessedDisplayControl.ClearRoiOverlay();
                     rightProcessedDisplayControl.ClearRoiOverlay();
                     systemParameters.LastImagePath = dialog.FileName;
@@ -5094,6 +5462,10 @@ namespace IntegratedImageProcessingApp.Forms
         private async Task LoadImageIntoOriginalDisplaysAsync(string filePath, CancellationToken cancellationToken)
         {
             Size imageSize = await Task.Run(() => LargeImageSource.ReadImageSize(filePath), cancellationToken);
+            // A processing Mat belongs to one source file only.  Keep the
+            // display controls tile-backed, but release the prior source Mat
+            // before a newly selected image becomes active.
+            ClearLargeRoiGrayCache();
             long sourcePixels = (long)imageSize.Width * imageSize.Height;
             if (sourcePixels > 50000000L)
             {
@@ -5108,6 +5480,8 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     leftOriginalDisplayControl.SetSharedLargeImageSource(sharedSource);
                     rightOriginalDisplayControl.SetSharedLargeImageSource(sharedSource);
+                    leftPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
+                    rightPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
                     statusLabel.Text = "已載入大圖共用切圖來源";
                 }
                 finally
@@ -5133,6 +5507,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 leftOriginalDisplayControl.SetDisplayImage(loadedBitmap, false);
                 rightOriginalDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
+                leftPreprocessedDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
+                rightPreprocessedDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
             }
             finally
             {
@@ -5191,6 +5567,8 @@ namespace IntegratedImageProcessingApp.Forms
                     return FunctionMenuIcon.Folder;
                 case RoiMenuText:
                     return FunctionMenuIcon.Roi;
+                case ImagePreprocessingMenuText:
+                    return FunctionMenuIcon.Filter;
                 case ImageProcessingMenuText:
                     return FunctionMenuIcon.Process;
                 case "亮度 / 對比":

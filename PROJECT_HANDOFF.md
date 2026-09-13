@@ -7,6 +7,42 @@
 - Solution: `MyApp4.sln`
 - Main project: `IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 
+## Current Implementation Status (2026-09-13)
+
+### Large-image data and processing architecture
+- The application supports large grayscale images such as `16384 x 16384` and larger without creating a full-size GDI+ `Bitmap` for display.
+- Display and processing are deliberately separate:
+  - `LargeImageSource` is the WIC-backed display source. Both left/right viewers and all image tabs share the same source instance and request preview/tile data only when needed.
+  - Large-image Canny, Polarity Edge, and Sobel Edge use one cached OpenCV grayscale source `Cv.Mat`, read once from `LargeImageSource.FilePath`. Each ROI is a lightweight OpenCV sub-matrix header sharing that native buffer; it is not a full ROI clone.
+  - The result is a full-resolution binary OpenCV `Cv.Mat` for each processing cache key. The red overlay is generated only for the currently visible source rectangle, so pan/zoom does not re-run the algorithm.
+- Saved ROIs are prewarmed in the background when a saved image is restored. The lower status bar shows `正在產生ROI的影像準備` during this work, then reports `ROI 處理時間` and the prepared ROI count.
+- Native full-image jobs are serialized by `largeNativeProcessingGate`. This avoids several expensive OpenCV calculations running concurrently after fast parameter edits. An in-flight native OpenCV call cannot be cancelled midway; a superseded result is discarded after it returns and the newest request runs next.
+- Do not add a silent fallback from the native OpenCV large-image path to the old managed/tile ROI processing path. A native load failure must be reported explicitly, otherwise a slow fallback looks like an endless calculation and is very difficult to diagnose.
+- The current processing source is the original grayscale image. The future preprocessing pipeline must become the processing source once real preprocessing steps are implemented.
+
+### Implemented edge detectors
+- **Canny Edge** uses OpenCV `GaussianBlur -> Canny` and stores a native binary `Cv.Mat` result. Supported parameters are `LowThreshold`, `HighThreshold`, `KernelSize` (`3`, `5`, `7`), `L2Gradient`, `GaussianBlurSize`, and `GaussianSigma`.
+- **Polarity Edge** uses the native OpenCV path: Gaussian blur, Sobel gradients, contrast comparison, and binary mask composition. Its supported parameters are `Polarity`, `ContrastThreshold`, `CoreWidth`, `Smoothing`, `GaussianSigma`, `SearchDirection`, and `BorderType`.
+  - The INI key is `CoreWidth`; legacy `EdgeWidth` is read for compatibility but is removed when parameters are saved again.
+  - `CoreWidth` means the Sobel derivative aperture/core size, not the width of a line to find.
+  - `EdgeSelection`, `SubPixel`, `MinEdgeLength`, and `MaxGap` were intentionally removed. They are contour/feature-filter concerns and previously caused very slow connected-component work in the edge detector.
+- **Sobel Edge** also uses the native OpenCV `Cv.Mat` path. Its supported parameters are `Direction`, `KernelSize` (`1`, `3`, `5`, `7`), and `Threshold`.
+  - Legacy scale/delta/output/edge-selection/length/gap settings are not exposed because they are not needed for this raw binary edge stage.
+- For aperture `7`, the native code scales its `CV_16S` gradient before comparison so Sobel values do not overflow.
+
+### UI and pipeline direction
+- Both viewer sides have static designer-owned tabs in this order: `原圖 -> 前處理 -> 處理後 -> 物件結果 -> debug`.
+- The current `前處理` tab intentionally mirrors the original image and shares its tile source. It has the same zoom/pan/reset synchronization as every other tab, but no actual preprocessing algorithms are wired yet.
+- The left function menu now contains `影像前處理` above `影像處理`. It is the placeholder entry for the upcoming preprocessing sequence.
+- Intended final pipeline: `原圖 -> 影像前處理 -> 邊緣偵測 -> Threshold/Morphology -> Contours -> Feature Filter -> Object Selector -> Object Result`.
+- When the preprocessing sequence is implemented, its full-resolution output should be the base image of `前處理` and `處理後`; red detected pixels must be overlaid on that preprocessing output, while `原圖` remains an unchanged reference.
+
+### Remaining verification and next work
+- Verify at runtime that the static `前處理` tabs appear on both sides after the newest build. A previous dynamic-tab approach did not reliably appear in the Visual Studio Designer/runtime, so the pages are now declared in `MainForm.Designer.cs`.
+- Create the actual preprocessing processing tree and cache/versioning. Start with OpenCV operations that are useful before edge detection, such as Gaussian/median/bilateral filtering; do not add grayscale/normalization/brightness/contrast to this sequence unless the product direction changes.
+- Test the latest native Polarity and Sobel paths on production-size images and parameter changes. Do not claim instant processing until that has been measured on the target images.
+- Future edge methods worth considering after the current workflow is stable: Scharr, Laplacian/LoG, and later non-maximum suppression. Contour filtering remains a separate later stage.
+
 ## Current UI Direction
 - The main form is intended to remain editable in the Visual Studio WinForms Designer.
 - Main layout is roughly 1:3:1:
@@ -16,6 +52,7 @@
 - Center image area is split into left and right viewers.
 - Each side has tabs:
   - `原圖`
+  - `前處理`
   - `處理後`
   - `物件結果`
   - `debug`
@@ -116,11 +153,11 @@
     - `Object Result`
   - Clicking a flow tree node is treated as the accepted method for the selected processing step, saves it to INI, and updates the left menu display from `處理N(未決定)` to `處理N(MethodName)`.
   - Edge Detection methods currently have right-side parameter panels:
-    - `Polarity Edge`: `Polarity`, `ContrastThreshold`, `EdgeWidth`, `Smoothing`, `SearchDirection`, `EdgeSelection`, `SubPixel`, `MinEdgeLength`, `MaxGap`.
+    - `Polarity Edge`: `Polarity`, `ContrastThreshold`, `CoreWidth`, `Smoothing`, `GaussianSigma`, `SearchDirection`, `BorderType`.
     - `Canny Edge`: `LowThreshold`, `HighThreshold`, `KernelSize`, `L2Gradient`, `GaussianBlurSize`, `GaussianSigma`.
       - Canny `KernelSize` is restricted to OpenCV-supported aperture values `3`, `5`, `7`. Old INI values of `9` or higher must be normalized to `7`; larger Sobel apertures belong only to Sobel Edge.
-    - `Sobel Edge`: `Direction`, `KernelSize`, `Scale`, `Delta`, `OutputMode`, `Threshold`, `EdgeSelection`, `MinEdgeLength`, `MaxGap`.
-  - Kernel-size options are shared by Canny/Sobel-related controls: `3`, `5`, `7`, `9`, `11`, `13`, `15`.
+    - `Sobel Edge`: `Direction`, `KernelSize`, `Threshold`.
+  - Canny kernel options are `3`, `5`, `7`; Sobel kernel options are `1`, `3`, `5`, `7`.
   - Selecting one of those methods switches the right side from the flow tree to its parameter editor. The `重新選擇方法` button returns to the flow tree.
   - Parameter edits are saved immediately into each step's `StepN.Parameters` INI field.
   - Numeric parameters use `NumericUpDown` controls. Mouse wheel adjusts values directly; holding Shift increases the step size by 10x.
@@ -137,7 +174,7 @@
     - In large-image mode, `處理後` does not create a full-size processed bitmap. It renders `LargeImageSource` base tiles plus ROI-local red mask overlay tiles.
   - Canny uses the native OpenCvSharp path for large-image ROI processing: `GaussianBlur -> Canny -> Cv.Mat binary mask`.
   - Canny must remain a raw edge detector. `Strongest`, `Longest`, `MinEdgeLength`, and `MaxGap` were removed from the Canny UI because they are contour/feature-filter concepts, not native Canny parameters. Old INI values may remain but must be ignored by Canny and must not change its mask cache key.
-  - Sobel Edge and Polarity Edge still need to be migrated to the same native large-image `Cv.Mat` mask pipeline as Canny. Their current OpenCV algorithm helpers return managed `bool[,]` masks for the large-image path; do not describe this migration as complete until their result storage, caching, and overlay rendering no longer use that managed path.
+  - Canny, Sobel Edge, and Polarity Edge use the same native large-image OpenCV `Cv.Mat` mask pipeline. Their large-image results are cached independently from ROI preparation and rendered as viewport-local red overlays.
   - Small-image ROI extraction reads Gray8 data directly where possible. Color inputs are safely converted to grayscale at the boundary.
   - Processing step numbers are display positions only. When deleting or moving steps, the visible `處理1`, `處理2`, `處理3` numbering is regenerated, but each step's underlying method/parameters move with that step.
   - Processing workflow state is persisted in `SystemParameters.ini` under `[ImageProcessing]` so future algorithm selections can be restored and reordered safely.
@@ -174,7 +211,7 @@ Group1.DisplayName=
 - On startup:
   - If `LastImagePath` exists, the app reloads the previous image into both `原圖` viewers.
   - If ROI is enabled and valid, the right `原圖` restores the ROI overlay.
-  - If image processing steps are saved and at least one step is previewable, the app prepares the `處理後` image from the saved ROIs/method/parameters so both left/right processed tabs have an image ready after startup.
+  - Saved ROIs are prepared in the background. Processing-result masks are not calculated until the user selects a processing step or group.
 
 ## Important Files
 - `IntegratedImageProcessingApp\Forms\MainForm.cs`
@@ -235,7 +272,7 @@ Group1.DisplayName=
 - Treat images inside the app as grayscale-only. Color input files should be converted in memory at the boundary before display or analysis; already-grayscale input should not be converted again.
 - Canny's full-resolution native `Cv.Mat` mask is the authoritative result. Its display overlay is not a replacement for the data used by later contour work.
 - Do not add selection, longest-edge, or minimum-length controls back into Canny. Implement those as explicit `Find Contours` / `Feature Filter` operations later.
-- Next major processing task: migrate Sobel Edge and Polarity Edge large-image processing to the native OpenCV `Cv.Mat` mask pipeline already used by Canny. Keep their future result masks separate from ROI masks and render only from completed cached results.
+- Keep every native edge-result mask separate from ROI preparation data and render only from completed cached results.
 - Verify a two-step Canny workflow after any cache changes: selecting a previously calculated `處理1` or `處理2` must reuse memory; identical effective Canny parameters must share one result; selecting a different effective parameter set may build one new ROI mask but must finish and not loop indefinitely.
 - For a huge full-frame ROI (for example `16384 x 50000`), a one-pass OpenCV Canny/Sobel/Polarity operation needs multiple large temporary Mats. The current full-ROI setting prioritizes continuous results over memory use; test target image sizes before relying on it in production.
 - There may be Visual Studio formatting-only changes in `MainForm.Designer.cs` or `MainForm.resx` after opening the designer. Inspect before committing.

@@ -53,6 +53,13 @@ namespace IntegratedImageProcessingApp.Controls
 
         public bool SourceIsGrayscale { get; private set; }
 
+        // The display path remains WIC/tile based.  Consumers that need a
+        // native processing buffer can use this path to build their own cache.
+        public string FilePath
+        {
+            get { return _filePath; }
+        }
+
         public void PreloadAllTiles(CancellationToken cancellationToken)
         {
             for (int y = 0; y < Height; y += TileSourceSize)
@@ -223,44 +230,76 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             var result = new byte[normalized.Width, normalized.Height];
-            lock (_sync)
+            int firstTileX = (normalized.Left / TileSourceSize) * TileSourceSize;
+            int firstTileY = (normalized.Top / TileSourceSize) * TileSourceSize;
+            int lastTileX = ((normalized.Right - 1) / TileSourceSize) * TileSourceSize;
+            int lastTileY = ((normalized.Bottom - 1) / TileSourceSize) * TileSourceSize;
+            for (int tileY = firstTileY; tileY <= lastTileY; tileY += TileSourceSize)
             {
-                ThrowIfDisposed();
-                int firstTileX = (normalized.Left / TileSourceSize) * TileSourceSize;
-                int firstTileY = (normalized.Top / TileSourceSize) * TileSourceSize;
-                int lastTileX = ((normalized.Right - 1) / TileSourceSize) * TileSourceSize;
-                int lastTileY = ((normalized.Bottom - 1) / TileSourceSize) * TileSourceSize;
-
-                for (int tileY = firstTileY; tileY <= lastTileY; tileY += TileSourceSize)
+                for (int tileX = firstTileX; tileX <= lastTileX; tileX += TileSourceSize)
                 {
-                    for (int tileX = firstTileX; tileX <= lastTileX; tileX += TileSourceSize)
+                    Rectangle tileRect = new Rectangle(
+                        tileX,
+                        tileY,
+                        Math.Min(TileSourceSize, Width - tileX),
+                        Math.Min(TileSourceSize, Height - tileY));
+                    string key = CreateTileKey(tileRect);
+                    Bitmap tileSnapshot = null;
+                    lock (_sync)
                     {
-                        Rectangle tileRect = new Rectangle(
-                            tileX,
-                            tileY,
-                            Math.Min(TileSourceSize, Width - tileX),
-                            Math.Min(TileSourceSize, Height - tileY));
-                        string key = CreateTileKey(tileRect);
+                        ThrowIfDisposed();
                         Bitmap tile;
-                        if (!_tileCache.TryGetValue(key, out tile))
-                        {
-                            tile = CreateTileBitmap(tileRect);
-                            AddTileToCacheUnsafe(key, tile);
-                            tile = _tileCache[key];
-                        }
-                        else
+                        if (_tileCache.TryGetValue(key, out tile))
                         {
                             TouchKey(key);
+                            tileSnapshot = (Bitmap)tile.Clone();
                         }
+                    }
 
-                        Rectangle copyRect = Rectangle.Intersect(normalized, tileRect);
-                        BitmapData data = tile.LockBits(
-                            new Rectangle(0, 0, tile.Width, tile.Height),
-                            ImageLockMode.ReadOnly,
-                            tile.PixelFormat);
+                    if (tileSnapshot == null)
+                    {
+                        // WIC decoding is deliberately outside _sync. The UI
+                        // may request its own display tile while this runs.
+                        Bitmap decodedTile = CreateTileBitmap(tileRect);
                         try
                         {
-                            int bytesPerPixel = Math.Max(1, Image.GetPixelFormatSize(tile.PixelFormat) / 8);
+                            lock (_sync)
+                            {
+                                ThrowIfDisposed();
+                                Bitmap cachedTile;
+                                if (!_tileCache.TryGetValue(key, out cachedTile))
+                                {
+                                    AddTileToCacheUnsafe(key, decodedTile);
+                                    decodedTile = null;
+                                    cachedTile = _tileCache[key];
+                                }
+                                else
+                                {
+                                    TouchKey(key);
+                                }
+
+                                tileSnapshot = (Bitmap)cachedTile.Clone();
+                            }
+                        }
+                        finally
+                        {
+                            if (decodedTile != null)
+                            {
+                                decodedTile.Dispose();
+                            }
+                        }
+                    }
+
+                    try
+                    {
+                        Rectangle copyRect = Rectangle.Intersect(normalized, tileRect);
+                        BitmapData data = tileSnapshot.LockBits(
+                            new Rectangle(0, 0, tileSnapshot.Width, tileSnapshot.Height),
+                            ImageLockMode.ReadOnly,
+                            tileSnapshot.PixelFormat);
+                        try
+                        {
+                            int bytesPerPixel = Math.Max(1, Image.GetPixelFormatSize(tileSnapshot.PixelFormat) / 8);
                             int sourceStride = Math.Abs(data.Stride);
                             byte[] sourceRow = new byte[sourceStride];
                             for (int y = copyRect.Top; y < copyRect.Bottom; y++)
@@ -281,8 +320,12 @@ namespace IntegratedImageProcessingApp.Controls
                         }
                         finally
                         {
-                            tile.UnlockBits(data);
+                            tileSnapshot.UnlockBits(data);
                         }
+                    }
+                    finally
+                    {
+                        tileSnapshot.Dispose();
                     }
                 }
             }
