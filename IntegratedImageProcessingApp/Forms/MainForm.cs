@@ -76,6 +76,9 @@ namespace IntegratedImageProcessingApp.Forms
         private long lastImageProcessingElapsedMilliseconds;
         private long lastDisplayProcessingElapsedMilliseconds;
         private bool includeImageProcessingTimeOnNextDisplay;
+        // Execution-only timing: a saved profile starts without a stale runtime value.
+        private readonly Dictionary<ImageProcessingStepSettings, long> imageProcessingStepElapsedMilliseconds =
+            new Dictionary<ImageProcessingStepSettings, long>();
         private bool processedImageDirty = true;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
@@ -1540,7 +1543,17 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string stepName = string.IsNullOrWhiteSpace(displayName) ? "未決定" : displayName;
-            return new string(' ', 4 + (Math.Max(0, depth) * 2)) + "處理" + stepNumber + "(" + stepName + ")";
+            string elapsedText = string.Empty;
+            long elapsedMilliseconds;
+            if (stepIndex >= 0 && stepIndex < systemParameters.ImageProcessingSteps.Count &&
+                imageProcessingStepElapsedMilliseconds.TryGetValue(
+                    systemParameters.ImageProcessingSteps[stepIndex],
+                    out elapsedMilliseconds))
+            {
+                elapsedText = " - " + elapsedMilliseconds.ToString(CultureInfo.InvariantCulture) + " ms";
+            }
+
+            return new string(' ', 4 + (Math.Max(0, depth) * 2)) + "處理" + stepNumber + "(" + stepName + ")" + elapsedText;
         }
 
         private void RenameImageProcessingStep(string stepText)
@@ -1808,16 +1821,34 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void UpdateVisibleImageProcessingStepText(int stepIndex)
         {
-            bool grouped = stepIndex >= 0 && stepIndex < systemParameters.ImageProcessingSteps.Count &&
-                !string.IsNullOrWhiteSpace(systemParameters.ImageProcessingSteps[stepIndex].GroupId);
-            string oldStepText = CreateImageProcessingStepText(stepIndex + 1, grouped);
+            RefreshVisibleImageProcessingStepText(stepIndex, true);
+        }
+
+        private void RefreshVisibleImageProcessingStepText(int stepIndex)
+        {
+            RefreshVisibleImageProcessingStepText(stepIndex, false);
+        }
+
+        private void RefreshVisibleImageProcessingStepText(int stepIndex, bool restoreSelection)
+        {
+            if (stepIndex < 0 || stepIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                return;
+            }
+
             for (int itemIndex = 0; itemIndex < functionListBox.Items.Count; itemIndex++)
             {
                 string itemText = functionListBox.Items[itemIndex] as string;
                 if (GetImageProcessingStepIndex(itemText) == stepIndex)
                 {
-                    functionListBox.Items[itemIndex] = oldStepText;
-                    functionListBox.SelectedIndex = itemIndex;
+                    int leadingSpaces = itemText.Length - itemText.TrimStart().Length;
+                    int depth = Math.Max(0, (leadingSpaces - 4) / 2);
+                    functionListBox.Items[itemIndex] = CreateImageProcessingStepText(stepIndex + 1, depth);
+                    if (restoreSelection)
+                    {
+                        functionListBox.SelectedIndex = itemIndex;
+                    }
+
                     break;
                 }
             }
@@ -2259,6 +2290,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void MarkProcessedImageDirty()
         {
             processedImageDirty = true;
+            imageProcessingStepElapsedMilliseconds.Clear();
             ClearLargeProcessedOverlayCache();
             ClearProcessedImageCache();
             if (latestProcessedImage != null)
@@ -3126,6 +3158,7 @@ namespace IntegratedImageProcessingApp.Forms
                                         PublishCompletedLargeProcessedBinaryMask(
                                             binaryMask,
                                             roi,
+                                            step,
                                             maskKey,
                                             generation,
                                             imageProcessingStopwatch.ElapsedMilliseconds);
@@ -4253,6 +4286,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void PublishCompletedLargeProcessedBinaryMask(
             Cv.Mat mask,
             Rectangle roi,
+            ImageProcessingStepSettings step,
             string maskKey,
             int generation,
             long processingElapsedMilliseconds)
@@ -4283,6 +4317,7 @@ namespace IntegratedImageProcessingApp.Forms
                         QueueLargeProcessedBinaryOverview(mask, roi, maskKey, generation);
 
                         lastImageProcessingElapsedMilliseconds = processingElapsedMilliseconds;
+                        RecordImageProcessingStepElapsed(step, processingElapsedMilliseconds);
                         // Defer the timing message until the first actual
                         // viewport render. Subsequent cache/display updates
                         // must not imply that the algorithm ran again.
@@ -4290,6 +4325,21 @@ namespace IntegratedImageProcessingApp.Forms
                         leftProcessedDisplayControl.InvalidateImageView();
                         rightProcessedDisplayControl.InvalidateImageView();
                     }));
+        }
+
+        private void RecordImageProcessingStepElapsed(
+            ImageProcessingStepSettings step,
+            long processingElapsedMilliseconds)
+        {
+            if (step == null)
+            {
+                return;
+            }
+
+            long existingElapsedMilliseconds;
+            imageProcessingStepElapsedMilliseconds.TryGetValue(step, out existingElapsedMilliseconds);
+            imageProcessingStepElapsedMilliseconds[step] = existingElapsedMilliseconds + processingElapsedMilliseconds;
+            RefreshVisibleImageProcessingStepText(systemParameters.ImageProcessingSteps.IndexOf(step));
         }
 
         private void UpdateProcessingTimingStatus(bool includeImageProcessingTime)
@@ -5694,9 +5744,10 @@ namespace IntegratedImageProcessingApp.Forms
             string trimmedText = menuText.Trim();
             int prefixLength = "處理".Length;
             int suffixStartIndex = trimmedText.IndexOf('(');
+            int suffixEndIndex = trimmedText.IndexOf(')', suffixStartIndex + 1);
             return trimmedText.StartsWith("處理", StringComparison.Ordinal) &&
                 suffixStartIndex > prefixLength &&
-                trimmedText.EndsWith(")", StringComparison.Ordinal);
+                suffixEndIndex > suffixStartIndex;
         }
     }
 }

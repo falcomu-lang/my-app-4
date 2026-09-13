@@ -36,6 +36,11 @@
 - The left function menu now contains `影像前處理` above `影像處理`. It is the placeholder entry for the upcoming preprocessing sequence.
 - Intended final pipeline: `原圖 -> 影像前處理 -> 邊緣偵測 -> Threshold/Morphology -> Contours -> Feature Filter -> Object Selector -> Object Result`.
 - When the preprocessing sequence is implemented, its full-resolution output should be the base image of `前處理` and `處理後`; red detected pixels must be overlaid on that preprocessing output, while `原圖` remains an unchanged reference.
+- Each processing step displays its measured algorithm time after a successful real calculation, for example `處理1(Canny Edge) - 475 ms`.
+  - This is runtime-only information and is deliberately not written to `SystemParameters.ini`; a newly started application must not display stale timing.
+  - Cache hits and viewport redraws do not add or replace the measured processing time.
+  - Method, parameter, or ROI changes invalidate result masks and clear all affected timing labels.
+  - The time suffix is presentation only. Every left-menu processing-step parser must still recognize `處理N(Method) - N ms` as a normal processing step. This applies equally to Canny Edge, Polarity Edge, and Sobel Edge, so the step must still open its right-side parameters and refresh its cached red overlay.
 
 ### Remaining verification and next work
 - Verify at runtime that the static `前處理` tabs appear on both sides after the newest build. A previous dynamic-tab approach did not reliably appear in the Visual Studio Designer/runtime, so the pages are now declared in `MainForm.Designer.cs`.
