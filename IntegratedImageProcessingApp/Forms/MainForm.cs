@@ -49,14 +49,23 @@ namespace IntegratedImageProcessingApp.Forms
         private readonly Dictionary<string, Bitmap> processedImageCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
         private readonly Dictionary<string, Bitmap> largeProcessedOverlayCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
         private readonly HashSet<string> pendingLargeProcessedOverlayTiles = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> pendingLargeProcessedViewportOverlays = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> pendingLargeProcessedOverviewOverlays = new HashSet<string>(StringComparer.Ordinal);
         private readonly object largeProcessedMaskLock = new object();
         private readonly Dictionary<string, bool[,]> largeProcessedMasks = new Dictionary<string, bool[,]>(StringComparer.Ordinal);
+        // Raw Canny output stays in OpenCV memory.  For large ROIs this avoids
+        // making a second full-image managed mask just to paint red overlays.
+        private readonly Dictionary<string, Cv.Mat> largeProcessedBinaryMasks = new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
         private readonly HashSet<string> largeProcessedMaskBuildKeys = new HashSet<string>(StringComparer.Ordinal);
         private readonly object largeRoiGrayCacheLock = new object();
         private LargeImageSource largeRoiGrayCacheSource;
         private Rectangle largeRoiGrayCacheRoi;
         private byte[,] largeRoiGrayCache;
+        private Cv.Mat largeRoiOpenCvGrayCache;
         private int largeProcessedMaskGeneration;
+        private long lastRoiProcessingElapsedMilliseconds;
+        private long lastImageProcessingElapsedMilliseconds;
+        private long lastDisplayProcessingElapsedMilliseconds;
         private bool processedImageDirty = true;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
@@ -67,14 +76,17 @@ namespace IntegratedImageProcessingApp.Forms
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
-        private const int MaxLargeProcessedOverlayCacheCount = 128;
+        private const int MaxLargeProcessedOverlayCacheCount = 512;
         private const int LargeProcessedOverlayTileSize = 128;
         private const int LargeProcessedMaskChunkSize = 1024;
         // The algorithm must see the complete ROI so connected edges and
         // component filtering have the same result as a single full-image run.
         private const long MaxSinglePassLargeRoiPixels = long.MaxValue;
         private const int MaxPendingLargeProcessedOverlayTiles = 2;
+        private const int MaxPendingCachedMaskOverlayTiles = 16;
+        private const int MaxPendingLargeProcessedViewportOverlays = 4;
         private static readonly string[] KernelSizeOptions = new[] { "3", "5", "7", "9", "11", "13", "15" };
+        private static readonly string[] CannyKernelSizeOptions = new[] { "3", "5", "7" };
 
         private enum FunctionMenuIcon
         {
@@ -399,6 +411,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void MainForm_Load(object sender, EventArgs e)
         {
+            WindowState = FormWindowState.Maximized;
             functionListBox.SelectedIndex = 0;
             statusLabel.Text = "介面框架準備就緒";
             BeginInvoke(new Action(async () => await RestoreSystemParametersAsync()));
@@ -1195,7 +1208,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 string itemText = functionListBox.Items[index] as string;
                 if (IsImageProcessingStepMenuItem(itemText) ||
-                    !string.IsNullOrEmpty(GetImageProcessingGroupId(itemText)))
+                    IsImageProcessingGroupMenuItem(itemText))
                 {
                     functionListBox.Items.RemoveAt(index);
                 }
@@ -1411,6 +1424,18 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return null;
+        }
+
+        private static bool IsImageProcessingGroupMenuItem(string menuText)
+        {
+            if (string.IsNullOrWhiteSpace(menuText))
+            {
+                return false;
+            }
+
+            string trimmedText = menuText.Trim();
+            return trimmedText.StartsWith("群組(", StringComparison.Ordinal) &&
+                trimmedText.EndsWith(")", StringComparison.Ordinal);
         }
 
         private int GetImageProcessingStepIndex(string stepText)
@@ -1768,13 +1793,10 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     AddNumericParameter("LowThreshold", "低門檻", "50");
                     AddNumericParameter("HighThreshold", "高門檻", "150");
-                    AddComboParameter("KernelSize", "核心大小", KernelSizeOptions, "3");
+                    AddComboParameter("KernelSize", "核心大小", CannyKernelSizeOptions, "3");
                     AddCheckParameter("L2Gradient", "L2 梯度", false);
                     AddComboParameter("GaussianBlurSize", "高斯模糊大小", KernelSizeOptions, "5");
                     AddNumericParameter("GaussianSigma", "高斯 Sigma", "1.4");
-                    AddComboParameter("EdgeSelection", "邊緣選取", new[] { "All", "Strongest", "Longest" }, "All");
-                    AddNumericParameter("MinEdgeLength", "最小邊緣長度", "10");
-                    AddNumericParameter("MaxGap", "最大斷點間距", "2");
                 }
                 else if (method == "Sobel Edge")
                 {
@@ -2034,6 +2056,13 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             Dictionary<string, string> parameters = ParseImageProcessingParameters(systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters);
+            string previousValue;
+            if (parameters.TryGetValue(key, out previousValue) &&
+                string.Equals(previousValue, value ?? string.Empty, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             parameters[key] = value ?? string.Empty;
             systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters = FormatImageProcessingParameters(parameters);
             SaveSystemParameters();
@@ -2087,7 +2116,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (method == "Canny Edge")
             {
-                return "LowThreshold=50;HighThreshold=150;KernelSize=3;L2Gradient=false;GaussianBlurSize=5;GaussianSigma=1.4;EdgeSelection=All;MinEdgeLength=10;MaxGap=2";
+                return "LowThreshold=50;HighThreshold=150;KernelSize=3;L2Gradient=false;GaussianBlurSize=5;GaussianSigma=1.4";
             }
 
             if (method == "Sobel Edge")
@@ -2198,6 +2227,12 @@ namespace IntegratedImageProcessingApp.Forms
             ClearLargeProcessedOverlayBitmapsOnly();
             lock (largeProcessedMaskLock)
             {
+                foreach (Cv.Mat mask in largeProcessedBinaryMasks.Values)
+                {
+                    mask.Dispose();
+                }
+
+                largeProcessedBinaryMasks.Clear();
                 largeProcessedMasks.Clear();
                 largeProcessedMaskBuildKeys.Clear();
                 largeProcessedMaskGeneration++;
@@ -2208,6 +2243,12 @@ namespace IntegratedImageProcessingApp.Forms
         {
             lock (largeRoiGrayCacheLock)
             {
+                if (largeRoiOpenCvGrayCache != null)
+                {
+                    largeRoiOpenCvGrayCache.Dispose();
+                    largeRoiOpenCvGrayCache = null;
+                }
+
                 largeRoiGrayCacheSource = null;
                 largeRoiGrayCacheRoi = Rectangle.Empty;
                 largeRoiGrayCache = null;
@@ -2320,11 +2361,32 @@ namespace IntegratedImageProcessingApp.Forms
                     edges,
                     Math.Min(lowThreshold, highThreshold),
                     Math.Max(lowThreshold, highThreshold),
-                    EnsureOdd(Math.Max(3, kernelSize)),
+                    NormalizeCannyKernelSize(kernelSize),
                     l2Gradient);
 
-                return CreateOpenCvFilteredMask(edges, maxGap, minEdgeLength, edgeSelection, null);
+                // Canny must remain a raw edge map. Selection and length
+                // filtering belong to later contour/feature-filter stages.
+                return CreateBoolMaskFromOpenCvMat(edges);
             }
+        }
+
+        private static bool[,] CreateBoolMaskFromOpenCvMat(Cv.Mat mask)
+        {
+            int width = mask.Width;
+            int height = mask.Height;
+            var result = new bool[width, height];
+            var row = new byte[width];
+            long stride = mask.Step();
+            for (int y = 0; y < height; y++)
+            {
+                Marshal.Copy(mask.Data + checked((int)(y * stride)), row, 0, width);
+                for (int x = 0; x < width; x++)
+                {
+                    result[x, y] = row[x] != 0;
+                }
+            }
+
+            return result;
         }
 
         private static bool[,] CreateOpenCvFilteredMask(
@@ -2708,6 +2770,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             largeProcessedOverlayCache.Clear();
             pendingLargeProcessedOverlayTiles.Clear();
+            pendingLargeProcessedViewportOverlays.Clear();
+            pendingLargeProcessedOverviewOverlays.Clear();
         }
 
         private void ClearProcessedPreviewImages()
@@ -2729,7 +2793,15 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ScheduleProcessedImageUpdateIfVisible()
         {
-            if (!IsAnyProcessedTabVisible() || imageProcessingDebounceTimer == null)
+            if (imageProcessingDebounceTimer == null)
+            {
+                return;
+            }
+
+            // A large-image result is retained as an OpenCV mask, so prepare it
+            // after parameter changes even when the user is currently viewing
+            // the original tab.  Otherwise the update is silently skipped.
+            if (!rightOriginalDisplayControl.IsLargeImageMode && !IsAnyProcessedTabVisible())
             {
                 return;
             }
@@ -2746,7 +2818,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void UpdateVisibleProcessedImageIfNeeded()
         {
-            if (!IsAnyProcessedTabVisible())
+            if (!rightOriginalDisplayControl.IsLargeImageMode && !IsAnyProcessedTabVisible())
             {
                 return;
             }
@@ -2756,8 +2828,9 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task UpdateVisibleProcessedImageIfNeededAsync()
         {
-            if (!IsAnyProcessedTabVisible())
+            if (!HasSelectedPreviewableImageProcessingSteps())
             {
+                processedImageDirty = false;
                 return;
             }
 
@@ -2768,7 +2841,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 if (processedImageDirty)
                 {
-                    statusLabel.Text = "影像處理運算中...";
                     PrepareLargeProcessedPreview();
                     processedImageDirty = false;
                 }
@@ -2944,6 +3016,11 @@ namespace IntegratedImageProcessingApp.Forms
                 isSyncingImageView = false;
             }
 
+            // A selected step may already have a completed mask in memory.
+            // StartLargeProcessedMaskBuild then correctly returns immediately,
+            // so explicitly refresh the processed viewers to display that cache.
+            leftProcessedDisplayControl.ScheduleImageViewRefresh();
+            rightProcessedDisplayControl.ScheduleImageViewRefresh();
             ApplySharedImageViewStateToVisibleControls();
         }
 
@@ -2958,7 +3035,9 @@ namespace IntegratedImageProcessingApp.Forms
             int generation;
             lock (largeProcessedMaskLock)
             {
-                if (largeProcessedMasks.ContainsKey(maskKey) || largeProcessedMaskBuildKeys.Contains(maskKey))
+                if (largeProcessedMasks.ContainsKey(maskKey) ||
+                    largeProcessedBinaryMasks.ContainsKey(maskKey) ||
+                    largeProcessedMaskBuildKeys.Contains(maskKey))
                 {
                     return;
                 }
@@ -2985,7 +3064,49 @@ namespace IntegratedImageProcessingApp.Forms
                         // not pay the per-chunk bitmap/array setup cost.
                         if ((long)roi.Width * roi.Height <= MaxSinglePassLargeRoiPixels)
                         {
+                            if (CanUseNativeCannyMask(method, parsedParameters))
+                            {
+                                Stopwatch roiStopwatch = Stopwatch.StartNew();
+                                using (Cv.Mat nativeGray = GetOrCreateLargeRoiOpenCvGrayCache(sharedSource, roi))
+                                {
+                                    long roiElapsedMilliseconds = roiStopwatch.ElapsedMilliseconds;
+                                    if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
+                                    {
+                                        return;
+                                    }
+
+                                    Stopwatch imageProcessingStopwatch = Stopwatch.StartNew();
+                                    Cv.Mat binaryMask = CreateOpenCvCannyBinaryMask(
+                                        nativeGray,
+                                        GetIntParameter(parsedParameters, "LowThreshold", 50),
+                                        GetIntParameter(parsedParameters, "HighThreshold", 150),
+                                        GetIntParameter(parsedParameters, "KernelSize", 3),
+                                        GetBoolParameter(parsedParameters, "L2Gradient", false),
+                                        GetIntParameter(parsedParameters, "GaussianBlurSize", 5),
+                                        GetDoubleParameter(parsedParameters, "GaussianSigma", 1.4),
+                                        GetIntParameter(parsedParameters, "MinEdgeLength", 10),
+                                        GetIntParameter(parsedParameters, "MaxGap", 2));
+                                    // Publish the original-resolution result immediately.
+                                    // A display overview must never delay precise tiles.
+                                    PublishCompletedLargeProcessedBinaryMask(
+                                        binaryMask,
+                                        roi,
+                                        maskKey,
+                                        generation,
+                                        roiElapsedMilliseconds,
+                                        imageProcessingStopwatch.ElapsedMilliseconds);
+                                    binaryMask = null;
+                                }
+
+                                return;
+                            }
+
                             byte[,] gray = GetOrCreateLargeRoiGrayCache(sharedSource, roi);
+                            if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
+                            {
+                                return;
+                            }
+
                             mask = CreateLargeEdgeMask(gray, method, parsedParameters);
 
                             PublishCompletedLargeProcessedMask(mask, roi, maskKey, generation);
@@ -3174,10 +3295,27 @@ namespace IntegratedImageProcessingApp.Forms
 
         private string CreateLargeProcessedMaskKey(Rectangle roi, ImageProcessingStepSettings step)
         {
+            string parameters = step.Parameters;
+            if (string.Equals(step.Method, "Canny Edge", StringComparison.OrdinalIgnoreCase))
+            {
+                // Only these values affect the raw OpenCV Canny result. Older
+                // profiles may still contain selection/length/gap values; they
+                // must not force a duplicate full-ROI calculation.
+                Dictionary<string, string> parsed = ParseImageProcessingParameters(parameters);
+                parameters = string.Join(
+                    ";",
+                    "LowThreshold=" + GetIntParameter(parsed, "LowThreshold", 50).ToString(CultureInfo.InvariantCulture),
+                    "HighThreshold=" + GetIntParameter(parsed, "HighThreshold", 150).ToString(CultureInfo.InvariantCulture),
+                    "KernelSize=" + NormalizeCannyKernelSize(GetIntParameter(parsed, "KernelSize", 3)).ToString(CultureInfo.InvariantCulture),
+                    "L2Gradient=" + GetBoolParameter(parsed, "L2Gradient", false).ToString(),
+                    "GaussianBlurSize=" + GetIntParameter(parsed, "GaussianBlurSize", 5).ToString(CultureInfo.InvariantCulture),
+                    "GaussianSigma=" + GetDoubleParameter(parsed, "GaussianSigma", 1.4).ToString(CultureInfo.InvariantCulture));
+            }
+
             return string.Join(
                 "|",
                 step.Method,
-                step.Parameters,
+                parameters,
                 roi.X.ToString(CultureInfo.InvariantCulture),
                 roi.Y.ToString(CultureInfo.InvariantCulture),
                 roi.Width.ToString(CultureInfo.InvariantCulture),
@@ -3282,15 +3420,17 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             bool[,] mask;
+            Cv.Mat binaryMask;
             bool isBuilding;
             string maskKey = CreateLargeProcessedMaskKey(roi, step);
             lock (largeProcessedMaskLock)
             {
                 largeProcessedMasks.TryGetValue(maskKey, out mask);
+                largeProcessedBinaryMasks.TryGetValue(maskKey, out binaryMask);
                 isBuilding = largeProcessedMaskBuildKeys.Contains(maskKey);
             }
 
-            if (mask == null)
+            if (mask == null && binaryMask == null)
             {
                 if (!isBuilding)
                 {
@@ -3300,17 +3440,31 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (!IsAnyProcessedTabVisible())
+            {
+                return;
+            }
+
+            if (binaryMask != null)
+            {
+                PaintLargeProcessedBinaryViewportOverlay(e, roi, visibleRoi, step, maskKey, binaryMask);
+                return;
+            }
+
             int startTileX = (visibleRoi.Left / LargeProcessedOverlayTileSize) * LargeProcessedOverlayTileSize;
             int endTileX = ((visibleRoi.Right + LargeProcessedOverlayTileSize - 1) / LargeProcessedOverlayTileSize) * LargeProcessedOverlayTileSize;
             int startTileY = (visibleRoi.Top / LargeProcessedOverlayTileSize) * LargeProcessedOverlayTileSize;
             int endTileY = ((visibleRoi.Bottom + LargeProcessedOverlayTileSize - 1) / LargeProcessedOverlayTileSize) * LargeProcessedOverlayTileSize;
+            Point focusPoint = new Point(
+                visibleRoi.Left + (visibleRoi.Width / 2),
+                visibleRoi.Top + (visibleRoi.Height / 2));
 
             for (int tileY = startTileY; tileY < endTileY; tileY += LargeProcessedOverlayTileSize)
             {
                 for (int tileX = startTileX; tileX < endTileX; tileX += LargeProcessedOverlayTileSize)
                 {
                     Rectangle tileRect = Rectangle.Intersect(
-                        visibleRoi,
+                        roi,
                         new Rectangle(tileX, tileY, LargeProcessedOverlayTileSize, LargeProcessedOverlayTileSize));
                     if (tileRect.Width <= 0 || tileRect.Height <= 0)
                     {
@@ -3325,17 +3479,260 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     else
                     {
-                        overlay = CreateRedOverlayTileFromMask(mask, roi, tileRect);
-                        if (largeProcessedOverlayCache.Count >= MaxLargeProcessedOverlayCacheCount)
+                        if (tileRect.Contains(focusPoint))
                         {
-                            ClearLargeProcessedOverlayBitmapsOnly();
+                            // One small tile is cheap to create and makes the current
+                            // viewport show a result immediately. The remaining tiles
+                            // are still generated off the UI thread.
+                            overlay = binaryMask != null
+                                ? CreateRedOverlayTileFromBinaryMask(binaryMask, roi, tileRect)
+                                : CreateRedOverlayTileFromMask(mask, roi, tileRect);
+                            TrimLargeProcessedOverlayCache();
+                            largeProcessedOverlayCache[cacheKey] = overlay;
+                            DrawLargeProcessedOverlayTile(e.Graphics, overlay, tileRect, e.Zoom, e.Offset);
                         }
-
-                        largeProcessedOverlayCache[cacheKey] = overlay;
-                        DrawLargeProcessedOverlayTile(e.Graphics, overlay, tileRect, e.Zoom, e.Offset);
+                        else
+                        {
+                            if (binaryMask != null)
+                            {
+                                QueueLargeProcessedOverlayTileFromBinaryMask(binaryMask, roi, tileRect, cacheKey);
+                            }
+                            else
+                            {
+                                QueueLargeProcessedOverlayTileFromMask(mask, roi, tileRect, cacheKey);
+                            }
+                        }
                     }
                 }
             }
+        }
+
+        private Cv.Mat GetOrCreateLargeRoiOpenCvGrayCache(LargeImageSource source, Rectangle roi)
+        {
+            lock (largeRoiGrayCacheLock)
+            {
+                if (ReferenceEquals(largeRoiGrayCacheSource, source) &&
+                    largeRoiGrayCacheRoi.Equals(roi) &&
+                    largeRoiOpenCvGrayCache != null &&
+                    !largeRoiOpenCvGrayCache.Empty())
+                {
+                    // Canny only reads this image. A full clone here costs
+                    // hundreds of MB for a large ROI and made later steps much
+                    // slower than the first one. A sub-matrix header retains
+                    // the native buffer without copying any pixels.
+                    return new Cv.Mat(
+                        largeRoiOpenCvGrayCache,
+                        new Cv.Rect(0, 0, largeRoiOpenCvGrayCache.Width, largeRoiOpenCvGrayCache.Height));
+                }
+            }
+
+            byte[,] gray = GetOrCreateLargeRoiGrayCache(source, roi);
+            Cv.Mat openCvGray = CreateOpenCvGrayMat(gray);
+            lock (largeRoiGrayCacheLock)
+            {
+                if (largeRoiOpenCvGrayCache != null)
+                {
+                    largeRoiOpenCvGrayCache.Dispose();
+                }
+
+                largeRoiGrayCacheSource = source;
+                largeRoiGrayCacheRoi = roi;
+                largeRoiOpenCvGrayCache = openCvGray;
+                return new Cv.Mat(
+                    largeRoiOpenCvGrayCache,
+                    new Cv.Rect(0, 0, largeRoiOpenCvGrayCache.Width, largeRoiOpenCvGrayCache.Height));
+            }
+        }
+
+        private void PaintLargeProcessedBinaryViewportOverlay(
+            LargeImageOverlayPaintEventArgs e,
+            Rectangle roi,
+            Rectangle visibleRoi,
+            ImageProcessingStepSettings step,
+            string maskKey,
+            Cv.Mat binaryMask)
+        {
+            int targetWidth = Math.Max(1, Math.Min(2048, (int)Math.Ceiling(visibleRoi.Width * e.Zoom)));
+            int targetHeight = Math.Max(1, Math.Min(2048, (int)Math.Ceiling(visibleRoi.Height * e.Zoom)));
+            string cacheKey = string.Join(
+                "|",
+                "viewport",
+                maskKey,
+                visibleRoi.X.ToString(CultureInfo.InvariantCulture),
+                visibleRoi.Y.ToString(CultureInfo.InvariantCulture),
+                visibleRoi.Width.ToString(CultureInfo.InvariantCulture),
+                visibleRoi.Height.ToString(CultureInfo.InvariantCulture),
+                targetWidth.ToString(CultureInfo.InvariantCulture),
+                targetHeight.ToString(CultureInfo.InvariantCulture));
+            Bitmap overlay;
+            if (TryGetLargeProcessedOverlayFromCache(cacheKey, out overlay))
+            {
+                DrawLargeProcessedOverlayTile(e.Graphics, overlay, visibleRoi, e.Zoom, e.Offset);
+                return;
+            }
+
+            // The raw OpenCV mask is the source of truth.  Render the complete
+            // visible part of it as one display-sized bitmap at every zoom so a
+            // pending source-tile batch can never leave a visible edge segment
+            // blank. This affects presentation only; contour calculations keep
+            // using the full-resolution native mask. Display conversion is
+            // deliberately synchronous here: it is bounded by the viewport,
+            // avoids a second queue, and must not make the result blink out
+            // while the user pans or resets the view.
+            try
+            {
+                Stopwatch displayStopwatch = Stopwatch.StartNew();
+                int maskX = visibleRoi.X - roi.X;
+                int maskY = visibleRoi.Y - roi.Y;
+                using (var visibleMask = new Cv.Mat(binaryMask,
+                    new Cv.Rect(maskX, maskY, visibleRoi.Width, visibleRoi.Height)))
+                {
+                    overlay = CreateLargeProcessedBinaryViewportOverlay(visibleMask, targetWidth, targetHeight);
+                }
+
+                TrimLargeProcessedOverlayCache();
+                largeProcessedOverlayCache[cacheKey] = overlay;
+                lastDisplayProcessingElapsedMilliseconds = displayStopwatch.ElapsedMilliseconds;
+                UpdateProcessingTimingStatus();
+                DrawLargeProcessedOverlayTile(e.Graphics, overlay, visibleRoi, e.Zoom, e.Offset);
+                return;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(ex);
+                if (TryGetLargeProcessedOverlayFromCache("overview|" + maskKey, out overlay))
+                {
+                    DrawLargeProcessedOverlayTile(e.Graphics, overlay, roi, e.Zoom, e.Offset);
+                }
+            }
+        }
+
+        private void PaintLargeProcessedBinaryExactTiles(
+            LargeImageOverlayPaintEventArgs e,
+            Rectangle roi,
+            Rectangle visibleRoi,
+            ImageProcessingStepSettings step,
+            Cv.Mat binaryMask)
+        {
+            int tileSize = e.Zoom < 0.5f ? 512 : e.Zoom < 1f ? 256 : LargeProcessedOverlayTileSize;
+            // Finish the tiles currently on screen before any prefetch work.
+            // A queued off-screen ring used to consume the short queue and
+            // leave lower visible line segments absent until the user panned.
+            int startTileX = (visibleRoi.Left / tileSize) * tileSize;
+            int endTileX = ((visibleRoi.Right + tileSize - 1) / tileSize) * tileSize;
+            int startTileY = (visibleRoi.Top / tileSize) * tileSize;
+            int endTileY = ((visibleRoi.Bottom + tileSize - 1) / tileSize) * tileSize;
+            Point focusPoint = new Point(
+                visibleRoi.Left + (visibleRoi.Width / 2),
+                visibleRoi.Top + (visibleRoi.Height / 2));
+
+            for (int tileY = startTileY; tileY < endTileY; tileY += tileSize)
+            {
+                for (int tileX = startTileX; tileX < endTileX; tileX += tileSize)
+                {
+                    Rectangle tileRect = Rectangle.Intersect(
+                        roi,
+                        new Rectangle(tileX, tileY, tileSize, tileSize));
+                    if (tileRect.Width <= 0 || tileRect.Height <= 0)
+                    {
+                        continue;
+                    }
+
+                    string cacheKey = CreateLargeProcessedOverlayCacheKey(tileRect, roi, step);
+                    Bitmap tile;
+                    if (TryGetLargeProcessedOverlayFromCache(cacheKey, out tile))
+                    {
+                        DrawLargeProcessedOverlayTile(e.Graphics, tile, tileRect, e.Zoom, e.Offset);
+                    }
+                    else if (tileRect.Contains(focusPoint))
+                    {
+                        tile = CreateRedOverlayTileFromBinaryMask(binaryMask, roi, tileRect);
+                        TrimLargeProcessedOverlayCache();
+                        largeProcessedOverlayCache[cacheKey] = tile;
+                        DrawLargeProcessedOverlayTile(e.Graphics, tile, tileRect, e.Zoom, e.Offset);
+                    }
+                    else
+                    {
+                        QueueLargeProcessedOverlayTileFromBinaryMask(binaryMask, roi, tileRect, cacheKey);
+                    }
+                }
+            }
+        }
+
+        private void QueueLargeProcessedBinaryViewportOverlay(
+            Cv.Mat mask,
+            Rectangle roi,
+            Rectangle visibleRoi,
+            int targetWidth,
+            int targetHeight,
+            string cacheKey)
+        {
+            if (pendingLargeProcessedViewportOverlays.Contains(cacheKey) ||
+                pendingLargeProcessedViewportOverlays.Count >= MaxPendingLargeProcessedViewportOverlays)
+            {
+                return;
+            }
+
+            int maskX = visibleRoi.X - roi.X;
+            int maskY = visibleRoi.Y - roi.Y;
+            Cv.Mat visibleMask = new Cv.Mat(mask, new Cv.Rect(maskX, maskY, visibleRoi.Width, visibleRoi.Height));
+            pendingLargeProcessedViewportOverlays.Add(cacheKey);
+            statusLabel.Text = "正在更新處理後顯示...";
+            Task.Factory.StartNew(
+                delegate
+                {
+                    Bitmap overlay = null;
+                    try
+                    {
+                        using (visibleMask)
+                        {
+                            overlay = CreateLargeProcessedBinaryViewportOverlay(visibleMask, targetWidth, targetHeight);
+                        }
+
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    pendingLargeProcessedViewportOverlays.Remove(cacheKey);
+                                    TrimLargeProcessedOverlayCache();
+                                    largeProcessedOverlayCache[cacheKey] = overlay;
+                                    overlay = null;
+                                    statusLabel.Text = "影像處理結果已顯示";
+                                    leftProcessedDisplayControl.ScheduleImageViewRefresh();
+                                    rightProcessedDisplayControl.ScheduleImageViewRefresh();
+                                }));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                        try
+                        {
+                            BeginInvoke(
+                                new Action(
+                                    delegate
+                                    {
+                                        pendingLargeProcessedViewportOverlays.Remove(cacheKey);
+                                        statusLabel.Text = "處理後顯示失敗：" + ex.Message;
+                                    }));
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                        }
+                        catch (InvalidOperationException)
+                        {
+                        }
+                    }
+                    finally
+                    {
+                        if (overlay != null)
+                        {
+                            overlay.Dispose();
+                        }
+                    }
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
         }
 
         private bool TryGetLargeProcessedOverlayFromCache(string cacheKey, out Bitmap overlay)
@@ -3358,6 +3755,355 @@ namespace IntegratedImageProcessingApp.Forms
 
             overlay = null;
             return false;
+        }
+
+        private static Cv.Mat CreateOpenCvCannyBinaryMask(
+            byte[,] gray,
+            int lowThreshold,
+            int highThreshold,
+            int kernelSize,
+            bool l2Gradient,
+            int gaussianBlurSize,
+            double gaussianSigma,
+            int minEdgeLength,
+            int maxGap)
+        {
+            using (var source = CreateOpenCvGrayMat(gray))
+            {
+                return CreateOpenCvCannyBinaryMask(
+                    source,
+                    lowThreshold,
+                    highThreshold,
+                    kernelSize,
+                    l2Gradient,
+                    gaussianBlurSize,
+                    gaussianSigma,
+                    minEdgeLength,
+                    maxGap);
+            }
+        }
+
+        private static Cv.Mat CreateOpenCvCannyBinaryMask(
+            Cv.Mat source,
+            int lowThreshold,
+            int highThreshold,
+            int kernelSize,
+            bool l2Gradient,
+            int gaussianBlurSize,
+            double gaussianSigma,
+            int minEdgeLength,
+            int maxGap)
+        {
+            using (var blurred = new Cv.Mat())
+            using (var edges = new Cv.Mat())
+            {
+                int blurSize = EnsureOdd(Math.Max(1, gaussianBlurSize));
+                Cv.Cv2.GaussianBlur(
+                    source,
+                    blurred,
+                    new Cv.Size(blurSize, blurSize),
+                    Math.Max(0.1, gaussianSigma));
+                Cv.Cv2.Canny(
+                    blurred,
+                    edges,
+                    Math.Min(lowThreshold, highThreshold),
+                    Math.Max(lowThreshold, highThreshold),
+                    NormalizeCannyKernelSize(kernelSize),
+                    l2Gradient);
+
+                // Canny is a raw OpenCV edge detector. Length filtering is a
+                // contour/feature-filter operation and is intentionally not
+                // part of this stage.
+                return edges.Clone();
+            }
+        }
+
+        private static int NormalizeCannyKernelSize(int kernelSize)
+        {
+            // OpenCV Canny accepts only Sobel apertures 3, 5, or 7.
+            if (kernelSize <= 3)
+            {
+                return 3;
+            }
+
+            return kernelSize <= 5 ? 5 : 7;
+        }
+
+        private static Cv.Mat CreateOpenCvFilteredBinaryMask(Cv.Mat edgeMask, int maxGap, int minEdgeLength)
+        {
+            ApplyOpenCvMaskClosing(edgeMask, maxGap);
+
+            if (minEdgeLength <= 1)
+            {
+                return edgeMask.Clone();
+            }
+
+            using (var labels = new Cv.Mat())
+            using (var stats = new Cv.Mat())
+            using (var centroids = new Cv.Mat())
+            {
+                int labelCount = Cv.Cv2.ConnectedComponentsWithStats(
+                    edgeMask,
+                    labels,
+                    stats,
+                    centroids,
+                    Cv.PixelConnectivity.Connectivity8,
+                    Cv.MatType.CV_32SC1);
+                var accepted = new bool[labelCount];
+                for (int label = 1; label < labelCount; label++)
+                {
+                    accepted[label] = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Area) >= minEdgeLength;
+                }
+
+                var filtered = new Cv.Mat(edgeMask.Rows, edgeMask.Cols, Cv.MatType.CV_8UC1);
+                int[] labelsRow = new int[edgeMask.Width];
+                byte[] resultRow = new byte[edgeMask.Width];
+                long labelsStride = labels.Step();
+                long resultStride = filtered.Step();
+                for (int y = 0; y < edgeMask.Height; y++)
+                {
+                    Marshal.Copy(labels.Data + checked((int)(y * labelsStride)), labelsRow, 0, labelsRow.Length);
+                    Array.Clear(resultRow, 0, resultRow.Length);
+                    for (int x = 0; x < labelsRow.Length; x++)
+                    {
+                        int label = labelsRow[x];
+                        if (label > 0 && label < accepted.Length && accepted[label])
+                        {
+                            resultRow[x] = 255;
+                        }
+                    }
+
+                    Marshal.Copy(resultRow, 0, filtered.Data + checked((int)(y * resultStride)), resultRow.Length);
+                }
+
+                return filtered;
+            }
+        }
+
+        private static void ApplyOpenCvMaskClosing(Cv.Mat edgeMask, int maxGap)
+        {
+            if (maxGap <= 0)
+            {
+                return;
+            }
+
+            int kernelSize = EnsureOdd(Math.Max(3, (maxGap * 2) + 1));
+            using (Cv.Mat kernel = Cv.Cv2.GetStructuringElement(Cv.MorphShapes.Rect, new Cv.Size(kernelSize, kernelSize)))
+            {
+                Cv.Cv2.MorphologyEx(edgeMask, edgeMask, Cv.MorphTypes.Close, kernel);
+            }
+        }
+
+        private void QueueLargeProcessedOverlayTileFromMask(
+            bool[,] mask, Rectangle roi, Rectangle tileRect, string cacheKey)
+        {
+            if (pendingLargeProcessedOverlayTiles.Contains(cacheKey) ||
+                pendingLargeProcessedOverlayTiles.Count >= MaxPendingCachedMaskOverlayTiles)
+            {
+                return;
+            }
+
+            pendingLargeProcessedOverlayTiles.Add(cacheKey);
+            Task.Run(
+                delegate
+                {
+                    Bitmap overlay = null;
+                    try
+                    {
+                        overlay = CreateRedOverlayTileFromMask(mask, roi, tileRect);
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    pendingLargeProcessedOverlayTiles.Remove(cacheKey);
+                                    TrimLargeProcessedOverlayCache();
+                                    largeProcessedOverlayCache[cacheKey] = overlay;
+                                    overlay = null;
+                                    leftProcessedDisplayControl.ScheduleImageViewRefresh();
+                                    rightProcessedDisplayControl.ScheduleImageViewRefresh();
+                                }));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                        try
+                        {
+                            BeginInvoke(new Action(delegate { pendingLargeProcessedOverlayTiles.Remove(cacheKey); }));
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                        }
+                        catch (InvalidOperationException)
+                        {
+                        }
+                    }
+                    finally
+                    {
+                        if (overlay != null)
+                        {
+                            overlay.Dispose();
+                        }
+                    }
+            });
+        }
+
+        private bool IsLargeProcessedMaskBuildCurrent(string maskKey, int generation)
+        {
+            lock (largeProcessedMaskLock)
+            {
+                return generation == largeProcessedMaskGeneration &&
+                    largeProcessedMaskBuildKeys.Contains(maskKey);
+            }
+        }
+
+        private static bool CanUseNativeCannyMask(string method, Dictionary<string, string> parameters)
+        {
+            return string.Equals(method, "Canny Edge", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void PublishCompletedLargeProcessedBinaryMask(
+            Cv.Mat mask,
+            Rectangle roi,
+            string maskKey,
+            int generation,
+            long roiProcessingElapsedMilliseconds,
+            long processingElapsedMilliseconds)
+        {
+            BeginInvoke(
+                new Action(
+                    delegate
+                    {
+                        lock (largeProcessedMaskLock)
+                        {
+                            if (generation != largeProcessedMaskGeneration ||
+                                !largeProcessedMaskBuildKeys.Contains(maskKey))
+                            {
+                                mask.Dispose();
+                                return;
+                            }
+
+                            Cv.Mat previous;
+                            if (largeProcessedBinaryMasks.TryGetValue(maskKey, out previous))
+                            {
+                                previous.Dispose();
+                            }
+
+                            largeProcessedBinaryMasks[maskKey] = mask;
+                            largeProcessedMaskBuildKeys.Remove(maskKey);
+                        }
+
+                        QueueLargeProcessedBinaryOverview(mask, roi, maskKey, generation);
+
+                        lastRoiProcessingElapsedMilliseconds = roiProcessingElapsedMilliseconds;
+                        lastImageProcessingElapsedMilliseconds = processingElapsedMilliseconds;
+                        UpdateProcessingTimingStatus();
+                        leftProcessedDisplayControl.InvalidateImageView();
+                        rightProcessedDisplayControl.InvalidateImageView();
+                    }));
+        }
+
+        private void UpdateProcessingTimingStatus()
+        {
+            statusLabel.Text = string.Format(
+                CultureInfo.InvariantCulture,
+                "ROI 處理時間：{0} ms｜影像處理時間：{1} ms｜顯示時間：{2} ms",
+                lastRoiProcessingElapsedMilliseconds,
+                lastImageProcessingElapsedMilliseconds,
+                lastDisplayProcessingElapsedMilliseconds);
+        }
+
+        private void QueueLargeProcessedBinaryOverview(Cv.Mat mask, Rectangle roi, string maskKey, int generation)
+        {
+            string cacheKey = "overview|" + maskKey;
+            if (largeProcessedOverlayCache.ContainsKey(cacheKey) ||
+                pendingLargeProcessedOverviewOverlays.Contains(cacheKey))
+            {
+                return;
+            }
+
+            // A full ROI view retains the native buffer without cloning the
+            // large image.  The Mat copy constructor maps to ranges in this
+            // OpenCvSharp version and throws "empty ranges".
+            Cv.Mat overviewMask = new Cv.Mat(mask, new Cv.Rect(0, 0, mask.Width, mask.Height));
+            pendingLargeProcessedOverviewOverlays.Add(cacheKey);
+            Task.Factory.StartNew(
+                delegate
+                {
+                    Bitmap overview = null;
+                    try
+                    {
+                        using (overviewMask)
+                        {
+                            float scale = Math.Min(1f, 2048f / Math.Max(overviewMask.Width, overviewMask.Height));
+                            overview = CreateLargeProcessedBinaryViewportOverlay(
+                                overviewMask,
+                                Math.Max(1, (int)Math.Round(overviewMask.Width * scale)),
+                                Math.Max(1, (int)Math.Round(overviewMask.Height * scale)));
+                        }
+
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    pendingLargeProcessedOverviewOverlays.Remove(cacheKey);
+                                    lock (largeProcessedMaskLock)
+                                    {
+                                        if (generation != largeProcessedMaskGeneration ||
+                                            !largeProcessedBinaryMasks.ContainsKey(maskKey))
+                                        {
+                                            overview.Dispose();
+                                            return;
+                                        }
+                                    }
+
+                                    TrimLargeProcessedOverlayCache();
+                                    largeProcessedOverlayCache[cacheKey] = overview;
+                                    overview = null;
+                                    leftProcessedDisplayControl.InvalidateImageView();
+                                    rightProcessedDisplayControl.InvalidateImageView();
+                                }));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                        try
+                        {
+                            BeginInvoke(new Action(delegate { pendingLargeProcessedOverviewOverlays.Remove(cacheKey); }));
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                        }
+                        catch (InvalidOperationException)
+                        {
+                        }
+                    }
+                    finally
+                    {
+                        if (overview != null)
+                        {
+                            overview.Dispose();
+                        }
+                    }
+                },
+                CancellationToken.None,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+        }
+
+        private void TrimLargeProcessedOverlayCache()
+        {
+            while (largeProcessedOverlayCache.Count >= MaxLargeProcessedOverlayCacheCount)
+            {
+                KeyValuePair<string, Bitmap> oldest = largeProcessedOverlayCache.FirstOrDefault(
+                    pair => !pair.Key.StartsWith("overview|", StringComparison.Ordinal));
+                if (string.IsNullOrEmpty(oldest.Key))
+                {
+                    oldest = largeProcessedOverlayCache.First();
+                }
+
+                largeProcessedOverlayCache.Remove(oldest.Key);
+                oldest.Value.Dispose();
+            }
         }
 
         private string CreateLargeProcessedOverlayCacheKey(Rectangle tileRect, Rectangle roi, ImageProcessingStepSettings step)
@@ -3485,11 +4231,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 delegate
                                 {
                                     pendingLargeProcessedOverlayTiles.Remove(cacheKey);
-                                    if (largeProcessedOverlayCache.Count >= MaxLargeProcessedOverlayCacheCount)
-                                    {
-                                        ClearLargeProcessedOverlayBitmapsOnly();
-                                    }
-
+                                    TrimLargeProcessedOverlayCache();
                                     largeProcessedOverlayCache[cacheKey] = overlay;
                                     overlay = null;
                                     statusLabel.Text = pendingLargeProcessedOverlayTiles.Count > 0
@@ -3520,6 +4262,72 @@ namespace IntegratedImageProcessingApp.Forms
                         }
 
                         sharedSource.ReleaseReference();
+                    }
+                });
+        }
+
+        private void QueueLargeProcessedOverlayTileFromBinaryMask(
+            Cv.Mat mask, Rectangle roi, Rectangle tileRect, string cacheKey)
+        {
+            if (pendingLargeProcessedOverlayTiles.Contains(cacheKey) ||
+                pendingLargeProcessedOverlayTiles.Count >= MaxPendingCachedMaskOverlayTiles)
+            {
+                return;
+            }
+
+            int maskX = tileRect.X - roi.X;
+            int maskY = tileRect.Y - roi.Y;
+            Cv.Mat maskTile;
+            using (var tileView = new Cv.Mat(mask, new Cv.Rect(maskX, maskY, tileRect.Width, tileRect.Height)))
+            {
+                maskTile = tileView.Clone();
+            }
+
+            pendingLargeProcessedOverlayTiles.Add(cacheKey);
+            Task.Run(
+                delegate
+                {
+                    Bitmap overlay = null;
+                    try
+                    {
+                        using (maskTile)
+                        {
+                            overlay = CreateRedOverlayTileFromBinaryMask(maskTile, Rectangle.Empty,
+                                new Rectangle(0, 0, tileRect.Width, tileRect.Height));
+                        }
+
+                        BeginInvoke(
+                            new Action(
+                                delegate
+                                {
+                                    pendingLargeProcessedOverlayTiles.Remove(cacheKey);
+                                    TrimLargeProcessedOverlayCache();
+                                    largeProcessedOverlayCache[cacheKey] = overlay;
+                                    overlay = null;
+                                    leftProcessedDisplayControl.ScheduleImageViewRefresh();
+                                    rightProcessedDisplayControl.ScheduleImageViewRefresh();
+                                }));
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                        try
+                        {
+                            BeginInvoke(new Action(delegate { pendingLargeProcessedOverlayTiles.Remove(cacheKey); }));
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                        }
+                        catch (InvalidOperationException)
+                        {
+                        }
+                    }
+                    finally
+                    {
+                        if (overlay != null)
+                        {
+                            overlay.Dispose();
+                        }
                     }
                 });
         }
@@ -3657,6 +4465,84 @@ namespace IntegratedImageProcessingApp.Forms
             return overlay;
         }
 
+        private static Bitmap CreateRedOverlayTileFromBinaryMask(Cv.Mat mask, Rectangle maskRoi, Rectangle tileRect)
+        {
+            int width = tileRect.Width;
+            int height = tileRect.Height;
+            var overlay = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            BitmapData data = overlay.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            try
+            {
+                int stride = data.Stride;
+                byte[] sourceRow = new byte[width];
+                byte[] outputRow = new byte[Math.Abs(stride)];
+                int maskStartX = tileRect.X - maskRoi.X;
+                int maskStartY = tileRect.Y - maskRoi.Y;
+                long maskStride = mask.Step();
+                for (int y = 0; y < height; y++)
+                {
+                    Array.Clear(outputRow, 0, outputRow.Length);
+                    int maskY = maskStartY + y;
+                    Marshal.Copy(
+                        IntPtr.Add(mask.Data, checked((int)((maskY * maskStride) + maskStartX))),
+                        sourceRow,
+                        0,
+                        width);
+                    for (int x = 0; x < width; x++)
+                    {
+                        if (sourceRow[x] == 0)
+                        {
+                            continue;
+                        }
+
+                        int offset = x * 4;
+                        outputRow[offset + 2] = 255;
+                        outputRow[offset + 3] = 255;
+                    }
+
+                    Marshal.Copy(outputRow, 0, data.Scan0 + (y * stride), outputRow.Length);
+                }
+            }
+            finally
+            {
+                overlay.UnlockBits(data);
+            }
+
+            return overlay;
+        }
+
+        private static Bitmap CreateLargeProcessedBinaryViewportOverlay(Cv.Mat visibleMask, int targetWidth, int targetHeight)
+        {
+            using (var scaledMask = new Cv.Mat())
+            {
+                if (visibleMask.Width > targetWidth || visibleMask.Height > targetHeight)
+                {
+                    Cv.Cv2.Resize(
+                        visibleMask,
+                        scaledMask,
+                        new Cv.Size(targetWidth, targetHeight),
+                        0,
+                        0,
+                        Cv.InterpolationFlags.Area);
+                }
+                else
+                {
+                    Cv.Cv2.Resize(
+                        visibleMask,
+                        scaledMask,
+                        new Cv.Size(targetWidth, targetHeight),
+                        0,
+                        0,
+                        Cv.InterpolationFlags.Nearest);
+                }
+
+                return CreateRedOverlayTileFromBinaryMask(
+                    scaledMask,
+                    Rectangle.Empty,
+                    new Rectangle(0, 0, targetWidth, targetHeight));
+            }
+        }
+
         private static void DrawLargeProcessedOverlayTile(Graphics graphics, Bitmap overlay, Rectangle tileRect, float zoom, PointF offset)
         {
             int overlayWidth;
@@ -3693,13 +4579,25 @@ namespace IntegratedImageProcessingApp.Forms
 
             var destination = Rectangle.FromLTRB(left, top, right, bottom);
             var source = new Rectangle(0, 0, overlayWidth, overlayHeight);
+            System.Drawing.Drawing2D.InterpolationMode previousInterpolation = graphics.InterpolationMode;
+            System.Drawing.Drawing2D.PixelOffsetMode previousPixelOffset = graphics.PixelOffsetMode;
             try
             {
+                // Masks are categorical data.  Bicubic/bilinear interpolation
+                // invents red values between pixels and makes edge positions
+                // look wider or shifted when zoomed.
+                graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
                 graphics.DrawImage(overlay, destination, source, GraphicsUnit.Pixel);
             }
             catch (ArgumentException ex)
             {
                 Debug.WriteLine(ex);
+            }
+            finally
+            {
+                graphics.PixelOffsetMode = previousPixelOffset;
+                graphics.InterpolationMode = previousInterpolation;
             }
         }
 
@@ -4042,7 +4940,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             RestoreSavedRoiOverlay();
-            await PrepareProcessedPreviewFromSettingsAsync();
+            // Loading restores only the image and ROI. Processing begins only
+            // after the user explicitly selects a processing step or group.
+            selectedImageProcessingStepIndex = -1;
+            selectedImageProcessingGroupId = null;
+            processedImageDirty = false;
         }
 
         private void RestoreSavedRoiOverlay()
@@ -4161,6 +5063,8 @@ namespace IntegratedImageProcessingApp.Forms
                     systemParameters.Roi = Rectangle.Empty;
                     systemParameters.RoiRegions.Clear();
                     selectedRoiIndex = -1;
+                    selectedImageProcessingStepIndex = -1;
+                    selectedImageProcessingGroupId = null;
                     RebuildVisibleRoiItems();
                     MarkProcessedImageDirty();
 

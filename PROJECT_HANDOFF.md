@@ -51,6 +51,8 @@
     - Tile drawing uses destination rounding and `WrapMode.TileFlipXY` to avoid visible seams.
     - Huge image files are loaded into one shared `LargeImageSource` for the left/right original viewers. Processed viewers also reference that same source, so the app does not open/decode the same huge image separately for each side/tab.
     - `LargeImageSource` uses reference counting through `AddReference`/`ReleaseReference`; do not dispose a shared source directly from a control.
+    - Preview surfaces are capped at `2048 x 2048`. Do not restore the retired `4096 x 4096` preview level: it adds no detail once source tiles are available and can cause GDI+ `ArgumentException` under stress.
+    - Loading an image, including startup restoration of `LastImagePath`, restores only the original image and ROI. It must not automatically build a processed ROI mask. The first processing run begins only when the user selects a processing step or group.
   - Large-image processed previews use the same tiled display path:
     - Processed viewers load the original large image through `LargeImageSource`.
     - The viewer paints original image preview/tiles first.
@@ -60,7 +62,12 @@
     - `LargeImageSource.CreateRegionBitmap` must not hold the shared source lock while WIC decodes a region; otherwise overlay calculation can block original image tile refresh and appear stuck.
     - Processed overlay calculation should prefer `LargeImageSource.TryCreateRegionBitmapFromCachedTile`. It crops from already-cached `1024 x 1024` source tiles instead of asking WIC to decode many tiny overlay regions. If the source tile is missing, queue the source tile and retry on repaint.
     - If the high-resolution source tile is not cached yet, processed overlay falls back to `LargeImageSource.GetBestPreview(0f)` so the `處理後` tab does not stay blank with an endless pending count. When the high-resolution tile finishes loading through `QueueTile`, the preview overlay cache is invalidated and recalculated.
-    - Current preferred large-image processed preview flow: build one ROI-level boolean mask for each selected processing step, then render red overlay tiles from that mask. The display path must not run edge algorithms per visible tile; pan/zoom redraws only from the prepared mask.
+    - Current preferred large-image processed preview flow: build one ROI-level mask for each selected processing step, then render red overlay from that prepared result. The display path must not run edge algorithms per visible tile; pan/zoom redraws only from the prepared mask.
+    - Canny stores its full-resolution result as an OpenCV `Cv.Mat` binary mask. The processed viewer creates and caches one red overlay for the currently visible source rectangle directly from that mask. Do not reintroduce a background display-tile queue for Canny: it previously produced incomplete red line segments, status-bar flicker, and redraws that only completed after panning.
+    - The viewport overlay is display-only. It may use `Area` reduction below 1x and `Nearest` enlargement at detail zoom; contour/measurement work must continue to use the full-resolution `Cv.Mat` mask.
+    - When reusing the ROI grayscale `Cv.Mat` for a second Canny step, return a sub-matrix header sharing the native buffer, not `Clone()`. A full clone of a 16K-scale ROI duplicates hundreds of MB and makes later steps much slower than the first.
+    - Selecting an already-completed step must explicitly schedule a processed-view refresh. `StartLargeProcessedMaskBuild` returns immediately for a cache hit and otherwise no completion callback exists to trigger redraw.
+    - The lower status bar records three independent times after Canny completes: `ROI 處理時間` (ROI tile/gray Mat preparation), `影像處理時間` (Gaussian Blur + Canny only), and `顯示時間` (visible red overlay creation only). Do not combine these values; cached ROI preparation should show a much smaller ROI time on later runs.
     - The current configuration processes the entire ROI in one OpenCV pass (`MaxSinglePassLargeRoiPixels = long.MaxValue`) to keep one continuous algorithm result. This is correct for the result but can require several GB of native and managed memory for a huge ROI; do not assume it will be instantaneous or safe for arbitrary ROI sizes.
     - A chunked `1024 x 1024` implementation with padding remains in the code as a fallback path if the single-pass limit is lowered later. Padding must be retained if it is re-enabled to avoid visual seams.
     - Clearing the red overlay tile bitmap cache must not clear the completed ROI-level mask; otherwise the processed view can finish, invalidate, then start building the same mask again.
@@ -110,7 +117,8 @@
   - Clicking a flow tree node is treated as the accepted method for the selected processing step, saves it to INI, and updates the left menu display from `處理N(未決定)` to `處理N(MethodName)`.
   - Edge Detection methods currently have right-side parameter panels:
     - `Polarity Edge`: `Polarity`, `ContrastThreshold`, `EdgeWidth`, `Smoothing`, `SearchDirection`, `EdgeSelection`, `SubPixel`, `MinEdgeLength`, `MaxGap`.
-    - `Canny Edge`: `LowThreshold`, `HighThreshold`, `KernelSize`, `L2Gradient`, `GaussianBlurSize`, `GaussianSigma`, `EdgeSelection`, `MinEdgeLength`, `MaxGap`.
+    - `Canny Edge`: `LowThreshold`, `HighThreshold`, `KernelSize`, `L2Gradient`, `GaussianBlurSize`, `GaussianSigma`.
+      - Canny `KernelSize` is restricted to OpenCV-supported aperture values `3`, `5`, `7`. Old INI values of `9` or higher must be normalized to `7`; larger Sobel apertures belong only to Sobel Edge.
     - `Sobel Edge`: `Direction`, `KernelSize`, `Scale`, `Delta`, `OutputMode`, `Threshold`, `EdgeSelection`, `MinEdgeLength`, `MaxGap`.
   - Kernel-size options are shared by Canny/Sobel-related controls: `3`, `5`, `7`, `9`, `11`, `13`, `15`.
   - Selecting one of those methods switches the right side from the flow tree to its parameter editor. The `重新選擇方法` button returns to the flow tree.
@@ -127,7 +135,9 @@
     - If there is no previewable image-processing step left, both processed viewers are cleared so stale red overlays are never shown.
     - While processing preview is being computed, the lower status bar shows `影像處理運算中...`.
     - In large-image mode, `處理後` does not create a full-size processed bitmap. It renders `LargeImageSource` base tiles plus ROI-local red mask overlay tiles.
-  - `Polarity Edge`, `Canny Edge`, and `Sobel Edge` use OpenCvSharp/OpenCV for all active paths: small-image preview, large-image ROI mask, and large-image fallback preview. The retired hand-written C# edge algorithms were removed.
+  - Canny uses the native OpenCvSharp path for large-image ROI processing: `GaussianBlur -> Canny -> Cv.Mat binary mask`.
+  - Canny must remain a raw edge detector. `Strongest`, `Longest`, `MinEdgeLength`, and `MaxGap` were removed from the Canny UI because they are contour/feature-filter concepts, not native Canny parameters. Old INI values may remain but must be ignored by Canny and must not change its mask cache key.
+  - Sobel Edge and Polarity Edge still need to be migrated to the same native large-image `Cv.Mat` mask pipeline as Canny. Their current OpenCV algorithm helpers return managed `bool[,]` masks for the large-image path; do not describe this migration as complete until their result storage, caching, and overlay rendering no longer use that managed path.
   - Small-image ROI extraction reads Gray8 data directly where possible. Color inputs are safely converted to grayscale at the boundary.
   - Processing step numbers are display positions only. When deleting or moving steps, the visible `處理1`, `處理2`, `處理3` numbering is regenerated, but each step's underlying method/parameters move with that step.
   - Processing workflow state is persisted in `SystemParameters.ini` under `[ImageProcessing]` so future algorithm selections can be restored and reordered safely.
@@ -223,6 +233,9 @@ Group1.DisplayName=
 - Be careful with `MainForm.Designer.cs`; avoid helper method calls or custom-control declarations in the main designer file if Visual Studio Designer starts failing.
 - Prefer adding runtime behavior in `MainForm.cs` and reusable viewer behavior in `ImageDisplayControl.cs`.
 - Treat images inside the app as grayscale-only. Color input files should be converted in memory at the boundary before display or analysis; already-grayscale input should not be converted again.
-- All active edge detection must stay on the shared OpenCV implementations. Do not restore the retired hand-written C# Canny/Sobel/Polarity code.
+- Canny's full-resolution native `Cv.Mat` mask is the authoritative result. Its display overlay is not a replacement for the data used by later contour work.
+- Do not add selection, longest-edge, or minimum-length controls back into Canny. Implement those as explicit `Find Contours` / `Feature Filter` operations later.
+- Next major processing task: migrate Sobel Edge and Polarity Edge large-image processing to the native OpenCV `Cv.Mat` mask pipeline already used by Canny. Keep their future result masks separate from ROI masks and render only from completed cached results.
+- Verify a two-step Canny workflow after any cache changes: selecting a previously calculated `處理1` or `處理2` must reuse memory; identical effective Canny parameters must share one result; selecting a different effective parameter set may build one new ROI mask but must finish and not loop indefinitely.
 - For a huge full-frame ROI (for example `16384 x 50000`), a one-pass OpenCV Canny/Sobel/Polarity operation needs multiple large temporary Mats. The current full-ROI setting prioritizes continuous results over memory use; test target image sizes before relying on it in production.
 - There may be Visual Studio formatting-only changes in `MainForm.Designer.cs` or `MainForm.resx` after opening the designer. Inspect before committing.

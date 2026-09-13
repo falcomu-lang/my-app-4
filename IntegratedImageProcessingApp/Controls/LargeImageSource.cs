@@ -16,6 +16,7 @@ namespace IntegratedImageProcessingApp.Controls
     {
         private const int TileSourceSize = 1024;
         private const int MaxDisplayTileCacheCount = 96;
+        private const int MaxPreviewDimension = 2048;
         private readonly object _sync = new object();
         private readonly string _filePath;
         private readonly FileStream _stream;
@@ -344,8 +345,11 @@ namespace IntegratedImageProcessingApp.Controls
 
                 if (selected == null)
                 {
-                    selected = _previewLevels[_previewLevels.Count - 1];
-                    selected.Bitmap = CreateScaledBitmap(selected.DecodeWidth, selected.DecodeHeight);
+                    // This method is called by the UI paint path.  A missing
+                    // preview must be built by QueuePreviewBuilds, never by
+                    // synchronously decoding all source tiles here.
+                    PreviewLevel fallback = _previewLevels[_previewLevels.Count - 1];
+                    return new PreviewBitmap(null, fallback.Scale, false);
                 }
 
                 return new PreviewBitmap(selected.Bitmap, selected.Scale, false);
@@ -659,7 +663,6 @@ namespace IntegratedImageProcessingApp.Controls
             AddPreviewLevel(512);
             AddPreviewLevel(1024);
             AddPreviewLevel(2048);
-            AddPreviewLevel(4096);
             _previewLevels.Sort((a, b) => b.Scale.CompareTo(a.Scale));
         }
 
@@ -778,24 +781,29 @@ namespace IntegratedImageProcessingApp.Controls
 
         private Bitmap CreateScaledBitmapFromTiles(double scale, int decodeWidth, int decodeHeight)
         {
-            int outputWidth = Math.Max(1, Math.Min(4096, (int)Math.Round(Width * scale)));
-            int outputHeight = Math.Max(1, Math.Min(4096, (int)Math.Round(Height * scale)));
+            int outputWidth = Math.Max(1, Math.Min(MaxPreviewDimension, (int)Math.Round(Width * scale)));
+            int outputHeight = Math.Max(1, Math.Min(MaxPreviewDimension, (int)Math.Round(Height * scale)));
             var result = new Bitmap(outputWidth, outputHeight, PixelFormat.Format32bppArgb);
             using (Graphics graphics = Graphics.FromImage(result))
             {
                 graphics.Clear(Color.Black);
-                lock (_sync)
+                for (int y = 0; y < Height; y += TileSourceSize)
                 {
-                    for (int y = 0; y < Height; y += TileSourceSize)
+                    for (int x = 0; x < Width; x += TileSourceSize)
                     {
-                        for (int x = 0; x < Width; x += TileSourceSize)
+                        Rectangle tileRect = new Rectangle(
+                            x,
+                            y,
+                            Math.Min(TileSourceSize, Width - x),
+                            Math.Min(TileSourceSize, Height - y));
+                        string key = CreateTileKey(tileRect);
+                        Rectangle destination = new Rectangle(
+                            Math.Max(0, (int)Math.Round(tileRect.X * scale)),
+                            Math.Max(0, (int)Math.Round(tileRect.Y * scale)),
+                            Math.Max(1, (int)Math.Round(tileRect.Width * scale)),
+                            Math.Max(1, (int)Math.Round(tileRect.Height * scale)));
+                        lock (_sync)
                         {
-                            Rectangle tileRect = new Rectangle(
-                                x,
-                                y,
-                                Math.Min(TileSourceSize, Width - x),
-                                Math.Min(TileSourceSize, Height - y));
-                            string key = CreateTileKey(tileRect);
                             Bitmap tile;
                             if (!_tileCache.TryGetValue(key, out tile))
                             {
@@ -808,11 +816,6 @@ namespace IntegratedImageProcessingApp.Controls
                                 TouchKey(key);
                             }
 
-                            Rectangle destination = new Rectangle(
-                                Math.Max(0, (int)Math.Round(tileRect.X * scale)),
-                                Math.Max(0, (int)Math.Round(tileRect.Y * scale)),
-                                Math.Max(1, (int)Math.Round(tileRect.Width * scale)),
-                                Math.Max(1, (int)Math.Round(tileRect.Height * scale)));
                             graphics.DrawImage(tile, destination);
                         }
                     }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -262,6 +263,14 @@ namespace IntegratedImageProcessingApp.Controls
         public void InvalidateImageView()
         {
             viewerPanel.Invalidate();
+        }
+
+        // Background tile work can finish faster than WinForms services paint
+        // requests. Coalesce those notifications without forcing a synchronous
+        // paint on the UI thread.
+        public void ScheduleImageViewRefresh()
+        {
+            ScheduleTileRefresh();
         }
 
         public async Task LoadImageFromFileAsync(string filePath, CancellationToken cancellationToken)
@@ -738,11 +747,12 @@ namespace IntegratedImageProcessingApp.Controls
             {
                 InterpolationMode previousInterpolation = graphics.InterpolationMode;
                 graphics.InterpolationMode = _isPanning ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
-                DrawPreviewRegion(graphics, preview.Bitmap, preview.Scale, visibleSourceRect, zoom, offset);
+                bool previewDrawn = DrawPreviewRegion(graphics, preview.Bitmap, preview.Scale, visibleSourceRect, zoom, offset);
                 graphics.InterpolationMode = previousInterpolation;
-                if (IsZoomSettling() ||
+                if (previewDrawn &&
+                    (IsZoomSettling() ||
                     !ShouldRenderTiles(zoom, preview.Scale) ||
-                    (_isPanning && !ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect)))
+                    (_isPanning && !ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect))))
                 {
                     return;
                 }
@@ -800,11 +810,11 @@ namespace IntegratedImageProcessingApp.Controls
             return Rectangle.FromLTRB(left, top, right, bottom);
         }
 
-        private static void DrawPreviewRegion(Graphics graphics, Bitmap previewBitmap, float previewScale, Rectangle visibleSourceRect, float zoom, PointF offset)
+        private static bool DrawPreviewRegion(Graphics graphics, Bitmap previewBitmap, float previewScale, Rectangle visibleSourceRect, float zoom, PointF offset)
         {
             if (previewBitmap == null || previewScale <= 0f)
             {
-                return;
+                return false;
             }
 
             int sourceLeft = Math.Max(0, Math.Min(previewBitmap.Width - 1, (int)Math.Floor(visibleSourceRect.Left * previewScale)));
@@ -818,7 +828,23 @@ namespace IntegratedImageProcessingApp.Controls
                 offset.X + (visibleSourceRect.Right * zoom),
                 offset.Y + (visibleSourceRect.Bottom * zoom));
 
-            graphics.DrawImage(previewBitmap, destinationRect, sourceRect, GraphicsUnit.Pixel);
+            try
+            {
+                graphics.DrawImage(previewBitmap, destinationRect, sourceRect, GraphicsUnit.Pixel);
+                return true;
+            }
+            catch (OutOfMemoryException ex)
+            {
+                // GDI+ uses this exception for transient drawing-resource
+                // failures too.  The original image and its tiles remain valid.
+                Debug.WriteLine(ex);
+                return false;
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine(ex);
+                return false;
+            }
         }
 
         private void RequestTile(LargeImageSource source, Rectangle tileRect)
