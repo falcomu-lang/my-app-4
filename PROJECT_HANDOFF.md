@@ -288,6 +288,22 @@ Group1.DisplayName=
 - The temporary `IntegratedImageProcessingApp\codex-build` output directory was removed after verification.
 
 ## Notes For Next Work
+- Current file split status:
+  - `MainForm.ImageProcessing.cs` now contains the image-processing execution entry points and the actual OpenCV Canny, Sobel, and Polarity mask implementations.
+  - `MainForm.cs` no longer contains `LegacyCreateOpenCvCannyMask`, `LegacyCreateOpenCvSobelMask`, or `LegacyCreateOpenCvPolarityMask`.
+  - The solution has been rebuilt successfully after the split.
+- Recommended next split order: `MainForm.Preprocessing.cs`, `MainForm.Relations.cs`, `MainForm.Parameters.cs`, `MainForm.Roi.cs`, `MainForm.Preview.cs`, and then `MainForm.Cache.cs`. Use `partial class MainForm` first so behavior does not change during organization.
+- Do not move shared OpenCV helpers without checking all callers. Current processing code shares grayscale Mat creation, mask conversion, kernel normalization, parameter parsing, and border handling helpers.
+- Direct image-processing execution and relation execution have different source rules. Direct processing uses the currently selected explicit source; relation processing uses `SourceType`/`SourceId`. Do not let `latestPreprocessedImage` alone decide the source.
+- Selecting `影像前處理 > 原始影像` must explicitly set the source state to `Original`. A null source state can be ambiguous and previously caused direct processing to wait for preprocessing or use a stale preprocessing cache.
+- Only a relation whose source type is `Step` or `Group` should trigger preprocessing preparation. An original-image source must not wait for preprocessing completion.
+- When a relation uses preprocessing output, the OpenCV detector and the `處理後` display must use the same `LargeImageSource`; otherwise the red result can be drawn over the darker original instead of the lighter preprocessing image.
+- The relation parameter panel must remain separate from the normal parameter panels. Never call `parameterPanel.Controls.Clear()` when switching relation settings, because it removes the preprocessing and image-processing panels and breaks navigation.
+- Large-image processing uses full-resolution OpenCV masks and display tiles. Never clone the entire large image just to draw a viewport overlay, and never run Canny/Sobel/Polarity once per display tile.
+- Common historical failures: GDI+ `ArgumentException`/`ObjectDisposedException` from drawing or cloning a tile concurrently; `OutOfMemoryException` from large Bitmap/Mat allocations; array-bound errors around tile edges; endless `ROI MASK` waits caused by duplicate scheduling or waiting for preprocessing that was not requested; stale results after changing images; and UI freezes caused by too many `BeginInvoke` status updates.
+- When changing an image, invalidate all processing/preprocessing/ROI caches and generations. When changing a parameter, preserve both viewers' zoom and pan state and invalidate only the affected result.
+- Keep status updates throttled; do not update the status label for every tile or ROI. Background workers must never access disposed UI controls or Bitmaps.
+- Keep `MainForm.Designer.cs` changes separate. It currently contains unrelated Visual Studio designer modifications and should not be included in focused commits unless explicitly requested.
 - Image relation UI and execution foundation is now implemented.
 - The left menu contains `影像關聯`; right-clicking it can add a relation. Relation items support right-click processing, moving up/down, renaming, and deleting.
 - Selecting a relation shows source and target selectors on the right. Sources include original image, preprocessing step, and preprocessing group. Targets include image-processing step and image-processing group.

@@ -127,6 +127,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
         private const string ImagePreprocessingMenuText = "影像前處理";
+        private const string OriginalPreprocessingSourceText = "    原始影像";
         private const string ImageProcessingMenuText = "影像處理";
         private const string ImageRelationMenuText = "影像關聯";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
@@ -787,6 +788,12 @@ namespace IntegratedImageProcessingApp.Forms
                 HideImageProcessingFlowTree();
                 parameterPlaceholderLabel.Text = "右鍵「影像前處理」可新增前處理流程。";
             }
+            else if (string.Equals(selectedFunction, OriginalPreprocessingSourceText, StringComparison.Ordinal))
+            {
+                activeImageRelationSourceType = "Original";
+                activeImageRelationSourceId = null;
+                parameterPlaceholderLabel.Text = "目前影像來源：原始影像。直接執行影像處理時會使用原圖。";
+            }
             else if (IsImagePreprocessingStepMenuItem(selectedFunction))
             {
                 ShowImagePreprocessingFlowTree(selectedFunction);
@@ -857,6 +864,13 @@ namespace IntegratedImageProcessingApp.Forms
             else if (selectedFunction == ImagePreprocessingMenuText)
             {
                 ToggleImagePreprocessingMenu();
+            }
+            else if (string.Equals(selectedFunction, OriginalPreprocessingSourceText, StringComparison.Ordinal))
+            {
+                activeImageRelationSourceType = "Original";
+                activeImageRelationSourceId = null;
+                RestorePreprocessedDisplaysToOriginalSource();
+                statusLabel.Text = "目前選擇：原始影像";
             }
             else if (IsImagePreprocessingStepMenuItem(selectedFunction))
             {
@@ -2203,6 +2217,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             selectedImagePreprocessingStepIndex = stepIndex;
             selectedImagePreprocessingGroupId = null;
+            activeImageRelationSourceType = "Step";
+            activeImageRelationSourceId = systemParameters.ImagePreprocessingSteps[stepIndex].Id;
             preprocessingExecutionRequested = true;
             BeginParameterApplyStatus(true);
             MarkPreprocessedImageDirty();
@@ -2218,6 +2234,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             selectedImagePreprocessingStepIndex = -1;
             selectedImagePreprocessingGroupId = groupId;
+            activeImageRelationSourceType = "Group";
+            activeImageRelationSourceId = groupId;
             preprocessingExecutionRequested = true;
             BeginParameterApplyStatus(true);
             MarkPreprocessedImageDirty();
@@ -2270,6 +2288,7 @@ namespace IntegratedImageProcessingApp.Forms
             RemoveImagePreprocessingSubMenuItems();
             imagePreprocessingMenuExpanded = true;
             int insertIndex = functionListBox.Items.IndexOf(ImagePreprocessingMenuText) + 1;
+            functionListBox.Items.Insert(insertIndex++, OriginalPreprocessingSourceText);
             for (int index = 0; index < systemParameters.ImagePreprocessingSteps.Count; index++)
             {
                 if (string.IsNullOrWhiteSpace(systemParameters.ImagePreprocessingSteps[index].GroupId))
@@ -2727,26 +2746,6 @@ namespace IntegratedImageProcessingApp.Forms
             statusLabel.Text = "目前選擇：" + stepText.Trim();
         }
 
-        private void ProcessImageProcessingStep(string stepText)
-        {
-            int stepIndex = GetImageProcessingStepIndex(stepText);
-            if (stepIndex < 0 || stepIndex >= systemParameters.ImageProcessingSteps.Count)
-            {
-                return;
-            }
-
-            selectedImageProcessingStepIndex = stepIndex;
-            selectedImageProcessingGroupId = null;
-            activeImageRelationSourceType = null;
-            activeImageRelationSourceId = null;
-            imageProcessingExecutionRequested = true;
-            BeginParameterApplyStatus(false);
-            MarkProcessedPreviewDirty();
-            MarkProcessedImageDirty();
-            ScheduleProcessedImageUpdateIfVisible();
-            statusLabel.Text = "已開始處理" + stepText.Trim();
-        }
-
         private void ShowImageProcessingGroup(string groupText)
         {
             string groupId = GetImageProcessingGroupId(groupText);
@@ -2853,24 +2852,6 @@ namespace IntegratedImageProcessingApp.Forms
             selectedImageProcessingGroupId = group.Id;
             imageProcessingExecutionRequested = true;
             BeginParameterApplyStatus(false);
-            MarkProcessedPreviewDirty();
-            ScheduleProcessedImageUpdateIfVisible();
-            statusLabel.Text = "已開始處理" + group.DisplayName;
-        }
-
-        private void ProcessImageProcessingGroup(string groupId)
-        {
-            ImageProcessingGroupSettings group = FindImageProcessingGroup(groupId);
-            if (group == null)
-            {
-                return;
-            }
-
-            selectedImageProcessingStepIndex = -1;
-            selectedImageProcessingGroupId = group.Id;
-            activeImageRelationSourceType = null;
-            activeImageRelationSourceId = null;
-            imageProcessingExecutionRequested = true;
             MarkProcessedPreviewDirty();
             ScheduleProcessedImageUpdateIfVisible();
             statusLabel.Text = "已開始處理" + group.DisplayName;
@@ -4065,44 +4046,6 @@ namespace IntegratedImageProcessingApp.Forms
                 maxGap);
         }
 
-        private static bool[,] CreateOpenCvCannyMask(
-            byte[,] gray,
-            int lowThreshold,
-            int highThreshold,
-            int kernelSize,
-            bool l2Gradient,
-            int gaussianBlurSize,
-            double gaussianSigma,
-            string edgeSelection,
-            int minEdgeLength,
-            int maxGap)
-        {
-            int width = gray.GetLength(0);
-            int height = gray.GetLength(1);
-            using (var source = CreateOpenCvGrayMat(gray))
-            using (var blurred = new Cv.Mat())
-            using (var edges = new Cv.Mat())
-            {
-                int blurSize = EnsureOdd(Math.Max(1, gaussianBlurSize));
-                Cv.Cv2.GaussianBlur(
-                    source,
-                    blurred,
-                    new Cv.Size(blurSize, blurSize),
-                    Math.Max(0.1, gaussianSigma));
-                Cv.Cv2.Canny(
-                    blurred,
-                    edges,
-                    Math.Min(lowThreshold, highThreshold),
-                    Math.Max(lowThreshold, highThreshold),
-                    NormalizeCannyKernelSize(kernelSize),
-                    l2Gradient);
-
-                // Canny must remain a raw edge map. Selection and length
-                // filtering belong to later contour/feature-filter stages.
-                return CreateBoolMaskFromOpenCvMat(edges);
-            }
-        }
-
         private static bool[,] CreateBoolMaskFromOpenCvMat(Cv.Mat mask)
         {
             int width = mask.Width;
@@ -4261,16 +4204,6 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return result;
-        }
-
-        private static bool[,] CreateOpenCvSobelMask(
-            byte[,] gray, int threshold, string direction, int kernelSize)
-        {
-            using (var source = CreateOpenCvGrayMat(gray))
-            using (var edgeMask = CreateOpenCvSobelBinaryMask(source, threshold, direction, kernelSize))
-            {
-                return ConvertOpenCvBinaryMask(edgeMask);
-            }
         }
 
         private bool HasConfiguredImagePreprocessingSteps()
@@ -4839,65 +4772,6 @@ namespace IntegratedImageProcessingApp.Forms
             return bitmap;
         }
 
-        private static bool[,] CreateOpenCvPolarityMask(
-            byte[,] gray, int contrastThreshold, int edgeWidth, int smoothing, string polarity,
-            string searchDirection, double gaussianSigma, string borderType)
-        {
-            using (var source = CreateOpenCvGrayMat(gray))
-            using (var blurred = new Cv.Mat())
-            using (var gradientX = new Cv.Mat())
-            using (var gradientY = new Cv.Mat())
-            using (var directedGradient = new Cv.Mat())
-            using (var absoluteX = new Cv.Mat())
-            using (var absoluteY = new Cv.Mat())
-            using (var pickX = new Cv.Mat())
-            using (var absoluteGradient = new Cv.Mat())
-            using (var edgeMask = new Cv.Mat())
-            {
-                int blurSize = EnsureOdd(Math.Max(1, smoothing));
-                Cv.Cv2.GaussianBlur(source, blurred, new Cv.Size(blurSize, blurSize), Math.Max(0.1, gaussianSigma), 0, GetOpenCvBorderType(borderType));
-                int aperture = NormalizeSobelKernelSize(edgeWidth);
-                Cv.Cv2.Sobel(blurred, gradientX, Cv.MatType.CV_32FC1, 1, 0, aperture);
-                Cv.Cv2.Sobel(blurred, gradientY, Cv.MatType.CV_32FC1, 0, 1, aperture);
-
-                string normalizedDirection = NormalizePolaritySearchDirection(searchDirection);
-                if (normalizedDirection == "X")
-                {
-                    gradientX.CopyTo(directedGradient);
-                }
-                else if (normalizedDirection == "Y")
-                {
-                    gradientY.CopyTo(directedGradient);
-                }
-                else
-                {
-                    Cv.Cv2.Absdiff(gradientX, Cv.Scalar.All(0), absoluteX);
-                    Cv.Cv2.Absdiff(gradientY, Cv.Scalar.All(0), absoluteY);
-                    Cv.Cv2.Compare(absoluteX, absoluteY, pickX, Cv.CmpType.GE);
-                    gradientY.CopyTo(directedGradient);
-                    gradientX.CopyTo(directedGradient, pickX);
-                }
-
-                if (string.Equals(polarity, "BrightToDark", StringComparison.OrdinalIgnoreCase))
-                {
-                    Cv.Cv2.Threshold(directedGradient, edgeMask, -contrastThreshold, 255, Cv.ThresholdTypes.BinaryInv);
-                }
-                else if (string.Equals(polarity, "DarkToBright", StringComparison.OrdinalIgnoreCase))
-                {
-                    Cv.Cv2.Threshold(directedGradient, edgeMask, contrastThreshold, 255, Cv.ThresholdTypes.Binary);
-                }
-                else
-                {
-                    Cv.Cv2.Absdiff(directedGradient, Cv.Scalar.All(0), absoluteGradient);
-                    Cv.Cv2.Threshold(absoluteGradient, edgeMask, contrastThreshold, 255, Cv.ThresholdTypes.Binary);
-                }
-
-                edgeMask.ConvertTo(edgeMask, Cv.MatType.CV_8UC1);
-
-                return ConvertOpenCvBinaryMask(edgeMask);
-            }
-        }
-
         private static Cv.Mat CreateOpenCvGrayMat(byte[,] gray)
         {
             int width = gray.GetLength(0);
@@ -5149,7 +5023,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (HasConfiguredImagePreprocessingSteps() && preprocessedImageDirty)
+            if (ShouldUseRelationPreprocessedSource() && HasConfiguredImagePreprocessingSteps() && preprocessedImageDirty)
             {
                 RequestPreprocessedImageUpdate();
                 return;
@@ -5294,7 +5168,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (HasConfiguredImagePreprocessingSteps() && preprocessedImageDirty)
+            if (ShouldUseRelationPreprocessedSource() && HasConfiguredImagePreprocessingSteps() && preprocessedImageDirty)
             {
                 RequestPreprocessedImageUpdate();
                 return;
@@ -5363,7 +5237,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private LargeImageSource GetLargeImageProcessingSource(LargeImageSource originalSource)
         {
-            if (string.Equals(activeImageRelationSourceType, "Original", StringComparison.Ordinal))
+            if (!string.Equals(activeImageRelationSourceType, "Step", StringComparison.Ordinal) &&
+                !string.Equals(activeImageRelationSourceType, "Group", StringComparison.Ordinal))
             {
                 return originalSource.AddReference();
             }
@@ -7367,7 +7242,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private bool ShouldUseRelationPreprocessedSource()
         {
-            return !string.Equals(activeImageRelationSourceType, "Original", StringComparison.Ordinal);
+            return string.Equals(activeImageRelationSourceType, "Step", StringComparison.Ordinal) ||
+                string.Equals(activeImageRelationSourceType, "Group", StringComparison.Ordinal);
         }
 
         private static bool[,] CreateEdgeMask(Bitmap image, string method, Dictionary<string, string> parameters)

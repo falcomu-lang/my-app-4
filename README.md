@@ -17,6 +17,7 @@
 - 大圖前處理結果以全解析度記憶體 Tile 顯示，不需要暫存輸出檔；修改前處理或邊緣參數會保留目前縮放與平移位置。
 - 處理後畫面保留完整原圖；ROI 內偵測到的邊緣以紅色疊加顯示。
 - Canny、Polarity Edge、Sobel Edge 結果以完整解析度 OpenCV Mask 保存；放大、平移與重設視圖不會重新執行演算法。
+- Canny、Sobel、Polarity 的實際 OpenCV mask 實作已整理至 `Forms/MainForm.ImageProcessing.cs`；主表單只保留流程協調與參數/顯示管理。
 - 已完成實際運算的左側處理項目會顯示時間，例如 `處理1(Canny Edge) - 475 ms`；快取重畫不會重新計時，程式重開也不保留舊時間。
 - 處理步驟、ROI 與上次開啟的圖片路徑會保存至 `SystemParameters.ini`。
 - 支援建立 `影像關聯`，可指定原圖、前處理項目或前處理群組作為來源，再連接影像處理項目或影像處理群組。
@@ -42,6 +43,15 @@
 - 處理後分頁會以關聯指定的來源影像作為底圖，再疊加 ROI 內的紅色結果；不會將前處理結果計算後又畫回較深的原圖。
 - 關聯設定面板與前處理/影像處理參數面板分開管理，切換項目不會清除其他面板。
 - 關聯目前已完成資料保存、來源/目標選擇與處理入口；每個來源的獨立結果快取、完整群組合併策略、處理時間顯示與刪除來源後的失效提示仍在補強中。
+
+## 架構整理進度
+
+- 已完成 `MainForm.ImageProcessing.cs`：影像處理執行入口，以及 Canny、Sobel、Polarity 的 OpenCV mask 演算法。
+- 下一步建議依序拆分：`MainForm.Preprocessing.cs`、`MainForm.Relations.cs`、`MainForm.Parameters.cs`、`MainForm.Roi.cs`、`MainForm.Preview.cs`、`MainForm.Cache.cs`。
+- 拆分優先使用 `partial class MainForm`，先保持行為不變，再逐步將純演算法與快取移至獨立服務。
+- 大圖處理要避免整張 Bitmap 複製；演算法應使用完整 ROI 的 OpenCV Mat，顯示才使用 tile。
+- 影像來源必須明確區分原圖與前處理結果；不可只用 `latestPreprocessedImage != null` 判斷來源。
+- 讀取新圖片、修改 ROI 或參數時，必須清除對應快取與 generation，避免顯示上一張圖片的結果。
 
 ## 邊緣偵測
 
