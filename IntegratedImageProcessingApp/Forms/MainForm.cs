@@ -2710,6 +2710,57 @@ namespace IntegratedImageProcessingApp.Forms
             return result;
         }
 
+        private static Cv.Mat CreateOpenCvGrayMat(Bitmap bitmap)
+        {
+            Rectangle bounds = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+            BitmapData data = null;
+            try
+            {
+                data = bitmap.LockBits(bounds, ImageLockMode.ReadOnly, bitmap.PixelFormat);
+                byte[] gray = new byte[checked(bitmap.Width * bitmap.Height)];
+                int bytesPerPixel = Image.GetPixelFormatSize(bitmap.PixelFormat) / 8;
+                if (bitmap.PixelFormat == PixelFormat.Format8bppIndexed)
+                {
+                    for (int y = 0; y < bitmap.Height; y++)
+                    {
+                        Marshal.Copy(data.Scan0 + (y * data.Stride), gray, y * bitmap.Width, bitmap.Width);
+                    }
+                }
+                else if (bytesPerPixel >= 3)
+                {
+                    byte[] row = new byte[Math.Abs(data.Stride)];
+                    for (int y = 0; y < bitmap.Height; y++)
+                    {
+                        Marshal.Copy(data.Scan0 + (y * data.Stride), row, 0, row.Length);
+                        int targetOffset = y * bitmap.Width;
+                        for (int x = 0; x < bitmap.Width; x++)
+                        {
+                            int sourceOffset = x * bytesPerPixel;
+                            byte b = row[sourceOffset];
+                            byte g = row[sourceOffset + 1];
+                            byte r = row[sourceOffset + 2];
+                            gray[targetOffset + x] = (byte)((r * 299 + g * 587 + b * 114 + 500) / 1000);
+                        }
+                    }
+                }
+                else
+                {
+                    throw new InvalidOperationException("不支援的影像像素格式：" + bitmap.PixelFormat);
+                }
+
+                var result = new Cv.Mat(bitmap.Height, bitmap.Width, Cv.MatType.CV_8UC1);
+                Marshal.Copy(gray, 0, result.Data, gray.Length);
+                return result;
+            }
+            finally
+            {
+                if (data != null)
+                {
+                    bitmap.UnlockBits(data);
+                }
+            }
+        }
+
         private static int[,] CreateOpenCvSobelMagnitudes(
             Cv.Mat gradientX, Cv.Mat gradientY, string direction, string outputMode, double scale, int delta)
         {
@@ -3112,80 +3163,9 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         Dictionary<string, string> parsedParameters = ParseImageProcessingParameters(parameters);
 
-                        // Most ROIs are small compared with the source image. Process
-                        // those in one pass so the edge algorithm runs once and does
-                        // not pay the per-chunk bitmap/array setup cost.
-                        if ((long)roi.Width * roi.Height <= MaxSinglePassLargeRoiPixels)
-                        {
-                            if (CanUseNativeEdgeMask(method, parsedParameters))
-                            {
-                                largeNativeProcessingGate.Wait();
-                                try
-                                {
-                                    // A changed parameter invalidates this queued
-                                    // request before it enters the expensive core.
-                                    if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
-                                    {
-                                        return;
-                                    }
-
-                                    BeginInvoke(
-                                        new Action(
-                                            delegate
-                                            {
-                                                statusLabel.Text = "影像處理運算中...OpenCV 原圖準備";
-                                            }));
-                                    using (Cv.Mat nativeGray = GetOrCreateLargeRoiOpenCvGrayCache(sharedSource, roi))
-                                    {
-                                        if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
-                                        {
-                                            return;
-                                        }
-
-                                        BeginInvoke(
-                                            new Action(
-                                                delegate
-                                                {
-                                                    statusLabel.Text = "影像處理運算中...使用 OpenCV " + method;
-                                                }));
-                                        Stopwatch imageProcessingStopwatch = Stopwatch.StartNew();
-                                        Cv.Mat binaryMask = CreateNativeLargeEdgeBinaryMask(
-                                            nativeGray,
-                                            method,
-                                            parsedParameters);
-                                        // Publish the original-resolution result immediately.
-                                        // A display overview must never delay precise tiles.
-                                        PublishCompletedLargeProcessedBinaryMask(
-                                            binaryMask,
-                                            roi,
-                                            step,
-                                            maskKey,
-                                            generation,
-                                            imageProcessingStopwatch.ElapsedMilliseconds);
-                                        binaryMask = null;
-                                    }
-                                }
-                                finally
-                                {
-                                    largeNativeProcessingGate.Release();
-                                }
-
-                                return;
-                            }
-
-                            byte[,] gray = GetOrCreateLargeRoiGrayCache(sharedSource, roi);
-                            if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
-                            {
-                                return;
-                            }
-
-                            mask = CreateLargeEdgeMask(gray, method, parsedParameters);
-
-                            PublishCompletedLargeProcessedMask(mask, roi, maskKey, generation);
-                            mask = null;
-                            return;
-                        }
-
+                        // Native edge detectors always receive the entire ROI as one
+                        // OpenCV Mat. Tiles exist only for display, never as separate
+                        // Canny/Polarity/Sobel calculations.
                         if (CanUseNativeEdgeMask(method, parsedParameters))
                         {
                             largeNativeProcessingGate.Wait();
@@ -3200,7 +3180,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     new Action(
                                         delegate
                                         {
-                                            statusLabel.Text = "影像處理運算中...OpenCV 分塊原圖準備";
+                                            statusLabel.Text = "影像處理運算中...OpenCV 原圖準備";
                                         }));
                                 using (Cv.Mat nativeGray = GetOrCreateLargeRoiOpenCvGrayCache(sharedSource, roi))
                                 {
@@ -3209,18 +3189,17 @@ namespace IntegratedImageProcessingApp.Forms
                                         return;
                                     }
 
+                                    BeginInvoke(
+                                        new Action(
+                                            delegate
+                                            {
+                                                statusLabel.Text = "影像處理運算中...使用 OpenCV " + method;
+                                            }));
                                     Stopwatch imageProcessingStopwatch = Stopwatch.StartNew();
-                                    Cv.Mat binaryMask = CreateChunkedNativeLargeEdgeBinaryMask(
+                                    Cv.Mat binaryMask = CreateNativeLargeEdgeBinaryMask(
                                         nativeGray,
                                         method,
-                                        parsedParameters,
-                                        maskKey,
-                                        generation);
-                                    if (binaryMask == null)
-                                    {
-                                        return;
-                                    }
-
+                                        parsedParameters);
                                     PublishCompletedLargeProcessedBinaryMask(
                                         binaryMask,
                                         roi,
@@ -3236,6 +3215,20 @@ namespace IntegratedImageProcessingApp.Forms
                                 largeNativeProcessingGate.Release();
                             }
 
+                            return;
+                        }
+
+                        if ((long)roi.Width * roi.Height <= MaxSinglePassLargeRoiPixels)
+                        {
+                            byte[,] gray = GetOrCreateLargeRoiGrayCache(sharedSource, roi);
+                            if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
+                            {
+                                return;
+                            }
+
+                            mask = CreateLargeEdgeMask(gray, method, parsedParameters);
+                            PublishCompletedLargeProcessedMask(mask, roi, maskKey, generation);
+                            mask = null;
                             return;
                         }
 
@@ -4334,86 +4327,6 @@ namespace IntegratedImageProcessingApp.Forms
                 GetDoubleParameter(parameters, "GaussianSigma", 1.4),
                 GetIntParameter(parameters, "MinEdgeLength", 10),
                 GetIntParameter(parameters, "MaxGap", 2));
-        }
-
-        private Cv.Mat CreateChunkedNativeLargeEdgeBinaryMask(
-            Cv.Mat source,
-            string method,
-            Dictionary<string, string> parameters,
-            string maskKey,
-            int generation)
-        {
-            var result = new Cv.Mat(source.Rows, source.Cols, Cv.MatType.CV_8UC1, Cv.Scalar.All(0));
-            int padding = GetLargeProcessedChunkPadding(method, parameters);
-            int chunkCountX = (source.Cols + LargeProcessedMaskChunkSize - 1) / LargeProcessedMaskChunkSize;
-            int chunkCountY = (source.Rows + LargeProcessedMaskChunkSize - 1) / LargeProcessedMaskChunkSize;
-            int totalChunks = chunkCountX * chunkCountY;
-            int completedChunks = 0;
-
-            try
-            {
-                for (int chunkY = 0; chunkY < chunkCountY; chunkY++)
-                {
-                    for (int chunkX = 0; chunkX < chunkCountX; chunkX++)
-                    {
-                        if (!IsLargeProcessedMaskBuildCurrent(maskKey, generation))
-                        {
-                            result.Dispose();
-                            return null;
-                        }
-
-                        int x = chunkX * LargeProcessedMaskChunkSize;
-                        int y = chunkY * LargeProcessedMaskChunkSize;
-                        int width = Math.Min(LargeProcessedMaskChunkSize, source.Cols - x);
-                        int height = Math.Min(LargeProcessedMaskChunkSize, source.Rows - y);
-                        if (width <= 0 || height <= 0)
-                        {
-                            continue;
-                        }
-
-                        int paddedLeft = Math.Max(0, x - padding);
-                        int paddedTop = Math.Max(0, y - padding);
-                        int paddedRight = Math.Min(source.Cols, x + width + padding);
-                        int paddedBottom = Math.Min(source.Rows, y + height + padding);
-                        var paddedRect = new Cv.Rect(
-                            paddedLeft,
-                            paddedTop,
-                            paddedRight - paddedLeft,
-                            paddedBottom - paddedTop);
-
-                        using (Cv.Mat paddedSource = new Cv.Mat(source, paddedRect))
-                        using (Cv.Mat paddedMask = CreateNativeLargeEdgeBinaryMask(paddedSource, method, parameters))
-                        using (Cv.Mat sourceChunk = new Cv.Mat(
-                            paddedMask,
-                            new Cv.Rect(x - paddedLeft, y - paddedTop, width, height)))
-                        using (Cv.Mat targetChunk = new Cv.Mat(result, new Cv.Rect(x, y, width, height)))
-                        {
-                            sourceChunk.CopyTo(targetChunk);
-                        }
-
-                        completedChunks++;
-                        if (completedChunks == 1 || completedChunks == totalChunks || completedChunks % 8 == 0)
-                        {
-                            int progress = completedChunks;
-                            BeginInvoke(
-                                new Action(
-                                    delegate
-                                    {
-                                        statusLabel.Text = "影像處理運算中...OpenCV ROI Mask " +
-                                            progress.ToString(CultureInfo.InvariantCulture) + "/" +
-                                            totalChunks.ToString(CultureInfo.InvariantCulture);
-                                    }));
-                        }
-                    }
-                }
-
-                return result;
-            }
-            catch
-            {
-                result.Dispose();
-                throw;
-            }
         }
 
         private void PublishCompletedLargeProcessedBinaryMask(
