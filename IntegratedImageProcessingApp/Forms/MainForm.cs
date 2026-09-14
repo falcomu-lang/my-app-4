@@ -82,6 +82,8 @@ namespace IntegratedImageProcessingApp.Forms
         private bool processedImageDirty = true;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
+        private bool isImageViewerMaximized;
+        private bool isLeftImageViewerMaximized;
 
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
@@ -225,6 +227,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             leftImageTabControl.SelectedIndexChanged += VisibleImageTabControl_SelectedIndexChanged;
             rightImageTabControl.SelectedIndexChanged += VisibleImageTabControl_SelectedIndexChanged;
+            leftImageTabControl.MouseDoubleClick += ImageTabControl_MouseDoubleClick;
+            rightImageTabControl.MouseDoubleClick += ImageTabControl_MouseDoubleClick;
 
             leftOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
             rightOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
@@ -237,7 +241,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ImageDisplayControl_ViewChanged(object sender, EventArgs e)
         {
-            if (isSyncingImageView)
+            if (isSyncingImageView || isImageViewerMaximized)
             {
                 return;
             }
@@ -282,12 +286,126 @@ namespace IntegratedImageProcessingApp.Forms
         private void VisibleImageTabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
             UpdateVisibleProcessedImageIfNeeded();
-            BeginInvoke(new Action(ApplySharedImageViewStateToVisibleControls));
+            if (!isImageViewerMaximized)
+            {
+                BeginInvoke(new Action(ApplySharedImageViewStateToVisibleControls));
+            }
+        }
+
+        private void ImageTabControl_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            var tabControl = sender as TabControl;
+            if (tabControl == null || !IsImageTabHeader(tabControl, e.Location))
+            {
+                return;
+            }
+
+            bool maximizeLeft = ReferenceEquals(tabControl, leftImageTabControl);
+            if (isImageViewerMaximized && isLeftImageViewerMaximized != maximizeLeft)
+            {
+                return;
+            }
+
+            SetImageViewerMaximized(!isImageViewerMaximized, maximizeLeft);
+        }
+
+        private static bool IsImageTabHeader(TabControl tabControl, Point location)
+        {
+            for (int index = 0; index < tabControl.TabCount; index++)
+            {
+                if (tabControl.GetTabRect(index).Contains(location))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void SetImageViewerMaximized(bool maximize, bool maximizeLeft)
+        {
+            bool wasLeftMaximized = isLeftImageViewerMaximized;
+            if (maximize && isImageViewerMaximized && wasLeftMaximized == maximizeLeft)
+            {
+                return;
+            }
+
+            imageLayoutPanel.SuspendLayout();
+            try
+            {
+                isImageViewerMaximized = maximize;
+                isLeftImageViewerMaximized = maximize && maximizeLeft;
+                if (maximize)
+                {
+                    leftImageTabControl.Visible = maximizeLeft;
+                    rightImageTabControl.Visible = !maximizeLeft;
+                    imageLayoutPanel.SetColumnSpan(maximizeLeft ? leftImageTabControl : rightImageTabControl, 2);
+                }
+                else
+                {
+                    imageLayoutPanel.SetColumnSpan(leftImageTabControl, 1);
+                    imageLayoutPanel.SetColumnSpan(rightImageTabControl, 1);
+                    leftImageTabControl.Visible = true;
+                    rightImageTabControl.Visible = true;
+                }
+            }
+            finally
+            {
+                imageLayoutPanel.ResumeLayout(true);
+            }
+
+            if (maximize)
+            {
+                ImageDisplayControl active = maximizeLeft
+                    ? GetVisibleLeftImageDisplayControl()
+                    : GetVisibleRightImageDisplayControl();
+                if (active != null)
+                {
+                    active.InvalidateImageView();
+                }
+
+                statusLabel.Text = maximizeLeft ? "左側影像已放大顯示" : "右側影像已放大顯示";
+                return;
+            }
+
+            ImageDisplayControl restoreSource = wasLeftMaximized
+                ? GetVisibleLeftImageDisplayControl()
+                : GetVisibleRightImageDisplayControl();
+            SynchronizeImageViewFrom(restoreSource);
+            statusLabel.Text = "已還原雙側影像顯示";
+        }
+
+        private void SynchronizeImageViewFrom(ImageDisplayControl source)
+        {
+            if (source == null || !source.HasImage)
+            {
+                return;
+            }
+
+            ImageDisplayControl target = ReferenceEquals(source, GetVisibleLeftImageDisplayControl())
+                ? GetVisibleRightImageDisplayControl()
+                : GetVisibleLeftImageDisplayControl();
+            if (target == null || !target.HasImage)
+            {
+                return;
+            }
+
+            isSyncingImageView = true;
+            try
+            {
+                sharedImageViewState = source.ViewState;
+                hasSharedImageViewState = true;
+                target.ApplyViewState(sharedImageViewState);
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
         }
 
         private void ImageDisplayControl_FitViewRequested(object sender, EventArgs e)
         {
-            if (isSyncingImageView)
+            if (isSyncingImageView || isImageViewerMaximized)
             {
                 return;
             }
@@ -330,7 +448,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void SyncVisibleImageDisplaysFromLeft()
         {
-            if (isSyncingImageView)
+            if (isSyncingImageView || isImageViewerMaximized)
             {
                 return;
             }
@@ -357,7 +475,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ApplySharedImageViewStateToVisibleControls()
         {
-            if (isSyncingImageView)
+            if (isSyncingImageView || isImageViewerMaximized)
             {
                 return;
             }
@@ -3016,8 +3134,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private bool IsAnyProcessedTabVisible()
         {
-            return leftImageTabControl.SelectedTab == leftProcessedTabPage ||
-                rightImageTabControl.SelectedTab == rightProcessedTabPage;
+            return (leftImageTabControl.Visible && leftImageTabControl.SelectedTab == leftProcessedTabPage) ||
+                (rightImageTabControl.Visible && rightImageTabControl.SelectedTab == rightProcessedTabPage);
         }
 
         private void ApplyLatestProcessedImageToVisibleTabs()
