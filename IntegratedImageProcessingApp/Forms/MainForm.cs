@@ -90,6 +90,9 @@ namespace IntegratedImageProcessingApp.Forms
         private int largeProcessedMaskGeneration;
         private Dictionary<string, string> pendingImageProcessingParameters;
         private Dictionary<string, string> pendingImagePreprocessingParameters;
+        private Label parameterApplyStatusLabel;
+        private Stopwatch parameterApplyStopwatch;
+        private bool parameterApplyInProgress;
         private long lastImageProcessingElapsedMilliseconds;
         private long lastDisplayProcessingElapsedMilliseconds;
         private bool includeImageProcessingTimeOnNextDisplay;
@@ -2945,6 +2948,48 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             };
             imageProcessingParameterPanel.Controls.Add(cancel);
+
+            parameterApplyStatusLabel = new Label();
+            parameterApplyStatusLabel.Width = parameterPanel.Width - 18;
+            parameterApplyStatusLabel.AutoSize = false;
+            parameterApplyStatusLabel.Height = 52;
+            parameterApplyStatusLabel.Margin = new Padding(3, 8, 3, 0);
+            parameterApplyStatusLabel.Text = string.Empty;
+            parameterApplyStatusLabel.ForeColor = Color.FromArgb(55, 64, 76);
+            imageProcessingParameterPanel.Controls.Add(parameterApplyStatusLabel);
+        }
+
+        private void BeginParameterApplyStatus()
+        {
+            parameterApplyStopwatch = Stopwatch.StartNew();
+            parameterApplyInProgress = true;
+            SetParameterApplyStatus("影像處理中...");
+        }
+
+        private void SetParameterApplyStatus(string text)
+        {
+            if (parameterApplyStatusLabel != null && !parameterApplyStatusLabel.IsDisposed)
+            {
+                parameterApplyStatusLabel.Text = text;
+            }
+        }
+
+        private void CompleteParameterApplyStatus()
+        {
+            if (!parameterApplyInProgress || parameterApplyStopwatch == null)
+            {
+                return;
+            }
+
+            long total = parameterApplyStopwatch.ElapsedMilliseconds;
+            parameterApplyStopwatch.Stop();
+            parameterApplyInProgress = false;
+            SetParameterApplyStatus(string.Format(
+                CultureInfo.InvariantCulture,
+                "完成：處理時間共：{0} ms\r\n影像處理時間：{1} ms || 預覽圖處理時間：{2} ms",
+                total,
+                lastImageProcessingElapsedMilliseconds,
+                lastDisplayProcessingElapsedMilliseconds));
         }
 
         private void ApplyPendingImagePreprocessingParameters()
@@ -2964,6 +3009,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters = committed;
             SaveSystemParameters();
+            BeginParameterApplyStatus();
             MarkPreprocessedImageDirty();
             statusLabel.Text = "已套用前處理" + (selectedImagePreprocessingStepIndex + 1) + " 參數";
         }
@@ -2986,6 +3032,7 @@ namespace IntegratedImageProcessingApp.Forms
             CapturePreprocessedImageViewState();
             systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters = committed;
             SaveSystemParameters();
+            BeginParameterApplyStatus();
             MarkProcessedImageDirty();
             ScheduleProcessedImageUpdateIfVisible();
             statusLabel.Text = "已套用處理" + (selectedImageProcessingStepIndex + 1) + " 參數";
@@ -4467,7 +4514,9 @@ namespace IntegratedImageProcessingApp.Forms
 
             ApplyLatestProcessedImageToVisibleTabs();
             RestorePreprocessedImageViewState();
+            SetParameterApplyStatus("產生預覽圖中...");
             statusLabel.Text = "影像處理完成";
+            CompleteParameterApplyStatus();
         }
 
         private string CreateProcessedImageCacheKey()
@@ -5322,6 +5371,7 @@ namespace IntegratedImageProcessingApp.Forms
                 lastDisplayProcessingElapsedMilliseconds = displayStopwatch.ElapsedMilliseconds;
                 UpdateProcessingTimingStatus(includeImageProcessingTimeOnNextDisplay);
                 includeImageProcessingTimeOnNextDisplay = false;
+                CompleteParameterApplyStatus();
                 DrawLargeProcessedOverlayTile(e.Graphics, overlay, visibleRoi, e.Zoom, e.Offset);
                 return;
             }
@@ -5944,6 +5994,7 @@ namespace IntegratedImageProcessingApp.Forms
                         // viewport render. Subsequent cache/display updates
                         // must not imply that the algorithm ran again.
                         includeImageProcessingTimeOnNextDisplay = true;
+                        SetParameterApplyStatus("產生預覽圖中...");
                         leftProcessedDisplayControl.InvalidateImageView();
                         rightProcessedDisplayControl.InvalidateImageView();
                     }));
