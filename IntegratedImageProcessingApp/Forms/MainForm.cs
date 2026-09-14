@@ -37,6 +37,9 @@ namespace IntegratedImageProcessingApp.Forms
         private string expandedRoiText;
         private int selectedRoiIndex = -1;
         private bool imageProcessingMenuExpanded;
+        private bool imagePreprocessingMenuExpanded;
+        private int selectedImagePreprocessingStepIndex = -1;
+        private TreeView imagePreprocessingFlowTreeView;
         private string expandedImageProcessingStepText;
         private TreeView imageProcessingFlowTreeView;
         private FlowLayoutPanel imageProcessingParameterPanel;
@@ -699,7 +702,11 @@ namespace IntegratedImageProcessingApp.Forms
             else if (selectedFunction == ImagePreprocessingMenuText)
             {
                 HideImageProcessingFlowTree();
-                parameterPlaceholderLabel.Text = "這裡會放置影像前處理的設定。";
+                parameterPlaceholderLabel.Text = "右鍵「影像前處理」可新增前處理流程。";
+            }
+            else if (IsImagePreprocessingStepMenuItem(selectedFunction))
+            {
+                ShowImagePreprocessingFlowTree(selectedFunction);
             }
             else if (GetImageProcessingGroupId(selectedFunction) != null)
             {
@@ -760,6 +767,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ToggleImageProcessingMenu();
             }
+            else if (selectedFunction == ImagePreprocessingMenuText)
+            {
+                ToggleImagePreprocessingMenu();
+            }
             else if (GetImageProcessingGroupId(selectedFunction) != null)
             {
                 ToggleImageProcessingGroup(selectedFunction);
@@ -806,6 +817,18 @@ namespace IntegratedImageProcessingApp.Forms
             if (stepText == ImageProcessingMenuText)
             {
                 ShowImageProcessingMenuContextMenu(e.Location);
+                return;
+            }
+
+            if (stepText == ImagePreprocessingMenuText)
+            {
+                ShowImagePreprocessingMenuContextMenu(e.Location);
+                return;
+            }
+
+            if (IsImagePreprocessingStepMenuItem(stepText))
+            {
+                ShowImagePreprocessingStepContextMenu(stepText, e.Location);
                 return;
             }
 
@@ -1681,6 +1704,142 @@ namespace IntegratedImageProcessingApp.Forms
             return null;
         }
 
+        private void ToggleImagePreprocessingMenu()
+        {
+            if (imagePreprocessingMenuExpanded)
+            {
+                RemoveImagePreprocessingSubMenuItems();
+                return;
+            }
+
+            imagePreprocessingMenuExpanded = true;
+            RebuildVisibleImagePreprocessingSteps();
+        }
+
+        private void ShowImagePreprocessingMenuContextMenu(Point location)
+        {
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            imageProcessingStepContextMenu = menu;
+            menu.Items.Add("新增", null, delegate { AddImagePreprocessingStep(); });
+            menu.Closed += delegate
+            {
+                if (ReferenceEquals(imageProcessingStepContextMenu, menu))
+                {
+                    imageProcessingStepContextMenu = null;
+                }
+
+                menu.Dispose();
+            };
+            menu.Show(functionListBox, location);
+        }
+
+        private void AddImagePreprocessingStep()
+        {
+            systemParameters.ImagePreprocessingSteps.Add(new ImageProcessingStepSettings());
+            SaveSystemParameters();
+            imagePreprocessingMenuExpanded = true;
+            RebuildVisibleImagePreprocessingSteps();
+            functionListBox.SelectedItem = CreateImagePreprocessingStepText(systemParameters.ImagePreprocessingSteps.Count);
+            statusLabel.Text = "已新增影像前處理" + systemParameters.ImagePreprocessingSteps.Count.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private void ShowImagePreprocessingStepContextMenu(string stepText, Point location)
+        {
+            int stepIndex = GetImagePreprocessingStepIndex(stepText);
+            if (stepIndex < 0)
+            {
+                return;
+            }
+
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            imageProcessingStepContextMenu = menu;
+            menu.Items.Add("刪除", null, delegate
+            {
+                systemParameters.ImagePreprocessingSteps.RemoveAt(stepIndex);
+                selectedImagePreprocessingStepIndex = -1;
+                SaveSystemParameters();
+                RebuildVisibleImagePreprocessingSteps();
+                statusLabel.Text = "已刪除影像前處理";
+            });
+            menu.Closed += delegate
+            {
+                if (ReferenceEquals(imageProcessingStepContextMenu, menu))
+                {
+                    imageProcessingStepContextMenu = null;
+                }
+
+                menu.Dispose();
+            };
+            menu.Show(functionListBox, location);
+        }
+
+        private void RemoveImagePreprocessingSubMenuItems()
+        {
+            for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
+            {
+                if (IsImagePreprocessingStepMenuItem(functionListBox.Items[index] as string))
+                {
+                    functionListBox.Items.RemoveAt(index);
+                }
+            }
+
+            imagePreprocessingMenuExpanded = false;
+        }
+
+        private void RebuildVisibleImagePreprocessingSteps()
+        {
+            if (!imagePreprocessingMenuExpanded)
+            {
+                return;
+            }
+
+            RemoveImagePreprocessingSubMenuItems();
+            imagePreprocessingMenuExpanded = true;
+            int insertIndex = functionListBox.Items.IndexOf(ImagePreprocessingMenuText) + 1;
+            for (int index = 0; index < systemParameters.ImagePreprocessingSteps.Count; index++)
+            {
+                functionListBox.Items.Insert(insertIndex++, CreateImagePreprocessingStepText(index + 1));
+            }
+        }
+
+        private string CreateImagePreprocessingStepText(int stepNumber)
+        {
+            ImageProcessingStepSettings step = stepNumber > 0 && stepNumber <= systemParameters.ImagePreprocessingSteps.Count
+                ? systemParameters.ImagePreprocessingSteps[stepNumber - 1]
+                : null;
+            string method = step == null || string.IsNullOrWhiteSpace(step.Method) ? "未決定" : step.Method;
+            return "    前處理" + stepNumber.ToString(CultureInfo.InvariantCulture) + "(" + method + ")";
+        }
+
+        private static bool IsImagePreprocessingStepMenuItem(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            return trimmed.StartsWith("前處理", StringComparison.Ordinal) &&
+                trimmed.IndexOf('(') > "前處理".Length && trimmed.IndexOf(')') > trimmed.IndexOf('(');
+        }
+
+        private int GetImagePreprocessingStepIndex(string text)
+        {
+            if (!IsImagePreprocessingStepMenuItem(text))
+            {
+                return -1;
+            }
+
+            string trimmed = text.Trim();
+            int openIndex = trimmed.IndexOf('(');
+            int number;
+            return int.TryParse(trimmed.Substring("前處理".Length, openIndex - "前處理".Length), out number)
+                ? number - 1
+                : -1;
+        }
+
         private static bool IsImageProcessingGroupMenuItem(string menuText)
         {
             if (string.IsNullOrWhiteSpace(menuText))
@@ -1882,13 +2041,150 @@ namespace IntegratedImageProcessingApp.Forms
         {
             selectedImageProcessingStepIndex = -1;
             selectedImageProcessingGroupId = null;
+            selectedImagePreprocessingStepIndex = -1;
             parameterPlaceholderLabel.Visible = true;
             if (imageProcessingFlowTreeView != null)
             {
                 imageProcessingFlowTreeView.Visible = false;
             }
 
+            if (imagePreprocessingFlowTreeView != null)
+            {
+                imagePreprocessingFlowTreeView.Visible = false;
+            }
+
             HideImageProcessingParameterPanel();
+        }
+
+        private void ShowImagePreprocessingFlowTree(string stepText)
+        {
+            selectedImageProcessingStepIndex = -1;
+            selectedImageProcessingGroupId = null;
+            selectedImagePreprocessingStepIndex = GetImagePreprocessingStepIndex(stepText);
+            if (selectedImagePreprocessingStepIndex < 0 ||
+                selectedImagePreprocessingStepIndex >= systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return;
+            }
+
+            EnsureImagePreprocessingFlowTreeView();
+            parameterPlaceholderLabel.Visible = false;
+            HideImageProcessingParameterPanel();
+            imagePreprocessingFlowTreeView.Visible = true;
+            string method = systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Method;
+            if (IsImagePreprocessingMethod(method))
+            {
+                ShowImagePreprocessingParameterPanel(method);
+                rightPanelTitleLabel.Text = stepText.Trim() + " 參數";
+            }
+            else
+            {
+                imagePreprocessingFlowTreeView.BringToFront();
+                SelectImagePreprocessingFlowNode(method);
+                rightPanelTitleLabel.Text = stepText.Trim() + " 方法";
+            }
+        }
+
+        private void EnsureImagePreprocessingFlowTreeView()
+        {
+            if (imagePreprocessingFlowTreeView != null)
+            {
+                return;
+            }
+
+            imagePreprocessingFlowTreeView = new TreeView();
+            imagePreprocessingFlowTreeView.BorderStyle = BorderStyle.None;
+            imagePreprocessingFlowTreeView.Dock = DockStyle.Fill;
+            imagePreprocessingFlowTreeView.FullRowSelect = true;
+            imagePreprocessingFlowTreeView.HideSelection = false;
+            imagePreprocessingFlowTreeView.BackColor = parameterPanel.BackColor;
+            imagePreprocessingFlowTreeView.ForeColor = Color.FromArgb(39, 46, 56);
+            imagePreprocessingFlowTreeView.AfterSelect += ImagePreprocessingFlowTreeView_AfterSelect;
+            parameterPanel.Controls.Add(imagePreprocessingFlowTreeView);
+            imagePreprocessingFlowTreeView.BringToFront();
+            TreeNode root = imagePreprocessingFlowTreeView.Nodes.Add("Image Preprocessing");
+            root.Tag = "Image Preprocessing";
+            foreach (string method in new[] { "Normalize", "Gaussian Blur", "CLAHE", "Median Blur", "Sharpen", "Bilateral Filter" })
+            {
+                TreeNode node = root.Nodes.Add(method);
+                node.Tag = method;
+            }
+
+            root.Expand();
+        }
+
+        private void SelectImagePreprocessingFlowNode(string method)
+        {
+            if (string.IsNullOrWhiteSpace(method) || imagePreprocessingFlowTreeView == null)
+            {
+                return;
+            }
+
+            foreach (TreeNode node in imagePreprocessingFlowTreeView.Nodes[0].Nodes)
+            {
+                if (string.Equals(node.Tag as string, method, StringComparison.Ordinal))
+                {
+                    imagePreprocessingFlowTreeView.SelectedNode = node;
+                    return;
+                }
+            }
+        }
+
+        private void ImagePreprocessingFlowTreeView_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            if (selectedImagePreprocessingStepIndex < 0 || e.Node.Nodes.Count > 0)
+            {
+                return;
+            }
+
+            string method = e.Node.Tag as string;
+            ImageProcessingStepSettings step = systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex];
+            step.Method = method;
+            step.Parameters = CreateDefaultImagePreprocessingParameters(method);
+            SaveSystemParameters();
+            RebuildVisibleImagePreprocessingSteps();
+            ShowImagePreprocessingParameterPanel(method);
+            rightPanelTitleLabel.Text = CreateImagePreprocessingStepText(selectedImagePreprocessingStepIndex + 1).Trim() + " 參數";
+        }
+
+        private void ShowImagePreprocessingParameterPanel(string method)
+        {
+            EnsureImageProcessingParameterPanel();
+            imagePreprocessingFlowTreeView.Visible = false;
+            imageProcessingParameterPanel.Visible = true;
+            imageProcessingParameterPanel.Controls.Clear();
+            imageProcessingParameterPanel.Controls.Add(CreateParameterLabel(method));
+
+            if (method == "Normalize")
+            {
+                AddImagePreprocessingNumericParameter("Alpha", "最小輸出值", "0");
+                AddImagePreprocessingNumericParameter("Beta", "最大輸出值", "255");
+            }
+            else if (method == "Gaussian Blur")
+            {
+                AddImagePreprocessingComboParameter("KernelSize", "核心大小", KernelSizeOptions, "5");
+                AddImagePreprocessingNumericParameter("Sigma", "Sigma", "1.4");
+            }
+            else if (method == "CLAHE")
+            {
+                AddImagePreprocessingNumericParameter("ClipLimit", "Clip Limit", "2.0");
+                AddImagePreprocessingComboParameter("TileGridSize", "Tile Grid Size", new[] { "4", "8", "16", "32" }, "8");
+            }
+            else if (method == "Median Blur")
+            {
+                AddImagePreprocessingComboParameter("KernelSize", "核心大小", KernelSizeOptions, "5");
+            }
+            else if (method == "Sharpen")
+            {
+                AddImagePreprocessingNumericParameter("Amount", "強度", "1.0");
+                AddImagePreprocessingComboParameter("KernelSize", "核心大小", KernelSizeOptions, "3");
+            }
+            else if (method == "Bilateral Filter")
+            {
+                AddImagePreprocessingComboParameter("Diameter", "核心大小", KernelSizeOptions, "5");
+                AddImagePreprocessingNumericParameter("SigmaColor", "Sigma Color", "50");
+                AddImagePreprocessingNumericParameter("SigmaSpace", "Sigma Space", "50");
+            }
         }
 
         private void EnsureImageProcessingFlowTreeView()
@@ -2175,6 +2471,61 @@ namespace IntegratedImageProcessingApp.Forms
             imageProcessingParameterPanel.Controls.Add(numericUpDown);
         }
 
+        private void AddImagePreprocessingNumericParameter(string key, string labelText, string defaultValue)
+        {
+            var label = CreateParameterLabel(labelText);
+            var numeric = new NumericUpDown();
+            numeric.Width = parameterPanel.Width - 18;
+            numeric.DecimalPlaces = defaultValue.IndexOf('.') >= 0 ? 2 : 0;
+            numeric.Minimum = 0;
+            numeric.Maximum = 100000;
+            numeric.Increment = numeric.DecimalPlaces > 0 ? 0.1M : 1M;
+            numeric.Value = Math.Min(numeric.Maximum, ParseDecimalOrDefault(GetImagePreprocessingParameterValue(key, defaultValue), ParseDecimalOrDefault(defaultValue, 0)));
+            numeric.ValueChanged += delegate { SaveImagePreprocessingParameter(key, numeric.Value.ToString(CultureInfo.InvariantCulture)); };
+            numeric.MouseWheel += NumericParameter_MouseWheel;
+            imageProcessingParameterPanel.Controls.Add(label);
+            imageProcessingParameterPanel.Controls.Add(numeric);
+        }
+
+        private void AddImagePreprocessingComboParameter(string key, string labelText, string[] values, string defaultValue)
+        {
+            var label = CreateParameterLabel(labelText);
+            var combo = new ComboBox();
+            combo.Width = parameterPanel.Width - 18;
+            combo.DropDownStyle = ComboBoxStyle.DropDownList;
+            combo.Items.AddRange(values);
+            string value = GetImagePreprocessingParameterValue(key, defaultValue);
+            combo.SelectedItem = values.Contains(value) ? value : defaultValue;
+            combo.SelectedIndexChanged += delegate { SaveImagePreprocessingParameter(key, combo.SelectedItem as string); };
+            imageProcessingParameterPanel.Controls.Add(label);
+            imageProcessingParameterPanel.Controls.Add(combo);
+        }
+
+        private string GetImagePreprocessingParameterValue(string key, string defaultValue)
+        {
+            if (selectedImagePreprocessingStepIndex < 0 || selectedImagePreprocessingStepIndex >= systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return defaultValue;
+            }
+
+            Dictionary<string, string> parameters = ParseImageProcessingParameters(systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters);
+            string value;
+            return parameters.TryGetValue(key, out value) ? value : defaultValue;
+        }
+
+        private void SaveImagePreprocessingParameter(string key, string value)
+        {
+            if (selectedImagePreprocessingStepIndex < 0 || selectedImagePreprocessingStepIndex >= systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return;
+            }
+
+            Dictionary<string, string> parameters = ParseImageProcessingParameters(systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters);
+            parameters[key] = value ?? string.Empty;
+            systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters = FormatImageProcessingParameters(parameters);
+            SaveSystemParameters();
+        }
+
         private void AddComboParameter(string key, string labelText, string[] values, string defaultValue)
         {
             var label = CreateParameterLabel(labelText);
@@ -2416,6 +2767,23 @@ namespace IntegratedImageProcessingApp.Forms
             return method == "Polarity Edge" ||
                 method == "Canny Edge" ||
                 method == "Sobel Edge";
+        }
+
+        private static string CreateDefaultImagePreprocessingParameters(string method)
+        {
+            if (method == "Normalize") return "Alpha=0;Beta=255";
+            if (method == "Gaussian Blur") return "KernelSize=5;Sigma=1.4";
+            if (method == "CLAHE") return "ClipLimit=2.0;TileGridSize=8";
+            if (method == "Median Blur") return "KernelSize=5";
+            if (method == "Sharpen") return "Amount=1.0;KernelSize=3";
+            if (method == "Bilateral Filter") return "Diameter=5;SigmaColor=50;SigmaSpace=50";
+            return string.Empty;
+        }
+
+        private static bool IsImagePreprocessingMethod(string method)
+        {
+            return method == "Normalize" || method == "Gaussian Blur" || method == "CLAHE" ||
+                method == "Median Blur" || method == "Sharpen" || method == "Bilateral Filter";
         }
 
         private bool HasPreviewableImageProcessingStep()

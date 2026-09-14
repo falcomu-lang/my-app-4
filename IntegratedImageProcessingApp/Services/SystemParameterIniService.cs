@@ -12,6 +12,7 @@ namespace IntegratedImageProcessingApp.Services
         private const string SectionRoi = "ROI";
         private const string SectionRois = "ROIs";
         private const string SectionImageProcessing = "ImageProcessing";
+        private const string SectionImagePreprocessing = "ImagePreprocessing";
         private readonly string filePath;
 
         public SystemParameterIniService(string filePath)
@@ -70,6 +71,17 @@ namespace IntegratedImageProcessingApp.Services
                     GroupId = GetValue(sections, SectionImageProcessing, "Step" + index + ".GroupId", string.Empty),
                     Method = GetValue(sections, SectionImageProcessing, "Step" + index + ".Method", string.Empty),
                     Parameters = GetValue(sections, SectionImageProcessing, "Step" + index + ".Parameters", string.Empty)
+                });
+            }
+
+            int imagePreprocessingStepCount = GetInt(sections, SectionImagePreprocessing, "Count", 0);
+            for (int index = 1; index <= imagePreprocessingStepCount; index++)
+            {
+                settings.ImagePreprocessingSteps.Add(new ImageProcessingStepSettings
+                {
+                    DisplayName = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".DisplayName", string.Empty),
+                    Method = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".Method", string.Empty),
+                    Parameters = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".Parameters", string.Empty)
                 });
             }
 
@@ -142,6 +154,18 @@ namespace IntegratedImageProcessingApp.Services
                     string keyPrefix = "Step" + (index + 1).ToString(CultureInfo.InvariantCulture);
                     writer.WriteLine("{0}.DisplayName={1}", keyPrefix, Escape(step.DisplayName));
                     writer.WriteLine("{0}.GroupId={1}", keyPrefix, Escape(step.GroupId));
+                    writer.WriteLine("{0}.Method={1}", keyPrefix, Escape(step.Method));
+                    writer.WriteLine("{0}.Parameters={1}", keyPrefix, Escape(step.Parameters));
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("[ImagePreprocessing]");
+                writer.WriteLine("Count={0}", settings.ImagePreprocessingSteps.Count.ToString(CultureInfo.InvariantCulture));
+                for (int index = 0; index < settings.ImagePreprocessingSteps.Count; index++)
+                {
+                    ImageProcessingStepSettings step = settings.ImagePreprocessingSteps[index];
+                    string keyPrefix = "Step" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.DisplayName={1}", keyPrefix, Escape(step.DisplayName));
                     writer.WriteLine("{0}.Method={1}", keyPrefix, Escape(step.Method));
                     writer.WriteLine("{0}.Parameters={1}", keyPrefix, Escape(step.Parameters));
                 }
