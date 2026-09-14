@@ -15,7 +15,7 @@ namespace IntegratedImageProcessingApp.Controls
     public sealed class LargeImageSource : IDisposable
     {
         private const int TileSourceSize = 1024;
-        private const int MaxDisplayTileCacheCount = 96;
+        private const int MaxDisplayTileCacheCount = 384;
         private const int MaxPreviewDimension = 2048;
         private readonly object _sync = new object();
         private readonly string _filePath;
@@ -840,11 +840,11 @@ namespace IntegratedImageProcessingApp.Controls
                             Math.Min(TileSourceSize, Width - x),
                             Math.Min(TileSourceSize, Height - y));
                         string key = CreateTileKey(tileRect);
-                        Rectangle destination = new Rectangle(
-                            Math.Max(0, (int)Math.Round(tileRect.X * scale)),
-                            Math.Max(0, (int)Math.Round(tileRect.Y * scale)),
-                            Math.Max(1, (int)Math.Round(tileRect.Width * scale)),
-                            Math.Max(1, (int)Math.Round(tileRect.Height * scale)));
+                        Rectangle destination = Rectangle.FromLTRB(
+                            Math.Max(0, (int)Math.Floor(tileRect.Left * scale)),
+                            Math.Max(0, (int)Math.Floor(tileRect.Top * scale)),
+                            Math.Min(outputWidth, Math.Max(1, (int)Math.Ceiling(tileRect.Right * scale))),
+                            Math.Min(outputHeight, Math.Max(1, (int)Math.Ceiling(tileRect.Bottom * scale))));
                         lock (_sync)
                         {
                             Bitmap tile;
@@ -859,7 +859,19 @@ namespace IntegratedImageProcessingApp.Controls
                                 TouchKey(key);
                             }
 
-                            graphics.DrawImage(tile, destination);
+                            using (var attributes = new ImageAttributes())
+                            {
+                                attributes.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY);
+                                graphics.DrawImage(
+                                    tile,
+                                    destination,
+                                    0,
+                                    0,
+                                    tile.Width,
+                                    tile.Height,
+                                    GraphicsUnit.Pixel,
+                                    attributes);
+                            }
                         }
                     }
                 }

@@ -15,10 +15,10 @@ namespace IntegratedImageProcessingApp.Controls
     public partial class ImageDisplayControl : UserControl
     {
         private const int TileSourceSize = 1024;
-        private const float TileRenderZoomThreshold = 0.08f;
+        private const float TileRenderZoomThreshold = 0.04f;
         private const float TilePreviewHandoffRatio = 0.95f;
-        private const float CachedTilePanZoomThreshold = 0.08f;
-        private const int MaxCachedTilesWhilePanning = 96;
+        private const float CachedTilePanZoomThreshold = 0.04f;
+        private const int MaxCachedTilesWhilePanning = 384;
         private const int TileRefreshIntervalMs = 33;
         private const int PanInvalidateIntervalMs = 16;
         private const int ZoomSettleIntervalMs = 180;
@@ -762,6 +762,9 @@ namespace IntegratedImageProcessingApp.Controls
             int endTileX = ((visibleSourceRect.Right + TileSourceSize - 1) / TileSourceSize) * TileSourceSize;
             int startTileY = (visibleSourceRect.Top / TileSourceSize) * TileSourceSize;
             int endTileY = ((visibleSourceRect.Bottom + TileSourceSize - 1) / TileSourceSize) * TileSourceSize;
+            int visibleTileColumns = Math.Max(1, (endTileX - startTileX) / TileSourceSize);
+            int visibleTileRows = Math.Max(1, (endTileY - startTileY) / TileSourceSize);
+            bool prefetchNeighborhood = visibleTileColumns * visibleTileRows <= 48;
 
             for (int tileY = startTileY; tileY < endTileY; tileY += TileSourceSize)
             {
@@ -775,7 +778,7 @@ namespace IntegratedImageProcessingApp.Controls
                     }
                     else if (!_isPanning || ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect))
                     {
-                        RequestTile(source, tileRect);
+                        RequestTile(source, tileRect, prefetchNeighborhood);
                     }
                 }
             }
@@ -847,10 +850,13 @@ namespace IntegratedImageProcessingApp.Controls
             }
         }
 
-        private void RequestTile(LargeImageSource source, Rectangle tileRect)
+        private void RequestTile(LargeImageSource source, Rectangle tileRect, bool prefetchNeighborhood)
         {
             source.QueueTile(tileRect, ScheduleTileRefresh);
-            source.PrefetchNeighborhood(tileRect, ScheduleTileRefresh);
+            if (prefetchNeighborhood)
+            {
+                source.PrefetchNeighborhood(tileRect, ScheduleTileRefresh);
+            }
         }
 
         private static void DrawTile(Graphics graphics, Bitmap tile, Rectangle tileRect, float zoom, PointF offset, bool lightweight)
