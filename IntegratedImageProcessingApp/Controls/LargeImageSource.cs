@@ -537,7 +537,10 @@ namespace IntegratedImageProcessingApp.Controls
                 if (_tileCache.TryGetValue(key, out cached))
                 {
                     TouchKey(key);
-                    tile = cached;
+                    // Cache ownership stays inside LargeImageSource. Returning
+                    // the cached Bitmap directly lets a paint operation race
+                    // with preview generation or cache eviction in GDI+.
+                    tile = (Bitmap)cached.Clone();
                     return true;
                 }
             }
@@ -971,6 +974,7 @@ namespace IntegratedImageProcessingApp.Controls
                             Math.Max(0, (int)Math.Floor(tileRect.Top * scale)),
                             Math.Min(outputWidth, Math.Max(1, (int)Math.Ceiling(tileRect.Right * scale))),
                             Math.Min(outputHeight, Math.Max(1, (int)Math.Ceiling(tileRect.Bottom * scale))));
+                        Bitmap tileSnapshot = null;
                         lock (_sync)
                         {
                             Bitmap tile;
@@ -984,19 +988,30 @@ namespace IntegratedImageProcessingApp.Controls
                             {
                                 TouchKey(key);
                             }
+                            tileSnapshot = (Bitmap)tile.Clone();
+                        }
 
+                        try
+                        {
                             using (var attributes = new ImageAttributes())
                             {
                                 attributes.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY);
                                 graphics.DrawImage(
-                                    tile,
+                                    tileSnapshot,
                                     destination,
                                     0,
                                     0,
-                                    tile.Width,
-                                    tile.Height,
+                                    tileSnapshot.Width,
+                                    tileSnapshot.Height,
                                     GraphicsUnit.Pixel,
                                     attributes);
+                            }
+                        }
+                        finally
+                        {
+                            if (tileSnapshot != null)
+                            {
+                                tileSnapshot.Dispose();
                             }
                         }
                     }

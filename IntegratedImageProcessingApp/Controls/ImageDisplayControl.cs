@@ -774,7 +774,10 @@ namespace IntegratedImageProcessingApp.Controls
                     Bitmap tile;
                     if (source.TryGetTile(tileRect, out tile))
                     {
-                        DrawTile(graphics, tile, tileRect, zoom, offset, _isPanning);
+                        using (tile)
+                        {
+                            DrawTile(graphics, tile, tileRect, zoom, offset, _isPanning);
+                        }
                     }
                     else if (!_isPanning || ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect))
                     {

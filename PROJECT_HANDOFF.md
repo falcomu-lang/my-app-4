@@ -7,7 +7,23 @@
 - Solution: `MyApp4.sln`
 - Main project: `IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 
-## Current Implementation Status (2026-09-13)
+## Current Implementation Status (2026-09-14)
+
+### OpenCV image preprocessing pipeline
+- `影像前處理` is fully implemented with OpenCV and is applied to the full grayscale image before ROI edge detection. The active order is: `原圖全影像 -> 前處理全影像 -> ROI 內邊緣偵測 -> 全圖紅色結果疊圖`.
+- Implemented preprocessing methods are `Normalize`, `Gaussian Blur`, `CLAHE`, `Median Blur`, `Sharpen` (unsharp mask), and `Bilateral Filter`. Every exposed parameter is used by the OpenCV operation.
+  - `Sharpen` has `Amount`, `KernelSize`, and `Sigma`. `Sigma=0` deliberately uses OpenCV's automatic value derived from the kernel size.
+  - `Bilateral Filter` uses `Diameter`, `SigmaColor`, and `SigmaSpace`; its UI must call the first parameter `直徑`, not a generic core size.
+- Large-image preprocessing returns a full-resolution 8-bit grayscale `Cv.Mat`. It is displayed through a memory-backed `LargeImageSource`, not via a temporary output file or a downscaled preview. The preprocessed output becomes the source for Canny/Polarity/Sobel ROI calculations.
+- The `前處理` tabs display the complete preprocessed image. Parameter changes are versioned and background work that becomes stale is discarded rather than published.
+- Preprocessing steps may be Ctrl-selected and grouped. A preprocessing group is sequential: its children execute from top to bottom and each output Mat is the next child's input. This differs from image-processing groups, where descendant edge steps independently process the source ROI and their result masks are combined for display.
+- Preprocessing groups, step `GroupId`, names, order, methods, and parameters are persisted in `[ImagePreprocessing]` in `SystemParameters.ini`. Use `GroupCount`, `GroupN.Id`, `GroupN.ParentGroupId`, `GroupN.DisplayName`, and `StepN.GroupId`.
+- A completed preprocessing step writes its measured OpenCV time next to the left-menu item, e.g. `前處理1(CLAHE) - 48 ms`. These values are runtime-only and clear when the preprocessing configuration changes.
+- Any preprocessing or edge-parameter change must preserve the current `Zoom + Offset` on all image tabs. The saved view state is reapplied after the base source or display content changes; do not reintroduce a fit-to-view during parameter updates.
+
+### Large-image tile ownership and concurrency
+- `LargeImageSource` owns cached Tile bitmaps. `ImageDisplayControl` must draw only a cloned Tile and dispose that clone immediately after painting. Never expose a cache-owned GDI+ Bitmap directly to paint code: concurrent preview composition, cache eviction, or `Clone()` otherwise throws `InvalidOperationException` (`物件目前正在使用` / `其他地方正在使用物件`).
+- Background tile and preview tasks hold a temporary `LargeImageSource` reference until their work completes. A rapid parameter edit can replace an old memory-backed preprocessing source, but that source must not dispose until its already queued work has left safely.
 
 ### Large-image data and processing architecture
 - The application supports large grayscale images such as `16384 x 16384` and larger without creating a full-size GDI+ `Bitmap` for display.
@@ -19,7 +35,7 @@
 - Saved ROIs are prewarmed in the background when a saved image is restored. The lower status bar shows `正在產生ROI的影像準備` during this work, then reports `ROI 處理時間` and the prepared ROI count.
 - Native full-image jobs are serialized by `largeNativeProcessingGate`. This avoids several expensive OpenCV calculations running concurrently after fast parameter edits. An in-flight native OpenCV call cannot be cancelled midway; a superseded result is discarded after it returns and the newest request runs next.
 - Do not add a silent fallback from the native OpenCV large-image path to the old managed/tile ROI processing path. A native load failure must be reported explicitly, otherwise a slow fallback looks like an endless calculation and is very difficult to diagnose.
-- The current processing source is the original grayscale image. The future preprocessing pipeline must become the processing source once real preprocessing steps are implemented.
+- The current processing source is the full-image preprocessing output when at least one valid preprocessing step exists; otherwise it is the original grayscale image.
 
 ### Implemented edge detectors
 - **Canny Edge** uses OpenCV `GaussianBlur -> Canny` and stores a native binary `Cv.Mat` result. Supported parameters are `LowThreshold`, `HighThreshold`, `KernelSize` (`3`, `5`, `7`), `L2Gradient`, `GaussianBlurSize`, and `GaussianSigma`.
@@ -33,10 +49,10 @@
 
 ### UI and pipeline direction
 - Both viewer sides have static designer-owned tabs in this order: `原圖 -> 前處理 -> 處理後 -> 物件結果 -> debug`.
-- The current `前處理` tab intentionally mirrors the original image and shares its tile source. It has the same zoom/pan/reset synchronization as every other tab, but no actual preprocessing algorithms are wired yet.
-- The left function menu now contains `影像前處理` above `影像處理`. It is the placeholder entry for the upcoming preprocessing sequence.
+- The `前處理` tab renders the full-resolution OpenCV preprocessing result through its own memory-backed tile source and has the same zoom/pan/reset synchronization as every other tab.
+- The left function menu contains `影像前處理` above `影像處理`, including named sequential groups and runtime timing labels.
 - Intended final pipeline: `原圖 -> 影像前處理 -> 邊緣偵測 -> Threshold/Morphology -> Contours -> Feature Filter -> Object Selector -> Object Result`.
-- When the preprocessing sequence is implemented, its full-resolution output should be the base image of `前處理` and `處理後`; red detected pixels must be overlaid on that preprocessing output, while `原圖` remains an unchanged reference.
+- The full-resolution preprocessing output is the base image of `前處理` and the processing source for edge detection; `處理後` keeps the original-image base plus ROI-local red result overlay so the original reference remains visually available.
 - Each processing step displays its measured algorithm time after a successful real calculation, for example `處理1(Canny Edge) - 475 ms`.
   - This is runtime-only information and is deliberately not written to `SystemParameters.ini`; a newly started application must not display stale timing.
   - Cache hits and viewport redraws do not add or replace the measured processing time.
@@ -44,8 +60,7 @@
   - The time suffix is presentation only. Every left-menu processing-step parser must still recognize `處理N(Method) - N ms` as a normal processing step. This applies equally to Canny Edge, Polarity Edge, and Sobel Edge, so the step must still open its right-side parameters and refresh its cached red overlay.
 
 ### Remaining verification and next work
-- Verify at runtime that the static `前處理` tabs appear on both sides after the newest build. A previous dynamic-tab approach did not reliably appear in the Visual Studio Designer/runtime, so the pages are now declared in `MainForm.Designer.cs`.
-- Create the actual preprocessing processing tree and cache/versioning. Start with OpenCV operations that are useful before edge detection, such as Gaussian/median/bilateral filtering; do not add grayscale/normalization/brightness/contrast to this sequence unless the product direction changes.
+- Verify the preprocessing group right-click workflow on production images: Ctrl-select at least two steps, group, rename, reorder, ungroup, then confirm the final image matches the displayed group order.
 - Test the latest native Polarity and Sobel paths on production-size images and parameter changes. Do not claim instant processing until that has been measured on the target images.
 - Future edge methods worth considering after the current workflow is stable: Scharr, Laplacian/LoG, and later non-maximum suppression. Contour filtering remains a separate later stage.
 
