@@ -304,6 +304,10 @@ Group1.DisplayName=
 - When changing an image, invalidate all processing/preprocessing/ROI caches and generations. When changing a parameter, preserve both viewers' zoom and pan state and invalidate only the affected result.
 - Keep status updates throttled; do not update the status label for every tile or ROI. Background workers must never access disposed UI controls or Bitmaps.
 - Keep `MainForm.Designer.cs` changes separate. It currently contains unrelated Visual Studio designer modifications and should not be included in focused commits unless explicitly requested.
+- Processed-view state is now captured from the currently visible viewer before invalidation and restored after the processed source or overlay is replaced. Preserve Zoom, Offset, and shared/maximized state; do not capture only the processed control because it may be empty on first execution.
+- Large-image loading warms the shared full-resolution grayscale OpenCV cache in the background. Keep source-generation checks and reference counting intact when replacing images.
+- Asynchronous overview preview creation for memory-backed results was tested and reverted because the visual result did not improve. Keep the current synchronous fast-preview behavior until a verified replacement is available.
+- Preprocessing display time can exceed OpenCV algorithm time because it creates a new memory-backed display source. Processed output is faster because it reuses original tiles and adds cached mask overlays.
 - Image relation UI and execution foundation is now implemented.
 - The left menu contains `影像關聯`; right-clicking it can add a relation. Relation items support right-click processing, moving up/down, renaming, and deleting.
 - Selecting a relation shows source and target selectors on the right. Sources include original image, preprocessing step, and preprocessing group. Targets include image-processing step and image-processing group.

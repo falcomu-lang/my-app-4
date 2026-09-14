@@ -112,3 +112,10 @@ Sobel Edge 使用 OpenCV 原生 Sobel。可設定灰階變化方向、核心大�
 - `IntegratedImageProcessingApp/Controls/ImageDisplayControl.cs`：圖片檢視、縮放、平移、ROI 繪製與左右視圖同步。
 - `IntegratedImageProcessingApp/Controls/LargeImageSource.cs`：大型圖片 WIC 預覽與原始解析度 tile 來源。
 - `PROJECT_HANDOFF.md`：提供後續開發者的實作細節、已知限制與待辦事項。
+
+## 顯示與效能注意事項
+
+- 套用前處理或影像處理參數時，程式會保存目前可見影像的 Zoom、平移位置與視圖狀態，完成後還原到處理後畫面。
+- 大圖載入時會背景預熱共享的完整解析度灰階 OpenCV Mat，讓前處理與 Canny、Sobel、Polarity 共用同一份原始灰階來源。
+- 前處理顯示時間可能高於 OpenCV 運算時間，因為前處理需要建立新的記憶體型顯示來源；處理後主要重用原圖 Tile 並疊加 Mask Overlay，兩者顯示時間不可直接比較演算法速度。
+- 記憶體型預覽的非同步建立曾經測試，但因畫面改善不明顯已回復原本穩定的快速預覽方式。

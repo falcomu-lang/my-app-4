@@ -123,6 +123,8 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageViewState maximizedImageViewerViewState;
         private bool hasPreprocessedImageViewState;
         private ImageViewState preprocessedImageViewState;
+        private bool hasProcessedImageViewState;
+        private ImageViewState processedImageViewState;
 
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
@@ -3911,6 +3913,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void MarkProcessedImageDirty()
         {
+            CaptureProcessedImageViewState();
             processedImageDirty = true;
             imageProcessingStepElapsedMilliseconds.Clear();
             ClearLargeProcessedOverlayCache();
@@ -4392,6 +4395,45 @@ namespace IntegratedImageProcessingApp.Forms
 
             preprocessedImageViewState = source.ViewState;
             hasPreprocessedImageViewState = true;
+        }
+
+        private void CaptureProcessedImageViewState()
+        {
+            ImageDisplayControl source = isImageViewerMaximized
+                ? (isLeftImageViewerMaximized ? GetVisibleLeftImageDisplayControl() : GetVisibleRightImageDisplayControl())
+                : GetVisibleLeftImageDisplayControl();
+            if (source == null || !source.HasImage)
+            {
+                source = GetVisibleRightImageDisplayControl();
+            }
+            if (source == null || !source.HasImage) return;
+            processedImageViewState = source.ViewState;
+            hasProcessedImageViewState = true;
+        }
+
+        private void RestoreProcessedImageViewState()
+        {
+            if (!hasProcessedImageViewState) return;
+            isSyncingImageView = true;
+            try
+            {
+                ApplyImageViewState(leftProcessedDisplayControl, processedImageViewState);
+                ApplyImageViewState(rightProcessedDisplayControl, processedImageViewState);
+                if (isImageViewerMaximized)
+                {
+                    maximizedImageViewerViewState = processedImageViewState;
+                    hasMaximizedImageViewerViewState = true;
+                }
+                else
+                {
+                    sharedImageViewState = processedImageViewState;
+                    hasSharedImageViewState = true;
+                }
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
         }
 
         private void RestorePreprocessedImageViewState()
@@ -5078,6 +5120,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ApplyLatestProcessedImageToVisibleTabs();
+            RestoreProcessedImageViewState();
             RestorePreprocessedImageViewState();
             SetParameterApplyStatus("產生預覽圖中...");
             statusLabel.Text = "影像處理完成";
@@ -5232,6 +5275,7 @@ namespace IntegratedImageProcessingApp.Forms
             leftProcessedDisplayControl.ScheduleImageViewRefresh();
             rightProcessedDisplayControl.ScheduleImageViewRefresh();
             ApplySharedImageViewStateToVisibleControls();
+            RestoreProcessedImageViewState();
             RestorePreprocessedImageViewState();
         }
 
@@ -7795,6 +7839,36 @@ namespace IntegratedImageProcessingApp.Forms
                     leftPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
                     rightPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
                     statusLabel.Text = "已載入大圖共用切圖來源";
+
+                    // Warm the shared full-resolution grayscale OpenCV source
+                    // while the image is being loaded. Later preprocessing and
+                    // edge processing reuse this Mat instead of reading the
+                    // image file again on their first execution.
+                    LargeImageSource warmSource = sharedSource.AddReference();
+                    int warmGeneration = imageSourceGeneration;
+                    _ = Task.Run(
+                        delegate
+                        {
+                            try
+                            {
+                                if (warmGeneration == imageSourceGeneration)
+                                {
+                                    using (Cv.Mat ignored = GetOrCreateLargeRoiOpenCvGrayCache(
+                                        warmSource,
+                                        new Rectangle(0, 0, warmSource.Width, warmSource.Height)))
+                                    {
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.WriteLine("OpenCV source warm-up failed: " + ex);
+                            }
+                            finally
+                            {
+                                warmSource.ReleaseReference();
+                            }
+                        });
                 }
                 finally
                 {
