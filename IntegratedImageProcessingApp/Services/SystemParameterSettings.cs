@@ -9,6 +9,7 @@ namespace IntegratedImageProcessingApp.Services
         {
             RoiRegions = new List<RoiRegionSettings>();
             ImagePreprocessingSteps = new List<ImageProcessingStepSettings>();
+            ImagePreprocessingGroups = new List<ImageProcessingGroupSettings>();
             ImageProcessingSteps = new List<ImageProcessingStepSettings>();
             ImageProcessingGroups = new List<ImageProcessingGroupSettings>();
         }
@@ -22,6 +23,8 @@ namespace IntegratedImageProcessingApp.Services
         public List<RoiRegionSettings> RoiRegions { get; private set; }
 
         public List<ImageProcessingStepSettings> ImagePreprocessingSteps { get; private set; }
+
+        public List<ImageProcessingGroupSettings> ImagePreprocessingGroups { get; private set; }
 
         public List<ImageProcessingStepSettings> ImageProcessingSteps { get; private set; }
 

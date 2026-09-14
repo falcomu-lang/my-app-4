@@ -40,6 +40,9 @@ namespace IntegratedImageProcessingApp.Forms
         private bool imagePreprocessingMenuExpanded;
         private int selectedImagePreprocessingStepIndex = -1;
         private TreeView imagePreprocessingFlowTreeView;
+        private readonly HashSet<string> expandedImagePreprocessingGroupIds = new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<ImageProcessingStepSettings, long> imagePreprocessingStepElapsedMilliseconds =
+            new Dictionary<ImageProcessingStepSettings, long>();
         private string expandedImageProcessingStepText;
         private TreeView imageProcessingFlowTreeView;
         private FlowLayoutPanel imageProcessingParameterPanel;
@@ -75,6 +78,14 @@ namespace IntegratedImageProcessingApp.Forms
         // Tiles own responsive rendering; this Mat owns fast ROI processing.
         private LargeImageSource largeOpenCvSourceGrayCacheSource;
         private Cv.Mat largeOpenCvSourceGrayCache;
+        // The preprocessing output remains a full-resolution OpenCV Mat and
+        // is exposed to the viewers through a memory-backed tile source.
+        private readonly object largePreprocessedImageLock = new object();
+        private LargeImageSource largePreprocessedImageSource;
+        private Bitmap latestPreprocessedImage;
+        private bool preprocessedImageDirty = true;
+        private bool isPreparingPreprocessedImage;
+        private int preprocessedImageGeneration;
         private int largeProcessedMaskGeneration;
         private long lastImageProcessingElapsedMilliseconds;
         private long lastDisplayProcessingElapsedMilliseconds;
@@ -89,6 +100,8 @@ namespace IntegratedImageProcessingApp.Forms
         private bool isLeftImageViewerMaximized;
         private bool hasMaximizedImageViewerViewState;
         private ImageViewState maximizedImageViewerViewState;
+        private bool hasPreprocessedImageViewState;
+        private ImageViewState preprocessedImageViewState;
 
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
@@ -122,6 +135,20 @@ namespace IntegratedImageProcessingApp.Forms
             Geometry,
             Measure,
             Save
+        }
+
+        private sealed class PreprocessedImageResult
+        {
+            public Cv.Mat Image { get; set; }
+
+            public Dictionary<ImageProcessingStepSettings, long> StepElapsedMilliseconds { get; set; }
+        }
+
+        private sealed class PreprocessedBitmapResult
+        {
+            public Bitmap Image { get; set; }
+
+            public Dictionary<ImageProcessingStepSettings, long> StepElapsedMilliseconds { get; set; }
         }
 
         public MainForm()
@@ -304,6 +331,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void VisibleImageTabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
+            RequestPreprocessedImageUpdate();
             UpdateVisibleProcessedImageIfNeeded();
             if (isImageViewerMaximized)
             {
@@ -708,6 +736,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ShowImagePreprocessingFlowTree(selectedFunction);
             }
+            else if (GetImagePreprocessingGroupId(selectedFunction) != null)
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "前處理群組會依由上而下的順序串接執行。";
+            }
             else if (GetImageProcessingGroupId(selectedFunction) != null)
             {
                 ShowImageProcessingGroup(selectedFunction);
@@ -771,6 +804,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ToggleImagePreprocessingMenu();
             }
+            else if (GetImagePreprocessingGroupId(selectedFunction) != null)
+            {
+                ToggleImagePreprocessingGroup(selectedFunction);
+            }
             else if (GetImageProcessingGroupId(selectedFunction) != null)
             {
                 ToggleImageProcessingGroup(selectedFunction);
@@ -828,7 +865,21 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (IsImagePreprocessingStepMenuItem(stepText))
             {
+                List<int> selectedPreprocessingSteps = GetSelectedImagePreprocessingStepIndexes();
+                if (selectedPreprocessingSteps.Count >= 2)
+                {
+                    ShowImagePreprocessingMultiSelectContextMenu(selectedPreprocessingSteps, e.Location);
+                    return;
+                }
+
                 ShowImagePreprocessingStepContextMenu(stepText, e.Location);
+                return;
+            }
+
+            string clickedPreprocessingGroupId = GetImagePreprocessingGroupId(stepText);
+            if (!string.IsNullOrEmpty(clickedPreprocessingGroupId))
+            {
+                ShowImagePreprocessingGroupContextMenu(clickedPreprocessingGroupId, e.Location);
                 return;
             }
 
@@ -1030,11 +1081,15 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void CloseImageProcessingStepContextMenu()
         {
-            if (imageProcessingStepContextMenu != null)
+            ContextMenuStrip menu = imageProcessingStepContextMenu;
+            imageProcessingStepContextMenu = null;
+            if (menu != null && !menu.IsDisposed)
             {
-                imageProcessingStepContextMenu.Close();
-                imageProcessingStepContextMenu.Dispose();
-                imageProcessingStepContextMenu = null;
+                menu.Close();
+                if (!menu.IsDisposed)
+                {
+                    menu.Dispose();
+                }
             }
         }
 
@@ -1728,8 +1783,6 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     imageProcessingStepContextMenu = null;
                 }
-
-                menu.Dispose();
             };
             menu.Show(functionListBox, location);
         }
@@ -1760,6 +1813,7 @@ namespace IntegratedImageProcessingApp.Forms
                 systemParameters.ImagePreprocessingSteps.RemoveAt(stepIndex);
                 selectedImagePreprocessingStepIndex = -1;
                 SaveSystemParameters();
+                MarkPreprocessedImageDirty();
                 RebuildVisibleImagePreprocessingSteps();
                 statusLabel.Text = "已刪除影像前處理";
             });
@@ -1769,8 +1823,6 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     imageProcessingStepContextMenu = null;
                 }
-
-                menu.Dispose();
             };
             menu.Show(functionListBox, location);
         }
@@ -1779,7 +1831,8 @@ namespace IntegratedImageProcessingApp.Forms
         {
             for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
             {
-                if (IsImagePreprocessingStepMenuItem(functionListBox.Items[index] as string))
+                string itemText = functionListBox.Items[index] as string;
+                if (IsImagePreprocessingStepMenuItem(itemText) || IsImagePreprocessingGroupMenuItem(itemText))
                 {
                     functionListBox.Items.RemoveAt(index);
                 }
@@ -1800,17 +1853,255 @@ namespace IntegratedImageProcessingApp.Forms
             int insertIndex = functionListBox.Items.IndexOf(ImagePreprocessingMenuText) + 1;
             for (int index = 0; index < systemParameters.ImagePreprocessingSteps.Count; index++)
             {
-                functionListBox.Items.Insert(insertIndex++, CreateImagePreprocessingStepText(index + 1));
+                if (string.IsNullOrWhiteSpace(systemParameters.ImagePreprocessingSteps[index].GroupId))
+                {
+                    functionListBox.Items.Insert(insertIndex++, CreateImagePreprocessingStepText(index + 1));
+                }
+            }
+
+            foreach (ImageProcessingGroupSettings group in systemParameters.ImagePreprocessingGroups)
+            {
+                if (string.IsNullOrWhiteSpace(group.ParentGroupId))
+                {
+                    InsertImagePreprocessingGroup(group, 0, ref insertIndex);
+                }
+            }
+        }
+
+        private void InsertImagePreprocessingGroup(ImageProcessingGroupSettings group, int depth, ref int insertIndex)
+        {
+            functionListBox.Items.Insert(insertIndex++, CreateImagePreprocessingGroupText(group, depth));
+            if (!expandedImagePreprocessingGroupIds.Contains(group.Id))
+            {
+                return;
+            }
+
+            for (int index = 0; index < systemParameters.ImagePreprocessingSteps.Count; index++)
+            {
+                if (string.Equals(systemParameters.ImagePreprocessingSteps[index].GroupId, group.Id, StringComparison.Ordinal))
+                {
+                    functionListBox.Items.Insert(insertIndex++, CreateImagePreprocessingStepText(index + 1, depth + 1));
+                }
+            }
+
+            foreach (ImageProcessingGroupSettings child in systemParameters.ImagePreprocessingGroups)
+            {
+                if (string.Equals(child.ParentGroupId, group.Id, StringComparison.Ordinal))
+                {
+                    InsertImagePreprocessingGroup(child, depth + 1, ref insertIndex);
+                }
             }
         }
 
         private string CreateImagePreprocessingStepText(int stepNumber)
         {
+            return CreateImagePreprocessingStepText(stepNumber, 0);
+        }
+
+        private string CreateImagePreprocessingStepText(int stepNumber, int depth)
+        {
             ImageProcessingStepSettings step = stepNumber > 0 && stepNumber <= systemParameters.ImagePreprocessingSteps.Count
                 ? systemParameters.ImagePreprocessingSteps[stepNumber - 1]
                 : null;
             string method = step == null || string.IsNullOrWhiteSpace(step.Method) ? "未決定" : step.Method;
-            return "    前處理" + stepNumber.ToString(CultureInfo.InvariantCulture) + "(" + method + ")";
+            long elapsedMilliseconds;
+            string elapsedText = step != null && imagePreprocessingStepElapsedMilliseconds.TryGetValue(step, out elapsedMilliseconds)
+                ? " - " + elapsedMilliseconds.ToString(CultureInfo.InvariantCulture) + " ms"
+                : string.Empty;
+            return new string(' ', 4 + (Math.Max(0, depth) * 2)) + "前處理" +
+                stepNumber.ToString(CultureInfo.InvariantCulture) + "(" + method + ")" + elapsedText;
+        }
+
+        private static bool IsImagePreprocessingGroupMenuItem(string text)
+        {
+            string trimmed = text == null ? string.Empty : text.Trim();
+            return trimmed.StartsWith("前處理群組(", StringComparison.Ordinal) && trimmed.EndsWith(")", StringComparison.Ordinal);
+        }
+
+        private static string CreateImagePreprocessingGroupText(ImageProcessingGroupSettings group, int depth)
+        {
+            string name = string.IsNullOrWhiteSpace(group.DisplayName) ? "未命名群組" : group.DisplayName;
+            return new string(' ', 4 + (Math.Max(0, depth) * 2)) + "前處理群組(" + name + ")";
+        }
+
+        private string GetImagePreprocessingGroupId(string text)
+        {
+            string trimmed = text == null ? string.Empty : text.Trim();
+            foreach (ImageProcessingGroupSettings group in systemParameters.ImagePreprocessingGroups)
+            {
+                if (string.Equals(trimmed, CreateImagePreprocessingGroupText(group, 0).Trim(), StringComparison.Ordinal))
+                {
+                    return group.Id;
+                }
+            }
+
+            return null;
+        }
+
+        private List<int> GetSelectedImagePreprocessingStepIndexes()
+        {
+            var indexes = new List<int>();
+            foreach (object item in functionListBox.SelectedItems)
+            {
+                int index = GetImagePreprocessingStepIndex(item as string);
+                if (index >= 0 && !indexes.Contains(index))
+                {
+                    indexes.Add(index);
+                }
+            }
+
+            indexes.Sort();
+            return indexes;
+        }
+
+        private void ShowImagePreprocessingMultiSelectContextMenu(List<int> stepIndexes, Point location)
+        {
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            imageProcessingStepContextMenu = menu;
+            menu.Items.Add("分組", null, delegate { CreateImagePreprocessingGroup(stepIndexes); });
+            menu.Closed += delegate
+            {
+                if (ReferenceEquals(imageProcessingStepContextMenu, menu)) imageProcessingStepContextMenu = null;
+            };
+            menu.Show(functionListBox, location);
+        }
+
+        private void CreateImagePreprocessingGroup(List<int> stepIndexes)
+        {
+            if (stepIndexes == null || stepIndexes.Count < 2)
+            {
+                return;
+            }
+
+            string name;
+            if (!TryGetImageProcessingStepName(string.Empty, out name))
+            {
+                return;
+            }
+
+            var group = new ImageProcessingGroupSettings
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                DisplayName = string.IsNullOrWhiteSpace(name) ? "未命名群組" : name
+            };
+            systemParameters.ImagePreprocessingGroups.Add(group);
+            foreach (int index in stepIndexes)
+            {
+                if (index >= 0 && index < systemParameters.ImagePreprocessingSteps.Count)
+                {
+                    systemParameters.ImagePreprocessingSteps[index].GroupId = group.Id;
+                }
+            }
+
+            expandedImagePreprocessingGroupIds.Add(group.Id);
+            SaveSystemParameters();
+            MarkPreprocessedImageDirty();
+            RebuildVisibleImagePreprocessingSteps();
+            functionListBox.SelectedItem = CreateImagePreprocessingGroupText(group, 0);
+        }
+
+        private ImageProcessingGroupSettings FindImagePreprocessingGroup(string groupId)
+        {
+            return systemParameters.ImagePreprocessingGroups.FirstOrDefault(
+                group => string.Equals(group.Id, groupId, StringComparison.Ordinal));
+        }
+
+        private void ToggleImagePreprocessingGroup(string groupText)
+        {
+            string groupId = GetImagePreprocessingGroupId(groupText);
+            if (string.IsNullOrWhiteSpace(groupId)) return;
+            if (!expandedImagePreprocessingGroupIds.Remove(groupId)) expandedImagePreprocessingGroupIds.Add(groupId);
+            RebuildVisibleImagePreprocessingSteps();
+            functionListBox.SelectedItem = groupText;
+        }
+
+        private void ShowImagePreprocessingGroupContextMenu(string groupId, Point location)
+        {
+            ImageProcessingGroupSettings group = FindImagePreprocessingGroup(groupId);
+            if (group == null) return;
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            imageProcessingStepContextMenu = menu;
+            menu.Items.Add("上移", null, delegate { MoveImagePreprocessingGroup(group.Id, -1); });
+            menu.Items.Add("下移", null, delegate { MoveImagePreprocessingGroup(group.Id, 1); });
+            menu.Items.Add("命名", null, delegate { RenameImagePreprocessingGroup(group.Id); });
+            menu.Items.Add("解除群組", null, delegate { UngroupImagePreprocessingGroup(group.Id); });
+            menu.Items.Add("刪除", null, delegate { DeleteImagePreprocessingGroup(group.Id); });
+            menu.Closed += delegate
+            {
+                if (ReferenceEquals(imageProcessingStepContextMenu, menu)) imageProcessingStepContextMenu = null;
+            };
+            menu.Show(functionListBox, location);
+        }
+
+        private void RenameImagePreprocessingGroup(string groupId)
+        {
+            ImageProcessingGroupSettings group = FindImagePreprocessingGroup(groupId);
+            string name;
+            if (group == null || !TryGetImageProcessingStepName(group.DisplayName, out name) || string.IsNullOrWhiteSpace(name)) return;
+            group.DisplayName = name;
+            SaveSystemParameters();
+            RebuildVisibleImagePreprocessingSteps();
+        }
+
+        private void MoveImagePreprocessingGroup(string groupId, int direction)
+        {
+            ImageProcessingGroupSettings group = FindImagePreprocessingGroup(groupId);
+            if (group == null) return;
+            List<ImageProcessingGroupSettings> siblings = systemParameters.ImagePreprocessingGroups
+                .Where(candidate => string.Equals(candidate.ParentGroupId, group.ParentGroupId, StringComparison.Ordinal)).ToList();
+            int index = siblings.IndexOf(group);
+            int targetIndex = index + direction;
+            if (index < 0 || targetIndex < 0 || targetIndex >= siblings.Count) return;
+            ImageProcessingGroupSettings target = siblings[targetIndex];
+            systemParameters.ImagePreprocessingGroups.Remove(group);
+            int insertionIndex = systemParameters.ImagePreprocessingGroups.IndexOf(target);
+            systemParameters.ImagePreprocessingGroups.Insert(direction > 0 ? insertionIndex + 1 : insertionIndex, group);
+            SaveSystemParameters();
+            MarkPreprocessedImageDirty();
+            RebuildVisibleImagePreprocessingSteps();
+        }
+
+        private void UngroupImagePreprocessingGroup(string groupId)
+        {
+            ImageProcessingGroupSettings group = FindImagePreprocessingGroup(groupId);
+            if (group == null) return;
+            foreach (ImageProcessingStepSettings step in systemParameters.ImagePreprocessingSteps)
+            {
+                if (string.Equals(step.GroupId, group.Id, StringComparison.Ordinal)) step.GroupId = group.ParentGroupId;
+            }
+            foreach (ImageProcessingGroupSettings child in systemParameters.ImagePreprocessingGroups)
+            {
+                if (string.Equals(child.ParentGroupId, group.Id, StringComparison.Ordinal)) child.ParentGroupId = group.ParentGroupId;
+            }
+            expandedImagePreprocessingGroupIds.Remove(group.Id);
+            systemParameters.ImagePreprocessingGroups.Remove(group);
+            SaveSystemParameters();
+            MarkPreprocessedImageDirty();
+            RebuildVisibleImagePreprocessingSteps();
+        }
+
+        private void DeleteImagePreprocessingGroup(string groupId)
+        {
+            ImageProcessingGroupSettings group = FindImagePreprocessingGroup(groupId);
+            if (group == null || MessageBox.Show("是否要刪除前處理群組「" + group.DisplayName + "」及其項目？", "刪除群組", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            var deletedIds = new HashSet<string>(StringComparer.Ordinal) { group.Id };
+            bool changed = true;
+            while (changed)
+            {
+                changed = false;
+                foreach (ImageProcessingGroupSettings candidate in systemParameters.ImagePreprocessingGroups)
+                {
+                    if (deletedIds.Contains(candidate.ParentGroupId) && deletedIds.Add(candidate.Id)) changed = true;
+                }
+            }
+            systemParameters.ImagePreprocessingSteps.RemoveAll(step => deletedIds.Contains(step.GroupId));
+            systemParameters.ImagePreprocessingGroups.RemoveAll(candidate => deletedIds.Contains(candidate.Id));
+            foreach (string id in deletedIds) expandedImagePreprocessingGroupIds.Remove(id);
+            SaveSystemParameters();
+            MarkPreprocessedImageDirty();
+            RebuildVisibleImagePreprocessingSteps();
         }
 
         private static bool IsImagePreprocessingStepMenuItem(string text)
@@ -2142,6 +2433,7 @@ namespace IntegratedImageProcessingApp.Forms
             step.Method = method;
             step.Parameters = CreateDefaultImagePreprocessingParameters(method);
             SaveSystemParameters();
+            MarkPreprocessedImageDirty();
             RebuildVisibleImagePreprocessingSteps();
             ShowImagePreprocessingParameterPanel(method);
             rightPanelTitleLabel.Text = CreateImagePreprocessingStepText(selectedImagePreprocessingStepIndex + 1).Trim() + " 參數";
@@ -2154,6 +2446,7 @@ namespace IntegratedImageProcessingApp.Forms
             imageProcessingParameterPanel.Visible = true;
             imageProcessingParameterPanel.Controls.Clear();
             imageProcessingParameterPanel.Controls.Add(CreateParameterLabel(method));
+            AddReselectImagePreprocessingMethodButton();
 
             if (method == "Normalize")
             {
@@ -2178,13 +2471,29 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 AddImagePreprocessingNumericParameter("Amount", "強度", "1.0");
                 AddImagePreprocessingComboParameter("KernelSize", "核心大小", KernelSizeOptions, "3");
+                AddImagePreprocessingNumericParameter("Sigma", "Sigma", "0");
             }
             else if (method == "Bilateral Filter")
             {
-                AddImagePreprocessingComboParameter("Diameter", "核心大小", KernelSizeOptions, "5");
+                AddImagePreprocessingComboParameter("Diameter", "直徑", KernelSizeOptions, "5");
                 AddImagePreprocessingNumericParameter("SigmaColor", "Sigma Color", "50");
                 AddImagePreprocessingNumericParameter("SigmaSpace", "Sigma Space", "50");
             }
+        }
+
+        private void AddReselectImagePreprocessingMethodButton()
+        {
+            var button = new Button();
+            button.Width = parameterPanel.Width - 18;
+            button.Height = 30;
+            button.Text = "重新選擇方法";
+            button.Click += delegate
+            {
+                HideImageProcessingParameterPanel();
+                imagePreprocessingFlowTreeView.Visible = true;
+                rightPanelTitleLabel.Text = "前處理" + (selectedImagePreprocessingStepIndex + 1) + " 方法";
+            };
+            imageProcessingParameterPanel.Controls.Add(button);
         }
 
         private void EnsureImageProcessingFlowTreeView()
@@ -2524,6 +2833,7 @@ namespace IntegratedImageProcessingApp.Forms
             parameters[key] = value ?? string.Empty;
             systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters = FormatImageProcessingParameters(parameters);
             SaveSystemParameters();
+            MarkPreprocessedImageDirty();
         }
 
         private void AddComboParameter(string key, string labelText, string[] values, string defaultValue)
@@ -2698,6 +3008,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            CapturePreprocessedImageViewState();
             parameters[key] = value ?? string.Empty;
             systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters = FormatImageProcessingParameters(parameters);
             SaveSystemParameters();
@@ -2775,7 +3086,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (method == "Gaussian Blur") return "KernelSize=5;Sigma=1.4";
             if (method == "CLAHE") return "ClipLimit=2.0;TileGridSize=8";
             if (method == "Median Blur") return "KernelSize=5";
-            if (method == "Sharpen") return "Amount=1.0;KernelSize=3";
+            if (method == "Sharpen") return "Amount=1.0;KernelSize=3;Sigma=0";
             if (method == "Bilateral Filter") return "Diameter=5;SigmaColor=50;SigmaSpace=50";
             return string.Empty;
         }
@@ -3192,6 +3503,479 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private bool HasConfiguredImagePreprocessingSteps()
+        {
+            return systemParameters.ImagePreprocessingSteps.Any(
+                step => step != null && IsImagePreprocessingMethod(step.Method));
+        }
+
+        private List<ImageProcessingStepSettings> GetOrderedImagePreprocessingSteps()
+        {
+            var steps = new List<ImageProcessingStepSettings>();
+            foreach (ImageProcessingStepSettings step in systemParameters.ImagePreprocessingSteps)
+            {
+                if (string.IsNullOrWhiteSpace(step.GroupId))
+                {
+                    steps.Add(step);
+                }
+            }
+
+            foreach (ImageProcessingGroupSettings group in systemParameters.ImagePreprocessingGroups)
+            {
+                if (string.IsNullOrWhiteSpace(group.ParentGroupId))
+                {
+                    CollectImagePreprocessingGroupSteps(group.Id, steps);
+                }
+            }
+
+            return steps;
+        }
+
+        private void CollectImagePreprocessingGroupSteps(string groupId, List<ImageProcessingStepSettings> steps)
+        {
+            foreach (ImageProcessingStepSettings step in systemParameters.ImagePreprocessingSteps)
+            {
+                if (string.Equals(step.GroupId, groupId, StringComparison.Ordinal))
+                {
+                    steps.Add(step);
+                }
+            }
+
+            foreach (ImageProcessingGroupSettings child in systemParameters.ImagePreprocessingGroups)
+            {
+                if (string.Equals(child.ParentGroupId, groupId, StringComparison.Ordinal))
+                {
+                    CollectImagePreprocessingGroupSteps(child.Id, steps);
+                }
+            }
+        }
+
+        private void RecordImagePreprocessingStepElapsed(
+            Dictionary<ImageProcessingStepSettings, long> elapsedMilliseconds)
+        {
+            imagePreprocessingStepElapsedMilliseconds.Clear();
+            if (elapsedMilliseconds != null)
+            {
+                foreach (KeyValuePair<ImageProcessingStepSettings, long> item in elapsedMilliseconds)
+                {
+                    imagePreprocessingStepElapsedMilliseconds[item.Key] = item.Value;
+                }
+            }
+
+            RebuildVisibleImagePreprocessingSteps();
+        }
+
+        private void MarkPreprocessedImageDirty()
+        {
+            CapturePreprocessedImageViewState();
+            preprocessedImageDirty = true;
+            preprocessedImageGeneration++;
+            imagePreprocessingStepElapsedMilliseconds.Clear();
+            MarkProcessedImageDirty();
+
+            lock (largePreprocessedImageLock)
+            {
+                if (largePreprocessedImageSource != null)
+                {
+                    largePreprocessedImageSource.ReleaseReference();
+                    largePreprocessedImageSource = null;
+                }
+            }
+
+            if (latestPreprocessedImage != null)
+            {
+                latestPreprocessedImage.Dispose();
+                latestPreprocessedImage = null;
+            }
+
+            RestorePreprocessedDisplaysToOriginalSource();
+            RestorePreprocessedImageViewState();
+            RequestPreprocessedImageUpdate();
+        }
+
+        private void CapturePreprocessedImageViewState()
+        {
+            ImageDisplayControl source = isImageViewerMaximized
+                ? (isLeftImageViewerMaximized ? GetVisibleLeftImageDisplayControl() : GetVisibleRightImageDisplayControl())
+                : GetVisibleLeftImageDisplayControl();
+            if (source == null || !source.HasImage)
+            {
+                source = GetVisibleRightImageDisplayControl();
+            }
+
+            if (source == null || !source.HasImage)
+            {
+                return;
+            }
+
+            preprocessedImageViewState = source.ViewState;
+            hasPreprocessedImageViewState = true;
+        }
+
+        private void RestorePreprocessedImageViewState()
+        {
+            if (!hasPreprocessedImageViewState)
+            {
+                return;
+            }
+
+            isSyncingImageView = true;
+            try
+            {
+                ApplyImageViewState(leftOriginalDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(leftPreprocessedDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(leftProcessedDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(leftObjectsDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(leftDebugDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(rightOriginalDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(rightPreprocessedDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(rightProcessedDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(rightObjectsDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(rightDebugDisplayControl, preprocessedImageViewState);
+                if (isImageViewerMaximized)
+                {
+                    maximizedImageViewerViewState = preprocessedImageViewState;
+                    hasMaximizedImageViewerViewState = true;
+                }
+                else
+                {
+                    sharedImageViewState = preprocessedImageViewState;
+                    hasSharedImageViewState = true;
+                }
+            }
+            finally
+            {
+                isSyncingImageView = false;
+            }
+        }
+
+        private static void ApplyImageViewState(ImageDisplayControl display, ImageViewState viewState)
+        {
+            if (display != null && display.HasImage)
+            {
+                display.ApplyViewState(viewState);
+            }
+        }
+
+        private void RestorePreprocessedDisplaysToOriginalSource()
+        {
+            if (rightOriginalDisplayControl == null || !rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                return;
+            }
+
+            LargeImageSource source = rightOriginalDisplayControl.GetSharedLargeImageSource();
+            if (source == null)
+            {
+                return;
+            }
+
+            isSyncingImageView = true;
+            try
+            {
+                leftPreprocessedDisplayControl.SetSharedLargeImageSource(source);
+                rightPreprocessedDisplayControl.SetSharedLargeImageSource(source);
+            }
+            finally
+            {
+                isSyncingImageView = false;
+                source.ReleaseReference();
+            }
+        }
+
+        private async void RequestPreprocessedImageUpdate()
+        {
+            if (isPreparingPreprocessedImage || !preprocessedImageDirty || !HasConfiguredImagePreprocessingSteps() ||
+                string.IsNullOrWhiteSpace(systemParameters.LastImagePath) || !File.Exists(systemParameters.LastImagePath))
+            {
+                return;
+            }
+
+            isPreparingPreprocessedImage = true;
+            int generation = preprocessedImageGeneration;
+            try
+            {
+                statusLabel.Text = "影像前處理運算中...使用 OpenCV";
+                if (rightOriginalDisplayControl.IsLargeImageMode)
+                {
+                    LargeImageSource originalSource = rightOriginalDisplayControl.GetSharedLargeImageSource();
+                    if (originalSource == null)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        PreprocessedImageResult preprocessingResult = await Task.Run(
+                            delegate
+                            {
+                                using (Cv.Mat source = GetOrCreateLargeRoiOpenCvGrayCache(
+                                    originalSource,
+                                    new Rectangle(0, 0, originalSource.Width, originalSource.Height)))
+                                {
+                                    return CreateOpenCvPreprocessedImage(source);
+                                }
+                            });
+                        Cv.Mat preprocessed = preprocessingResult.Image;
+                        if (generation != preprocessedImageGeneration)
+                        {
+                            preprocessed.Dispose();
+                            return;
+                        }
+
+                        RecordImagePreprocessingStepElapsed(preprocessingResult.StepElapsedMilliseconds);
+
+                        var preprocessedSource = new LargeImageSource(preprocessed);
+                        lock (largePreprocessedImageLock)
+                        {
+                            if (generation != preprocessedImageGeneration)
+                            {
+                                preprocessedSource.ReleaseReference();
+                                return;
+                            }
+
+                            largePreprocessedImageSource = preprocessedSource;
+                        }
+
+                        isSyncingImageView = true;
+                        try
+                        {
+                            leftPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource);
+                            rightPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource);
+                        }
+                        finally
+                        {
+                            isSyncingImageView = false;
+                        }
+
+                        RestorePreprocessedImageViewState();
+                    }
+                    finally
+                    {
+                        originalSource.ReleaseReference();
+                    }
+                }
+                else
+                {
+                    PreprocessedBitmapResult preprocessingResult = await Task.Run(CreateCurrentPreprocessedBitmap);
+                    Bitmap preprocessed = preprocessingResult.Image;
+                    if (generation != preprocessedImageGeneration)
+                    {
+                        if (preprocessed != null)
+                        {
+                            preprocessed.Dispose();
+                        }
+
+                        return;
+                    }
+
+                    if (latestPreprocessedImage != null)
+                    {
+                        latestPreprocessedImage.Dispose();
+                    }
+
+                    latestPreprocessedImage = preprocessed;
+                    RecordImagePreprocessingStepElapsed(preprocessingResult.StepElapsedMilliseconds);
+                    if (preprocessed != null)
+                    {
+                        isSyncingImageView = true;
+                        try
+                        {
+                            leftPreprocessedDisplayControl.SetDisplayImage(new Bitmap(preprocessed), true);
+                            rightPreprocessedDisplayControl.SetDisplayImage(new Bitmap(preprocessed), true);
+                        }
+                        finally
+                        {
+                            isSyncingImageView = false;
+                        }
+
+                        RestorePreprocessedImageViewState();
+                    }
+                }
+
+                preprocessedImageDirty = false;
+                statusLabel.Text = "影像前處理完成";
+                if (HasSelectedPreviewableImageProcessingSteps())
+                {
+                    ScheduleProcessedImageUpdateIfVisible();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("OpenCV preprocessing failed: " + ex);
+                statusLabel.Text = "影像前處理失敗";
+            }
+            finally
+            {
+                isPreparingPreprocessedImage = false;
+                if (preprocessedImageDirty && generation != preprocessedImageGeneration)
+                {
+                    RequestPreprocessedImageUpdate();
+                }
+            }
+        }
+
+        private PreprocessedImageResult CreateOpenCvPreprocessedImage(Cv.Mat source)
+        {
+            Cv.Mat current = source.Clone();
+            var elapsed = new Dictionary<ImageProcessingStepSettings, long>();
+            try
+            {
+                foreach (ImageProcessingStepSettings step in GetOrderedImagePreprocessingSteps())
+                {
+                    if (step == null || !IsImagePreprocessingMethod(step.Method))
+                    {
+                        continue;
+                    }
+
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    Cv.Mat next = ApplyOpenCvPreprocessingStep(
+                        current,
+                        step.Method,
+                        ParseImageProcessingParameters(step.Parameters));
+                    elapsed[step] = stopwatch.ElapsedMilliseconds;
+                    current.Dispose();
+                    current = next;
+                }
+
+                var result = new PreprocessedImageResult
+                {
+                    Image = current,
+                    StepElapsedMilliseconds = elapsed
+                };
+                current = null;
+                return result;
+            }
+            finally
+            {
+                if (current != null)
+                {
+                    current.Dispose();
+                }
+            }
+        }
+
+        private PreprocessedBitmapResult CreateCurrentPreprocessedBitmap()
+        {
+            using (Cv.Mat source = Cv.Cv2.ImRead(systemParameters.LastImagePath, Cv.ImreadModes.Grayscale))
+            {
+                PreprocessedImageResult preprocessingResult = CreateOpenCvPreprocessedImage(source);
+                using (Cv.Mat result = preprocessingResult.Image)
+                {
+                    return new PreprocessedBitmapResult
+                    {
+                        Image = CreateBitmapFromGrayMat(result),
+                        StepElapsedMilliseconds = preprocessingResult.StepElapsedMilliseconds
+                    };
+                }
+            }
+        }
+
+        private static Cv.Mat ApplyOpenCvPreprocessingStep(
+            Cv.Mat source,
+            string method,
+            Dictionary<string, string> parameters)
+        {
+            var destination = new Cv.Mat();
+            if (method == "Normalize")
+            {
+                Cv.Cv2.Normalize(
+                    source,
+                    destination,
+                    GetDoubleParameter(parameters, "Alpha", 0),
+                    GetDoubleParameter(parameters, "Beta", 255),
+                    Cv.NormTypes.MinMax,
+                    Cv.MatType.CV_8UC1.Value);
+            }
+            else if (method == "Gaussian Blur")
+            {
+                int kernelSize = EnsureOdd(Math.Max(3, GetIntParameter(parameters, "KernelSize", 5)));
+                Cv.Cv2.GaussianBlur(
+                    source,
+                    destination,
+                    new Cv.Size(kernelSize, kernelSize),
+                    Math.Max(0, GetDoubleParameter(parameters, "Sigma", 1.4)));
+            }
+            else if (method == "CLAHE")
+            {
+                int gridSize = Math.Max(2, GetIntParameter(parameters, "TileGridSize", 8));
+                using (Cv.CLAHE clahe = Cv.Cv2.CreateCLAHE(
+                    Math.Max(0.1, GetDoubleParameter(parameters, "ClipLimit", 2.0)),
+                    new Cv.Size(gridSize, gridSize)))
+                {
+                    clahe.Apply(source, destination);
+                }
+            }
+            else if (method == "Median Blur")
+            {
+                int kernelSize = EnsureOdd(Math.Max(3, GetIntParameter(parameters, "KernelSize", 5)));
+                Cv.Cv2.MedianBlur(source, destination, kernelSize);
+            }
+            else if (method == "Sharpen")
+            {
+                int kernelSize = EnsureOdd(Math.Max(3, GetIntParameter(parameters, "KernelSize", 3)));
+                double amount = Math.Max(0, GetDoubleParameter(parameters, "Amount", 1.0));
+                using (var blurred = new Cv.Mat())
+                {
+                    Cv.Cv2.GaussianBlur(
+                        source,
+                        blurred,
+                        new Cv.Size(kernelSize, kernelSize),
+                        Math.Max(0, GetDoubleParameter(parameters, "Sigma", 0)));
+                    Cv.Cv2.AddWeighted(source, 1.0 + amount, blurred, -amount, 0, destination);
+                }
+            }
+            else if (method == "Bilateral Filter")
+            {
+                Cv.Cv2.BilateralFilter(
+                    source,
+                    destination,
+                    EnsureOdd(Math.Max(3, GetIntParameter(parameters, "Diameter", 5))),
+                    Math.Max(0.1, GetDoubleParameter(parameters, "SigmaColor", 50)),
+                    Math.Max(0.1, GetDoubleParameter(parameters, "SigmaSpace", 50)));
+            }
+            else
+            {
+                source.CopyTo(destination);
+            }
+
+            return destination;
+        }
+
+        private static Bitmap CreateBitmapFromGrayMat(Cv.Mat source)
+        {
+            var bitmap = new Bitmap(source.Width, source.Height, PixelFormat.Format24bppRgb);
+            BitmapData data = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.WriteOnly,
+                bitmap.PixelFormat);
+            try
+            {
+                byte[] sourceRow = new byte[source.Width];
+                byte[] destinationRow = new byte[source.Width * 3];
+                long sourceStride = source.Step();
+                for (int y = 0; y < source.Height; y++)
+                {
+                    Marshal.Copy(source.Data + checked((int)(y * sourceStride)), sourceRow, 0, sourceRow.Length);
+                    for (int x = 0; x < source.Width; x++)
+                    {
+                        int offset = x * 3;
+                        destinationRow[offset] = sourceRow[x];
+                        destinationRow[offset + 1] = sourceRow[x];
+                        destinationRow[offset + 2] = sourceRow[x];
+                    }
+
+                    Marshal.Copy(destinationRow, 0, data.Scan0 + (y * data.Stride), destinationRow.Length);
+                }
+            }
+            finally
+            {
+                bitmap.UnlockBits(data);
+            }
+
+            return bitmap;
+        }
+
         private static bool[,] CreateOpenCvPolarityMask(
             byte[,] gray, int contrastThreshold, int edgeWidth, int smoothing, string polarity,
             string searchDirection, double gaussianSigma, string borderType)
@@ -3496,6 +4280,12 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (HasConfiguredImagePreprocessingSteps() && preprocessedImageDirty)
+            {
+                RequestPreprocessedImageUpdate();
+                return;
+            }
+
             // Large images use LargeImageSource plus a cached ROI mask instead of
             // latestProcessedImage. Treat that pipeline as complete once it has
             // been prepared; otherwise every refresh would start it again.
@@ -3545,6 +4335,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ApplyLatestProcessedImageToVisibleTabs();
+            RestorePreprocessedImageViewState();
             statusLabel.Text = "影像處理完成";
         }
 
@@ -3632,8 +4423,15 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (HasConfiguredImagePreprocessingSteps() && preprocessedImageDirty)
+            {
+                RequestPreprocessedImageUpdate();
+                return;
+            }
+
             isSyncingImageView = true;
             LargeImageSource sharedSource = null;
+            LargeImageSource processingSource = null;
             try
             {
                 sharedSource = rightOriginalDisplayControl.GetSharedLargeImageSource();
@@ -3642,6 +4440,8 @@ namespace IntegratedImageProcessingApp.Forms
                     ClearProcessedPreviewImages();
                     return;
                 }
+
+                processingSource = GetLargeImageProcessingSource(sharedSource);
 
                 if (!leftProcessedDisplayControl.IsLargeImageMode)
                 {
@@ -3664,7 +4464,7 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     foreach (ImageProcessingStepSettings step in selectedSteps)
                     {
-                        StartLargeProcessedMaskBuild(sharedSource, roiRegion.Bounds, step);
+                        StartLargeProcessedMaskBuild(processingSource, roiRegion.Bounds, step);
                     }
                 }
             }
@@ -3673,6 +4473,11 @@ namespace IntegratedImageProcessingApp.Forms
                 if (sharedSource != null)
                 {
                     sharedSource.ReleaseReference();
+                }
+
+                if (processingSource != null)
+                {
+                    processingSource.ReleaseReference();
                 }
 
                 isSyncingImageView = false;
@@ -3684,6 +4489,20 @@ namespace IntegratedImageProcessingApp.Forms
             leftProcessedDisplayControl.ScheduleImageViewRefresh();
             rightProcessedDisplayControl.ScheduleImageViewRefresh();
             ApplySharedImageViewStateToVisibleControls();
+            RestorePreprocessedImageViewState();
+        }
+
+        private LargeImageSource GetLargeImageProcessingSource(LargeImageSource originalSource)
+        {
+            lock (largePreprocessedImageLock)
+            {
+                if (largePreprocessedImageSource != null && !preprocessedImageDirty)
+                {
+                    return largePreprocessedImageSource.AddReference();
+                }
+            }
+
+            return originalSource.AddReference();
         }
 
         private void StartLargeProcessedMaskBuild(LargeImageSource source, Rectangle roi, ImageProcessingStepSettings step)
@@ -4191,6 +5010,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 throw new InvalidOperationException(
                     "大圖 OpenCV ROI 處理必須以 64 位元執行。請重新建置目前的 x64 設定後再執行。");
+            }
+
+            if (source.IsMemoryBacked)
+            {
+                return source.CreateGrayscaleMatView(roi);
             }
 
             lock (largeRoiGrayCacheLock)
@@ -5569,7 +6393,9 @@ namespace IntegratedImageProcessingApp.Forms
                 return null;
             }
 
-            using (Bitmap sourceImage = rightOriginalDisplayControl.CloneImage())
+            using (Bitmap sourceImage = latestPreprocessedImage != null
+                ? new Bitmap(latestPreprocessedImage)
+                : rightOriginalDisplayControl.CloneImage())
             {
                 if (sourceImage == null)
                 {
@@ -6096,7 +6922,7 @@ namespace IntegratedImageProcessingApp.Forms
                     selectedImageProcessingStepIndex = -1;
                     selectedImageProcessingGroupId = null;
                     RebuildVisibleRoiItems();
-                    MarkProcessedImageDirty();
+                    MarkPreprocessedImageDirty();
 
                     await LoadImageIntoOriginalDisplaysAsync(dialog.FileName, CancellationToken.None);
                     SyncVisibleImageDisplaysFromLeft();
@@ -6151,6 +6977,8 @@ namespace IntegratedImageProcessingApp.Forms
                     sharedSource.ReleaseReference();
                 }
 
+                RequestPreprocessedImageUpdate();
+
                 return;
             }
 
@@ -6178,6 +7006,8 @@ namespace IntegratedImageProcessingApp.Forms
                 // The first bitmap is owned by the left control after the call.
                 loadedBitmap = null;
             }
+
+            RequestPreprocessedImageUpdate();
         }
 
         private void FunctionListBox_DrawItem(object sender, DrawItemEventArgs e)

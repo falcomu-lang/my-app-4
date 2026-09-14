@@ -6,6 +6,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Cv = OpenCvSharp;
 using SW = System.Windows;
 using SWM = System.Windows.Media;
 using SWMI = System.Windows.Media.Imaging;
@@ -21,6 +22,7 @@ namespace IntegratedImageProcessingApp.Controls
         private readonly string _filePath;
         private readonly FileStream _stream;
         private readonly SWMI.BitmapFrame _frame;
+        private Cv.Mat _memoryGray;
         private readonly Dictionary<string, Bitmap> _tileCache;
         private readonly LinkedList<string> _tileOrder;
         private readonly HashSet<string> _pendingTiles;
@@ -47,6 +49,27 @@ namespace IntegratedImageProcessingApp.Controls
             CreateFastPreview();
         }
 
+        // Owns a full-resolution 8-bit grayscale Mat. This keeps generated
+        // OpenCV results tile-backed without writing a temporary image file.
+        public LargeImageSource(Cv.Mat grayscale)
+        {
+            if (grayscale == null || grayscale.Empty() || grayscale.Type() != Cv.MatType.CV_8UC1)
+            {
+                throw new ArgumentException("記憶體影像必須是有效的 8-bit 灰階 Mat。", "grayscale");
+            }
+
+            _memoryGray = grayscale;
+            Width = grayscale.Width;
+            Height = grayscale.Height;
+            SourceIsGrayscale = true;
+            _tileCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
+            _tileOrder = new LinkedList<string>();
+            _pendingTiles = new HashSet<string>(StringComparer.Ordinal);
+            _previewLevels = new List<PreviewLevel>();
+            InitializePreviewLevels();
+            CreateFastPreview();
+        }
+
         public int Width { get; private set; }
 
         public int Height { get; private set; }
@@ -58,6 +81,30 @@ namespace IntegratedImageProcessingApp.Controls
         public string FilePath
         {
             get { return _filePath; }
+        }
+
+        public bool IsMemoryBacked
+        {
+            get { return _memoryGray != null; }
+        }
+
+        public Cv.Mat CreateGrayscaleMatView(Rectangle sourceRect)
+        {
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                if (_memoryGray == null)
+                {
+                    throw new InvalidOperationException("此影像來源不是記憶體灰階影像。");
+                }
+
+                Rectangle normalized = NormalizeRect(sourceRect);
+                return new Cv.Mat(_memoryGray, new Cv.Rect(
+                    normalized.X,
+                    normalized.Y,
+                    normalized.Width,
+                    normalized.Height));
+            }
         }
 
         public void PreloadAllTiles(CancellationToken cancellationToken)
@@ -409,6 +456,7 @@ namespace IntegratedImageProcessingApp.Controls
                 }
 
                 _previewBuildQueued = true;
+                _referenceCount++;
             }
 
             Task.Run(
@@ -471,6 +519,8 @@ namespace IntegratedImageProcessingApp.Controls
                         {
                             _previewBuildQueued = false;
                         }
+
+                        ReleaseReference();
                     }
                 });
         }
@@ -509,6 +559,7 @@ namespace IntegratedImageProcessingApp.Controls
                 }
 
                 _pendingTiles.Add(key);
+                _referenceCount++;
             }
 
             Task.Run(
@@ -534,6 +585,11 @@ namespace IntegratedImageProcessingApp.Controls
                             onReady();
                         }
                     }
+                    catch (ObjectDisposedException)
+                    {
+                        // A superseded viewer may finish releasing while its
+                        // queued paint request is being cancelled.
+                    }
                     finally
                     {
                         if (tile != null)
@@ -545,6 +601,8 @@ namespace IntegratedImageProcessingApp.Controls
                         {
                             _pendingTiles.Remove(key);
                         }
+
+                        ReleaseReference();
                     }
                 });
         }
@@ -604,7 +662,16 @@ namespace IntegratedImageProcessingApp.Controls
                 _tileCache.Clear();
                 _tileOrder.Clear();
                 _pendingTiles.Clear();
-                _stream.Dispose();
+                if (_memoryGray != null)
+                {
+                    _memoryGray.Dispose();
+                    _memoryGray = null;
+                }
+
+                if (_stream != null)
+                {
+                    _stream.Dispose();
+                }
             }
         }
 
@@ -797,9 +864,24 @@ namespace IntegratedImageProcessingApp.Controls
 
         private Bitmap CreateTileBitmap(Rectangle sourceRect)
         {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException("LargeImageSource");
+            }
+
             if (sourceRect.Width > TileSourceSize || sourceRect.Height > TileSourceSize)
             {
                 throw new ArgumentOutOfRangeException("sourceRect", "單次 WIC 轉換只能處理一個原圖 tile。");
+            }
+
+            if (_memoryGray != null)
+            {
+                return CreateMemoryTileBitmap(sourceRect);
+            }
+
+            if (_frame == null)
+            {
+                throw new ObjectDisposedException("LargeImageSource");
             }
 
             var cropped = new SWMI.CroppedBitmap();
@@ -808,6 +890,50 @@ namespace IntegratedImageProcessingApp.Controls
             cropped.SourceRect = new SW.Int32Rect(sourceRect.X, sourceRect.Y, sourceRect.Width, sourceRect.Height);
             cropped.EndInit();
             return ConvertToBitmap(cropped);
+        }
+
+        private Bitmap CreateMemoryTileBitmap(Rectangle sourceRect)
+        {
+            using (Cv.Mat view = new Cv.Mat(_memoryGray, new Cv.Rect(
+                sourceRect.X,
+                sourceRect.Y,
+                sourceRect.Width,
+                sourceRect.Height)))
+            {
+                var result = new Bitmap(sourceRect.Width, sourceRect.Height, PixelFormat.Format24bppRgb);
+                BitmapData data = result.LockBits(
+                    new Rectangle(0, 0, result.Width, result.Height),
+                    ImageLockMode.WriteOnly,
+                    result.PixelFormat);
+                try
+                {
+                    byte[] sourceRow = new byte[sourceRect.Width];
+                    byte[] destinationRow = new byte[sourceRect.Width * 3];
+                    long sourceStride = view.Step();
+                    for (int y = 0; y < sourceRect.Height; y++)
+                    {
+                        Marshal.Copy(view.Data + checked((int)(y * sourceStride)), sourceRow, 0, sourceRow.Length);
+                        for (int x = 0; x < sourceRow.Length; x++)
+                        {
+                            int destinationOffset = x * 3;
+                            destinationRow[destinationOffset] = sourceRow[x];
+                            destinationRow[destinationOffset + 1] = sourceRow[x];
+                            destinationRow[destinationOffset + 2] = sourceRow[x];
+                        }
+
+                        IntPtr destination = data.Stride >= 0
+                            ? data.Scan0 + (y * data.Stride)
+                            : data.Scan0 + ((sourceRect.Height - 1 - y) * Math.Abs(data.Stride));
+                        Marshal.Copy(destinationRow, 0, destination, destinationRow.Length);
+                    }
+                }
+                finally
+                {
+                    result.UnlockBits(data);
+                }
+
+                return result;
+            }
         }
 
         private Bitmap CreateScaledBitmap(int decodeWidth, int decodeHeight)

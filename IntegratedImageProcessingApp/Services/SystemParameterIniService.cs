@@ -80,9 +80,26 @@ namespace IntegratedImageProcessingApp.Services
                 settings.ImagePreprocessingSteps.Add(new ImageProcessingStepSettings
                 {
                     DisplayName = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".DisplayName", string.Empty),
+                    GroupId = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".GroupId", string.Empty),
                     Method = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".Method", string.Empty),
                     Parameters = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".Parameters", string.Empty)
                 });
+            }
+
+            int imagePreprocessingGroupCount = GetInt(sections, SectionImagePreprocessing, "GroupCount", 0);
+            for (int index = 1; index <= imagePreprocessingGroupCount; index++)
+            {
+                string keyPrefix = "Group" + index;
+                string id = GetValue(sections, SectionImagePreprocessing, keyPrefix + ".Id", string.Empty);
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    settings.ImagePreprocessingGroups.Add(new ImageProcessingGroupSettings
+                    {
+                        Id = id,
+                        ParentGroupId = GetValue(sections, SectionImagePreprocessing, keyPrefix + ".ParentGroupId", string.Empty),
+                        DisplayName = GetValue(sections, SectionImagePreprocessing, keyPrefix + ".DisplayName", string.Empty)
+                    });
+                }
             }
 
             int imageProcessingGroupCount = GetInt(sections, SectionImageProcessing, "GroupCount", 0);
@@ -161,11 +178,21 @@ namespace IntegratedImageProcessingApp.Services
                 writer.WriteLine();
                 writer.WriteLine("[ImagePreprocessing]");
                 writer.WriteLine("Count={0}", settings.ImagePreprocessingSteps.Count.ToString(CultureInfo.InvariantCulture));
+                writer.WriteLine("GroupCount={0}", settings.ImagePreprocessingGroups.Count.ToString(CultureInfo.InvariantCulture));
+                for (int index = 0; index < settings.ImagePreprocessingGroups.Count; index++)
+                {
+                    ImageProcessingGroupSettings group = settings.ImagePreprocessingGroups[index];
+                    string keyPrefix = "Group" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", keyPrefix, Escape(group.Id));
+                    writer.WriteLine("{0}.ParentGroupId={1}", keyPrefix, Escape(group.ParentGroupId));
+                    writer.WriteLine("{0}.DisplayName={1}", keyPrefix, Escape(group.DisplayName));
+                }
                 for (int index = 0; index < settings.ImagePreprocessingSteps.Count; index++)
                 {
                     ImageProcessingStepSettings step = settings.ImagePreprocessingSteps[index];
                     string keyPrefix = "Step" + (index + 1).ToString(CultureInfo.InvariantCulture);
                     writer.WriteLine("{0}.DisplayName={1}", keyPrefix, Escape(step.DisplayName));
+                    writer.WriteLine("{0}.GroupId={1}", keyPrefix, Escape(step.GroupId));
                     writer.WriteLine("{0}.Method={1}", keyPrefix, Escape(step.Method));
                     writer.WriteLine("{0}.Parameters={1}", keyPrefix, Escape(step.Parameters));
                 }
