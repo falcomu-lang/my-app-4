@@ -12,6 +12,7 @@ namespace IntegratedImageProcessingApp.Services
             ImagePreprocessingGroups = new List<ImageProcessingGroupSettings>();
             ImageProcessingSteps = new List<ImageProcessingStepSettings>();
             ImageProcessingGroups = new List<ImageProcessingGroupSettings>();
+            ImageRelations = new List<ImageRelationSettings>();
         }
 
         public string LastImagePath { get; set; }
@@ -29,6 +30,8 @@ namespace IntegratedImageProcessingApp.Services
         public List<ImageProcessingStepSettings> ImageProcessingSteps { get; private set; }
 
         public List<ImageProcessingGroupSettings> ImageProcessingGroups { get; private set; }
+
+        public List<ImageRelationSettings> ImageRelations { get; private set; }
     }
 
     public class RoiRegionSettings
@@ -38,6 +41,8 @@ namespace IntegratedImageProcessingApp.Services
 
     public class ImageProcessingStepSettings
     {
+        public string Id { get; set; }
+
         public string DisplayName { get; set; }
 
         public string GroupId { get; set; }
@@ -54,5 +59,20 @@ namespace IntegratedImageProcessingApp.Services
         public string ParentGroupId { get; set; }
 
         public string DisplayName { get; set; }
+    }
+
+    public class ImageRelationSettings
+    {
+        public string Id { get; set; }
+
+        public string DisplayName { get; set; }
+
+        public string SourceType { get; set; }
+
+        public string SourceId { get; set; }
+
+        public string ProcessingType { get; set; }
+
+        public string ProcessingId { get; set; }
     }
 }

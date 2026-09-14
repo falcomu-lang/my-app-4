@@ -288,6 +288,20 @@ Group1.DisplayName=
 - The temporary `IntegratedImageProcessingApp\codex-build` output directory was removed after verification.
 
 ## Notes For Next Work
+- Image relation UI and execution foundation is now implemented.
+- The left menu contains `影像關聯`; right-clicking it can add a relation. Relation items support right-click processing, moving up/down, renaming, and deleting.
+- Selecting a relation shows source and target selectors on the right. Sources include original image, preprocessing step, and preprocessing group. Targets include image-processing step and image-processing group.
+- Relation settings are persisted in `[ImageRelations]` using stable GUIDs: `SourceType`, `SourceId`, `ProcessingType`, and `ProcessingId`. Display names are presentation only.
+- Relation processing can be started with right-click `處理`, or by holding `A`/`a` while left-clicking the relation. A normal left-click only opens the settings panel.
+- When a relation uses a preprocessing source, the OpenCV processing source and the large-image `處理後` display source are intended to share the same preprocessing `LargeImageSource`, so red results are drawn over the lighter preprocessing image rather than the darker original image.
+- Preprocessing-step relation sources support stopping the preprocessing pipeline at the selected step. Preprocessing-group sources run the complete preprocessing chain.
+- The relation parameter panel is separate from the normal preprocessing/image-processing parameter panels. Do not use `parameterPanel.Controls.Clear()` when changing relation selection; it removes the other panels and breaks navigation.
+- Relation combo boxes show friendly names such as `修改後名字 (Normalize)` while retaining GUIDs internally.
+- Direct image-processing execution clears the active relation source so a previous relation cannot affect later direct processing.
+- Remaining relation work: verify full-resolution large-image behavior with multiple preprocessing steps/groups, add per-source result caches, implement exact group merge semantics, show relation processing/display timings, and add invalid-source/invalid-target warnings when referenced items are deleted.
+- Image relation persistence foundation is now present. `ImageProcessingStepSettings` has a stable `Id`, and `ImageRelationSettings` stores `SourceType`, `SourceId`, `ProcessingType`, and `ProcessingId`.
+- `SystemParameterIniService` reads and writes these values under `[ImageRelations]`. Legacy step entries without an ID receive a GUID during load; do not use display names or list indexes as relation keys.
+- The relation editor and execution UI are not yet implemented. The next UI work should expose `影像關聯` below image processing, with source choices for original/preprocessing step/group and target choices for processing step/group.
 - Be careful with `MainForm.Designer.cs`; avoid helper method calls or custom-control declarations in the main designer file if Visual Studio Designer starts failing.
 - Prefer adding runtime behavior in `MainForm.cs` and reusable viewer behavior in `ImageDisplayControl.cs`.
 - Treat images inside the app as grayscale-only. Color input files should be converted in memory at the boundary before display or analysis; already-grayscale input should not be converted again.

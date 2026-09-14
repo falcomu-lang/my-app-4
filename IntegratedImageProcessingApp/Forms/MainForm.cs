@@ -38,7 +38,12 @@ namespace IntegratedImageProcessingApp.Forms
         private int selectedRoiIndex = -1;
         private bool imageProcessingMenuExpanded;
         private bool imagePreprocessingMenuExpanded;
+        private bool preprocessingExecutionRequested;
+        private bool isUpdatingFunctionListText;
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int virtualKeyCode);
         private int selectedImagePreprocessingStepIndex = -1;
+        private string selectedImagePreprocessingGroupId;
         private TreeView imagePreprocessingFlowTreeView;
         private readonly HashSet<string> expandedImagePreprocessingGroupIds = new HashSet<string>(StringComparer.Ordinal);
         private readonly Dictionary<ImageProcessingStepSettings, long> imagePreprocessingStepElapsedMilliseconds =
@@ -48,6 +53,10 @@ namespace IntegratedImageProcessingApp.Forms
         private FlowLayoutPanel imageProcessingParameterPanel;
         private int selectedImageProcessingStepIndex = -1;
         private string selectedImageProcessingGroupId;
+        private int selectedImageRelationIndex = -1;
+        private Panel imageRelationParameterPanel;
+        private string activeImageRelationSourceType;
+        private string activeImageRelationSourceId;
         private readonly HashSet<string> expandedImageProcessingGroupIds = new HashSet<string>(StringComparer.Ordinal);
         private bool isUpdatingImageProcessingFlowTree;
         private bool isLoadingImageProcessingParameters;
@@ -93,13 +102,19 @@ namespace IntegratedImageProcessingApp.Forms
         private Label parameterApplyStatusLabel;
         private Stopwatch parameterApplyStopwatch;
         private bool parameterApplyInProgress;
+        private bool parameterApplyIsPreprocessing;
         private long lastImageProcessingElapsedMilliseconds;
+        private long lastPreprocessingElapsedMilliseconds;
+        private readonly object backgroundStatusLock = new object();
+        private System.Threading.Timer backgroundStatusTimer;
+        private string pendingBackgroundStatusText;
         private long lastDisplayProcessingElapsedMilliseconds;
         private bool includeImageProcessingTimeOnNextDisplay;
         // Execution-only timing: a saved profile starts without a stale runtime value.
         private readonly Dictionary<ImageProcessingStepSettings, long> imageProcessingStepElapsedMilliseconds =
             new Dictionary<ImageProcessingStepSettings, long>();
         private bool processedImageDirty = true;
+        private bool imageProcessingExecutionRequested;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
         private bool isImageViewerMaximized;
@@ -113,6 +128,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string RoiMenuText = "指定 ROI";
         private const string ImagePreprocessingMenuText = "影像前處理";
         private const string ImageProcessingMenuText = "影像處理";
+        private const string ImageRelationMenuText = "影像關聯";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
@@ -157,6 +173,14 @@ namespace IntegratedImageProcessingApp.Forms
             public Dictionary<ImageProcessingStepSettings, long> StepElapsedMilliseconds { get; set; }
         }
 
+        private sealed class RelationChoice
+        {
+            public string DisplayText { get; set; }
+            public string Type { get; set; }
+            public string Id { get; set; }
+            public override string ToString() { return DisplayText; }
+        }
+
         public MainForm()
         {
             systemParameterService = new SystemParameterIniService(
@@ -166,6 +190,12 @@ namespace IntegratedImageProcessingApp.Forms
             InitializeComponent();
             functionListBox.SelectionMode = SelectionMode.MultiExtended;
             functionListBox.MouseUp += FunctionListBox_MouseUp;
+            if (!functionListBox.Items.Contains(ImageRelationMenuText))
+            {
+                int processingIndex = functionListBox.Items.IndexOf(ImageProcessingMenuText);
+                functionListBox.Items.Insert(processingIndex < 0 ? functionListBox.Items.Count : processingIndex + 1, ImageRelationMenuText);
+            }
+            RebuildVisibleImageRelations();
 
             if (!IsRunningInDesigner())
             {
@@ -706,6 +736,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void FunctionListBox_SelectedIndexChanged(object sender, EventArgs e)
         {
+            if (isUpdatingFunctionListText)
+            {
+                return;
+            }
+
             string selectedFunction = functionListBox.SelectedItem as string;
             if (string.IsNullOrEmpty(selectedFunction))
             {
@@ -714,6 +749,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
+            HideImageRelationParameterPanel();
             if (selectedFunction == LoadImageMenuText)
             {
                 parameterPlaceholderLabel.Text = "點選左側「讀取圖片」後，選擇要載入的圖片。";
@@ -733,6 +769,19 @@ namespace IntegratedImageProcessingApp.Forms
                 HideImageProcessingFlowTree();
                 parameterPlaceholderLabel.Text = "展開「影像處理」後，可新增影像處理流程。";
             }
+            else if (selectedFunction == ImageRelationMenuText)
+            {
+                parameterPlaceholderLabel.Text = "右鍵選擇「新增關聯」，設定來源影像與影像處理項目。";
+            }
+            else if (GetImageRelationIndex(selectedFunction) >= 0)
+            {
+                selectedImageRelationIndex = GetImageRelationIndex(selectedFunction);
+                ShowImageRelationParameterPanel(selectedImageRelationIndex);
+                if (IsAKeyDown())
+                {
+                    ProcessImageRelation(selectedImageRelationIndex);
+                }
+            }
             else if (selectedFunction == ImagePreprocessingMenuText)
             {
                 HideImageProcessingFlowTree();
@@ -744,8 +793,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             else if (GetImagePreprocessingGroupId(selectedFunction) != null)
             {
-                HideImageProcessingFlowTree();
-                parameterPlaceholderLabel.Text = "前處理群組會依由上而下的順序串接執行。";
+                ShowImagePreprocessingGroup(selectedFunction);
             }
             else if (GetImageProcessingGroupId(selectedFunction) != null)
             {
@@ -810,19 +858,42 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ToggleImagePreprocessingMenu();
             }
+            else if (IsImagePreprocessingStepMenuItem(selectedFunction))
+            {
+                if (IsAKeyDown())
+                {
+                    ProcessImagePreprocessingStep(selectedFunction);
+                }
+            }
             else if (GetImagePreprocessingGroupId(selectedFunction) != null)
             {
+                if (IsAKeyDown())
+                {
+                    ProcessImagePreprocessingGroup(
+                        GetImagePreprocessingGroupId(selectedFunction));
+                }
                 ToggleImagePreprocessingGroup(selectedFunction);
             }
             else if (GetImageProcessingGroupId(selectedFunction) != null)
             {
+                if (IsAKeyDown())
+                {
+                    ProcessImageProcessingGroup(GetImageProcessingGroupId(selectedFunction));
+                }
                 ToggleImageProcessingGroup(selectedFunction);
             }
             else if (IsImageProcessingStepMenuItem(selectedFunction))
             {
-                // Selection is handled by SelectedIndexChanged. Editing commands
-                // are intentionally kept in the right-click menu.
+                if (IsAKeyDown())
+                {
+                    ProcessImageProcessingStep(selectedFunction);
+                }
             }
+        }
+
+        private static bool IsAKeyDown()
+        {
+            return (GetAsyncKeyState((int)Keys.A) & 0x8000) != 0;
         }
 
         private void FunctionListBox_MouseUp(object sender, MouseEventArgs e)
@@ -863,9 +934,29 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (stepText == ImageRelationMenuText)
+            {
+                ShowImageRelationMenuContextMenu(e.Location);
+                return;
+            }
+
+            int relationIndex = GetImageRelationIndex(stepText);
+            if (relationIndex >= 0)
+            {
+                ShowImageRelationItemContextMenu(relationIndex, e.Location);
+                return;
+            }
+
             if (stepText == ImagePreprocessingMenuText)
             {
                 ShowImagePreprocessingMenuContextMenu(e.Location);
+                return;
+            }
+
+            string clickedPreprocessingGroupId = GetImagePreprocessingGroupId(stepText);
+            if (!string.IsNullOrEmpty(clickedPreprocessingGroupId))
+            {
+                ShowImagePreprocessingGroupContextMenu(clickedPreprocessingGroupId, e.Location);
                 return;
             }
 
@@ -879,13 +970,6 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 ShowImagePreprocessingStepContextMenu(stepText, e.Location);
-                return;
-            }
-
-            string clickedPreprocessingGroupId = GetImagePreprocessingGroupId(stepText);
-            if (!string.IsNullOrEmpty(clickedPreprocessingGroupId))
-            {
-                ShowImagePreprocessingGroupContextMenu(clickedPreprocessingGroupId, e.Location);
                 return;
             }
 
@@ -935,6 +1019,235 @@ namespace IntegratedImageProcessingApp.Forms
 
             stepIndexes.Sort();
             return stepIndexes;
+        }
+
+        private void ShowImageRelationMenuContextMenu(Point location)
+        {
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("新增關聯", null, delegate { AddImageRelation(); });
+            menu.Show(functionListBox, location);
+        }
+
+        private void ShowImageRelationParameterPanel(int relationIndex)
+        {
+            if (relationIndex < 0 || relationIndex >= systemParameters.ImageRelations.Count) return;
+            parameterPlaceholderLabel.Visible = false;
+            HideImageProcessingParameterPanel();
+            if (imageProcessingFlowTreeView != null) imageProcessingFlowTreeView.Visible = false;
+            if (imagePreprocessingFlowTreeView != null) imagePreprocessingFlowTreeView.Visible = false;
+            if (imageRelationParameterPanel != null) parameterPanel.Controls.Remove(imageRelationParameterPanel);
+            ImageRelationSettings relation = systemParameters.ImageRelations[relationIndex];
+            var panel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+            imageRelationParameterPanel = panel;
+            panel.Controls.Add(new Label { Text = "來源影像", Left = 8, Top = 12, Width = 250 });
+            var source = new ComboBox { Left = 8, Top = 34, Width = parameterPanel.Width - 18, DropDownStyle = ComboBoxStyle.DropDownList };
+            source.Items.Add(new RelationChoice { DisplayText = "原始影像", Type = "Original", Id = string.Empty });
+            for (int index = 0; index < systemParameters.ImagePreprocessingSteps.Count; index++)
+            {
+                ImageProcessingStepSettings step = systemParameters.ImagePreprocessingSteps[index];
+                string displayName = string.IsNullOrWhiteSpace(step.DisplayName) ? "前處理" + (index + 1) : step.DisplayName;
+                source.Items.Add(new RelationChoice { DisplayText = displayName + " (" + step.Method + ")", Type = "Step", Id = step.Id });
+            }
+            foreach (ImageProcessingGroupSettings group in systemParameters.ImagePreprocessingGroups)
+                source.Items.Add(new RelationChoice { DisplayText = group.DisplayName, Type = "Group", Id = group.Id });
+            source.SelectedIndex = FindRelationChoiceIndex(source, relation.SourceType, relation.SourceId);
+            panel.Controls.Add(source);
+            panel.Controls.Add(new Label { Text = "影像處理", Left = 8, Top = 72, Width = 250 });
+            var target = new ComboBox { Left = 8, Top = 94, Width = parameterPanel.Width - 18, DropDownStyle = ComboBoxStyle.DropDownList };
+            for (int index = 0; index < systemParameters.ImageProcessingSteps.Count; index++)
+            {
+                ImageProcessingStepSettings step = systemParameters.ImageProcessingSteps[index];
+                string displayName = string.IsNullOrWhiteSpace(step.DisplayName) ? "處理" + (index + 1) : step.DisplayName;
+                target.Items.Add(new RelationChoice { DisplayText = displayName + " (" + step.Method + ")", Type = "Step", Id = step.Id });
+            }
+            foreach (ImageProcessingGroupSettings group in systemParameters.ImageProcessingGroups)
+                target.Items.Add(new RelationChoice { DisplayText = group.DisplayName, Type = "Group", Id = group.Id });
+            target.SelectedIndex = FindRelationChoiceIndex(target, relation.ProcessingType, relation.ProcessingId);
+            panel.Controls.Add(target);
+            var apply = new Button { Text = "套用", Left = 8, Top = 135, Width = parameterPanel.Width - 18 };
+            apply.Click += delegate
+            {
+                SaveRelationChoice(relation, source.SelectedItem, true);
+                SaveRelationChoice(relation, target.SelectedItem, false);
+                SaveSystemParameters();
+                statusLabel.Text = "已套用影像關聯";
+            };
+            panel.Controls.Add(apply);
+            parameterPanel.Controls.Add(panel);
+            panel.BringToFront();
+        }
+
+        private void HideImageRelationParameterPanel()
+        {
+            if (imageRelationParameterPanel != null)
+            {
+                imageRelationParameterPanel.Visible = false;
+            }
+        }
+
+        private static int FindRelationChoiceIndex(ComboBox combo, string type, string id)
+        {
+            for (int index = 0; index < combo.Items.Count; index++)
+            {
+                RelationChoice choice = combo.Items[index] as RelationChoice;
+                if (choice != null && choice.Type == (type ?? string.Empty) && choice.Id == (id ?? string.Empty)) return index;
+            }
+            return combo.Items.Count > 0 ? 0 : -1;
+        }
+
+        private static void SaveRelationChoice(ImageRelationSettings relation, object choice, bool source)
+        {
+            RelationChoice selected = choice as RelationChoice;
+            if (selected == null) return;
+            if (source) { relation.SourceType = selected.Type; relation.SourceId = selected.Id; }
+            else { relation.ProcessingType = selected.Type; relation.ProcessingId = selected.Id; }
+        }
+
+        private void AddImageRelation()
+        {
+            systemParameters.ImageRelations.Add(new ImageRelationSettings
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                DisplayName = "關聯" + (systemParameters.ImageRelations.Count + 1).ToString(CultureInfo.InvariantCulture),
+                SourceType = "Original",
+                SourceId = string.Empty,
+                ProcessingType = "Step",
+                ProcessingId = string.Empty
+            });
+            SaveSystemParameters();
+            RebuildVisibleImageRelations();
+            statusLabel.Text = "已新增影像關聯，請選擇來源與處理項目";
+        }
+
+        private void RebuildVisibleImageRelations()
+        {
+            for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
+            {
+                string text = functionListBox.Items[index] as string;
+                if (text != null && text.StartsWith("    關聯", StringComparison.Ordinal))
+                {
+                    functionListBox.Items.RemoveAt(index);
+                }
+            }
+
+            int insertIndex = functionListBox.Items.IndexOf(ImageRelationMenuText) + 1;
+            foreach (ImageRelationSettings relation in systemParameters.ImageRelations)
+            {
+                string displayName = string.IsNullOrWhiteSpace(relation.DisplayName) ? "未命名" : relation.DisplayName;
+                functionListBox.Items.Insert(insertIndex++, "    " + displayName);
+            }
+        }
+
+        private int GetImageRelationIndex(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || !text.StartsWith("    ", StringComparison.Ordinal)) return -1;
+            string name = text.Trim();
+            for (int index = 0; index < systemParameters.ImageRelations.Count; index++)
+            {
+                if (string.Equals(systemParameters.ImageRelations[index].DisplayName, name, StringComparison.Ordinal)) return index;
+            }
+            return -1;
+        }
+
+        private void ShowImageRelationItemContextMenu(int relationIndex, Point location)
+        {
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("處理", null, delegate { ProcessImageRelation(relationIndex); });
+            menu.Items.Add("上移", null, delegate { MoveImageRelation(relationIndex, -1); });
+            menu.Items.Add("下移", null, delegate { MoveImageRelation(relationIndex, 1); });
+            menu.Items.Add("命名", null, delegate { RenameImageRelation(relationIndex); });
+            menu.Items.Add("刪除", null, delegate
+            {
+                if (MessageBox.Show("是否要刪除該影像關聯？", "刪除影像關聯", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    systemParameters.ImageRelations.RemoveAt(relationIndex);
+                    SaveSystemParameters();
+                    RebuildVisibleImageRelations();
+                }
+            });
+            menu.Show(functionListBox, location);
+        }
+
+        private void MoveImageRelation(int relationIndex, int direction)
+        {
+            int target = relationIndex + direction;
+            if (relationIndex < 0 || target < 0 || target >= systemParameters.ImageRelations.Count) return;
+            ImageRelationSettings relation = systemParameters.ImageRelations[relationIndex];
+            systemParameters.ImageRelations.RemoveAt(relationIndex);
+            systemParameters.ImageRelations.Insert(target, relation);
+            SaveSystemParameters();
+            RebuildVisibleImageRelations();
+        }
+
+        private void ProcessImageRelation(int relationIndex)
+        {
+            if (relationIndex < 0 || relationIndex >= systemParameters.ImageRelations.Count) return;
+            ImageRelationSettings relation = systemParameters.ImageRelations[relationIndex];
+            if (string.IsNullOrWhiteSpace(relation.SourceType))
+            {
+                statusLabel.Text = "影像關聯尚未選擇來源影像";
+                return;
+            }
+            activeImageRelationSourceType = relation.SourceType;
+            activeImageRelationSourceId = relation.SourceId;
+            if (!string.Equals(relation.SourceType, "Original", StringComparison.Ordinal))
+            {
+                // A relation is an explicit processing request, so it may start
+                // preparation of its selected preprocessing source even though
+                // normal startup intentionally does not run preprocessing.
+                preprocessingExecutionRequested = true;
+            }
+            if (string.IsNullOrWhiteSpace(relation.ProcessingId))
+            {
+                statusLabel.Text = "影像關聯尚未選擇影像處理項目";
+                return;
+            }
+
+            if (string.Equals(relation.ProcessingType, "Group", StringComparison.Ordinal))
+            {
+                if (!systemParameters.ImageProcessingGroups.Any(group => string.Equals(group.Id, relation.ProcessingId, StringComparison.Ordinal)))
+                {
+                    statusLabel.Text = "影像關聯的處理群組不存在";
+                    return;
+                }
+                ProcessImageProcessingGroup(relation.ProcessingId);
+                return;
+            }
+
+            int stepIndex = systemParameters.ImageProcessingSteps.FindIndex(step => string.Equals(step.Id, relation.ProcessingId, StringComparison.Ordinal));
+            if (stepIndex < 0)
+            {
+                statusLabel.Text = "影像關聯的處理項目不存在";
+                return;
+            }
+            ProcessImageProcessingStep(CreateImageProcessingStepText(stepIndex + 1));
+        }
+
+        private void RenameImageRelation(int relationIndex)
+        {
+            if (relationIndex < 0 || relationIndex >= systemParameters.ImageRelations.Count) return;
+            ImageRelationSettings relation = systemParameters.ImageRelations[relationIndex];
+            string name = PromptForText("關聯名稱", "請輸入關聯名稱：", relation.DisplayName);
+            if (name == null) return;
+            relation.DisplayName = string.IsNullOrWhiteSpace(name) ? relation.DisplayName : name.Trim();
+            SaveSystemParameters();
+            RebuildVisibleImageRelations();
+        }
+
+        private string PromptForText(string title, string message, string value)
+        {
+            using (var dialog = new Form { Text = title, Width = 360, Height = 135, StartPosition = FormStartPosition.CenterParent })
+            using (var input = new TextBox { Left = 12, Top = 30, Width = 320, Text = value ?? string.Empty })
+            using (var ok = new Button { Text = "確定", DialogResult = DialogResult.OK, Left = 176, Top = 65, Width = 75 })
+            using (var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, Left = 257, Top = 65, Width = 75 })
+            {
+                dialog.Controls.Add(new Label { Text = message, Left = 12, Top = 8, Width = 320 });
+                dialog.Controls.Add(input); dialog.Controls.Add(ok); dialog.Controls.Add(cancel);
+                dialog.AcceptButton = ok; dialog.CancelButton = cancel;
+                return dialog.ShowDialog(this) == DialogResult.OK ? input.Text : null;
+            }
         }
 
         private void ShowImageProcessingMenuContextMenu(Point location)
@@ -1033,6 +1346,10 @@ namespace IntegratedImageProcessingApp.Forms
 
             var menu = new ContextMenuStrip();
             imageProcessingStepContextMenu = menu;
+            menu.Items.Add("處理", null, delegate
+            {
+                ProcessImageProcessingStep(stepText);
+            });
             menu.Items.Add("上移", null, delegate
             {
                 expandedImageProcessingStepText = stepText;
@@ -1070,6 +1387,7 @@ namespace IntegratedImageProcessingApp.Forms
             CloseImageProcessingStepContextMenu();
             var menu = new ContextMenuStrip();
             imageProcessingStepContextMenu = menu;
+            menu.Items.Add("處理", null, delegate { ProcessImageProcessingGroup(group.Id); });
             menu.Items.Add("上移", null, delegate { MoveImageProcessingGroup(group.Id, -1); });
             menu.Items.Add("下移", null, delegate { MoveImageProcessingGroup(group.Id, 1); });
             menu.Items.Add("命名", null, delegate { RenameImageProcessingGroup(group.Id); });
@@ -1506,7 +1824,10 @@ namespace IntegratedImageProcessingApp.Forms
         {
             RemoveImageProcessingStepCommandMenuItems();
 
-            systemParameters.ImageProcessingSteps.Add(new ImageProcessingStepSettings());
+            systemParameters.ImageProcessingSteps.Add(new ImageProcessingStepSettings
+            {
+                Id = Guid.NewGuid().ToString("N")
+            });
             SaveSystemParameters();
             string stepText = CreateImageProcessingStepText(systemParameters.ImageProcessingSteps.Count);
             imageProcessingMenuExpanded = true;
@@ -1795,7 +2116,10 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void AddImagePreprocessingStep()
         {
-            systemParameters.ImagePreprocessingSteps.Add(new ImageProcessingStepSettings());
+            systemParameters.ImagePreprocessingSteps.Add(new ImageProcessingStepSettings
+            {
+                Id = Guid.NewGuid().ToString("N")
+            });
             SaveSystemParameters();
             imagePreprocessingMenuExpanded = true;
             RebuildVisibleImagePreprocessingSteps();
@@ -1814,8 +2138,22 @@ namespace IntegratedImageProcessingApp.Forms
             CloseImageProcessingStepContextMenu();
             var menu = new ContextMenuStrip();
             imageProcessingStepContextMenu = menu;
+            menu.Items.Add("處理", null, delegate { ProcessImagePreprocessingStep(stepText); });
+            menu.Items.Add("上移", null, delegate { MoveImagePreprocessingStep(stepText, -1); });
+            menu.Items.Add("下移", null, delegate { MoveImagePreprocessingStep(stepText, 1); });
+            menu.Items.Add("命名", null, delegate { RenameImagePreprocessingStep(stepText); });
             menu.Items.Add("刪除", null, delegate
             {
+                ImageProcessingStepSettings step = systemParameters.ImagePreprocessingSteps[stepIndex];
+                if (MessageBox.Show(
+                    "是否要刪除「" + (string.IsNullOrWhiteSpace(step.DisplayName) ? step.Method : step.DisplayName) + "」？",
+                    "刪除前處理",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning) != DialogResult.Yes)
+                {
+                    return;
+                }
+
                 systemParameters.ImagePreprocessingSteps.RemoveAt(stepIndex);
                 selectedImagePreprocessingStepIndex = -1;
                 SaveSystemParameters();
@@ -1831,6 +2169,81 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             };
             menu.Show(functionListBox, location);
+        }
+
+        private void MoveImagePreprocessingStep(string stepText, int direction)
+        {
+            int stepIndex = GetImagePreprocessingStepIndex(stepText);
+            int targetIndex = stepIndex + direction;
+            if (stepIndex < 0 || targetIndex < 0 ||
+                targetIndex >= systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return;
+            }
+
+            ImageProcessingStepSettings step = systemParameters.ImagePreprocessingSteps[stepIndex];
+            ImageProcessingStepSettings target = systemParameters.ImagePreprocessingSteps[targetIndex];
+            systemParameters.ImagePreprocessingSteps[stepIndex] = target;
+            systemParameters.ImagePreprocessingSteps[targetIndex] = step;
+            selectedImagePreprocessingStepIndex = targetIndex;
+            SaveSystemParameters();
+            MarkPreprocessedImageDirty();
+            RebuildVisibleImagePreprocessingSteps();
+            functionListBox.SelectedItem = CreateImagePreprocessingStepText(targetIndex + 1);
+            statusLabel.Text = direction < 0 ? "已上移前處理" : "已下移前處理";
+        }
+
+        private void ProcessImagePreprocessingStep(string stepText)
+        {
+            int stepIndex = GetImagePreprocessingStepIndex(stepText);
+            if (stepIndex < 0 || stepIndex >= systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return;
+            }
+
+            selectedImagePreprocessingStepIndex = stepIndex;
+            selectedImagePreprocessingGroupId = null;
+            preprocessingExecutionRequested = true;
+            BeginParameterApplyStatus(true);
+            MarkPreprocessedImageDirty();
+            statusLabel.Text = "已開始處理前處理" + (stepIndex + 1);
+        }
+
+        private void ProcessImagePreprocessingGroup(string groupId)
+        {
+            if (string.IsNullOrEmpty(groupId) || FindImagePreprocessingGroup(groupId) == null)
+            {
+                return;
+            }
+
+            selectedImagePreprocessingStepIndex = -1;
+            selectedImagePreprocessingGroupId = groupId;
+            preprocessingExecutionRequested = true;
+            BeginParameterApplyStatus(true);
+            MarkPreprocessedImageDirty();
+            statusLabel.Text = "已開始處理前處理群組";
+        }
+
+        private void RenameImagePreprocessingStep(string stepText)
+        {
+            int stepIndex = GetImagePreprocessingStepIndex(stepText);
+            if (stepIndex < 0 || stepIndex >= systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return;
+            }
+
+            ImageProcessingStepSettings step = systemParameters.ImagePreprocessingSteps[stepIndex];
+            string name;
+            if (!TryGetImageProcessingStepName(step.DisplayName, out name))
+            {
+                return;
+            }
+
+            step.DisplayName = name;
+            SaveSystemParameters();
+            RebuildVisibleImagePreprocessingSteps();
+            functionListBox.SelectedItem = CreateImagePreprocessingStepText(stepIndex + 1);
+            statusLabel.Text = "已命名前處理" + CreateImagePreprocessingStepText(stepIndex + 1).Trim();
         }
 
         private void RemoveImagePreprocessingSubMenuItems()
@@ -1910,12 +2323,11 @@ namespace IntegratedImageProcessingApp.Forms
                 ? systemParameters.ImagePreprocessingSteps[stepNumber - 1]
                 : null;
             string method = step == null || string.IsNullOrWhiteSpace(step.Method) ? "未決定" : step.Method;
-            long elapsedMilliseconds;
-            string elapsedText = step != null && imagePreprocessingStepElapsedMilliseconds.TryGetValue(step, out elapsedMilliseconds)
-                ? " - " + elapsedMilliseconds.ToString(CultureInfo.InvariantCulture) + " ms"
-                : string.Empty;
+            string name = step == null || string.IsNullOrWhiteSpace(step.DisplayName)
+                ? "前處理" + stepNumber.ToString(CultureInfo.InvariantCulture)
+                : step.DisplayName;
             return new string(' ', 4 + (Math.Max(0, depth) * 2)) + "前處理" +
-                stepNumber.ToString(CultureInfo.InvariantCulture) + "(" + method + ")" + elapsedText;
+                stepNumber.ToString(CultureInfo.InvariantCulture) + "(" + name + " - " + method + ")";
         }
 
         private static bool IsImagePreprocessingGroupMenuItem(string text)
@@ -1933,6 +2345,21 @@ namespace IntegratedImageProcessingApp.Forms
         private string GetImagePreprocessingGroupId(string text)
         {
             string trimmed = text == null ? string.Empty : text.Trim();
+            const string prefix = "前處理群組(";
+            if (trimmed.StartsWith(prefix, StringComparison.Ordinal) && trimmed.EndsWith(")", StringComparison.Ordinal))
+            {
+                string displayName = trimmed.Substring(prefix.Length, trimmed.Length - prefix.Length - 1);
+                ImageProcessingGroupSettings namedGroup = systemParameters.ImagePreprocessingGroups.FirstOrDefault(
+                    group => string.Equals(
+                        string.IsNullOrWhiteSpace(group.DisplayName) ? "未命名群組" : group.DisplayName,
+                        displayName,
+                        StringComparison.Ordinal));
+                if (namedGroup != null)
+                {
+                    return namedGroup.Id;
+                }
+            }
+
             foreach (ImageProcessingGroupSettings group in systemParameters.ImagePreprocessingGroups)
             {
                 if (string.Equals(trimmed, CreateImagePreprocessingGroupText(group, 0).Trim(), StringComparison.Ordinal))
@@ -2029,6 +2456,7 @@ namespace IntegratedImageProcessingApp.Forms
             CloseImageProcessingStepContextMenu();
             var menu = new ContextMenuStrip();
             imageProcessingStepContextMenu = menu;
+            menu.Items.Add("處理", null, delegate { ProcessImagePreprocessingGroup(group.Id); });
             menu.Items.Add("上移", null, delegate { MoveImagePreprocessingGroup(group.Id, -1); });
             menu.Items.Add("下移", null, delegate { MoveImagePreprocessingGroup(group.Id, 1); });
             menu.Items.Add("命名", null, delegate { RenameImagePreprocessingGroup(group.Id); });
@@ -2118,8 +2546,12 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string trimmed = text.Trim();
+            int openIndex = trimmed.IndexOf('(');
+            int number;
             return trimmed.StartsWith("前處理", StringComparison.Ordinal) &&
-                trimmed.IndexOf('(') > "前處理".Length && trimmed.IndexOf(')') > trimmed.IndexOf('(');
+                openIndex > "前處理".Length &&
+                trimmed.IndexOf(')') > openIndex &&
+                int.TryParse(trimmed.Substring("前處理".Length, openIndex - "前處理".Length), out number);
         }
 
         private int GetImagePreprocessingStepIndex(string text)
@@ -2191,17 +2623,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string stepName = string.IsNullOrWhiteSpace(displayName) ? "未決定" : displayName;
-            string elapsedText = string.Empty;
-            long elapsedMilliseconds;
-            if (stepIndex >= 0 && stepIndex < systemParameters.ImageProcessingSteps.Count &&
-                imageProcessingStepElapsedMilliseconds.TryGetValue(
-                    systemParameters.ImageProcessingSteps[stepIndex],
-                    out elapsedMilliseconds))
-            {
-                elapsedText = " - " + elapsedMilliseconds.ToString(CultureInfo.InvariantCulture) + " ms";
-            }
-
-            return new string(' ', 4 + (Math.Max(0, depth) * 2)) + "處理" + stepNumber + "(" + stepName + ")" + elapsedText;
+            return new string(' ', 4 + (Math.Max(0, depth) * 2)) + "處理" + stepNumber + "(" + stepName + ")";
         }
 
         private void RenameImageProcessingStep(string stepText)
@@ -2285,11 +2707,6 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            // The selected step is the only result shown in the processed tabs.
-            // Its algorithm is applied to every configured ROI.
-            MarkProcessedPreviewDirty();
-            ScheduleProcessedImageUpdateIfVisible();
-
             EnsureImageProcessingFlowTreeView();
             parameterPlaceholderLabel.Visible = false;
 
@@ -2310,6 +2727,26 @@ namespace IntegratedImageProcessingApp.Forms
             statusLabel.Text = "目前選擇：" + stepText.Trim();
         }
 
+        private void ProcessImageProcessingStep(string stepText)
+        {
+            int stepIndex = GetImageProcessingStepIndex(stepText);
+            if (stepIndex < 0 || stepIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                return;
+            }
+
+            selectedImageProcessingStepIndex = stepIndex;
+            selectedImageProcessingGroupId = null;
+            activeImageRelationSourceType = null;
+            activeImageRelationSourceId = null;
+            imageProcessingExecutionRequested = true;
+            BeginParameterApplyStatus(false);
+            MarkProcessedPreviewDirty();
+            MarkProcessedImageDirty();
+            ScheduleProcessedImageUpdateIfVisible();
+            statusLabel.Text = "已開始處理" + stepText.Trim();
+        }
+
         private void ShowImageProcessingGroup(string groupText)
         {
             string groupId = GetImageProcessingGroupId(groupText);
@@ -2320,8 +2757,6 @@ namespace IntegratedImageProcessingApp.Forms
 
             selectedImageProcessingStepIndex = -1;
             selectedImageProcessingGroupId = groupId;
-            MarkProcessedPreviewDirty();
-            ScheduleProcessedImageUpdateIfVisible();
             HideImageProcessingParameterPanel();
             if (imageProcessingFlowTreeView != null)
             {
@@ -2339,6 +2774,7 @@ namespace IntegratedImageProcessingApp.Forms
             selectedImageProcessingStepIndex = -1;
             selectedImageProcessingGroupId = null;
             selectedImagePreprocessingStepIndex = -1;
+            selectedImagePreprocessingGroupId = null;
             parameterPlaceholderLabel.Visible = true;
             if (imageProcessingFlowTreeView != null)
             {
@@ -2357,6 +2793,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             selectedImageProcessingStepIndex = -1;
             selectedImageProcessingGroupId = null;
+            selectedImagePreprocessingGroupId = null;
             selectedImagePreprocessingStepIndex = GetImagePreprocessingStepIndex(stepText);
             if (selectedImagePreprocessingStepIndex < 0 ||
                 selectedImagePreprocessingStepIndex >= systemParameters.ImagePreprocessingSteps.Count)
@@ -2380,6 +2817,63 @@ namespace IntegratedImageProcessingApp.Forms
                 SelectImagePreprocessingFlowNode(method);
                 rightPanelTitleLabel.Text = stepText.Trim() + " 方法";
             }
+        }
+
+        private void ShowImagePreprocessingGroup(string groupText)
+        {
+            selectedImageProcessingStepIndex = -1;
+            selectedImageProcessingGroupId = null;
+            selectedImagePreprocessingStepIndex = -1;
+            selectedImagePreprocessingGroupId = GetImagePreprocessingGroupId(groupText);
+            if (string.IsNullOrEmpty(selectedImagePreprocessingGroupId))
+            {
+                return;
+            }
+
+            HideImageProcessingParameterPanel();
+            if (imagePreprocessingFlowTreeView != null)
+            {
+                imagePreprocessingFlowTreeView.Visible = false;
+            }
+
+            parameterPlaceholderLabel.Visible = true;
+            parameterPlaceholderLabel.Text = "前處理群組會依由上而下的順序串接執行。";
+            rightPanelTitleLabel.Text = groupText.Trim() + " 結果";
+            statusLabel.Text = "目前選擇：" + groupText.Trim();
+        }
+
+        private void ProcessImagePreprocessingGroup(ImageProcessingGroupSettings group)
+        {
+            if (group == null)
+            {
+                return;
+            }
+
+            selectedImageProcessingStepIndex = -1;
+            selectedImageProcessingGroupId = group.Id;
+            imageProcessingExecutionRequested = true;
+            BeginParameterApplyStatus(false);
+            MarkProcessedPreviewDirty();
+            ScheduleProcessedImageUpdateIfVisible();
+            statusLabel.Text = "已開始處理" + group.DisplayName;
+        }
+
+        private void ProcessImageProcessingGroup(string groupId)
+        {
+            ImageProcessingGroupSettings group = FindImageProcessingGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            selectedImageProcessingStepIndex = -1;
+            selectedImageProcessingGroupId = group.Id;
+            activeImageRelationSourceType = null;
+            activeImageRelationSourceId = null;
+            imageProcessingExecutionRequested = true;
+            MarkProcessedPreviewDirty();
+            ScheduleProcessedImageUpdateIfVisible();
+            statusLabel.Text = "已開始處理" + group.DisplayName;
         }
 
         private void EnsureImagePreprocessingFlowTreeView()
@@ -2959,10 +3453,11 @@ namespace IntegratedImageProcessingApp.Forms
             imageProcessingParameterPanel.Controls.Add(parameterApplyStatusLabel);
         }
 
-        private void BeginParameterApplyStatus()
+        private void BeginParameterApplyStatus(bool preprocessing)
         {
             parameterApplyStopwatch = Stopwatch.StartNew();
             parameterApplyInProgress = true;
+            parameterApplyIsPreprocessing = preprocessing;
             SetParameterApplyStatus("影像處理中...");
         }
 
@@ -2971,6 +3466,64 @@ namespace IntegratedImageProcessingApp.Forms
             if (parameterApplyStatusLabel != null && !parameterApplyStatusLabel.IsDisposed)
             {
                 parameterApplyStatusLabel.Text = text;
+            }
+        }
+
+        private void ReportBackgroundStatus(string text)
+        {
+            if (string.IsNullOrEmpty(text) || IsDisposed)
+            {
+                return;
+            }
+
+            lock (backgroundStatusLock)
+            {
+                pendingBackgroundStatusText = text;
+                if (backgroundStatusTimer != null)
+                {
+                    return;
+                }
+
+                backgroundStatusTimer = new System.Threading.Timer(
+                    delegate { FlushBackgroundStatus(); },
+                    null,
+                    250,
+                    System.Threading.Timeout.Infinite);
+            }
+        }
+
+        private void FlushBackgroundStatus()
+        {
+            string text;
+            lock (backgroundStatusLock)
+            {
+                text = pendingBackgroundStatusText;
+                pendingBackgroundStatusText = null;
+                if (backgroundStatusTimer != null)
+                {
+                    backgroundStatusTimer.Dispose();
+                    backgroundStatusTimer = null;
+                }
+            }
+
+            if (string.IsNullOrEmpty(text) || IsDisposed || !IsHandleCreated)
+            {
+                return;
+            }
+
+            try
+            {
+                BeginInvoke(new Action(delegate
+                {
+                    if (!IsDisposed)
+                    {
+                        statusLabel.Text = text;
+                    }
+                }));
+            }
+            catch (InvalidOperationException)
+            {
+                // The form can close while a background operation is finishing.
             }
         }
 
@@ -2984,12 +3537,48 @@ namespace IntegratedImageProcessingApp.Forms
             long total = parameterApplyStopwatch.ElapsedMilliseconds;
             parameterApplyStopwatch.Stop();
             parameterApplyInProgress = false;
+            string operationLabel = parameterApplyIsPreprocessing ? "前處理時間" : "影像處理時間";
+            long operationElapsed = parameterApplyIsPreprocessing
+                ? lastPreprocessingElapsedMilliseconds
+                : lastImageProcessingElapsedMilliseconds;
+            // The apply stopwatch covers the complete operation, including
+            // converting/publishing the full result for preview. Keep the
+            // displayed values additive instead of reporting only the final
+            // control assignment as preview time.
+            lastDisplayProcessingElapsedMilliseconds = Math.Max(0, total - operationElapsed);
+            string operationName = parameterApplyIsPreprocessing
+                ? (selectedImagePreprocessingStepIndex >= 0 &&
+                   selectedImagePreprocessingStepIndex < systemParameters.ImagePreprocessingSteps.Count
+                    ? CreateImagePreprocessingStepText(selectedImagePreprocessingStepIndex + 1).Trim()
+                    : GetTimingGroupName(selectedImagePreprocessingGroupId, true))
+                : (selectedImageProcessingStepIndex >= 0 &&
+                   selectedImageProcessingStepIndex < systemParameters.ImageProcessingSteps.Count
+                    ? CreateImageProcessingStepText(selectedImageProcessingStepIndex + 1).Trim()
+                    : GetTimingGroupName(selectedImageProcessingGroupId, false));
+            statusLabel.Text = string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}: 影像處理時間：{1} ms || 顯示處理時間：{2} ms",
+                operationName,
+                operationElapsed,
+                lastDisplayProcessingElapsedMilliseconds);
             SetParameterApplyStatus(string.Format(
                 CultureInfo.InvariantCulture,
-                "完成：處理時間共：{0} ms\r\n影像處理時間：{1} ms || 預覽圖處理時間：{2} ms",
+                "完成：處理時間共：{0} ms\r\n{1}：{2} ms || 預覽圖處理時間：{3} ms",
                 total,
-                lastImageProcessingElapsedMilliseconds,
+                operationLabel,
+                operationElapsed,
                 lastDisplayProcessingElapsedMilliseconds));
+        }
+
+        private string GetTimingGroupName(string groupId, bool preprocessing)
+        {
+            ImageProcessingGroupSettings group = preprocessing
+                ? FindImagePreprocessingGroup(groupId)
+                : FindImageProcessingGroup(groupId);
+            string name = group == null || string.IsNullOrWhiteSpace(group.DisplayName)
+                ? "未命名群組"
+                : group.DisplayName;
+            return (preprocessing ? "前處理群組(" : "群組(") + name + ")";
         }
 
         private void ApplyPendingImagePreprocessingParameters()
@@ -3009,7 +3598,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters = committed;
             SaveSystemParameters();
-            BeginParameterApplyStatus();
+            preprocessingExecutionRequested = true;
+            BeginParameterApplyStatus(true);
             MarkPreprocessedImageDirty();
             statusLabel.Text = "已套用前處理" + (selectedImagePreprocessingStepIndex + 1) + " 參數";
         }
@@ -3032,7 +3622,8 @@ namespace IntegratedImageProcessingApp.Forms
             CapturePreprocessedImageViewState();
             systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters = committed;
             SaveSystemParameters();
-            BeginParameterApplyStatus();
+            imageProcessingExecutionRequested = true;
+            BeginParameterApplyStatus(false);
             MarkProcessedImageDirty();
             ScheduleProcessedImageUpdateIfVisible();
             statusLabel.Text = "已套用處理" + (selectedImageProcessingStepIndex + 1) + " 參數";
@@ -3691,6 +4282,25 @@ namespace IntegratedImageProcessingApp.Forms
         private List<ImageProcessingStepSettings> GetOrderedImagePreprocessingSteps()
         {
             var steps = new List<ImageProcessingStepSettings>();
+            if (selectedImagePreprocessingStepIndex >= 0 &&
+                selectedImagePreprocessingStepIndex < systemParameters.ImagePreprocessingSteps.Count)
+            {
+                ImageProcessingStepSettings selectedStep =
+                    systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex];
+                if (IsImagePreprocessingMethod(selectedStep.Method))
+                {
+                    steps.Add(selectedStep);
+                }
+
+                return steps;
+            }
+
+            if (!string.IsNullOrEmpty(selectedImagePreprocessingGroupId))
+            {
+                CollectImagePreprocessingGroupSteps(selectedImagePreprocessingGroupId, steps);
+                return steps;
+            }
+
             foreach (ImageProcessingStepSettings step in systemParameters.ImagePreprocessingSteps)
             {
                 if (string.IsNullOrWhiteSpace(step.GroupId))
@@ -3733,15 +4343,58 @@ namespace IntegratedImageProcessingApp.Forms
             Dictionary<ImageProcessingStepSettings, long> elapsedMilliseconds)
         {
             imagePreprocessingStepElapsedMilliseconds.Clear();
+            lastPreprocessingElapsedMilliseconds = 0;
             if (elapsedMilliseconds != null)
             {
                 foreach (KeyValuePair<ImageProcessingStepSettings, long> item in elapsedMilliseconds)
                 {
                     imagePreprocessingStepElapsedMilliseconds[item.Key] = item.Value;
+                    lastPreprocessingElapsedMilliseconds += item.Value;
                 }
             }
+        }
 
-            RebuildVisibleImagePreprocessingSteps();
+        private void RefreshVisibleImagePreprocessingStepText(int stepIndex)
+        {
+            if (stepIndex < 0 || stepIndex >= systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return;
+            }
+
+            for (int itemIndex = 0; itemIndex < functionListBox.Items.Count; itemIndex++)
+            {
+                string itemText = functionListBox.Items[itemIndex] as string;
+                if (GetImagePreprocessingStepIndex(itemText) != stepIndex)
+                {
+                    continue;
+                }
+
+                int leadingSpaces = itemText.Length - itemText.TrimStart().Length;
+                int depth = Math.Max(0, (leadingSpaces - 4) / 2);
+                isUpdatingFunctionListText = true;
+                int selectedIndex = functionListBox.SelectedIndex;
+                int topIndex = functionListBox.TopIndex;
+                functionListBox.BeginUpdate();
+                try
+                {
+                    functionListBox.Items[itemIndex] = CreateImagePreprocessingStepText(stepIndex + 1, depth);
+                    if (selectedIndex >= 0 && selectedIndex < functionListBox.Items.Count)
+                    {
+                        functionListBox.SelectedIndex = selectedIndex;
+                    }
+
+                    if (topIndex >= 0 && topIndex < functionListBox.Items.Count)
+                    {
+                        functionListBox.TopIndex = topIndex;
+                    }
+                }
+                finally
+                {
+                    functionListBox.EndUpdate();
+                    isUpdatingFunctionListText = false;
+                }
+                break;
+            }
         }
 
         private void MarkPreprocessedImageDirty()
@@ -3751,6 +4404,23 @@ namespace IntegratedImageProcessingApp.Forms
             preprocessedImageGeneration++;
             imagePreprocessingStepElapsedMilliseconds.Clear();
             MarkProcessedImageDirty();
+
+            // A selected preprocessing step/group has its own result. Do not
+            // leave the previous selection visible while the new full-image
+            // result is being prepared.
+            if (leftPreprocessedDisplayControl != null && rightPreprocessedDisplayControl != null)
+            {
+                isSyncingImageView = true;
+                try
+                {
+                    leftPreprocessedDisplayControl.ClearImage();
+                    rightPreprocessedDisplayControl.ClearImage();
+                }
+                finally
+                {
+                    isSyncingImageView = false;
+                }
+            }
 
             lock (largePreprocessedImageLock)
             {
@@ -3859,7 +4529,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async void RequestPreprocessedImageUpdate()
         {
-            if (isPreparingPreprocessedImage || !preprocessedImageDirty || !HasConfiguredImagePreprocessingSteps() ||
+            if (!preprocessingExecutionRequested || isPreparingPreprocessedImage || !preprocessedImageDirty || !HasConfiguredImagePreprocessingSteps() ||
                 string.IsNullOrWhiteSpace(systemParameters.LastImagePath) || !File.Exists(systemParameters.LastImagePath))
             {
                 return;
@@ -3889,7 +4559,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     originalSource,
                                     new Rectangle(0, 0, originalSource.Width, originalSource.Height)))
                                 {
-                                    return CreateOpenCvPreprocessedImage(source);
+                                    return CreateOpenCvPreprocessedImage(source, activeImageRelationSourceType == "Step" ? activeImageRelationSourceId : null);
                                 }
                             });
                         Cv.Mat preprocessed = preprocessingResult.Image;
@@ -3916,8 +4586,10 @@ namespace IntegratedImageProcessingApp.Forms
                         isSyncingImageView = true;
                         try
                         {
+                            Stopwatch previewStopwatch = Stopwatch.StartNew();
                             leftPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource);
                             rightPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource);
+                            lastDisplayProcessingElapsedMilliseconds = Math.Max(1, previewStopwatch.ElapsedMilliseconds);
                         }
                         finally
                         {
@@ -3958,8 +4630,10 @@ namespace IntegratedImageProcessingApp.Forms
                         isSyncingImageView = true;
                         try
                         {
+                            Stopwatch previewStopwatch = Stopwatch.StartNew();
                             leftPreprocessedDisplayControl.SetDisplayImage(new Bitmap(preprocessed), true);
                             rightPreprocessedDisplayControl.SetDisplayImage(new Bitmap(preprocessed), true);
+                            lastDisplayProcessingElapsedMilliseconds = Math.Max(1, previewStopwatch.ElapsedMilliseconds);
                         }
                         finally
                         {
@@ -3972,6 +4646,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                 preprocessedImageDirty = false;
                 statusLabel.Text = "影像前處理完成";
+                CompleteParameterApplyStatus();
                 if (HasSelectedPreviewableImageProcessingSteps())
                 {
                     ScheduleProcessedImageUpdateIfVisible();
@@ -3995,6 +4670,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private PreprocessedImageResult CreateOpenCvPreprocessedImage(Cv.Mat source)
         {
+            return CreateOpenCvPreprocessedImage(source, null);
+        }
+
+        private PreprocessedImageResult CreateOpenCvPreprocessedImage(Cv.Mat source, string stopAfterStepId)
+        {
             Cv.Mat current = source.Clone();
             var elapsed = new Dictionary<ImageProcessingStepSettings, long>();
             try
@@ -4014,6 +4694,11 @@ namespace IntegratedImageProcessingApp.Forms
                     elapsed[step] = stopwatch.ElapsedMilliseconds;
                     current.Dispose();
                     current = next;
+                    if (!string.IsNullOrWhiteSpace(stopAfterStepId) &&
+                        string.Equals(step.Id, stopAfterStepId, StringComparison.Ordinal))
+                    {
+                        break;
+                    }
                 }
 
                 var result = new PreprocessedImageResult
@@ -4452,9 +5137,15 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task UpdateVisibleProcessedImageIfNeededAsync()
         {
+            if (!imageProcessingExecutionRequested)
+            {
+                return;
+            }
+
             if (!HasSelectedPreviewableImageProcessingSteps())
             {
                 processedImageDirty = false;
+                CompleteParameterApplyStatus();
                 return;
             }
 
@@ -4622,16 +5313,14 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 processingSource = GetLargeImageProcessingSource(sharedSource);
+                LargeImageSource processedDisplaySource =
+                    string.Equals(activeImageRelationSourceType, "Original", StringComparison.Ordinal)
+                        ? sharedSource
+                        : processingSource;
 
-                if (!leftProcessedDisplayControl.IsLargeImageMode)
-                {
-                    leftProcessedDisplayControl.SetSharedLargeImageSource(sharedSource);
-                }
+                leftProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource);
 
-                if (!rightProcessedDisplayControl.IsLargeImageMode)
-                {
-                    rightProcessedDisplayControl.SetSharedLargeImageSource(sharedSource);
-                }
+                rightProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource);
 
                 Rectangle? selectedRoi = GetSelectedRoi();
                 if (selectedRoi.HasValue)
@@ -4674,6 +5363,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private LargeImageSource GetLargeImageProcessingSource(LargeImageSource originalSource)
         {
+            if (string.Equals(activeImageRelationSourceType, "Original", StringComparison.Ordinal))
+            {
+                return originalSource.AddReference();
+            }
+
             lock (largePreprocessedImageLock)
             {
                 if (largePreprocessedImageSource != null && !preprocessedImageDirty)
@@ -4883,9 +5577,9 @@ namespace IntegratedImageProcessingApp.Forms
                                                     }
                                                 }
 
-                                                statusLabel.Text = "影像處理運算中...ROI Mask " +
+                                                ReportBackgroundStatus("影像處理運算中...ROI Mask " +
                                                     progress.ToString(CultureInfo.InvariantCulture) + "/" +
-                                                    totalChunks.ToString(CultureInfo.InvariantCulture);
+                                                    totalChunks.ToString(CultureInfo.InvariantCulture));
                                                 if (publishPartialMask)
                                                 {
                                                     leftProcessedDisplayControl.InvalidateImageView();
@@ -5476,6 +6170,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     largeProcessedOverlayCache[cacheKey] = overlay;
                                     overlay = null;
                                     statusLabel.Text = "影像處理結果已顯示";
+                                    CompleteParameterApplyStatus();
                                     leftProcessedDisplayControl.ScheduleImageViewRefresh();
                                     rightProcessedDisplayControl.ScheduleImageViewRefresh();
                                 }));
@@ -5994,7 +6689,14 @@ namespace IntegratedImageProcessingApp.Forms
                         // viewport render. Subsequent cache/display updates
                         // must not imply that the algorithm ran again.
                         includeImageProcessingTimeOnNextDisplay = true;
-                        SetParameterApplyStatus("產生預覽圖中...");
+                        if (IsAnyProcessedTabVisible())
+                        {
+                            SetParameterApplyStatus("產生預覽圖中...");
+                        }
+                        else
+                        {
+                            CompleteParameterApplyStatus();
+                        }
                         leftProcessedDisplayControl.InvalidateImageView();
                         rightProcessedDisplayControl.InvalidateImageView();
                     }));
@@ -6012,7 +6714,6 @@ namespace IntegratedImageProcessingApp.Forms
             long existingElapsedMilliseconds;
             imageProcessingStepElapsedMilliseconds.TryGetValue(step, out existingElapsedMilliseconds);
             imageProcessingStepElapsedMilliseconds[step] = existingElapsedMilliseconds + processingElapsedMilliseconds;
-            RefreshVisibleImageProcessingStepText(systemParameters.ImageProcessingSteps.IndexOf(step));
         }
 
         private void UpdateProcessingTimingStatus(bool includeImageProcessingTime)
@@ -6159,7 +6860,7 @@ namespace IntegratedImageProcessingApp.Forms
             string method = step.Method;
             string parameters = step.Parameters;
             LargeImageSource sharedSource = source.AddReference();
-            statusLabel.Text = "影像處理運算中...等待 " + pendingLargeProcessedOverlayTiles.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊";
+            ReportBackgroundStatus("影像處理運算中...等待 " + pendingLargeProcessedOverlayTiles.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊");
 
             Task.Run(
                 delegate
@@ -6255,9 +6956,13 @@ namespace IntegratedImageProcessingApp.Forms
                                     TrimLargeProcessedOverlayCache();
                                     largeProcessedOverlayCache[cacheKey] = overlay;
                                     overlay = null;
-                                    statusLabel.Text = pendingLargeProcessedOverlayTiles.Count > 0
+                                    ReportBackgroundStatus(pendingLargeProcessedOverlayTiles.Count > 0
                                         ? "影像處理運算中...等待 " + pendingLargeProcessedOverlayTiles.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊"
-                                        : "影像處理完成，已顯示 " + largeProcessedOverlayCache.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊";
+                                        : "影像處理完成，已顯示 " + largeProcessedOverlayCache.Count.ToString(CultureInfo.InvariantCulture) + " 個區塊");
+                                    if (pendingLargeProcessedOverlayTiles.Count == 0)
+                                    {
+                                        CompleteParameterApplyStatus();
+                                    }
                                     leftProcessedDisplayControl.InvalidateImageView();
                                     rightProcessedDisplayControl.InvalidateImageView();
                                 }));
@@ -6630,7 +7335,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return null;
             }
 
-            using (Bitmap sourceImage = latestPreprocessedImage != null
+            using (Bitmap sourceImage = ShouldUseRelationPreprocessedSource() && latestPreprocessedImage != null
                 ? new Bitmap(latestPreprocessedImage)
                 : rightOriginalDisplayControl.CloneImage())
             {
@@ -6658,6 +7363,11 @@ namespace IntegratedImageProcessingApp.Forms
 
                 return result;
             }
+        }
+
+        private bool ShouldUseRelationPreprocessedSource()
+        {
+            return !string.Equals(activeImageRelationSourceType, "Original", StringComparison.Ordinal);
         }
 
         private static bool[,] CreateEdgeMask(Bitmap image, string method, Dictionary<string, string> parameters)

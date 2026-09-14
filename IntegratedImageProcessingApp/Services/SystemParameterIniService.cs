@@ -13,6 +13,7 @@ namespace IntegratedImageProcessingApp.Services
         private const string SectionRois = "ROIs";
         private const string SectionImageProcessing = "ImageProcessing";
         private const string SectionImagePreprocessing = "ImagePreprocessing";
+        private const string SectionImageRelations = "ImageRelations";
         private readonly string filePath;
 
         public SystemParameterIniService(string filePath)
@@ -67,6 +68,7 @@ namespace IntegratedImageProcessingApp.Services
             {
                 settings.ImageProcessingSteps.Add(new ImageProcessingStepSettings
                 {
+                    Id = GetValue(sections, SectionImageProcessing, "Step" + index + ".Id", string.Empty),
                     DisplayName = GetValue(sections, SectionImageProcessing, "Step" + index + ".DisplayName", string.Empty),
                     GroupId = GetValue(sections, SectionImageProcessing, "Step" + index + ".GroupId", string.Empty),
                     Method = GetValue(sections, SectionImageProcessing, "Step" + index + ".Method", string.Empty),
@@ -79,11 +81,34 @@ namespace IntegratedImageProcessingApp.Services
             {
                 settings.ImagePreprocessingSteps.Add(new ImageProcessingStepSettings
                 {
+                    Id = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".Id", string.Empty),
                     DisplayName = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".DisplayName", string.Empty),
                     GroupId = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".GroupId", string.Empty),
                     Method = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".Method", string.Empty),
                     Parameters = GetValue(sections, SectionImagePreprocessing, "Step" + index + ".Parameters", string.Empty)
                 });
+            }
+
+            EnsureStepIds(settings.ImageProcessingSteps);
+            EnsureStepIds(settings.ImagePreprocessingSteps);
+
+            int relationCount = GetInt(sections, SectionImageRelations, "Count", 0);
+            for (int index = 1; index <= relationCount; index++)
+            {
+                string prefix = "Relation" + index;
+                string id = GetValue(sections, SectionImageRelations, prefix + ".Id", string.Empty);
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    settings.ImageRelations.Add(new ImageRelationSettings
+                    {
+                        Id = id,
+                        DisplayName = GetValue(sections, SectionImageRelations, prefix + ".DisplayName", string.Empty),
+                        SourceType = GetValue(sections, SectionImageRelations, prefix + ".SourceType", string.Empty),
+                        SourceId = GetValue(sections, SectionImageRelations, prefix + ".SourceId", string.Empty),
+                        ProcessingType = GetValue(sections, SectionImageRelations, prefix + ".ProcessingType", string.Empty),
+                        ProcessingId = GetValue(sections, SectionImageRelations, prefix + ".ProcessingId", string.Empty)
+                    });
+                }
             }
 
             int imagePreprocessingGroupCount = GetInt(sections, SectionImagePreprocessing, "GroupCount", 0);
@@ -169,6 +194,7 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     ImageProcessingStepSettings step = settings.ImageProcessingSteps[index];
                     string keyPrefix = "Step" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", keyPrefix, Escape(step.Id));
                     writer.WriteLine("{0}.DisplayName={1}", keyPrefix, Escape(step.DisplayName));
                     writer.WriteLine("{0}.GroupId={1}", keyPrefix, Escape(step.GroupId));
                     writer.WriteLine("{0}.Method={1}", keyPrefix, Escape(step.Method));
@@ -191,10 +217,37 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     ImageProcessingStepSettings step = settings.ImagePreprocessingSteps[index];
                     string keyPrefix = "Step" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", keyPrefix, Escape(step.Id));
                     writer.WriteLine("{0}.DisplayName={1}", keyPrefix, Escape(step.DisplayName));
                     writer.WriteLine("{0}.GroupId={1}", keyPrefix, Escape(step.GroupId));
                     writer.WriteLine("{0}.Method={1}", keyPrefix, Escape(step.Method));
                     writer.WriteLine("{0}.Parameters={1}", keyPrefix, Escape(step.Parameters));
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("[ImageRelations]");
+                writer.WriteLine("Count={0}", settings.ImageRelations.Count.ToString(CultureInfo.InvariantCulture));
+                for (int index = 0; index < settings.ImageRelations.Count; index++)
+                {
+                    ImageRelationSettings relation = settings.ImageRelations[index];
+                    string prefix = "Relation" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", prefix, Escape(relation.Id));
+                    writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(relation.DisplayName));
+                    writer.WriteLine("{0}.SourceType={1}", prefix, Escape(relation.SourceType));
+                    writer.WriteLine("{0}.SourceId={1}", prefix, Escape(relation.SourceId));
+                    writer.WriteLine("{0}.ProcessingType={1}", prefix, Escape(relation.ProcessingType));
+                    writer.WriteLine("{0}.ProcessingId={1}", prefix, Escape(relation.ProcessingId));
+                }
+            }
+        }
+
+        private static void EnsureStepIds(List<ImageProcessingStepSettings> steps)
+        {
+            foreach (ImageProcessingStepSettings step in steps)
+            {
+                if (string.IsNullOrWhiteSpace(step.Id))
+                {
+                    step.Id = Guid.NewGuid().ToString("N");
                 }
             }
         }
