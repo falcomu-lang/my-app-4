@@ -88,6 +88,8 @@ namespace IntegratedImageProcessingApp.Forms
         private int preprocessedImageGeneration;
         private int imageSourceGeneration;
         private int largeProcessedMaskGeneration;
+        private Dictionary<string, string> pendingImageProcessingParameters;
+        private Dictionary<string, string> pendingImagePreprocessingParameters;
         private long lastImageProcessingElapsedMilliseconds;
         private long lastDisplayProcessingElapsedMilliseconds;
         private bool includeImageProcessingTimeOnNextDisplay;
@@ -2443,6 +2445,8 @@ namespace IntegratedImageProcessingApp.Forms
         private void ShowImagePreprocessingParameterPanel(string method)
         {
             EnsureImageProcessingParameterPanel();
+            pendingImagePreprocessingParameters = ParseImageProcessingParameters(
+                systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters);
             imagePreprocessingFlowTreeView.Visible = false;
             imageProcessingParameterPanel.Visible = true;
             imageProcessingParameterPanel.Controls.Clear();
@@ -2480,6 +2484,8 @@ namespace IntegratedImageProcessingApp.Forms
                 AddImagePreprocessingNumericParameter("SigmaColor", "Sigma Color", "50");
                 AddImagePreprocessingNumericParameter("SigmaSpace", "Sigma Space", "50");
             }
+
+            AddParameterEditButtons(true);
         }
 
         private void AddReselectImagePreprocessingMethodButton()
@@ -2655,6 +2661,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void ShowImageProcessingParameterPanel(string method)
         {
             EnsureImageProcessingParameterPanel();
+            pendingImageProcessingParameters = ParseImageProcessingParameters(GetSelectedImageProcessingStepParameters());
             imageProcessingFlowTreeView.Visible = false;
             parameterPlaceholderLabel.Visible = false;
             imageProcessingParameterPanel.Visible = true;
@@ -2691,6 +2698,8 @@ namespace IntegratedImageProcessingApp.Forms
                     AddComboParameter("KernelSize", "核心大小", SobelKernelSizeOptions, "3");
                     AddNumericParameter("Threshold", "邊緣門檻", "30");
                 }
+
+                AddParameterEditButtons(false);
             }
             finally
             {
@@ -2772,7 +2781,7 @@ namespace IntegratedImageProcessingApp.Forms
                 if (!isLoadingImageProcessingParameters)
                 {
                     var control = (NumericUpDown)sender;
-                    SaveImageProcessingParameter(control.Tag as string, control.Value.ToString(CultureInfo.InvariantCulture));
+                    SetPendingImageProcessingParameter(control.Tag as string, control.Value.ToString(CultureInfo.InvariantCulture));
                 }
             };
             numericUpDown.MouseWheel += NumericParameter_MouseWheel;
@@ -2791,7 +2800,7 @@ namespace IntegratedImageProcessingApp.Forms
             numeric.Maximum = 100000;
             numeric.Increment = numeric.DecimalPlaces > 0 ? 0.1M : 1M;
             numeric.Value = Math.Min(numeric.Maximum, ParseDecimalOrDefault(GetImagePreprocessingParameterValue(key, defaultValue), ParseDecimalOrDefault(defaultValue, 0)));
-            numeric.ValueChanged += delegate { SaveImagePreprocessingParameter(key, numeric.Value.ToString(CultureInfo.InvariantCulture)); };
+            numeric.ValueChanged += delegate { SetPendingImagePreprocessingParameter(key, numeric.Value.ToString(CultureInfo.InvariantCulture)); };
             numeric.MouseWheel += NumericParameter_MouseWheel;
             imageProcessingParameterPanel.Controls.Add(label);
             imageProcessingParameterPanel.Controls.Add(numeric);
@@ -2806,7 +2815,7 @@ namespace IntegratedImageProcessingApp.Forms
             combo.Items.AddRange(values);
             string value = GetImagePreprocessingParameterValue(key, defaultValue);
             combo.SelectedItem = values.Contains(value) ? value : defaultValue;
-            combo.SelectedIndexChanged += delegate { SaveImagePreprocessingParameter(key, combo.SelectedItem as string); };
+            combo.SelectedIndexChanged += delegate { SetPendingImagePreprocessingParameter(key, combo.SelectedItem as string); };
             imageProcessingParameterPanel.Controls.Add(label);
             imageProcessingParameterPanel.Controls.Add(combo);
         }
@@ -2818,7 +2827,8 @@ namespace IntegratedImageProcessingApp.Forms
                 return defaultValue;
             }
 
-            Dictionary<string, string> parameters = ParseImageProcessingParameters(systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters);
+            Dictionary<string, string> parameters = pendingImagePreprocessingParameters ??
+                ParseImageProcessingParameters(systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters);
             string value;
             return parameters.TryGetValue(key, out value) ? value : defaultValue;
         }
@@ -2835,6 +2845,22 @@ namespace IntegratedImageProcessingApp.Forms
             systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters = FormatImageProcessingParameters(parameters);
             SaveSystemParameters();
             MarkPreprocessedImageDirty();
+        }
+
+        private void SetPendingImagePreprocessingParameter(string key, string value)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                return;
+            }
+
+            if (pendingImagePreprocessingParameters == null)
+            {
+                pendingImagePreprocessingParameters = ParseImageProcessingParameters(
+                    systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters);
+            }
+
+            pendingImagePreprocessingParameters[key] = value ?? string.Empty;
         }
 
         private void AddComboParameter(string key, string labelText, string[] values, string defaultValue)
@@ -2855,7 +2881,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 if (!isLoadingImageProcessingParameters)
                 {
-                    SaveImageProcessingParameter(((ComboBox)sender).Tag as string, ((ComboBox)sender).SelectedItem as string);
+                    SetPendingImageProcessingParameter(((ComboBox)sender).Tag as string, ((ComboBox)sender).SelectedItem as string);
                 }
             };
 
@@ -2875,10 +2901,94 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 if (!isLoadingImageProcessingParameters)
                 {
-                    SaveImageProcessingParameter(((CheckBox)sender).Tag as string, ((CheckBox)sender).Checked ? "true" : "false");
+                    SetPendingImageProcessingParameter(((CheckBox)sender).Tag as string, ((CheckBox)sender).Checked ? "true" : "false");
                 }
             };
             imageProcessingParameterPanel.Controls.Add(checkBox);
+        }
+
+        private void AddParameterEditButtons(bool preprocessing)
+        {
+            var apply = new Button();
+            apply.Width = parameterPanel.Width - 18;
+            apply.Height = 30;
+            apply.Text = "套用";
+            apply.Margin = new Padding(3, 12, 3, 0);
+            apply.Click += delegate
+            {
+                if (preprocessing)
+                {
+                    ApplyPendingImagePreprocessingParameters();
+                }
+                else
+                {
+                    ApplyPendingImageProcessingParameters();
+                }
+            };
+            imageProcessingParameterPanel.Controls.Add(apply);
+
+            var cancel = new Button();
+            cancel.Width = parameterPanel.Width - 18;
+            cancel.Height = 30;
+            cancel.Text = "取消";
+            cancel.Click += delegate
+            {
+                if (preprocessing)
+                {
+                    ShowImagePreprocessingParameterPanel(
+                        systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Method);
+                }
+                else
+                {
+                    ShowImageProcessingParameterPanel(
+                        systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Method);
+                }
+            };
+            imageProcessingParameterPanel.Controls.Add(cancel);
+        }
+
+        private void ApplyPendingImagePreprocessingParameters()
+        {
+            if (selectedImagePreprocessingStepIndex < 0 ||
+                selectedImagePreprocessingStepIndex >= systemParameters.ImagePreprocessingSteps.Count ||
+                pendingImagePreprocessingParameters == null)
+            {
+                return;
+            }
+
+            string committed = FormatImageProcessingParameters(pendingImagePreprocessingParameters);
+            if (committed == systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters)
+            {
+                return;
+            }
+
+            systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters = committed;
+            SaveSystemParameters();
+            MarkPreprocessedImageDirty();
+            statusLabel.Text = "已套用前處理" + (selectedImagePreprocessingStepIndex + 1) + " 參數";
+        }
+
+        private void ApplyPendingImageProcessingParameters()
+        {
+            if (selectedImageProcessingStepIndex < 0 ||
+                selectedImageProcessingStepIndex >= systemParameters.ImageProcessingSteps.Count ||
+                pendingImageProcessingParameters == null)
+            {
+                return;
+            }
+
+            string committed = FormatImageProcessingParameters(pendingImageProcessingParameters);
+            if (committed == systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters)
+            {
+                return;
+            }
+
+            CapturePreprocessedImageViewState();
+            systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Parameters = committed;
+            SaveSystemParameters();
+            MarkProcessedImageDirty();
+            ScheduleProcessedImageUpdateIfVisible();
+            statusLabel.Text = "已套用處理" + (selectedImageProcessingStepIndex + 1) + " 參數";
         }
 
         private Label CreateParameterLabel(string text)
@@ -2971,7 +3081,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private string GetImageProcessingParameterValue(string key, string defaultValue)
         {
-            Dictionary<string, string> parameters = ParseImageProcessingParameters(GetSelectedImageProcessingStepParameters());
+            Dictionary<string, string> parameters = pendingImageProcessingParameters ??
+                ParseImageProcessingParameters(GetSelectedImageProcessingStepParameters());
             string value;
             if (key == "CoreWidth" &&
                 !parameters.ContainsKey("CoreWidth") &&
@@ -3016,6 +3127,26 @@ namespace IntegratedImageProcessingApp.Forms
             MarkProcessedImageDirty();
             ScheduleProcessedImageUpdateIfVisible();
             statusLabel.Text = "已更新處理" + (selectedImageProcessingStepIndex + 1) + " 參數";
+        }
+
+        private void SetPendingImageProcessingParameter(string key, string value)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                return;
+            }
+
+            if (pendingImageProcessingParameters == null)
+            {
+                pendingImageProcessingParameters = ParseImageProcessingParameters(GetSelectedImageProcessingStepParameters());
+            }
+
+            if (key == "CoreWidth")
+            {
+                pendingImageProcessingParameters.Remove("EdgeWidth");
+            }
+
+            pendingImageProcessingParameters[key] = value ?? string.Empty;
         }
 
         private static Dictionary<string, string> ParseImageProcessingParameters(string parameterText)
@@ -3623,16 +3754,11 @@ namespace IntegratedImageProcessingApp.Forms
             isSyncingImageView = true;
             try
             {
-                ApplyImageViewState(leftOriginalDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(leftPreprocessedDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(leftProcessedDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(leftObjectsDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(leftDebugDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(rightOriginalDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(rightPreprocessedDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(rightProcessedDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(rightObjectsDisplayControl, preprocessedImageViewState);
-                ApplyImageViewState(rightDebugDisplayControl, preprocessedImageViewState);
+                // Only the two controls currently visible to the user need
+                // a view update. Background tabs will be aligned when they
+                // become active through VisibleImageTabControl_SelectedIndexChanged.
+                ApplyImageViewState(GetVisibleLeftImageDisplayControl(), preprocessedImageViewState);
+                ApplyImageViewState(GetVisibleRightImageDisplayControl(), preprocessedImageViewState);
                 if (isImageViewerMaximized)
                 {
                     maximizedImageViewerViewState = preprocessedImageViewState;
