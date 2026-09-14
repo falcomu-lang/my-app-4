@@ -3627,6 +3627,12 @@ namespace IntegratedImageProcessingApp.Forms
 
         private Cv.Mat GetOrCreateLargeRoiOpenCvGrayCache(LargeImageSource source, Rectangle roi)
         {
+            if (!Environment.Is64BitProcess)
+            {
+                throw new InvalidOperationException(
+                    "大圖 OpenCV ROI 處理必須以 64 位元執行。請重新建置目前的 x64 設定後再執行。");
+            }
+
             lock (largeRoiGrayCacheLock)
             {
                 if (ReferenceEquals(largeOpenCvSourceGrayCacheSource, source) &&

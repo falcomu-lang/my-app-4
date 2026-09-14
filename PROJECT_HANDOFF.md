@@ -11,6 +11,7 @@
 
 ### Large-image data and processing architecture
 - The application supports large grayscale images such as `16384 x 16384` and larger without creating a full-size GDI+ `Bitmap` for display.
+- Debug and Release builds use `AnyCPU` with `Prefer32Bit=false`, so a 64-bit Windows system runs the application as a 64-bit process. Do not re-enable 32-bit preference: a large full-frame OpenCV grayscale `Cv.Mat` requires one contiguous native allocation before its algorithm temporaries are created.
 - Display and processing are deliberately separate:
   - `LargeImageSource` is the WIC-backed display source. Both left/right viewers and all image tabs share the same source instance and request preview/tile data only when needed.
   - Large-image Canny, Polarity Edge, and Sobel Edge use one cached OpenCV grayscale source `Cv.Mat`, read once from `LargeImageSource.FilePath`. Each ROI is a lightweight OpenCV sub-matrix header sharing that native buffer; it is not a full ROI clone.
