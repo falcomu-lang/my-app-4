@@ -86,6 +86,7 @@ namespace IntegratedImageProcessingApp.Forms
         private bool preprocessedImageDirty = true;
         private bool isPreparingPreprocessedImage;
         private int preprocessedImageGeneration;
+        private int imageSourceGeneration;
         private int largeProcessedMaskGeneration;
         private long lastImageProcessingElapsedMilliseconds;
         private long lastDisplayProcessingElapsedMilliseconds;
@@ -3693,6 +3694,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             isPreparingPreprocessedImage = true;
             int generation = preprocessedImageGeneration;
+            int sourceGeneration = imageSourceGeneration;
+            string sourceFilePath = systemParameters.LastImagePath;
             try
             {
                 statusLabel.Text = "影像前處理運算中...使用 OpenCV";
@@ -3717,7 +3720,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 }
                             });
                         Cv.Mat preprocessed = preprocessingResult.Image;
-                        if (generation != preprocessedImageGeneration)
+                        if (generation != preprocessedImageGeneration || sourceGeneration != imageSourceGeneration)
                         {
                             preprocessed.Dispose();
                             return;
@@ -3728,7 +3731,7 @@ namespace IntegratedImageProcessingApp.Forms
                         var preprocessedSource = new LargeImageSource(preprocessed);
                         lock (largePreprocessedImageLock)
                         {
-                            if (generation != preprocessedImageGeneration)
+                            if (generation != preprocessedImageGeneration || sourceGeneration != imageSourceGeneration)
                             {
                                 preprocessedSource.ReleaseReference();
                                 return;
@@ -3757,9 +3760,10 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else
                 {
-                    PreprocessedBitmapResult preprocessingResult = await Task.Run(CreateCurrentPreprocessedBitmap);
+                    PreprocessedBitmapResult preprocessingResult = await Task.Run(
+                        () => CreateCurrentPreprocessedBitmap(sourceFilePath));
                     Bitmap preprocessed = preprocessingResult.Image;
-                    if (generation != preprocessedImageGeneration)
+                    if (generation != preprocessedImageGeneration || sourceGeneration != imageSourceGeneration)
                     {
                         if (preprocessed != null)
                         {
@@ -3808,7 +3812,8 @@ namespace IntegratedImageProcessingApp.Forms
             finally
             {
                 isPreparingPreprocessedImage = false;
-                if (preprocessedImageDirty && generation != preprocessedImageGeneration)
+                if (preprocessedImageDirty &&
+                    (generation != preprocessedImageGeneration || sourceGeneration != imageSourceGeneration))
                 {
                     RequestPreprocessedImageUpdate();
                 }
@@ -3855,9 +3860,9 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private PreprocessedBitmapResult CreateCurrentPreprocessedBitmap()
+        private PreprocessedBitmapResult CreateCurrentPreprocessedBitmap(string sourceFilePath)
         {
-            using (Cv.Mat source = Cv.Cv2.ImRead(systemParameters.LastImagePath, Cv.ImreadModes.Grayscale))
+            using (Cv.Mat source = Cv.Cv2.ImRead(sourceFilePath, Cv.ImreadModes.Grayscale))
             {
                 PreprocessedImageResult preprocessingResult = CreateOpenCvPreprocessedImage(source);
                 using (Cv.Mat result = preprocessingResult.Image)
@@ -5039,7 +5044,17 @@ namespace IntegratedImageProcessingApp.Forms
                     fullGray.Height != source.Height ||
                     fullGray.Type() != Cv.MatType.CV_8UC1)
                 {
-                    throw new InvalidOperationException("OpenCV 回傳的灰階原圖尺寸或格式不正確。");
+                    if (fullGray != null)
+                    {
+                        fullGray.Dispose();
+                        fullGray = null;
+                    }
+
+                    // Some large LZW TIFF variants are readable by WIC but
+                    // rejected by OpenCV's TIFF decoder. Keep the processing
+                    // source full-resolution and 8-bit; do not fall back to
+                    // the old ROI-tile analysis path.
+                    fullGray = CreateFullGrayMatWithWic(source.FilePath, source.Width, source.Height);
                 }
 
                 lock (largeRoiGrayCacheLock)
@@ -5076,6 +5091,51 @@ namespace IntegratedImageProcessingApp.Forms
                 if (fullGray != null)
                 {
                     fullGray.Dispose();
+                }
+            }
+        }
+
+        private static Cv.Mat CreateFullGrayMatWithWic(string filePath, int expectedWidth, int expectedHeight)
+        {
+            using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(
+                    stream,
+                    System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
+                    System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+                System.Windows.Media.Imaging.BitmapSource source = decoder.Frames[0];
+                if (source.PixelWidth != expectedWidth || source.PixelHeight != expectedHeight)
+                {
+                    throw new InvalidOperationException("WIC 解碼後的影像尺寸與來源不一致。");
+                }
+
+                var gray = new System.Windows.Media.Imaging.FormatConvertedBitmap(
+                    source,
+                    System.Windows.Media.PixelFormats.Gray8,
+                    null,
+                    0);
+                int stride = gray.PixelWidth;
+                byte[] row = new byte[stride];
+                var result = new Cv.Mat(expectedHeight, expectedWidth, Cv.MatType.CV_8UC1);
+                try
+                {
+                    for (int y = 0; y < expectedHeight; y++)
+                    {
+                        gray.CopyPixels(
+                            new System.Windows.Int32Rect(0, y, expectedWidth, 1),
+                            row,
+                            stride,
+                            0);
+                        int rowOffset = checked((int)((long)y * result.Step()));
+                        Marshal.Copy(row, 0, IntPtr.Add(result.Data, rowOffset), stride);
+                    }
+
+                    return result;
+                }
+                catch
+                {
+                    result.Dispose();
+                    throw;
                 }
             }
         }
@@ -6949,6 +7009,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task LoadImageIntoOriginalDisplaysAsync(string filePath, CancellationToken cancellationToken)
         {
+            Interlocked.Increment(ref imageSourceGeneration);
             Size imageSize = await Task.Run(() => LargeImageSource.ReadImageSize(filePath), cancellationToken);
             // A processing Mat belongs to one source file only.  Keep the
             // display controls tile-backed, but release the prior source Mat
