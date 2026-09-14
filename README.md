@@ -119,3 +119,17 @@ Sobel Edge 使用 OpenCV 原生 Sobel。可設定灰階變化方向、核心大�
 - 大圖載入時會背景預熱共享的完整解析度灰階 OpenCV Mat，讓前處理與 Canny、Sobel、Polarity 共用同一份原始灰階來源。
 - 前處理顯示時間可能高於 OpenCV 運算時間，因為前處理需要建立新的記憶體型顯示來源；處理後主要重用原圖 Tile 並疊加 Mask Overlay，兩者顯示時間不可直接比較演算法速度。
 - 記憶體型預覽的非同步建立曾經測試，但因畫面改善不明顯已回復原本穩定的快速預覽方式。
+
+## 預計架構拆分
+
+目前 `MainForm.cs` 仍包含較多流程協調責任，預計依下列順序拆分，先使用 `partial class MainForm` 保持行為不變：
+
+1. `MainForm.Preprocessing.cs`：影像前處理與前處理群組。
+2. `MainForm.Relations.cs`：影像關聯建立、來源/目標選擇與執行。
+3. `MainForm.Parameters.cs`：參數面板、套用/取消與狀態時間。
+4. `MainForm.Roi.cs`：ROI 操作、座標保存與 ROI Mask。
+5. `MainForm.Preview.cs`：分頁、Tile 顯示、紅色 Overlay 與視圖狀態。
+6. `MainForm.Cache.cs`：前處理、ROI、Mask、Overlay 與 generation 快取。
+7. `OpenCvProcessingService.cs`：最後再抽離純 OpenCV 演算法服務。
+
+每完成一個拆分檔案都要重新建置，並確認大圖、ROI、前處理、影像關聯及 Zoom/平移位置沒有回歸問題。

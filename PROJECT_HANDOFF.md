@@ -308,6 +308,15 @@ Group1.DisplayName=
 - Large-image loading warms the shared full-resolution grayscale OpenCV cache in the background. Keep source-generation checks and reference counting intact when replacing images.
 - Asynchronous overview preview creation for memory-backed results was tested and reverted because the visual result did not improve. Keep the current synchronous fast-preview behavior until a verified replacement is available.
 - Preprocessing display time can exceed OpenCV algorithm time because it creates a new memory-backed display source. Processed output is faster because it reuses original tiles and adds cached mask overlays.
+- Planned file split, in recommended order:
+  1. `Forms\MainForm.Preprocessing.cs`: Normalize, Gaussian Blur, CLAHE, Median Blur, Sharpen, Bilateral Filter, and preprocessing-group execution.
+  2. `Forms\MainForm.Relations.cs`: relation creation, source/target selectors, relation processing, rename, reorder, delete, and invalid-reference checks.
+  3. `Forms\MainForm.Parameters.cs`: parameter panels, pending values, Apply/Cancel, and parameter status timing.
+  4. `Forms\MainForm.Roi.cs`: ROI creation, deletion, display-all, ROI coordinate persistence, and ROI mask preparation.
+  5. `Forms\MainForm.Preview.cs`: original/preprocessed/processed tabs, red mask overlay, visible-tile refresh, and view-state restoration.
+  6. `Forms\MainForm.Cache.cs`: preprocessing, ROI, mask, overlay, generation, and invalidation caches.
+  7. `Services\OpenCvProcessingService.cs`: move pure OpenCV operations out of the form after the partial-class split is stable.
+- Use `partial class MainForm` for the first organization passes. Build after each file move and do not change behavior while relocating code. Only then extract pure services.
 - Image relation UI and execution foundation is now implemented.
 - The left menu contains `影像關聯`; right-clicking it can add a relation. Relation items support right-click processing, moving up/down, renaming, and deleting.
 - Selecting a relation shows source and target selectors on the right. Sources include original image, preprocessing step, and preprocessing group. Targets include image-processing step and image-processing group.
