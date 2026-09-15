@@ -46,11 +46,22 @@
 
 ## 架構整理進度
 
-- 已完成 `MainForm.ImageProcessing.cs`：影像處理執行入口，以及 Canny、Sobel、Polarity 的 OpenCV mask 演算法。
-- 已完成 `MainForm.Preprocessing.cs`：前處理欄位、結果型別、清單與群組、方法選擇、參數控制、OpenCV 演算法、背景執行、快取失效、耗時與畫面位置還原。
-- 已建立 `MainForm.Relation.cs`，目前包含影像關聯專用欄位與 `RelationChoice` 型別；關聯參數面板與執行方法仍在 `MainForm.cs`，尚未全部搬移。
-- 後續依序拆分：影像關聯 UI/執行、`MainForm.Display.cs` 顯示與分頁、`MainForm.Cache.cs` 快取管理，最後再移除已確認沒有參考的舊方法與 `using`。
-- 拆分優先使用 `partial class MainForm`，先保持行為不變，再逐步將純演算法與快取移至獨立服務。
+### 已完成拆分
+
+- `MainForm.ImageProcessing.cs`：影像處理執行入口，以及 Canny、Sobel、Polarity 的 OpenCV mask 演算法。
+- `MainForm.Preprocessing.cs`：前處理欄位、結果型別、清單與群組、方法選擇、參數控制、OpenCV 演算法、背景執行、快取失效、耗時與畫面位置還原。
+- `MainForm.Relation.cs` 基礎：影像關聯專用欄位、選擇資料型別與選單常數；此檔案已加入專案，但關聯操作方法尚未全部搬移。
+
+### 預計拆分
+
+1. `MainForm.Relation.cs`：關聯參數面板、來源/目標選擇、套用、清單更新、右鍵選單、執行、命名、排序與刪除。
+2. `MainForm.Display.cs`：原圖、前處理、處理後分頁，放大、縮小、平移、左右同步與全畫面切換。
+3. `MainForm.Parameters.cs`：共用參數面板、套用/取消、暫存參數與狀態時間。
+4. `MainForm.Roi.cs`：ROI 建立、刪除、顯示全部、座標保存與 ROI 準備。
+5. `MainForm.Cache.cs`：ROI、前處理、Mask、Overlay 與 generation 快取管理。
+6. `Services/OpenCvProcessingService.cs`：partial 拆分穩定後，再抽離純 OpenCV 演算法。
+
+拆分原則是先使用 `partial class MainForm` 保持行為不變，每完成一批都重新建置；確認所有參考後才移除未使用的方法與 `using`。
 - 大圖處理要避免整張 Bitmap 複製；演算法應使用完整 ROI 的 OpenCV Mat，顯示才使用 tile。
 - 影像來源必須明確區分原圖與前處理結果；不可只用 `latestPreprocessedImage != null` 判斷來源。
 - 讀取新圖片、修改 ROI 或參數時，必須清除對應快取與 generation，避免顯示上一張圖片的結果。
@@ -124,17 +135,3 @@ Sobel Edge 使用 OpenCV 原生 Sobel。可設定灰階變化方向、核心大�
 - 大圖載入時會背景預熱共享的完整解析度灰階 OpenCV Mat，讓前處理與 Canny、Sobel、Polarity 共用同一份原始灰階來源。
 - 前處理顯示時間可能高於 OpenCV 運算時間，因為前處理需要建立新的記憶體型顯示來源；處理後主要重用原圖 Tile 並疊加 Mask Overlay，兩者顯示時間不可直接比較演算法速度。
 - 記憶體型預覽的非同步建立曾經測試，但因畫面改善不明顯已回復原本穩定的快速預覽方式。
-
-## 預計架構拆分
-
-目前 `MainForm.cs` 仍包含較多流程協調責任，預計依下列順序拆分，先使用 `partial class MainForm` 保持行為不變：
-
-1. `MainForm.Preprocessing.cs`：影像前處理與前處理群組。
-2. `MainForm.Relations.cs`：影像關聯建立、來源/目標選擇與執行。
-3. `MainForm.Parameters.cs`：參數面板、套用/取消與狀態時間。
-4. `MainForm.Roi.cs`：ROI 操作、座標保存與 ROI Mask。
-5. `MainForm.Preview.cs`：分頁、Tile 顯示、紅色 Overlay 與視圖狀態。
-6. `MainForm.Cache.cs`：前處理、ROI、Mask、Overlay 與 generation 快取。
-7. `OpenCvProcessingService.cs`：最後再抽離純 OpenCV 演算法服務。
-
-每完成一個拆分檔案都要重新建置，並確認大圖、ROI、前處理、影像關聯及 Zoom/平移位置沒有回歸問題。

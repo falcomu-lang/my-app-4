@@ -318,7 +318,7 @@ Group1.DisplayName=
   - `MainForm.ImageProcessing.cs` now contains the image-processing execution entry points and the actual OpenCV Canny, Sobel, and Polarity mask implementations.
   - `MainForm.cs` no longer contains `LegacyCreateOpenCvCannyMask`, `LegacyCreateOpenCvSobelMask`, or `LegacyCreateOpenCvPolarityMask`.
   - The solution has been rebuilt successfully after the split.
-- Recommended next split order: `MainForm.Preprocessing.cs`, `MainForm.Relations.cs`, `MainForm.Parameters.cs`, `MainForm.Roi.cs`, `MainForm.Preview.cs`, and then `MainForm.Cache.cs`. Use `partial class MainForm` first so behavior does not change during organization.
+- The current split uses the singular filename `MainForm.Relation.cs`, not `MainForm.Relations.cs`.
 - Do not move shared OpenCV helpers without checking all callers. Current processing code shares grayscale Mat creation, mask conversion, kernel normalization, parameter parsing, and border handling helpers.
 - Direct image-processing execution and relation execution have different source rules. Direct processing uses the currently selected explicit source; relation processing uses `SourceType`/`SourceId`. Do not let `latestPreprocessedImage` alone decide the source.
 - Selecting `影像前處理 > 原始影像` must explicitly set the source state to `Original`. A null source state can be ambiguous and previously caused direct processing to wait for preprocessing or use a stale preprocessing cache.
@@ -335,13 +335,12 @@ Group1.DisplayName=
 - Asynchronous overview preview creation for memory-backed results was tested and reverted because the visual result did not improve. Keep the current synchronous fast-preview behavior until a verified replacement is available.
 - Preprocessing display time can exceed OpenCV algorithm time because it creates a new memory-backed display source. Processed output is faster because it reuses original tiles and adds cached mask overlays.
 - Planned file split, in recommended order:
-  1. `Forms\MainForm.Preprocessing.cs`: Normalize, Gaussian Blur, CLAHE, Median Blur, Sharpen, Bilateral Filter, and preprocessing-group execution.
-  2. `Forms\MainForm.Relations.cs`: relation creation, source/target selectors, relation processing, rename, reorder, delete, and invalid-reference checks.
-  3. `Forms\MainForm.Parameters.cs`: parameter panels, pending values, Apply/Cancel, and parameter status timing.
-  4. `Forms\MainForm.Roi.cs`: ROI creation, deletion, display-all, ROI coordinate persistence, and ROI mask preparation.
-  5. `Forms\MainForm.Preview.cs`: original/preprocessed/processed tabs, red mask overlay, visible-tile refresh, and view-state restoration.
-  6. `Forms\MainForm.Cache.cs`: preprocessing, ROI, mask, overlay, generation, and invalidation caches.
-  7. `Services\OpenCvProcessingService.cs`: move pure OpenCV operations out of the form after the partial-class split is stable.
+  1. `Forms\MainForm.Relation.cs`: move relation parameter UI, source/target selectors, apply, list rebuild, context menu, relation execution, rename, reorder, delete, and invalid-reference checks. The file currently contains only the relation fields, menu constant, and `RelationChoice` type.
+  2. `Forms\MainForm.Display.cs`: original/preprocessed/processed tabs, zoom/pan/reset synchronization, visible-tab updates, and maximized viewer behavior.
+  3. `Forms\MainForm.Parameters.cs`: shared parameter-panel helpers, Apply/Cancel buttons, pending values, and parameter status timing. Keep preprocessing-specific parameter builders in `MainForm.Preprocessing.cs` unless a shared helper is extracted safely.
+  4. `Forms\MainForm.Roi.cs`: ROI creation, deletion, display-all, coordinate persistence, and ROI preparation.
+  5. `Forms\MainForm.Cache.cs`: ROI, preprocessing, mask, overlay, generation, and invalidation cache ownership.
+  6. `Services\OpenCvProcessingService.cs`: move pure OpenCV operations out of the form only after the partial-class split is stable.
 - Use `partial class MainForm` for the first organization passes. Build after each file move and do not change behavior while relocating code. Only then extract pure services.
 - Image relation UI and execution foundation is now implemented.
 - The left menu contains `影像關聯`; right-clicking it can add a relation. Relation items support right-click processing, moving up/down, renaming, and deleting.
