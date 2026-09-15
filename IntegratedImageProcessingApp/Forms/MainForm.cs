@@ -29,6 +29,7 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageDisplayControl rightDebugDisplayControl;
         private bool isLoadingImage;
         private bool isSyncingImageView;
+        private DateTime lastSynchronousImagePanRefreshUtc = DateTime.MinValue;
         private readonly SystemParameterIniService systemParameterService;
         private SystemParameterSettings systemParameters;
         private bool roiMenuExpanded;
@@ -309,9 +310,26 @@ namespace IntegratedImageProcessingApp.Forms
             isSyncingImageView = true;
             try
             {
-                sharedImageViewState = source.ViewState;
+                ImageViewState viewState = source.ViewState;
+                bool isPanning = source.IsPanning;
+                sharedImageViewState = viewState;
                 hasSharedImageViewState = true;
-                target.ApplyViewState(source.ViewState);
+                target.ApplyViewState(viewState, isPanning);
+
+                if (isPanning)
+                {
+                    DateTime now = DateTime.UtcNow;
+                    if ((now - lastSynchronousImagePanRefreshUtc).TotalMilliseconds >= 16)
+                    {
+                        lastSynchronousImagePanRefreshUtc = now;
+                        source.RefreshImageViewNow();
+                        target.RefreshImageViewNow();
+                    }
+                }
+                else
+                {
+                    lastSynchronousImagePanRefreshUtc = DateTime.MinValue;
+                }
             }
             finally
             {
@@ -4211,6 +4229,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ProcessedDisplayControl_LargeImageOverlayPaint(object sender, LargeImageOverlayPaintEventArgs e)
         {
+            ImageDisplayControl display = sender as ImageDisplayControl;
+            bool isPanning = display != null && display.IsPanning;
             List<ImageProcessingStepSettings> selectedSteps = GetSelectedImageProcessingSteps();
             if (selectedSteps.Count == 0)
             {
@@ -4223,14 +4243,14 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     if (IsEdgeDetectionMethod(step.Method))
                     {
-                        PaintLargeProcessedOverlayForRoi(e, roiRegion.Bounds, step);
+                        PaintLargeProcessedOverlayForRoi(e, roiRegion.Bounds, step, isPanning);
                     }
                 }
             }
         }
 
         private void PaintLargeProcessedOverlayForRoi(
-            LargeImageOverlayPaintEventArgs e, Rectangle roi, ImageProcessingStepSettings step)
+            LargeImageOverlayPaintEventArgs e, Rectangle roi, ImageProcessingStepSettings step, bool isPanning)
         {
             Rectangle visibleRoi = Rectangle.Intersect(e.VisibleSourceRect, roi);
             if (visibleRoi.Width <= 0 || visibleRoi.Height <= 0)
@@ -4266,6 +4286,25 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (binaryMask != null)
             {
+                if (isPanning)
+                {
+                    Bitmap overview;
+                    if (TryGetLargeProcessedOverlayFromCache("overview|" + maskKey, out overview))
+                    {
+                        DrawLargeProcessedOverlayRegion(
+                            e.Graphics,
+                            overview,
+                            roi,
+                            visibleRoi,
+                            e.Zoom,
+                            e.Offset);
+                    }
+
+                    // Do not create a viewport-sized bitmap for every mouse move.
+                    // The exact full-resolution overlay is rebuilt on the first
+                    // repaint after panning stops.
+                    return;
+                }
                 PaintLargeProcessedBinaryViewportOverlay(e, roi, visibleRoi, step, maskKey, binaryMask);
                 return;
             }
@@ -5760,6 +5799,73 @@ namespace IntegratedImageProcessingApp.Forms
                 // Masks are categorical data.  Bicubic/bilinear interpolation
                 // invents red values between pixels and makes edge positions
                 // look wider or shifted when zoomed.
+                graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                graphics.DrawImage(overlay, destination, source, GraphicsUnit.Pixel);
+            }
+            catch (ArgumentException ex)
+            {
+                Debug.WriteLine(ex);
+            }
+            finally
+            {
+                graphics.PixelOffsetMode = previousPixelOffset;
+                graphics.InterpolationMode = previousInterpolation;
+            }
+        }
+
+        private static void DrawLargeProcessedOverlayRegion(
+            Graphics graphics,
+            Bitmap overlay,
+            Rectangle overlayBounds,
+            Rectangle sourceRegion,
+            float zoom,
+            PointF offset)
+        {
+            if (overlay == null || overlayBounds.Width <= 0 || overlayBounds.Height <= 0 ||
+                sourceRegion.Width <= 0 || sourceRegion.Height <= 0 || zoom <= 0f)
+            {
+                return;
+            }
+
+            Rectangle clippedRegion = Rectangle.Intersect(overlayBounds, sourceRegion);
+            if (clippedRegion.Width <= 0 || clippedRegion.Height <= 0)
+            {
+                return;
+            }
+
+            int sourceLeft = Math.Max(
+                0,
+                Math.Min(overlay.Width - 1,
+                    (int)Math.Floor((clippedRegion.Left - overlayBounds.Left) * (double)overlay.Width / overlayBounds.Width)));
+            int sourceTop = Math.Max(
+                0,
+                Math.Min(overlay.Height - 1,
+                    (int)Math.Floor((clippedRegion.Top - overlayBounds.Top) * (double)overlay.Height / overlayBounds.Height)));
+            int sourceRight = Math.Max(
+                sourceLeft + 1,
+                Math.Min(overlay.Width,
+                    (int)Math.Ceiling((clippedRegion.Right - overlayBounds.Left) * (double)overlay.Width / overlayBounds.Width)));
+            int sourceBottom = Math.Max(
+                sourceTop + 1,
+                Math.Min(overlay.Height,
+                    (int)Math.Ceiling((clippedRegion.Bottom - overlayBounds.Top) * (double)overlay.Height / overlayBounds.Height)));
+
+            Rectangle source = Rectangle.FromLTRB(sourceLeft, sourceTop, sourceRight, sourceBottom);
+            Rectangle destination = Rectangle.FromLTRB(
+                (int)Math.Floor(offset.X + (clippedRegion.Left * zoom)),
+                (int)Math.Floor(offset.Y + (clippedRegion.Top * zoom)),
+                (int)Math.Ceiling(offset.X + (clippedRegion.Right * zoom)),
+                (int)Math.Ceiling(offset.Y + (clippedRegion.Bottom * zoom)));
+            if (destination.Width <= 0 || destination.Height <= 0)
+            {
+                return;
+            }
+
+            System.Drawing.Drawing2D.InterpolationMode previousInterpolation = graphics.InterpolationMode;
+            System.Drawing.Drawing2D.PixelOffsetMode previousPixelOffset = graphics.PixelOffsetMode;
+            try
+            {
                 graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
                 graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
                 graphics.DrawImage(overlay, destination, source, GraphicsUnit.Pixel);

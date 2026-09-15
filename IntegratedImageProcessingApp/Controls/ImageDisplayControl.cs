@@ -31,6 +31,7 @@ namespace IntegratedImageProcessingApp.Controls
         private float _zoom = 1f;
         private PointF _imageOffset = PointF.Empty;
         private bool _isPanning;
+        private bool _isSynchronizedPanning;
         private Point _lastMousePoint;
         private bool _suppressViewChanged;
         private bool _isSelectingRoi;
@@ -40,6 +41,7 @@ namespace IntegratedImageProcessingApp.Controls
         private Rectangle? _roiOverlay;
         private Rectangle[] _roiOverlays = new Rectangle[0];
         private bool _tileRefreshPending;
+        private int _tileRefreshCallbackPending;
         private DateTime _lastPanInvalidateUtc = DateTime.MinValue;
         private DateTime _lastZoomUtc = DateTime.MinValue;
 
@@ -47,6 +49,11 @@ namespace IntegratedImageProcessingApp.Controls
         public event EventHandler FitViewRequested;
         public event EventHandler<LargeImageOverlayPaintEventArgs> LargeImageOverlayPaint;
         public event EventHandler<RoiSelectedEventArgs> RoiSelected;
+
+        public bool IsPanning
+        {
+            get { return _isPanning || _isSynchronizedPanning; }
+        }
 
         public ImageDisplayControl()
         {
@@ -137,6 +144,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         public void ApplyViewState(ImageViewState viewState)
         {
+            ApplyViewState(viewState, false);
+        }
+
+        public void ApplyViewState(ImageViewState viewState, bool isPanning)
+        {
             if (!HasImage)
             {
                 return;
@@ -145,14 +157,22 @@ namespace IntegratedImageProcessingApp.Controls
             _suppressViewChanged = true;
             try
             {
+                _isSynchronizedPanning = isPanning;
                 lock (_imageLock)
                 {
                     _zoom = ClampZoom(viewState.Zoom);
                     _imageOffset = viewState.Offset;
                 }
 
-                UpdateStatusLabel();
-                viewerPanel.Invalidate();
+                if (isPanning)
+                {
+                    InvalidateViewerWhilePanning();
+                }
+                else
+                {
+                    UpdateStatusLabel();
+                    viewerPanel.Invalidate();
+                }
             }
             finally
             {
@@ -263,6 +283,17 @@ namespace IntegratedImageProcessingApp.Controls
         public void InvalidateImageView()
         {
             viewerPanel.Invalidate();
+        }
+
+        public void RefreshImageViewNow()
+        {
+            if (IsDisposed || !IsHandleCreated)
+            {
+                return;
+            }
+
+            viewerPanel.Invalidate();
+            viewerPanel.Update();
         }
 
         // Background tile work can finish faster than WinForms services paint
@@ -467,7 +498,7 @@ namespace IntegratedImageProcessingApp.Controls
         private void viewerPanel_Paint(object sender, PaintEventArgs e)
         {
             e.Graphics.Clear(Color.White);
-            e.Graphics.InterpolationMode = _isPanning ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
+            e.Graphics.InterpolationMode = IsPanning ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
             e.Graphics.SmoothingMode = SmoothingMode.HighSpeed;
 
@@ -613,6 +644,7 @@ namespace IntegratedImageProcessingApp.Controls
             _isPanning = false;
             viewerPanel.Cursor = Cursors.Default;
             viewerPanel.Invalidate();
+            OnViewChanged();
         }
 
         private void viewerPanel_MouseEnter(object sender, EventArgs e)
@@ -746,13 +778,13 @@ namespace IntegratedImageProcessingApp.Controls
             using (var preview = source.GetBestPreview(zoom))
             {
                 InterpolationMode previousInterpolation = graphics.InterpolationMode;
-                graphics.InterpolationMode = _isPanning ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
+                graphics.InterpolationMode = IsPanning ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
                 bool previewDrawn = DrawPreviewRegion(graphics, preview.Bitmap, preview.Scale, visibleSourceRect, zoom, offset);
                 graphics.InterpolationMode = previousInterpolation;
                 if (previewDrawn &&
                     (IsZoomSettling() ||
                     !ShouldRenderTiles(zoom, preview.Scale) ||
-                    (_isPanning && !ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect))))
+                    (IsPanning && !ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect))))
                 {
                     return;
                 }
@@ -772,15 +804,31 @@ namespace IntegratedImageProcessingApp.Controls
                 {
                     Rectangle tileRect = source.GetVisibleTileBounds(new Rectangle(tileX, tileY, TileSourceSize, TileSourceSize));
                     Bitmap tile;
-                    if (source.TryGetTile(tileRect, out tile))
+                    bool drewCachedTile = false;
+                    if (IsPanning)
+                    {
+                        drewCachedTile = source.TryDrawCachedTile(
+                            tileRect,
+                            cachedTile => DrawTile(graphics, cachedTile, tileRect, zoom, offset, true));
+                    }
+
+                    if (drewCachedTile)
+                    {
+                        continue;
+                    }
+
+                    if (!IsPanning && source.TryGetTile(tileRect, out tile))
                     {
                         using (tile)
                         {
-                            DrawTile(graphics, tile, tileRect, zoom, offset, _isPanning);
+                            DrawTile(graphics, tile, tileRect, zoom, offset, IsPanning);
                         }
                     }
-                    else if (!_isPanning || ShouldDrawCachedTilesWhilePanning(zoom, visibleSourceRect))
+                    else if (!IsPanning)
                     {
+                        // Do not start disk/WIC tile decoding while the user is
+                        // dragging. Missing tiles are requested after the pan
+                        // ends, when the exact view is rendered again.
                         RequestTile(source, tileRect, prefetchNeighborhood);
                     }
                 }
@@ -944,12 +992,20 @@ namespace IntegratedImageProcessingApp.Controls
                 return;
             }
 
+            // Several background tile workers can finish together. Keep only
+            // one UI callback pending; the timer already coalesces the redraw.
+            if (Interlocked.Exchange(ref _tileRefreshCallbackPending, 1) != 0)
+            {
+                return;
+            }
+
             try
             {
                 BeginInvoke(
                     new Action(
                         delegate
                         {
+                            Interlocked.Exchange(ref _tileRefreshCallbackPending, 0);
                             if (IsDisposed)
                             {
                                 return;
@@ -964,9 +1020,11 @@ namespace IntegratedImageProcessingApp.Controls
             }
             catch (ObjectDisposedException)
             {
+                Interlocked.Exchange(ref _tileRefreshCallbackPending, 0);
             }
             catch (InvalidOperationException)
             {
+                Interlocked.Exchange(ref _tileRefreshCallbackPending, 0);
             }
         }
 

@@ -549,6 +549,34 @@ namespace IntegratedImageProcessingApp.Controls
             return false;
         }
 
+        // Panning repaints can happen many times per second. Drawing the
+        // immutable cached tile while holding the cache lock avoids cloning a
+        // 1024x1024 bitmap for every frame. The callback must only draw/read
+        // the supplied bitmap and must not call back into this source.
+        public bool TryDrawCachedTile(Rectangle sourceRect, Action<Bitmap> draw)
+        {
+            if (draw == null)
+            {
+                throw new ArgumentNullException("draw");
+            }
+
+            var normalized = NormalizeRect(sourceRect);
+            var key = CreateTileKey(normalized);
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                Bitmap cached;
+                if (!_tileCache.TryGetValue(key, out cached))
+                {
+                    return false;
+                }
+
+                TouchKey(key);
+                draw(cached);
+                return true;
+            }
+        }
+
         public void QueueTile(Rectangle sourceRect, Action onReady)
         {
             var normalized = NormalizeRect(sourceRect);
@@ -787,6 +815,24 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             var fastestLevel = _previewLevels[_previewLevels.Count - 1];
+            if (_memoryGray != null)
+            {
+                int previewWidth = Math.Max(1, Math.Min(MaxPreviewDimension, fastestLevel.DecodeWidth));
+                int previewHeight = Math.Max(1, Math.Min(MaxPreviewDimension, fastestLevel.DecodeHeight));
+                using (var preview = new Cv.Mat())
+                {
+                    Cv.Cv2.Resize(
+                        _memoryGray,
+                        preview,
+                        new Cv.Size(previewWidth, previewHeight),
+                        0,
+                        0,
+                        Cv.InterpolationFlags.Area);
+                    fastestLevel.Bitmap = ConvertOpenCvGrayToBitmap(preview);
+                }
+                return;
+            }
+
             fastestLevel.Bitmap = CreateScaledBitmap(fastestLevel.DecodeWidth, fastestLevel.DecodeHeight);
         }
 
@@ -1068,6 +1114,55 @@ namespace IntegratedImageProcessingApp.Controls
                     data.Scan0,
                     Math.Abs(data.Stride) * data.Height,
                     data.Stride);
+            }
+            finally
+            {
+                bitmap.UnlockBits(data);
+            }
+
+            return bitmap;
+        }
+
+        private static Bitmap ConvertOpenCvGrayToBitmap(Cv.Mat source)
+        {
+            if (source == null || source.Empty() || source.Type() != Cv.MatType.CV_8UC1)
+            {
+                throw new ArgumentException("OpenCV 預覽必須是有效的 8-bit 灰階影像。", "source");
+            }
+
+            var bitmap = new Bitmap(source.Width, source.Height, PixelFormat.Format8bppIndexed);
+            ColorPalette palette = bitmap.Palette;
+            for (int index = 0; index < palette.Entries.Length; index++)
+            {
+                palette.Entries[index] = Color.FromArgb(index, index, index);
+            }
+            bitmap.Palette = palette;
+
+            BitmapData data = bitmap.LockBits(
+                new Rectangle(0, 0, bitmap.Width, bitmap.Height),
+                ImageLockMode.WriteOnly,
+                bitmap.PixelFormat);
+            try
+            {
+                byte[] row = new byte[source.Width];
+                long sourceStep = source.Step();
+                for (int y = 0; y < source.Height; y++)
+                {
+                    Marshal.Copy(
+                        source.Data + checked((int)(y * sourceStep)),
+                        row,
+                        0,
+                        row.Length);
+                    IntPtr destination = data.Stride >= 0
+                        ? data.Scan0 + (y * data.Stride)
+                        : data.Scan0 + ((source.Height - 1 - y) * Math.Abs(data.Stride));
+                    Marshal.Copy(row, 0, destination, row.Length);
+                }
+            }
+            catch
+            {
+                bitmap.Dispose();
+                throw;
             }
             finally
             {
