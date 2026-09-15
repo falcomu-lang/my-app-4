@@ -47,7 +47,9 @@
 ## 架構整理進度
 
 - 已完成 `MainForm.ImageProcessing.cs`：影像處理執行入口，以及 Canny、Sobel、Polarity 的 OpenCV mask 演算法。
-- 下一步建議依序拆分：`MainForm.Preprocessing.cs`、`MainForm.Relations.cs`、`MainForm.Parameters.cs`、`MainForm.Roi.cs`、`MainForm.Preview.cs`、`MainForm.Cache.cs`。
+- 已完成 `MainForm.Preprocessing.cs`：前處理欄位、結果型別、清單與群組、方法選擇、參數控制、OpenCV 演算法、背景執行、快取失效、耗時與畫面位置還原。
+- 已建立 `MainForm.Relation.cs`，目前包含影像關聯專用欄位與 `RelationChoice` 型別；關聯參數面板與執行方法仍在 `MainForm.cs`，尚未全部搬移。
+- 後續依序拆分：影像關聯 UI/執行、`MainForm.Display.cs` 顯示與分頁、`MainForm.Cache.cs` 快取管理，最後再移除已確認沒有參考的舊方法與 `using`。
 - 拆分優先使用 `partial class MainForm`，先保持行為不變，再逐步將純演算法與快取移至獨立服務。
 - 大圖處理要避免整張 Bitmap 複製；演算法應使用完整 ROI 的 OpenCV Mat，顯示才使用 tile。
 - 影像來源必須明確區分原圖與前處理結果；不可只用 `latestPreprocessedImage != null` 判斷來源。
@@ -108,7 +110,10 @@ Sobel Edge 使用 OpenCV 原生 Sobel。可設定灰階變化方向、核心大�
 
 ## 專案結構
 
-- `IntegratedImageProcessingApp/Forms/MainForm.cs`：主介面、ROI、處理步驟、OpenCV Canny 與處理後 overlay 協調。
+- `IntegratedImageProcessingApp/Forms/MainForm.cs`：主介面、圖片載入、ROI、關聯、處理後 overlay 與各模組協調。
+- `IntegratedImageProcessingApp/Forms/MainForm.ImageProcessing.cs`：Canny、Sobel、Polarity 的 OpenCV 影像處理流程與演算法。
+- `IntegratedImageProcessingApp/Forms/MainForm.Preprocessing.cs`：前處理流程、群組、參數、OpenCV 運算、快取失效與預覽更新。
+- `IntegratedImageProcessingApp/Forms/MainForm.Relation.cs`：影像關聯模組基礎，目前已移入關聯欄位與來源選擇資料型別。
 - `IntegratedImageProcessingApp/Controls/ImageDisplayControl.cs`：圖片檢視、縮放、平移、ROI 繪製與左右視圖同步。
 - `IntegratedImageProcessingApp/Controls/LargeImageSource.cs`：大型圖片 WIC 預覽與原始解析度 tile 來源。
 - `PROJECT_HANDOFF.md`：提供後續開發者的實作細節、已知限制與待辦事項。

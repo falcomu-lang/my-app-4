@@ -7,7 +7,14 @@
 - Solution: `MyApp4.sln`
 - Main project: `IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 
-## Current Implementation Status (2026-09-14)
+## Current Implementation Status (2026-09-15)
+
+### Current file split status
+- `Forms\MainForm.ImageProcessing.cs` contains the image-processing execution entry points and the OpenCV Canny, Sobel, and Polarity implementations.
+- `Forms\MainForm.Preprocessing.cs` now contains the preprocessing fields and result types, menu/group management, method selection tree, parameter controls, OpenCV preprocessing operations, preprocessing execution, cache invalidation, ViewState restoration, timing updates, and the background update core.
+- `Forms\MainForm.Relation.cs` has been added and is included by the project. It currently contains the relation-specific fields, `RelationChoice` type, and menu constant. Relation UI and execution methods remain in `MainForm.cs` and are the next relation split step.
+- `MainForm.cs` still coordinates the main form, image loading, ROI, relation workflow, processed overlays, and shared display behavior. `MainForm.Designer.cs` has existing designer changes and must not be reverted or included in unrelated commits.
+- The current working tree has been built successfully after the preprocessing split and relation file setup. Generated `codex-build` output is temporary and should not be committed.
 
 ### OpenCV image preprocessing pipeline
 - `影像前處理` is fully implemented with OpenCV and is applied to the full grayscale image before ROI edge detection. The active order is: `原圖全影像 -> 前處理全影像 -> ROI 內邊緣偵測 -> 全圖紅色結果疊圖`.
@@ -78,6 +85,25 @@
   - `物件結果`
   - `debug`
 - Runtime image display uses `ImageDisplayControl`; designer-visible placeholder panels are kept in `MainForm.Designer.cs` so the form remains visually editable.
+
+## Architecture Split Progress
+- Completed preprocessing partial split:
+  - preprocessing fields and result models
+  - preprocessing list/group UI and group operations
+  - preprocessing method tree and parameter editor
+  - OpenCV preprocessing methods and full-image execution
+  - background update, generation checks, cache replacement, timing, and ViewState restore
+- Started relation partial split:
+  - `Forms\MainForm.Relation.cs` exists and is included in `IntegratedImageProcessingApp.csproj`
+  - relation fields and `RelationChoice` model have been moved
+- Remaining planned splits:
+  1. Move relation parameter panel, source/target selection, apply, list rebuild, and relation context menu methods to `MainForm.Relation.cs`.
+  2. Move relation execution and relation result/source selection helpers.
+  3. Create `MainForm.Display.cs` for tab switching, zoom/pan/reset synchronization, and maximized viewer behavior.
+  4. Create `MainForm.Cache.cs` for ROI, preprocessing, mask, overlay, and generation cache ownership.
+  5. Remove unused methods/usings only after reference search and a clean build.
+
+Do not change behavior while splitting. After each move, build the solution and verify image loading, saved ROI, preprocessing, relation source selection, processed overlays, and zoom/pan ViewState.
 
 ## Completed Features
 - `讀取圖片`
