@@ -37,6 +37,9 @@ namespace IntegratedImageProcessingApp.Forms
         private int selectedRoiIndex = -1;
         private bool imageProcessingMenuExpanded;
         private bool isUpdatingFunctionListText;
+        // SelectionChanged handles a newly selected item.  Keep this marker so
+        // the matching MouseClick does not execute the same A-key command twice.
+        private int aKeyProcessedFunctionListIndex = -1;
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int virtualKeyCode);
         private string expandedImageProcessingStepText;
@@ -797,6 +800,7 @@ namespace IntegratedImageProcessingApp.Forms
                     if (IsAKeyDown())
                     {
                         ProcessObjectJudgementProcessing(objectIndex, processingIndex);
+                        aKeyProcessedFunctionListIndex = functionListBox.SelectedIndex;
                     }
                 }
                 else if (GetObjectJudgementIndex(selectedFunction) >= 0)
@@ -806,6 +810,7 @@ namespace IntegratedImageProcessingApp.Forms
                     if (IsAKeyDown())
                     {
                         ProcessObjectJudgement(selectedObjectIndex);
+                        aKeyProcessedFunctionListIndex = functionListBox.SelectedIndex;
                     }
                 }
                 else if (GetImageRelationGroupId(selectedFunction) != null)
@@ -946,7 +951,39 @@ namespace IntegratedImageProcessingApp.Forms
                 RestorePreprocessedDisplaysToOriginalSource();
                 statusLabel.Text = "目前選擇：原始影像";
             }
-            else if (IsImagePreprocessingStepMenuItem(selectedFunction))
+            else
+            {
+                int objectProcessingOwnerIndex;
+                int objectProcessingIndex;
+                if (TryGetObjectJudgementProcessingLocation(
+                        selectedFunction,
+                        out objectProcessingOwnerIndex,
+                        out objectProcessingIndex))
+                {
+                    if (IsAKeyDown() && aKeyProcessedFunctionListIndex != clickedIndex)
+                    {
+                        ProcessObjectJudgementProcessing(
+                            objectProcessingOwnerIndex,
+                            objectProcessingIndex);
+                    }
+
+                    aKeyProcessedFunctionListIndex = -1;
+                }
+                else
+                {
+                    int objectIndex = GetObjectJudgementIndex(selectedFunction);
+                    if (objectIndex >= 0)
+                    {
+                        if (IsAKeyDown() && aKeyProcessedFunctionListIndex != clickedIndex)
+                        {
+                            ProcessObjectJudgement(objectIndex);
+                        }
+
+                        aKeyProcessedFunctionListIndex = -1;
+                    }
+                }
+            }
+            if (IsImagePreprocessingStepMenuItem(selectedFunction))
             {
                 if (IsAKeyDown())
                 {
@@ -1494,12 +1531,18 @@ namespace IntegratedImageProcessingApp.Forms
             activeImageRelationSourceId = relation.SourceId;
             activeImageRelationGroupId = null;
             selectedImageRelationGroupId = null;
+            preprocessingExecutionRequestedByImageRelation =
+                !string.Equals(relation.SourceType, "Original", StringComparison.Ordinal);
             if (!string.Equals(relation.SourceType, "Original", StringComparison.Ordinal))
             {
                 // A relation is an explicit processing request, so it may start
                 // preparation of its selected preprocessing source even though
                 // normal startup intentionally does not run preprocessing.
-                preprocessingExecutionRequested = true;
+                preprocessingExecutionRequested = preprocessingExecutionRequestedByImageRelation;
+            }
+            else
+            {
+                preprocessingExecutionRequested = false;
             }
             if (string.IsNullOrWhiteSpace(relation.ProcessingId))
             {
@@ -3514,8 +3557,9 @@ namespace IntegratedImageProcessingApp.Forms
             if (selectedImageProcessingStepIndex >= 0 &&
                 selectedImageProcessingStepIndex < systemParameters.ImageProcessingSteps.Count)
             {
-                steps.Add(systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex]);
-                return steps;
+                ImageProcessingStepSettings selectedStep =
+                    systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex];
+                return GetImageProcessingExecutionChain(selectedStep);
             }
 
             if (!string.IsNullOrWhiteSpace(selectedImageProcessingGroupId))
@@ -3524,6 +3568,41 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return steps;
+        }
+
+        private List<ImageProcessingStepSettings> GetImageProcessingExecutionChain(
+            ImageProcessingStepSettings selectedStep)
+        {
+            var chain = new List<ImageProcessingStepSettings>();
+            if (selectedStep == null)
+            {
+                return chain;
+            }
+
+            if (string.IsNullOrWhiteSpace(selectedStep.GroupId))
+            {
+                chain.Add(selectedStep);
+                return chain;
+            }
+
+            var groupSteps = new List<ImageProcessingStepSettings>();
+            CollectImageProcessingGroupSteps(selectedStep.GroupId, groupSteps);
+            foreach (ImageProcessingStepSettings groupStep in groupSteps)
+            {
+                if (groupStep == null)
+                {
+                    continue;
+                }
+
+                chain.Add(groupStep);
+                if (ReferenceEquals(groupStep, selectedStep) ||
+                    string.Equals(groupStep.Id, selectedStep.Id, StringComparison.Ordinal))
+                {
+                    break;
+                }
+            }
+
+            return chain;
         }
 
         private void CollectImageProcessingGroupSteps(string groupId, List<ImageProcessingStepSettings> steps)
@@ -3617,6 +3696,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ClearLargeRoiGrayCache()
         {
+            ClearLargeRelationSourceCache();
             lock (largeRoiGrayCacheLock)
             {
                 if (largeOpenCvSourceGrayCache != null)
@@ -4468,10 +4548,32 @@ namespace IntegratedImageProcessingApp.Forms
                                                 statusLabel.Text = "影像處理運算中...使用 OpenCV " + method;
                                             }));
                                     Stopwatch imageProcessingStopwatch = Stopwatch.StartNew();
-                                    Cv.Mat binaryMask = CreateNativeLargeEdgeBinaryMask(
-                                        nativeGray,
-                                        method,
-                                        parsedParameters);
+                                    Cv.Mat binaryMask = null;
+                                    List<ImageProcessingStepSettings> executionChain =
+                                        GetImageProcessingExecutionChain(step);
+                                    Cv.Mat currentInput = nativeGray.Clone();
+                                    try
+                                    {
+                                        foreach (ImageProcessingStepSettings chainStep in executionChain)
+                                        {
+                                            Cv.Mat nextMask = CreateNativeLargeEdgeBinaryMask(
+                                                currentInput,
+                                                chainStep.Method,
+                                                ParseImageProcessingParameters(chainStep.Parameters));
+                                            currentInput.Dispose();
+                                            currentInput = nextMask;
+                                        }
+
+                                        binaryMask = currentInput;
+                                        currentInput = null;
+                                    }
+                                    finally
+                                    {
+                                        if (currentInput != null)
+                                        {
+                                            currentInput.Dispose();
+                                        }
+                                    }
                                     PublishCompletedLargeProcessedBinaryMask(
                                         binaryMask,
                                         roi,
@@ -6566,19 +6668,39 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 var result = new Bitmap(sourceImage);
-                foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+                using (Cv.Mat sourceGray = CreateOpenCvGrayMat(sourceImage))
                 {
-                    Rectangle roi = Rectangle.Intersect(roiRegion.Bounds, new Rectangle(0, 0, sourceImage.Width, sourceImage.Height));
-                    if (roi.Width <= 0 || roi.Height <= 0)
+                    foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
                     {
-                        continue;
-                    }
+                        Rectangle roi = Rectangle.Intersect(
+                            roiRegion.Bounds,
+                            new Rectangle(0, 0, sourceImage.Width, sourceImage.Height));
+                        if (roi.Width <= 0 || roi.Height <= 0)
+                        {
+                            continue;
+                        }
 
-                    foreach (ImageProcessingStepSettings step in selectedSteps)
-                    {
-                        byte[,] gray = CreateGrayValues(sourceImage, roi);
-                        bool[,] mask = CreateEdgeMask(gray, step.Method, ParseImageProcessingParameters(step.Parameters));
-                        PaintRedOverlayImage(result, roi, mask);
+                        using (Cv.Mat roiInput = new Cv.Mat(
+                            sourceGray,
+                            new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height)))
+                        {
+                            foreach (ImageProcessingStepSettings step in selectedSteps)
+                            {
+                                using (Cv.Mat binaryMask = CreateNativeLargeEdgeBinaryMask(
+                                    roiInput,
+                                    step.Method,
+                                    ParseImageProcessingParameters(step.Parameters)))
+                                {
+                                    PaintRedOverlayImage(
+                                        result,
+                                        roi,
+                                        ConvertOpenCvBinaryMask(binaryMask));
+                                    // A grouped step consumes the binary result
+                                    // produced by the previous step in the same ROI.
+                                    binaryMask.CopyTo(roiInput);
+                                }
+                            }
+                        }
                     }
                 }
 

@@ -20,6 +20,14 @@ namespace IntegratedImageProcessingApp.Forms
         private Panel imageRelationParameterPanel;
         private string activeImageRelationSourceType;
         private string activeImageRelationSourceId;
+        // Preprocessing is normally an isolated request.  This flag is set
+        // only when an image relation explicitly needs its preprocessing
+        // source before the relation result can be rendered.
+        private bool preprocessingExecutionRequestedByImageRelation;
+        private readonly object largeRelationSourceCacheLock = new object();
+        private readonly Dictionary<string, LargeImageSource> largeRelationSourceCache =
+            new Dictionary<string, LargeImageSource>(StringComparer.Ordinal);
+        private int largeRelationSourceCacheGeneration = -1;
         private const string ImageRelationMenuText = "影像關聯";
 
         private sealed class RelationChoice
@@ -248,10 +256,9 @@ namespace IntegratedImageProcessingApp.Forms
             selectedImageProcessingStepIndex = -1;
             selectedImageProcessingGroupId = null;
             imageProcessingExecutionRequested = true;
-            if (relations.Exists(relation => !string.Equals(relation.SourceType, "Original", StringComparison.Ordinal)))
-            {
-                preprocessingExecutionRequested = true;
-            }
+            preprocessingExecutionRequestedByImageRelation =
+                relations.Exists(relation => !string.Equals(relation.SourceType, "Original", StringComparison.Ordinal));
+            preprocessingExecutionRequested = preprocessingExecutionRequestedByImageRelation;
 
             BeginParameterApplyStatus(false);
             MarkProcessedImageDirty();
@@ -489,11 +496,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             using (Cv.Mat source = CreateOpenCvGrayMat(original))
             {
-                PreprocessedImageResult preprocessingResult = CreateOpenCvPreprocessedImage(
-                    source,
-                    string.Equals(relation.SourceType, "Step", StringComparison.Ordinal)
-                        ? relation.SourceId
-                        : null);
+                PreprocessedImageResult preprocessingResult =
+                    CreateOpenCvPreprocessedImageForRelationSource(source, relation);
                 using (Cv.Mat preprocessed = preprocessingResult.Image)
                 {
                     return CreateBitmapFromGrayMat(preprocessed);
@@ -697,15 +701,93 @@ namespace IntegratedImageProcessingApp.Forms
                 return originalSource.AddReference();
             }
 
-            lock (largePreprocessedImageLock)
+            string cacheKey = (relation.SourceType ?? string.Empty) + "|" +
+                (relation.SourceId ?? string.Empty);
+
+            lock (largeRelationSourceCacheLock)
             {
-                if (largePreprocessedImageSource != null && !preprocessedImageDirty)
+                if (largeRelationSourceCacheGeneration == imageSourceGeneration)
                 {
-                    return largePreprocessedImageSource.AddReference();
+                    LargeImageSource cached;
+                    if (largeRelationSourceCache.TryGetValue(cacheKey, out cached) && cached != null)
+                    {
+                        return cached.AddReference();
+                    }
+                }
+                else
+                {
+                    ClearLargeRelationSourceCacheLocked();
+                    largeRelationSourceCacheGeneration = imageSourceGeneration;
                 }
             }
 
-            return originalSource.AddReference();
+            Cv.Mat sourceGray = null;
+            Cv.Mat processed = null;
+            try
+            {
+                sourceGray = GetOrCreateLargeRoiOpenCvGrayCache(
+                    originalSource,
+                    new Rectangle(0, 0, originalSource.Width, originalSource.Height));
+                PreprocessedImageResult preprocessingResult =
+                    CreateOpenCvPreprocessedImageForRelationSource(sourceGray, relation);
+                processed = preprocessingResult.Image;
+                preprocessingResult.Image = null;
+                var created = new LargeImageSource(processed);
+                processed = null;
+
+                lock (largeRelationSourceCacheLock)
+                {
+                    if (largeRelationSourceCacheGeneration != imageSourceGeneration)
+                    {
+                        ClearLargeRelationSourceCacheLocked();
+                        largeRelationSourceCacheGeneration = imageSourceGeneration;
+                    }
+
+                    LargeImageSource existing;
+                    if (largeRelationSourceCache.TryGetValue(cacheKey, out existing) && existing != null)
+                    {
+                        created.ReleaseReference();
+                        return existing.AddReference();
+                    }
+
+                    largeRelationSourceCache[cacheKey] = created;
+                    return created.AddReference();
+                }
+            }
+            finally
+            {
+                if (sourceGray != null)
+                {
+                    sourceGray.Dispose();
+                }
+
+                if (processed != null)
+                {
+                    processed.Dispose();
+                }
+            }
+        }
+
+        private void ClearLargeRelationSourceCache()
+        {
+            lock (largeRelationSourceCacheLock)
+            {
+                ClearLargeRelationSourceCacheLocked();
+                largeRelationSourceCacheGeneration = imageSourceGeneration;
+            }
+        }
+
+        private void ClearLargeRelationSourceCacheLocked()
+        {
+            foreach (LargeImageSource source in largeRelationSourceCache.Values)
+            {
+                if (source != null)
+                {
+                    source.ReleaseReference();
+                }
+            }
+
+            largeRelationSourceCache.Clear();
         }
 
         private void PaintLargeProcessedRelationGroupOverlayForRoi(

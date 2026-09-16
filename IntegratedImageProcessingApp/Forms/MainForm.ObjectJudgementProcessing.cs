@@ -41,6 +41,8 @@ namespace IntegratedImageProcessingApp.Forms
         private bool objectJudgementParameterApplyInProgress;
         private int objectJudgementPendingLargeMaskBuilds;
         private long objectJudgementAccumulatedProcessingMilliseconds;
+        private string objectJudgementTimingName;
+        private int activeObjectJudgementProcessingIndex = -1;
 
         private void BuildObjectJudgementProcessingParameterPanel(
             Panel panel,
@@ -216,7 +218,6 @@ namespace IntegratedImageProcessingApp.Forms
                 processing.Parameters = FormatImageProcessingParameters(values);
                 SaveSystemParameters();
                 InvalidateObjectJudgementProcessingResults();
-                BeginObjectJudgementParameterApplyStatus();
                 StartObjectJudgementProcessing(objectIndex);
                 if (!objectJudgementProcessingRequested)
                 {
@@ -280,11 +281,16 @@ namespace IntegratedImageProcessingApp.Forms
             return normalized % 2 == 0 ? normalized + 1 : normalized;
         }
 
-        private void BeginObjectJudgementParameterApplyStatus()
+        private void BeginObjectJudgementParameterApplyStatus(int objectIndex)
         {
             objectJudgementParameterApplyInProgress = true;
             objectJudgementAccumulatedProcessingMilliseconds = 0;
             objectJudgementPendingLargeMaskBuilds = 0;
+            objectJudgementTimingName = objectIndex >= 0 &&
+                objectIndex < systemParameters.ObjectJudgements.Count
+                ? GetObjectJudgementDisplayName(
+                    systemParameters.ObjectJudgements[objectIndex], objectIndex)
+                : "區塊";
             SetObjectJudgementParameterApplyStatus("影像處理中...");
         }
 
@@ -316,15 +322,20 @@ namespace IntegratedImageProcessingApp.Forms
             long processing = Math.Max(0, processingElapsedMilliseconds);
             long preview = Math.Max(0, previewElapsedMilliseconds);
             long total = processing + preview;
+            string objectName = string.IsNullOrWhiteSpace(objectJudgementTimingName)
+                ? "區塊"
+                : objectJudgementTimingName;
             SetObjectJudgementParameterApplyStatus(string.Format(
                 CultureInfo.InvariantCulture,
-                "完成：處理時間共：{0} ms\r\n前處理時間：{1} ms || 預覽圖處理時間：{2} ms",
+                "完成：處理時間共：{0} ms\r\n{3}處理時間：{1} ms || 顯示處理時間：{2} ms",
                 total,
                 processing,
-                preview));
+                preview,
+                objectName));
             statusLabel.Text = string.Format(
                 CultureInfo.InvariantCulture,
-                "區塊處理完成：前處理時間：{0} ms || 預覽圖處理時間：{1} ms",
+                "{0}處理時間：{1} ms || 顯示處理時間：{2} ms",
+                objectName,
                 processing,
                 preview);
         }
@@ -345,6 +356,8 @@ namespace IntegratedImageProcessingApp.Forms
         private void InvalidateObjectJudgementProcessingResults()
         {
             objectJudgementParameterApplyInProgress = false;
+            activeObjectJudgementProcessingIndex = -1;
+            ClearLargeRelationSourceCache();
             lock (objectJudgementMaskLock)
             {
                 foreach (Cv.Mat mask in objectJudgementLargeMasks.Values)
@@ -407,6 +420,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void StartObjectJudgementProcessing(int objectIndex)
         {
+            StartObjectJudgementProcessing(objectIndex, -1);
+        }
+
+        private void StartObjectJudgementProcessing(int objectIndex, int processingIndex)
+        {
             if (objectIndex < 0 || objectIndex >= systemParameters.ObjectJudgements.Count)
             {
                 return;
@@ -421,22 +439,29 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (objectJudgement.ProcessingSteps.Count == 0 ||
-                objectJudgement.ProcessingSteps.Any(step => string.IsNullOrWhiteSpace(step.Method)))
+            List<ObjectJudgementProcessingSettings> processingSteps =
+                GetObjectJudgementProcessingChain(objectJudgement, processingIndex);
+            if (processingSteps.Count == 0 ||
+                processingSteps.Any(step => string.IsNullOrWhiteSpace(step.Method)))
             {
                 statusLabel.Text = GetObjectJudgementDisplayName(objectJudgement, objectIndex) +
                     " 尚未設定完整的區塊處理方式";
                 return;
             }
 
+            // "處理" means a fresh run. Clear completed masks and relation
+            // source caches so this block cannot analyze a stale preprocessing result.
+            InvalidateObjectJudgementProcessingResults();
             SetActiveObjectJudgement(objectJudgement);
             ActivateObjectJudgementRelation(objectJudgement);
             objectJudgementProcessingRequested = true;
+            activeObjectJudgementProcessingIndex = processingIndex;
+            BeginObjectJudgementParameterApplyStatus(objectIndex);
             statusLabel.Text = "區塊處理中...使用 OpenCV";
 
             if (rightOriginalDisplayControl.IsLargeImageMode)
             {
-                StartLargeObjectJudgementProcessing(objectJudgement);
+                StartLargeObjectJudgementProcessing(objectJudgement, processingSteps);
                 return;
             }
 
@@ -444,6 +469,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (original == null)
             {
                 statusLabel.Text = "請先載入圖片";
+                FailObjectJudgementParameterApply("請先載入圖片");
                 return;
             }
 
@@ -459,7 +485,7 @@ namespace IntegratedImageProcessingApp.Forms
                 try
                 {
                     Stopwatch processingStopwatch = Stopwatch.StartNew();
-                    result = CreateObjectJudgementImage(original, objectJudgement);
+                    result = CreateObjectJudgementImage(original, objectJudgement, processingSteps);
                     processingStopwatch.Stop();
                     long processingElapsedMilliseconds = processingStopwatch.ElapsedMilliseconds;
                     BeginInvoke(new Action(delegate
@@ -522,12 +548,15 @@ namespace IntegratedImageProcessingApp.Forms
             });
         }
 
-        private void StartLargeObjectJudgementProcessing(ObjectJudgementSettings objectJudgement)
+        private void StartLargeObjectJudgementProcessing(
+            ObjectJudgementSettings objectJudgement,
+            List<ObjectJudgementProcessingSettings> processingSteps)
         {
             LargeImageSource source = rightOriginalDisplayControl.GetSharedLargeImageSource();
             if (source == null)
             {
                 statusLabel.Text = "請先載入圖片";
+                FailObjectJudgementParameterApply("請先載入圖片");
                 return;
             }
 
@@ -558,7 +587,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             foreach (Rectangle roi in validRois)
             {
-                StartLargeObjectJudgementMaskBuild(source, objectJudgement, roi, generation);
+                StartLargeObjectJudgementMaskBuild(
+                    source, objectJudgement, processingSteps, roi, generation);
             }
 
             source.ReleaseReference();
@@ -569,6 +599,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void StartLargeObjectJudgementMaskBuild(
             LargeImageSource originalSource,
             ObjectJudgementSettings objectJudgement,
+            List<ObjectJudgementProcessingSettings> processingSteps,
             Rectangle roi,
             int generation)
         {
@@ -577,7 +608,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            string maskKey = CreateObjectJudgementMaskKey(objectJudgement, roi);
+            string maskKey = CreateObjectJudgementMaskKey(objectJudgement, processingSteps, roi);
             lock (objectJudgementMaskLock)
             {
                 if (objectJudgementLargeMasks.ContainsKey(maskKey) ||
@@ -608,7 +639,7 @@ namespace IntegratedImageProcessingApp.Forms
                             sourceReference, objectJudgement, roi))
                         {
                             result = ApplyObjectJudgementProcessingOpenCv(
-                                baseMask, objectJudgement.ProcessingSteps);
+                                baseMask, processingSteps);
                         }
                         processingStopwatch.Stop();
                         long processingElapsedMilliseconds = processingStopwatch.ElapsedMilliseconds;
@@ -696,7 +727,31 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private string CreateObjectJudgementMaskKey(ObjectJudgementSettings objectJudgement, Rectangle roi)
+        private List<ObjectJudgementProcessingSettings> GetObjectJudgementProcessingChain(
+            ObjectJudgementSettings objectJudgement,
+            int processingIndex)
+        {
+            var steps = new List<ObjectJudgementProcessingSettings>();
+            if (objectJudgement == null)
+            {
+                return steps;
+            }
+
+            int lastIndex = processingIndex < 0
+                ? objectJudgement.ProcessingSteps.Count - 1
+                : Math.Min(processingIndex, objectJudgement.ProcessingSteps.Count - 1);
+            for (int index = 0; index <= lastIndex; index++)
+            {
+                steps.Add(objectJudgement.ProcessingSteps[index]);
+            }
+
+            return steps;
+        }
+
+        private string CreateObjectJudgementMaskKey(
+            ObjectJudgementSettings objectJudgement,
+            IEnumerable<ObjectJudgementProcessingSettings> processingSteps,
+            Rectangle roi)
         {
             var parts = new List<string>
             {
@@ -711,7 +766,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 parts.Add(objectJudgement.RelationType ?? string.Empty);
                 parts.Add(objectJudgement.RelationId ?? string.Empty);
-                foreach (ObjectJudgementProcessingSettings step in objectJudgement.ProcessingSteps)
+                foreach (ObjectJudgementProcessingSettings step in processingSteps ??
+                    Enumerable.Empty<ObjectJudgementProcessingSettings>())
                 {
                     parts.Add(step.Method ?? string.Empty);
                     parts.Add(step.Parameters ?? string.Empty);
@@ -740,7 +796,10 @@ namespace IntegratedImageProcessingApp.Forms
                 : new List<ImageRelationSettings> { relation };
         }
 
-        private Bitmap CreateObjectJudgementImage(Bitmap original, ObjectJudgementSettings objectJudgement)
+        private Bitmap CreateObjectJudgementImage(
+            Bitmap original,
+            ObjectJudgementSettings objectJudgement,
+            IEnumerable<ObjectJudgementProcessingSettings> processingSteps)
         {
             var result = new Bitmap(original);
             using (Cv.Mat originalGray = CreateOpenCvGrayMat(original))
@@ -758,7 +817,7 @@ namespace IntegratedImageProcessingApp.Forms
                     using (Cv.Mat baseMask = CreateObjectJudgementBaseMaskFromBitmap(
                         original, originalGray, objectJudgement, roi))
                     using (Cv.Mat finalMask = ApplyObjectJudgementProcessingOpenCv(
-                        baseMask, objectJudgement.ProcessingSteps))
+                        baseMask, processingSteps))
                     {
                         PaintRedOverlayImage(result, roi, ConvertOpenCvBinaryMask(finalMask));
                     }
@@ -1177,7 +1236,21 @@ namespace IntegratedImageProcessingApp.Forms
                     continue;
                 }
 
-                string maskKey = CreateObjectJudgementMaskKey(objectJudgement, roiRegion.Bounds);
+                int processingIndex;
+                if (!TryGetObjectJudgementProcessingLocation(
+                        functionListBox.SelectedItem as string,
+                        out int selectedObjectIndex,
+                        out processingIndex) || selectedObjectIndex != objectIndex)
+                {
+                    processingIndex = -1;
+                }
+
+                List<ObjectJudgementProcessingSettings> processingSteps =
+                    GetObjectJudgementProcessingChain(objectJudgement, processingIndex);
+                string maskKey = CreateObjectJudgementMaskKey(
+                    objectJudgement,
+                    processingSteps,
+                    roiRegion.Bounds);
                 Cv.Mat mask;
                 bool building;
                 lock (objectJudgementMaskLock)
@@ -1191,7 +1264,11 @@ namespace IntegratedImageProcessingApp.Forms
                     if (!building)
                     {
                         StartLargeObjectJudgementMaskBuild(
-                            e.Source, objectJudgement, roiRegion.Bounds, objectJudgementMaskGeneration);
+                            e.Source,
+                            objectJudgement,
+                            processingSteps,
+                            roiRegion.Bounds,
+                            objectJudgementMaskGeneration);
                     }
 
                     continue;

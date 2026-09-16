@@ -196,7 +196,14 @@ namespace IntegratedImageProcessingApp.Forms
                 preprocessedImageDirty = false;
                 statusLabel.Text = "影像前處理完成";
                 CompleteParameterApplyStatus();
-                if (HasSelectedPreviewableImageProcessingSteps()) ScheduleProcessedImageUpdateIfVisible();
+                if (preprocessingExecutionRequestedByImageRelation && imageProcessingExecutionRequested)
+                {
+                    // Continue only the relation request that asked for this
+                    // source.  A standalone preprocessing run must not start
+                    // an unrelated processed-image refresh.
+                    preprocessingExecutionRequestedByImageRelation = false;
+                    ScheduleProcessedImageUpdateIfVisible();
+                }
             }
             catch (Exception ex)
             {
@@ -242,6 +249,29 @@ namespace IntegratedImageProcessingApp.Forms
                 selectedImagePreprocessingStepIndex < systemParameters.ImagePreprocessingSteps.Count)
             {
                 ImageProcessingStepSettings selectedStep = systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex];
+                if (!string.IsNullOrWhiteSpace(selectedStep.GroupId))
+                {
+                    var groupSteps = new List<ImageProcessingStepSettings>();
+                    CollectImagePreprocessingGroupSteps(selectedStep.GroupId, groupSteps);
+                    var groupChain = new List<ImageProcessingStepSettings>();
+                    foreach (ImageProcessingStepSettings groupStep in groupSteps)
+                    {
+                        if (groupStep == null || !IsImagePreprocessingMethod(groupStep.Method))
+                        {
+                            continue;
+                        }
+
+                        groupChain.Add(groupStep);
+                        if (ReferenceEquals(groupStep, selectedStep) ||
+                            string.Equals(groupStep.Id, selectedStep.Id, StringComparison.Ordinal))
+                        {
+                            break;
+                        }
+                    }
+
+                    return groupChain;
+                }
+
                 if (IsImagePreprocessingMethod(selectedStep.Method)) steps.Add(selectedStep);
                 return steps;
             }
@@ -314,6 +344,7 @@ namespace IntegratedImageProcessingApp.Forms
             var menu = new ContextMenuStrip();
             imageProcessingStepContextMenu = menu;
             menu.Items.Add("處理", null, delegate { ProcessImagePreprocessingGroup(group.Id); });
+            menu.Items.Add("新增前處理", null, delegate { AddImagePreprocessingStep(group.Id); });
             menu.Items.Add("上移", null, delegate { MoveImagePreprocessingGroup(group.Id, -1); });
             menu.Items.Add("下移", null, delegate { MoveImagePreprocessingGroup(group.Id, 1); });
             menu.Items.Add("命名", null, delegate { RenameImagePreprocessingGroup(group.Id); });
@@ -774,7 +805,14 @@ namespace IntegratedImageProcessingApp.Forms
             preprocessedImageDirty = true;
             preprocessedImageGeneration++;
             imagePreprocessingStepElapsedMilliseconds.Clear();
+            if (!preprocessingExecutionRequestedByImageRelation)
+            {
+                // Changing preprocessing invalidates the old processed request;
+                // only an explicit relation run may continue into that view.
+                imageProcessingExecutionRequested = false;
+            }
             MarkProcessedImageDirty();
+            ClearLargeRelationSourceCache();
             if (leftPreprocessedDisplayControl != null && rightPreprocessedDisplayControl != null)
             {
                 isSyncingImageView = true;
@@ -856,11 +894,22 @@ namespace IntegratedImageProcessingApp.Forms
 
         private PreprocessedImageResult CreateOpenCvPreprocessedImage(Cv.Mat source, string stopAfterStepId)
         {
+            return CreateOpenCvPreprocessedImage(
+                source,
+                GetOrderedImagePreprocessingSteps(),
+                stopAfterStepId);
+        }
+
+        private PreprocessedImageResult CreateOpenCvPreprocessedImage(
+            Cv.Mat source,
+            IEnumerable<ImageProcessingStepSettings> steps,
+            string stopAfterStepId)
+        {
             Cv.Mat current = source.Clone();
             var elapsed = new Dictionary<ImageProcessingStepSettings, long>();
             try
             {
-                foreach (ImageProcessingStepSettings step in GetOrderedImagePreprocessingSteps())
+                foreach (ImageProcessingStepSettings step in steps ?? Enumerable.Empty<ImageProcessingStepSettings>())
                 {
                     if (step == null || !IsImagePreprocessingMethod(step.Method)) continue;
                     Stopwatch stopwatch = Stopwatch.StartNew();
@@ -884,6 +933,90 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 if (current != null) current.Dispose();
             }
+        }
+
+        private List<ImageProcessingStepSettings> GetImagePreprocessingStepsForRelationSource(
+            string sourceType,
+            string sourceId)
+        {
+            if (string.Equals(sourceType, "Group", StringComparison.Ordinal))
+            {
+                var groupSteps = new List<ImageProcessingStepSettings>();
+                if (!string.IsNullOrWhiteSpace(sourceId))
+                {
+                    CollectImagePreprocessingGroupSteps(sourceId, groupSteps);
+                }
+
+                return groupSteps
+                    .Where(step => step != null && IsImagePreprocessingMethod(step.Method))
+                    .ToList();
+            }
+
+            List<ImageProcessingStepSettings> ordered = GetAllImagePreprocessingStepsInOrder();
+            if (!string.Equals(sourceType, "Step", StringComparison.Ordinal) ||
+                string.IsNullOrWhiteSpace(sourceId))
+            {
+                return ordered;
+            }
+
+            var result = new List<ImageProcessingStepSettings>();
+            foreach (ImageProcessingStepSettings step in ordered)
+            {
+                if (step == null || !IsImagePreprocessingMethod(step.Method))
+                {
+                    continue;
+                }
+
+                result.Add(step);
+                if (string.Equals(step.Id, sourceId, StringComparison.Ordinal))
+                {
+                    break;
+                }
+            }
+
+            return result;
+        }
+
+        private List<ImageProcessingStepSettings> GetAllImagePreprocessingStepsInOrder()
+        {
+            var steps = new List<ImageProcessingStepSettings>();
+            foreach (ImageProcessingStepSettings step in systemParameters.ImagePreprocessingSteps)
+            {
+                if (step != null && string.IsNullOrWhiteSpace(step.GroupId) &&
+                    IsImagePreprocessingMethod(step.Method))
+                {
+                    steps.Add(step);
+                }
+            }
+
+            foreach (ImageProcessingGroupSettings group in systemParameters.ImagePreprocessingGroups)
+            {
+                if (group != null && string.IsNullOrWhiteSpace(group.ParentGroupId))
+                {
+                    CollectImagePreprocessingGroupSteps(group.Id, steps);
+                }
+            }
+
+            return steps;
+        }
+
+        private PreprocessedImageResult CreateOpenCvPreprocessedImageForRelationSource(
+            Cv.Mat source,
+            ImageRelationSettings relation)
+        {
+            if (relation == null || string.Equals(relation.SourceType, "Original", StringComparison.Ordinal))
+            {
+                return new PreprocessedImageResult
+                {
+                    Image = source.Clone(),
+                    StepElapsedMilliseconds = new Dictionary<ImageProcessingStepSettings, long>()
+                };
+            }
+
+            return CreateOpenCvPreprocessedImage(
+                source,
+                GetImagePreprocessingStepsForRelationSource(relation.SourceType, relation.SourceId),
+                null);
         }
 
         private static Cv.Mat ApplyOpenCvPreprocessingStep(
@@ -1142,15 +1275,27 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void AddImagePreprocessingStep()
         {
-            systemParameters.ImagePreprocessingSteps.Add(new ImageProcessingStepSettings
+            AddImagePreprocessingStep(null);
+        }
+
+        private void AddImagePreprocessingStep(string groupId)
+        {
+            var step = new ImageProcessingStepSettings
             {
-                Id = Guid.NewGuid().ToString("N")
-            });
+                Id = Guid.NewGuid().ToString("N"),
+                GroupId = groupId ?? string.Empty
+            };
+            systemParameters.ImagePreprocessingSteps.Add(step);
             SaveSystemParameters();
             imagePreprocessingMenuExpanded = true;
+            if (!string.IsNullOrWhiteSpace(groupId))
+            {
+                expandedImagePreprocessingGroupIds.Add(groupId);
+            }
             RebuildVisibleImagePreprocessingSteps();
-            functionListBox.SelectedItem = CreateImagePreprocessingStepText(systemParameters.ImagePreprocessingSteps.Count);
-            statusLabel.Text = "已新增影像前處理" + systemParameters.ImagePreprocessingSteps.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            int stepNumber = systemParameters.ImagePreprocessingSteps.IndexOf(step) + 1;
+            statusLabel.Text = "已新增影像前處理" + stepNumber.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                (string.IsNullOrWhiteSpace(groupId) ? string.Empty : " 至群組");
         }
 
         private void RebuildVisibleImagePreprocessingSteps()
@@ -1238,6 +1383,8 @@ namespace IntegratedImageProcessingApp.Forms
             activeImageRelationSourceType = "Step";
             activeImageRelationSourceId = systemParameters.ImagePreprocessingSteps[stepIndex].Id;
             preprocessingExecutionRequested = true;
+            preprocessingExecutionRequestedByImageRelation = false;
+            imageProcessingExecutionRequested = false;
             BeginParameterApplyStatus(true);
             MarkPreprocessedImageDirty();
             statusLabel.Text = "已開始處理前處理" + (stepIndex + 1);
@@ -1251,6 +1398,8 @@ namespace IntegratedImageProcessingApp.Forms
             activeImageRelationSourceType = "Group";
             activeImageRelationSourceId = groupId;
             preprocessingExecutionRequested = true;
+            preprocessingExecutionRequestedByImageRelation = false;
+            imageProcessingExecutionRequested = false;
             BeginParameterApplyStatus(true);
             MarkPreprocessedImageDirty();
             statusLabel.Text = "已開始處理前處理群組";

@@ -315,7 +315,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            StartObjectJudgementProcessing(objectIndex);
+            StartObjectJudgementProcessing(objectIndex, processingIndex);
         }
 
         private void MoveObjectJudgementProcessing(int objectIndex, int processingIndex, int direction)
