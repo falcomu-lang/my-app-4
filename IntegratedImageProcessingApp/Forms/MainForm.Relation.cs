@@ -478,7 +478,7 @@ namespace IntegratedImageProcessingApp.Forms
                             using (Cv.Mat roiGray = new Cv.Mat(
                                 gray,
                                 new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height)))
-                            using (Cv.Mat combined = CreateSequentialImageProcessingGroupMask(
+                            using (Cv.Mat combined = CreateCombinedImageProcessingGroupMask(
                                 roiGray,
                                 GetImageProcessingStepsForRelation(relation)))
                             {
@@ -623,7 +623,7 @@ namespace IntegratedImageProcessingApp.Forms
                             {
                                 using (Cv.Mat gray = GetOrCreateLargeRoiOpenCvGrayCache(relationSource, roi))
                                 {
-                                    using (Cv.Mat relationMask = CreateSequentialImageProcessingGroupMask(
+                                    using (Cv.Mat relationMask = CreateCombinedImageProcessingGroupMask(
                                         gray,
                                         GetImageProcessingStepsForRelation(relation)))
                                     {

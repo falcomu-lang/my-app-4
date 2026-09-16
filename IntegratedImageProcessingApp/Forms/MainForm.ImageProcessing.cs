@@ -6,7 +6,7 @@ namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm
     {
-        private static Cv.Mat CreateSequentialImageProcessingGroupMask(
+        private static Cv.Mat CreateCombinedImageProcessingGroupMask(
             Cv.Mat source,
             System.Collections.Generic.IEnumerable<ImageProcessingStepSettings> steps)
         {
@@ -20,7 +20,6 @@ namespace IntegratedImageProcessingApp.Forms
                 source.Cols,
                 Cv.MatType.CV_8UC1,
                 Cv.Scalar.All(0));
-            Cv.Mat current = source.Clone();
             try
             {
                 foreach (ImageProcessingStepSettings step in steps ??
@@ -31,22 +30,16 @@ namespace IntegratedImageProcessingApp.Forms
                         continue;
                     }
 
-                    Cv.Mat next = CreateNativeLargeEdgeBinaryMask(
-                        current,
+                    // Each detector analyzes the same source image.  A group
+                    // combines their binary results instead of feeding one
+                    // detector's mask into the next detector.
+                    using (Cv.Mat next = CreateNativeLargeEdgeBinaryMask(
+                        source,
                         step.Method,
-                        ParseImageProcessingParameters(step.Parameters));
-                    try
+                        ParseImageProcessingParameters(step.Parameters)))
                     {
-                        // Each step consumes the previous binary result, while
-                        // the group keeps the OR of every intermediate result.
                         Cv.Cv2.BitwiseOr(combined, next, combined);
                     }
-                    finally
-                    {
-                        current.Dispose();
-                    }
-
-                    current = next;
                 }
 
                 return combined;
@@ -55,10 +48,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 combined.Dispose();
                 throw;
-            }
-            finally
-            {
-                current.Dispose();
             }
         }
 

@@ -4547,34 +4547,14 @@ namespace IntegratedImageProcessingApp.Forms
                                             delegate
                                             {
                                                 statusLabel.Text = "影像處理運算中...使用 OpenCV " + method;
-                                            }));
+                                    }));
                                     Stopwatch imageProcessingStopwatch = Stopwatch.StartNew();
                                     Cv.Mat binaryMask = null;
                                     List<ImageProcessingStepSettings> executionChain =
                                         GetImageProcessingExecutionChain(step);
-                                    Cv.Mat currentInput = nativeGray.Clone();
-                                    try
-                                    {
-                                        foreach (ImageProcessingStepSettings chainStep in executionChain)
-                                        {
-                                            Cv.Mat nextMask = CreateNativeLargeEdgeBinaryMask(
-                                                currentInput,
-                                                chainStep.Method,
-                                                ParseImageProcessingParameters(chainStep.Parameters));
-                                            currentInput.Dispose();
-                                            currentInput = nextMask;
-                                        }
-
-                                        binaryMask = currentInput;
-                                        currentInput = null;
-                                    }
-                                    finally
-                                    {
-                                        if (currentInput != null)
-                                        {
-                                            currentInput.Dispose();
-                                        }
-                                    }
+                                    binaryMask = CreateCombinedImageProcessingGroupMask(
+                                        nativeGray,
+                                        executionChain);
                                     PublishCompletedLargeProcessedBinaryMask(
                                         binaryMask,
                                         roi,
@@ -6696,9 +6676,6 @@ namespace IntegratedImageProcessingApp.Forms
                                         result,
                                         roi,
                                         ConvertOpenCvBinaryMask(binaryMask));
-                                    // A grouped step consumes the binary result
-                                    // produced by the previous step in the same ROI.
-                                    binaryMask.CopyTo(roiInput);
                                 }
                             }
                         }
