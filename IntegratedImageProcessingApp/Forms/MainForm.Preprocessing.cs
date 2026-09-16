@@ -336,6 +336,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (imagePreprocessingFlowTreeView != null) imagePreprocessingFlowTreeView.Visible = false;
             parameterPlaceholderLabel.Visible = true;
             parameterPlaceholderLabel.Text = "前處理群組會依由上而下的順序串接執行。";
+            parameterPlaceholderLabel.BringToFront();
             rightPanelTitleLabel.Text = groupText.Trim() + " 結果";
             statusLabel.Text = "目前選擇：" + groupText.Trim();
         }
@@ -455,8 +456,15 @@ namespace IntegratedImageProcessingApp.Forms
             menu.Items.Add("刪除", null, delegate
             {
                 ImageProcessingStepSettings step = systemParameters.ImagePreprocessingSteps[stepIndex];
-                if (MessageBox.Show("是否要刪除「" + (string.IsNullOrWhiteSpace(step.DisplayName) ? step.Method : step.DisplayName) + "」？",
-                    "刪除前處理", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+                if (!ConfirmDeleteWithImageRelations(
+                        "前處理「" + (string.IsNullOrWhiteSpace(step.DisplayName) ? step.Method : step.DisplayName) + "」",
+                        new HashSet<string>(StringComparer.Ordinal) { step.Id },
+                        new HashSet<string>(StringComparer.Ordinal),
+                        new HashSet<string>(StringComparer.Ordinal),
+                        new HashSet<string>(StringComparer.Ordinal)))
+                {
+                    return;
+                }
                 systemParameters.ImagePreprocessingSteps.RemoveAt(stepIndex);
                 selectedImagePreprocessingStepIndex = -1;
                 SaveSystemParameters();
@@ -588,6 +596,7 @@ namespace IntegratedImageProcessingApp.Forms
             parameterPlaceholderLabel.Visible = false;
             HideImageProcessingParameterPanel();
             imagePreprocessingFlowTreeView.Visible = true;
+            imagePreprocessingFlowTreeView.BringToFront();
             string method = systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Method;
             if (IsImagePreprocessingMethod(method))
             {
@@ -964,7 +973,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void DeleteImagePreprocessingGroup(string groupId)
         {
             ImageProcessingGroupSettings group = FindImagePreprocessingGroup(groupId);
-            if (group == null || MessageBox.Show("是否要刪除前處理群組「" + group.DisplayName + "」及其項目？", "刪除群組", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            if (group == null) return;
             var deletedIds = new HashSet<string>(StringComparer.Ordinal) { group.Id };
             bool changed = true;
             while (changed)
@@ -972,6 +981,21 @@ namespace IntegratedImageProcessingApp.Forms
                 changed = false;
                 foreach (ImageProcessingGroupSettings candidate in systemParameters.ImagePreprocessingGroups)
                     if (deletedIds.Contains(candidate.ParentGroupId) && deletedIds.Add(candidate.Id)) changed = true;
+            }
+            var deletedStepIds = new HashSet<string>(
+                systemParameters.ImagePreprocessingSteps
+                    .Where(step => deletedIds.Contains(step.GroupId))
+                    .Select(step => step.Id),
+                StringComparer.Ordinal);
+            int stepCount = deletedStepIds.Count;
+            if (!ConfirmDeleteWithImageRelations(
+                    "前處理群組「" + group.DisplayName + "」及其底下的 " + stepCount + " 個項目",
+                    deletedStepIds,
+                    deletedIds,
+                    new HashSet<string>(StringComparer.Ordinal),
+                    new HashSet<string>(StringComparer.Ordinal)))
+            {
+                return;
             }
             systemParameters.ImagePreprocessingSteps.RemoveAll(step => deletedIds.Contains(step.GroupId));
             systemParameters.ImagePreprocessingGroups.RemoveAll(candidate => deletedIds.Contains(candidate.Id));
@@ -989,6 +1013,7 @@ namespace IntegratedImageProcessingApp.Forms
             imagePreprocessingFlowTreeView.Visible = false;
             imageProcessingParameterPanel.Visible = true;
             imageProcessingParameterPanel.Controls.Clear();
+            imageProcessingParameterPanel.BringToFront();
             imageProcessingParameterPanel.Controls.Add(CreateParameterLabel(method));
             AddReselectImagePreprocessingMethodButton();
 

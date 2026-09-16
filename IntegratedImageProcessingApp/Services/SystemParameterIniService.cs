@@ -14,6 +14,7 @@ namespace IntegratedImageProcessingApp.Services
         private const string SectionImageProcessing = "ImageProcessing";
         private const string SectionImagePreprocessing = "ImagePreprocessing";
         private const string SectionImageRelations = "ImageRelations";
+        private const string SectionObjectJudgement = "ObjectJudgement";
         private readonly string filePath;
 
         public SystemParameterIniService(string filePath)
@@ -92,6 +93,22 @@ namespace IntegratedImageProcessingApp.Services
             EnsureStepIds(settings.ImageProcessingSteps);
             EnsureStepIds(settings.ImagePreprocessingSteps);
 
+            int relationGroupCount = GetInt(sections, SectionImageRelations, "GroupCount", 0);
+            for (int index = 1; index <= relationGroupCount; index++)
+            {
+                string prefix = "Group" + index;
+                string id = GetValue(sections, SectionImageRelations, prefix + ".Id", string.Empty);
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    settings.ImageRelationGroups.Add(new ImageRelationGroupSettings
+                    {
+                        Id = id,
+                        ParentGroupId = GetValue(sections, SectionImageRelations, prefix + ".ParentGroupId", string.Empty),
+                        DisplayName = GetValue(sections, SectionImageRelations, prefix + ".DisplayName", string.Empty)
+                    });
+                }
+            }
+
             int relationCount = GetInt(sections, SectionImageRelations, "Count", 0);
             for (int index = 1; index <= relationCount; index++)
             {
@@ -106,8 +123,40 @@ namespace IntegratedImageProcessingApp.Services
                         SourceType = GetValue(sections, SectionImageRelations, prefix + ".SourceType", string.Empty),
                         SourceId = GetValue(sections, SectionImageRelations, prefix + ".SourceId", string.Empty),
                         ProcessingType = GetValue(sections, SectionImageRelations, prefix + ".ProcessingType", string.Empty),
-                        ProcessingId = GetValue(sections, SectionImageRelations, prefix + ".ProcessingId", string.Empty)
+                        ProcessingId = GetValue(sections, SectionImageRelations, prefix + ".ProcessingId", string.Empty),
+                        GroupId = GetValue(sections, SectionImageRelations, prefix + ".GroupId", string.Empty)
                     });
+                }
+            }
+
+            int objectJudgementCount = GetInt(sections, SectionObjectJudgement, "Count", 0);
+            for (int index = 1; index <= objectJudgementCount; index++)
+            {
+                string prefix = "Object" + index;
+                string id = GetValue(sections, SectionObjectJudgement, prefix + ".Id", string.Empty);
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    settings.ObjectJudgements.Add(new ObjectJudgementSettings
+                    {
+                        Id = id,
+                        DisplayName = GetValue(sections, SectionObjectJudgement, prefix + ".DisplayName", string.Empty),
+                        RelationType = GetValue(sections, SectionObjectJudgement, prefix + ".RelationType", string.Empty),
+                        RelationId = GetValue(sections, SectionObjectJudgement, prefix + ".RelationId", string.Empty)
+                    });
+
+                    ObjectJudgementSettings objectJudgement = settings.ObjectJudgements[settings.ObjectJudgements.Count - 1];
+                    int processingCount = GetInt(sections, SectionObjectJudgement, prefix + ".ProcessingCount", 0);
+                    for (int processingIndex = 1; processingIndex <= processingCount; processingIndex++)
+                    {
+                        string processingPrefix = prefix + ".Processing" + processingIndex;
+                        objectJudgement.ProcessingSteps.Add(new ObjectJudgementProcessingSettings
+                        {
+                            Id = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Id", string.Empty),
+                            DisplayName = GetValue(sections, SectionObjectJudgement, processingPrefix + ".DisplayName", string.Empty),
+                            Method = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Method", string.Empty),
+                            Parameters = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Parameters", string.Empty)
+                        });
+                    }
                 }
             }
 
@@ -226,6 +275,15 @@ namespace IntegratedImageProcessingApp.Services
 
                 writer.WriteLine();
                 writer.WriteLine("[ImageRelations]");
+                writer.WriteLine("GroupCount={0}", settings.ImageRelationGroups.Count.ToString(CultureInfo.InvariantCulture));
+                for (int index = 0; index < settings.ImageRelationGroups.Count; index++)
+                {
+                    ImageRelationGroupSettings group = settings.ImageRelationGroups[index];
+                    string prefix = "Group" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", prefix, Escape(group.Id));
+                    writer.WriteLine("{0}.ParentGroupId={1}", prefix, Escape(group.ParentGroupId));
+                    writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(group.DisplayName));
+                }
                 writer.WriteLine("Count={0}", settings.ImageRelations.Count.ToString(CultureInfo.InvariantCulture));
                 for (int index = 0; index < settings.ImageRelations.Count; index++)
                 {
@@ -237,6 +295,30 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.SourceId={1}", prefix, Escape(relation.SourceId));
                     writer.WriteLine("{0}.ProcessingType={1}", prefix, Escape(relation.ProcessingType));
                     writer.WriteLine("{0}.ProcessingId={1}", prefix, Escape(relation.ProcessingId));
+                    writer.WriteLine("{0}.GroupId={1}", prefix, Escape(relation.GroupId));
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("[ObjectJudgement]");
+                writer.WriteLine("Count={0}", settings.ObjectJudgements.Count.ToString(CultureInfo.InvariantCulture));
+                for (int index = 0; index < settings.ObjectJudgements.Count; index++)
+                {
+                    ObjectJudgementSettings objectJudgement = settings.ObjectJudgements[index];
+                    string prefix = "Object" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", prefix, Escape(objectJudgement.Id));
+                    writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(objectJudgement.DisplayName));
+                    writer.WriteLine("{0}.RelationType={1}", prefix, Escape(objectJudgement.RelationType));
+                    writer.WriteLine("{0}.RelationId={1}", prefix, Escape(objectJudgement.RelationId));
+                    writer.WriteLine("{0}.ProcessingCount={1}", prefix, objectJudgement.ProcessingSteps.Count.ToString(CultureInfo.InvariantCulture));
+                    for (int processingIndex = 0; processingIndex < objectJudgement.ProcessingSteps.Count; processingIndex++)
+                    {
+                        ObjectJudgementProcessingSettings processing = objectJudgement.ProcessingSteps[processingIndex];
+                        string processingPrefix = prefix + ".Processing" + (processingIndex + 1).ToString(CultureInfo.InvariantCulture);
+                        writer.WriteLine("{0}.Id={1}", processingPrefix, Escape(processing.Id));
+                        writer.WriteLine("{0}.DisplayName={1}", processingPrefix, Escape(processing.DisplayName));
+                        writer.WriteLine("{0}.Method={1}", processingPrefix, Escape(processing.Method));
+                        writer.WriteLine("{0}.Parameters={1}", processingPrefix, Escape(processing.Parameters));
+                    }
                 }
             }
         }

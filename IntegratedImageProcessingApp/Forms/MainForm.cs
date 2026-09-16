@@ -106,6 +106,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
         private const string ImageProcessingMenuText = "影像處理";
+        private const string ObjectJudgementMenuText = "整合成區塊";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
@@ -128,6 +129,8 @@ namespace IntegratedImageProcessingApp.Forms
             Folder,
             Roi,
             Process,
+            Relation,
+            Object,
             Brightness,
             Filter,
             Edge,
@@ -143,6 +146,7 @@ namespace IntegratedImageProcessingApp.Forms
             systemParameters = systemParameterService.Load();
 
             InitializeComponent();
+            NormalizeObjectJudgementDefaultNames();
             functionListBox.SelectionMode = SelectionMode.MultiExtended;
             functionListBox.MouseUp += FunctionListBox_MouseUp;
             if (!functionListBox.Items.Contains(ImageRelationMenuText))
@@ -150,7 +154,13 @@ namespace IntegratedImageProcessingApp.Forms
                 int processingIndex = functionListBox.Items.IndexOf(ImageProcessingMenuText);
                 functionListBox.Items.Insert(processingIndex < 0 ? functionListBox.Items.Count : processingIndex + 1, ImageRelationMenuText);
             }
+            if (!functionListBox.Items.Contains(ObjectJudgementMenuText))
+            {
+                int relationIndex = functionListBox.Items.IndexOf(ImageRelationMenuText);
+                functionListBox.Items.Insert(relationIndex < 0 ? functionListBox.Items.Count : relationIndex + 1, ObjectJudgementMenuText);
+            }
             RebuildVisibleImageRelations();
+            RebuildVisibleObjectJudgements();
 
             if (!IsRunningInDesigner())
             {
@@ -173,15 +183,18 @@ namespace IntegratedImageProcessingApp.Forms
         private void InitializeImageDisplayControls()
         {
             AddPreprocessedImageTabs();
+            AddBlockProcessingImageTabs();
             leftOriginalDisplayControl = CreateImageDisplayControl(leftOriginalDisplayHostPanel, "左側 原圖");
             leftPreprocessedDisplayControl = CreateImageDisplayControl(leftPreprocessedDisplayHostPanel, "左側 前處理");
             leftProcessedDisplayControl = CreateImageDisplayControl(leftProcessedDisplayHostPanel, "左側 處理後");
-            leftObjectsDisplayControl = CreateImageDisplayControl(leftObjectsDisplayHostPanel, "左側 物件結果");
+            leftBlockProcessingDisplayControl = CreateImageDisplayControl(leftBlockProcessingDisplayHostPanel, "左側 區塊處理");
+            leftObjectsDisplayControl = CreateImageDisplayControl(leftObjectsDisplayHostPanel, "左側 區塊結果");
             leftDebugDisplayControl = CreateImageDisplayControl(leftDebugDisplayHostPanel, "左側 debug");
             rightOriginalDisplayControl = CreateImageDisplayControl(rightOriginalDisplayHostPanel, "右側 原圖");
             rightPreprocessedDisplayControl = CreateImageDisplayControl(rightPreprocessedDisplayHostPanel, "右側 前處理");
             rightProcessedDisplayControl = CreateImageDisplayControl(rightProcessedDisplayHostPanel, "右側 處理後");
-            rightObjectsDisplayControl = CreateImageDisplayControl(rightObjectsDisplayHostPanel, "右側 物件結果");
+            rightBlockProcessingDisplayControl = CreateImageDisplayControl(rightBlockProcessingDisplayHostPanel, "右側 區塊處理");
+            rightObjectsDisplayControl = CreateImageDisplayControl(rightObjectsDisplayHostPanel, "右側 區塊結果");
             rightDebugDisplayControl = CreateImageDisplayControl(rightDebugDisplayHostPanel, "右側 debug");
 
             WireImageDisplaySynchronization();
@@ -229,22 +242,26 @@ namespace IntegratedImageProcessingApp.Forms
             leftOriginalDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftPreprocessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftProcessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            leftBlockProcessingDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftObjectsDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftDebugDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightOriginalDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightPreprocessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightProcessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            rightBlockProcessingDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightObjectsDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightDebugDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
 
             leftOriginalDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftPreprocessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftProcessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            leftBlockProcessingDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftObjectsDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftDebugDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightOriginalDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightPreprocessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightProcessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            rightBlockProcessingDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightObjectsDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightDebugDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
 
@@ -256,7 +273,9 @@ namespace IntegratedImageProcessingApp.Forms
             leftOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
             rightOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
             leftProcessedDisplayControl.LargeImageOverlayPaint += ProcessedDisplayControl_LargeImageOverlayPaint;
+            leftBlockProcessingDisplayControl.LargeImageOverlayPaint += BlockProcessingDisplayControl_LargeImageOverlayPaint;
             rightProcessedDisplayControl.LargeImageOverlayPaint += ProcessedDisplayControl_LargeImageOverlayPaint;
+            rightBlockProcessingDisplayControl.LargeImageOverlayPaint += BlockProcessingDisplayControl_LargeImageOverlayPaint;
             imageProcessingDebounceTimer = new System.Windows.Forms.Timer();
             imageProcessingDebounceTimer.Interval = 200;
             imageProcessingDebounceTimer.Tick += ImageProcessingDebounceTimer_Tick;
@@ -341,6 +360,11 @@ namespace IntegratedImageProcessingApp.Forms
         {
             RequestPreprocessedImageUpdate();
             UpdateVisibleProcessedImageIfNeeded();
+            if (ReferenceEquals((sender as TabControl)?.SelectedTab, leftBlockProcessingTabPage) ||
+                ReferenceEquals((sender as TabControl)?.SelectedTab, rightBlockProcessingTabPage))
+            {
+                InvalidateBlockProcessingDisplays();
+            }
             if (isImageViewerMaximized)
             {
                 ApplyMaximizedSideViewState(sender as TabControl);
@@ -655,6 +679,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return leftProcessedDisplayControl;
             }
 
+            if (leftImageTabControl.SelectedTab == leftBlockProcessingTabPage)
+            {
+                return leftBlockProcessingDisplayControl;
+            }
+
             if (leftImageTabControl.SelectedTab == leftObjectsTabPage)
             {
                 return leftObjectsDisplayControl;
@@ -683,6 +712,11 @@ namespace IntegratedImageProcessingApp.Forms
             if (rightImageTabControl.SelectedTab == rightProcessedTabPage)
             {
                 return rightProcessedDisplayControl;
+            }
+
+            if (rightImageTabControl.SelectedTab == rightBlockProcessingTabPage)
+            {
+                return rightBlockProcessingDisplayControl;
             }
 
             if (rightImageTabControl.SelectedTab == rightObjectsTabPage)
@@ -716,12 +750,13 @@ namespace IntegratedImageProcessingApp.Forms
             string selectedFunction = functionListBox.SelectedItem as string;
             if (string.IsNullOrEmpty(selectedFunction))
             {
+                ResetRightFunctionPanel();
                 rightPanelTitleLabel.Text = "參數設定";
                 return;
             }
 
+            ResetRightFunctionPanel();
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
-            HideImageRelationParameterPanel();
             if (selectedFunction == LoadImageMenuText)
             {
                 parameterPlaceholderLabel.Text = "點選左側「讀取圖片」後，選擇要載入的圖片。";
@@ -745,54 +780,114 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 parameterPlaceholderLabel.Text = "右鍵選擇「新增關聯」，設定來源影像與影像處理項目。";
             }
-            else if (GetImageRelationIndex(selectedFunction) >= 0)
+            else if (selectedFunction == ObjectJudgementMenuText)
             {
-                selectedImageRelationIndex = GetImageRelationIndex(selectedFunction);
-                ShowImageRelationParameterPanel(selectedImageRelationIndex);
-                if (IsAKeyDown())
-                {
-                    ProcessImageRelation(selectedImageRelationIndex);
-                }
-            }
-            else if (selectedFunction == ImagePreprocessingMenuText)
-            {
-                HideImageProcessingFlowTree();
-                parameterPlaceholderLabel.Text = "右鍵「影像前處理」可新增前處理流程。";
-            }
-            else if (string.Equals(selectedFunction, OriginalPreprocessingSourceText, StringComparison.Ordinal))
-            {
-                activeImageRelationSourceType = "Original";
-                activeImageRelationSourceId = null;
-                parameterPlaceholderLabel.Text = "目前影像來源：原始影像。直接執行影像處理時會使用原圖。";
-            }
-            else if (IsImagePreprocessingStepMenuItem(selectedFunction))
-            {
-                ShowImagePreprocessingFlowTree(selectedFunction);
-            }
-            else if (GetImagePreprocessingGroupId(selectedFunction) != null)
-            {
-                ShowImagePreprocessingGroup(selectedFunction);
-            }
-            else if (GetImageProcessingGroupId(selectedFunction) != null)
-            {
-                ShowImageProcessingGroup(selectedFunction);
-            }
-            else if (IsImageProcessingStepMenuItem(selectedFunction))
-            {
-                ShowImageProcessingFlowTree(selectedFunction);
-            }
-            else if (IsImageProcessingStepCommandMenuItem(selectedFunction))
-            {
-                HideImageProcessingFlowTree();
-                parameterPlaceholderLabel.Text = "這裡會放置影像處理步驟的編輯命令。";
+                parameterPlaceholderLabel.Text = "這裡會顯示整合成區塊的設定與結果。";
             }
             else
             {
-                HideImageProcessingFlowTree();
-                parameterPlaceholderLabel.Text = "這裡會顯示「" + selectedFunction + "」的參數設定與選項。";
+                int objectIndex;
+                int processingIndex;
+                if (TryGetObjectJudgementProcessingLocation(
+                        selectedFunction,
+                        out objectIndex,
+                        out processingIndex))
+                {
+                    ShowObjectJudgementProcessingParameterPanel(objectIndex, processingIndex);
+                    if (IsAKeyDown())
+                    {
+                        ProcessObjectJudgementProcessing(objectIndex, processingIndex);
+                    }
+                }
+                else if (GetObjectJudgementIndex(selectedFunction) >= 0)
+                {
+                    int selectedObjectIndex = GetObjectJudgementIndex(selectedFunction);
+                    ShowObjectJudgementParameterPanel(selectedObjectIndex);
+                    if (IsAKeyDown())
+                    {
+                        ProcessObjectJudgement(selectedObjectIndex);
+                    }
+                }
+                else if (GetImageRelationGroupId(selectedFunction) != null)
+                {
+                    ShowImageRelationGroup(selectedFunction);
+                    if (IsAKeyDown())
+                    {
+                        ProcessImageRelationGroup(GetImageRelationGroupId(selectedFunction));
+                    }
+                }
+                else if (GetImageRelationIndex(selectedFunction) >= 0)
+                {
+                    activeImageRelationGroupId = null;
+                    selectedImageRelationGroupId = null;
+                    activeImageRelationSourceType = "Original";
+                    activeImageRelationSourceId = null;
+                    selectedImageRelationIndex = GetImageRelationIndex(selectedFunction);
+                    ShowImageRelationParameterPanel(selectedImageRelationIndex);
+                    if (IsAKeyDown())
+                    {
+                        ProcessImageRelation(selectedImageRelationIndex);
+                    }
+                }
+                else if (selectedFunction == ImagePreprocessingMenuText)
+                {
+                    HideImageProcessingFlowTree();
+                    parameterPlaceholderLabel.Text = "右鍵「影像前處理」可新增前處理流程。";
+                }
+                else if (string.Equals(selectedFunction, OriginalPreprocessingSourceText, StringComparison.Ordinal))
+                {
+                    activeImageRelationGroupId = null;
+                    activeImageRelationSourceType = "Original";
+                    activeImageRelationSourceId = null;
+                    parameterPlaceholderLabel.Text = "目前影像來源：原始影像。直接執行影像處理時會使用原圖。";
+                }
+                else if (GetImageRelationGroupId(selectedFunction) != null)
+                {
+                    string groupId = GetImageRelationGroupId(selectedFunction);
+                    if (IsAKeyDown())
+                    {
+                        ProcessImageRelationGroup(groupId);
+                    }
+                    ToggleImageRelationGroup(selectedFunction);
+                }
+                else if (IsImagePreprocessingStepMenuItem(selectedFunction))
+                {
+                    ShowImagePreprocessingFlowTree(selectedFunction);
+                }
+                else if (GetImagePreprocessingGroupId(selectedFunction) != null)
+                {
+                    ShowImagePreprocessingGroup(selectedFunction);
+                }
+                else if (GetImageProcessingGroupId(selectedFunction) != null)
+                {
+                    ShowImageProcessingGroup(selectedFunction);
+                }
+                else if (IsImageProcessingStepMenuItem(selectedFunction))
+                {
+                    ShowImageProcessingFlowTree(selectedFunction);
+                }
+                else if (IsImageProcessingStepCommandMenuItem(selectedFunction))
+                {
+                    HideImageProcessingFlowTree();
+                    parameterPlaceholderLabel.Text = "這裡會放置影像處理步驟的編輯命令。";
+                }
+                else
+                {
+                    HideImageProcessingFlowTree();
+                    parameterPlaceholderLabel.Text = "這裡會顯示「" + selectedFunction + "」的參數設定與選項。";
+                }
             }
 
             statusLabel.Text = "目前選擇：" + selectedFunction;
+        }
+
+        private void ResetRightFunctionPanel()
+        {
+            HideImageRelationParameterPanel();
+            HideObjectJudgementParameterPanel();
+            HideImageProcessingFlowTree();
+            parameterPlaceholderLabel.Visible = true;
+            parameterPlaceholderLabel.BringToFront();
         }
 
         private async void FunctionListBox_MouseClick(object sender, MouseEventArgs e)
@@ -835,6 +930,14 @@ namespace IntegratedImageProcessingApp.Forms
             else if (selectedFunction == ImagePreprocessingMenuText)
             {
                 ToggleImagePreprocessingMenu();
+            }
+            else if (selectedFunction == ImageRelationMenuText)
+            {
+                ToggleImageRelationMenu();
+            }
+            else if (selectedFunction == ObjectJudgementMenuText)
+            {
+                ToggleObjectJudgementMenu();
             }
             else if (string.Equals(selectedFunction, OriginalPreprocessingSourceText, StringComparison.Ordinal))
             {
@@ -925,9 +1028,74 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (stepText == ObjectJudgementMenuText)
+            {
+                ShowObjectJudgementMenuContextMenu(e.Location);
+                return;
+            }
+
+            int objectProcessingOwnerIndex;
+            int objectProcessingIndex;
+            if (TryGetObjectJudgementProcessingLocation(
+                    stepText,
+                    out objectProcessingOwnerIndex,
+                    out objectProcessingIndex))
+            {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                ShowObjectJudgementProcessingItemContextMenu(
+                    objectProcessingOwnerIndex,
+                    objectProcessingIndex,
+                    e.Location);
+                return;
+            }
+
+            int objectJudgementIndex = GetObjectJudgementIndex(stepText);
+            if (objectJudgementIndex >= 0)
+            {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                ShowObjectJudgementItemContextMenu(objectJudgementIndex, e.Location);
+                return;
+            }
+
+            string clickedRelationGroupId = GetImageRelationGroupId(stepText);
+            if (!string.IsNullOrEmpty(clickedRelationGroupId))
+            {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                ShowImageRelationGroupContextMenu(clickedRelationGroupId, e.Location);
+                return;
+            }
+
             int relationIndex = GetImageRelationIndex(stepText);
             if (relationIndex >= 0)
             {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                List<int> selectedRelationIndexes = GetSelectedImageRelationIndexes();
+                if (selectedRelationIndexes.Count >= 2)
+                {
+                    ShowImageRelationMultiSelectContextMenu(selectedRelationIndexes, e.Location);
+                    return;
+                }
+
                 ShowImageRelationItemContextMenu(relationIndex, e.Location);
                 return;
             }
@@ -1098,29 +1266,93 @@ namespace IntegratedImageProcessingApp.Forms
                 SourceType = "Original",
                 SourceId = string.Empty,
                 ProcessingType = "Step",
-                ProcessingId = string.Empty
+                ProcessingId = string.Empty,
+                GroupId = string.Empty
             });
             SaveSystemParameters();
+            imageRelationMenuExpanded = true;
             RebuildVisibleImageRelations();
             statusLabel.Text = "已新增影像關聯，請選擇來源與處理項目";
         }
 
+        private void ToggleImageRelationMenu()
+        {
+            imageRelationMenuExpanded = !imageRelationMenuExpanded;
+            RebuildVisibleImageRelations();
+            statusLabel.Text = imageRelationMenuExpanded ? "已展開影像關聯" : "已收合影像關聯";
+        }
+
         private void RebuildVisibleImageRelations()
         {
-            for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
+            int relationMenuIndex = functionListBox.Items.IndexOf(ImageRelationMenuText);
+            if (relationMenuIndex < 0)
             {
-                string text = functionListBox.Items[index] as string;
-                if (text != null && text.StartsWith("    關聯", StringComparison.Ordinal))
+                return;
+            }
+
+            int removeIndex = relationMenuIndex + 1;
+            while (removeIndex < functionListBox.Items.Count)
+            {
+                string text = functionListBox.Items[removeIndex] as string;
+                if (string.IsNullOrEmpty(text) || !text.StartsWith("    ", StringComparison.Ordinal))
                 {
-                    functionListBox.Items.RemoveAt(index);
+                    break;
+                }
+
+                functionListBox.Items.RemoveAt(removeIndex);
+            }
+
+            if (!imageRelationMenuExpanded)
+            {
+                return;
+            }
+
+            int insertIndex = relationMenuIndex + 1;
+            foreach (ImageRelationSettings relation in systemParameters.ImageRelations)
+            {
+                if (!string.IsNullOrWhiteSpace(relation.GroupId))
+                {
+                    continue;
+                }
+
+                string displayName = string.IsNullOrWhiteSpace(relation.DisplayName) ? "未命名" : relation.DisplayName;
+                functionListBox.Items.Insert(insertIndex++, "    " + displayName);
+            }
+
+            foreach (ImageRelationGroupSettings group in systemParameters.ImageRelationGroups)
+            {
+                if (!string.IsNullOrWhiteSpace(group.ParentGroupId))
+                {
+                    continue;
+                }
+
+                InsertVisibleImageRelationGroup(group, ref insertIndex, 0);
+            }
+        }
+
+        private void InsertVisibleImageRelationGroup(ImageRelationGroupSettings group, ref int insertIndex, int depth)
+        {
+            functionListBox.Items.Insert(insertIndex++, CreateImageRelationGroupText(group, depth));
+            if (!expandedImageRelationGroupIds.Contains(group.Id))
+            {
+                return;
+            }
+
+            foreach (ImageRelationSettings relation in systemParameters.ImageRelations)
+            {
+                if (string.Equals(relation.GroupId, group.Id, StringComparison.Ordinal))
+                {
+                    string displayName = string.IsNullOrWhiteSpace(relation.DisplayName) ? "未命名" : relation.DisplayName;
+                    functionListBox.Items.Insert(insertIndex++, new string(' ', 6 + (depth * 2)) + displayName);
                 }
             }
 
-            int insertIndex = functionListBox.Items.IndexOf(ImageRelationMenuText) + 1;
-            foreach (ImageRelationSettings relation in systemParameters.ImageRelations)
+            foreach (ImageRelationGroupSettings child in systemParameters.ImageRelationGroups)
             {
-                string displayName = string.IsNullOrWhiteSpace(relation.DisplayName) ? "未命名" : relation.DisplayName;
-                functionListBox.Items.Insert(insertIndex++, "    " + displayName);
+                if (string.Equals(child.ParentGroupId, group.Id, StringComparison.Ordinal))
+                {
+                    InsertVisibleImageRelationGroup(child, ref insertIndex, depth + 1);
+                }
             }
         }
 
@@ -1145,14 +1377,97 @@ namespace IntegratedImageProcessingApp.Forms
             menu.Items.Add("命名", null, delegate { RenameImageRelation(relationIndex); });
             menu.Items.Add("刪除", null, delegate
             {
-                if (MessageBox.Show("是否要刪除該影像關聯？", "刪除影像關聯", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                if (relationIndex < 0 || relationIndex >= systemParameters.ImageRelations.Count)
                 {
-                    systemParameters.ImageRelations.RemoveAt(relationIndex);
-                    SaveSystemParameters();
-                    RebuildVisibleImageRelations();
+                    return;
                 }
+
+                ImageRelationSettings relation = systemParameters.ImageRelations[relationIndex];
+                if (!ConfirmDeleteImageRelation(relation))
+                {
+                    return;
+                }
+
+                systemParameters.ImageRelations.RemoveAt(relationIndex);
+                SaveSystemParameters();
+                RebuildVisibleImageRelations();
             });
             menu.Show(functionListBox, location);
+        }
+
+        private bool ConfirmDeleteImageRelation(ImageRelationSettings relation)
+        {
+            if (relation == null)
+            {
+                return false;
+            }
+
+            var affectedObjectNames = new List<string>();
+            var directlyUsingObjects = new List<ObjectJudgementSettings>();
+            foreach (ObjectJudgementSettings objectJudgement in systemParameters.ObjectJudgements)
+            {
+                string objectName = string.IsNullOrWhiteSpace(objectJudgement.DisplayName)
+                    ? "未命名區塊"
+                    : objectJudgement.DisplayName;
+                bool isDirectReference =
+                    string.Equals(objectJudgement.RelationType, "Relation", StringComparison.Ordinal) &&
+                    string.Equals(objectJudgement.RelationId, relation.Id, StringComparison.Ordinal);
+
+                bool isGroupReference = false;
+                if (string.Equals(objectJudgement.RelationType, "Group", StringComparison.Ordinal))
+                {
+                    ImageRelationGroupSettings group = FindImageRelationGroup(objectJudgement.RelationId);
+                    if (group != null)
+                    {
+                        foreach (ImageRelationSettings groupedRelation in GetImageRelationGroupRelations(group.Id))
+                        {
+                            if (string.Equals(groupedRelation.Id, relation.Id, StringComparison.Ordinal))
+                            {
+                                isGroupReference = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (isDirectReference || isGroupReference)
+                {
+                    affectedObjectNames.Add(objectName);
+                    if (isDirectReference)
+                    {
+                        directlyUsingObjects.Add(objectJudgement);
+                    }
+                }
+            }
+
+            string relationName = string.IsNullOrWhiteSpace(relation.DisplayName) ? "未命名關聯" : relation.DisplayName;
+            string message;
+            string title;
+            if (affectedObjectNames.Count == 0)
+            {
+                message = "是否要刪除關聯「" + relationName + "」？";
+                title = "刪除影像關聯";
+            }
+            else
+            {
+                message = "關聯「" + relationName + "」已被以下整合成區塊使用：\r\n" +
+                    string.Join("、", affectedObjectNames.ToArray()) +
+                    "\r\n\r\n刪除後，直接使用此關聯的區塊設定會被清除；使用關聯群組的區塊結果也會受到影響。\r\n是否仍要刪除？";
+                title = "刪除前關聯警告";
+            }
+
+            if (MessageBox.Show(this, message, title, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return false;
+            }
+
+            foreach (ObjectJudgementSettings objectJudgement in directlyUsingObjects)
+            {
+                objectJudgement.RelationType = string.Empty;
+                objectJudgement.RelationId = string.Empty;
+            }
+
+            return true;
         }
 
         private void MoveImageRelation(int relationIndex, int direction)
@@ -1177,6 +1492,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
             activeImageRelationSourceType = relation.SourceType;
             activeImageRelationSourceId = relation.SourceId;
+            activeImageRelationGroupId = null;
+            selectedImageRelationGroupId = null;
             if (!string.Equals(relation.SourceType, "Original", StringComparison.Ordinal))
             {
                 // A relation is an explicit processing request, so it may start
@@ -1233,6 +1550,84 @@ namespace IntegratedImageProcessingApp.Forms
                 dialog.AcceptButton = ok; dialog.CancelButton = cancel;
                 return dialog.ShowDialog(this) == DialogResult.OK ? input.Text : null;
             }
+        }
+
+        private bool ConfirmDeleteWithImageRelations(
+            string itemDescription,
+            HashSet<string> preprocessingStepIds,
+            HashSet<string> preprocessingGroupIds,
+            HashSet<string> processingStepIds,
+            HashSet<string> processingGroupIds)
+        {
+            var affectedRelations = new List<ImageRelationSettings>();
+            foreach (ImageRelationSettings relation in systemParameters.ImageRelations)
+            {
+                bool usesDeletedPreprocessingSource =
+                    string.Equals(relation.SourceType, "Step", StringComparison.Ordinal) &&
+                    preprocessingStepIds.Contains(relation.SourceId) ||
+                    string.Equals(relation.SourceType, "Group", StringComparison.Ordinal) &&
+                    preprocessingGroupIds.Contains(relation.SourceId);
+                bool usesDeletedProcessingTarget =
+                    string.Equals(relation.ProcessingType, "Step", StringComparison.Ordinal) &&
+                    processingStepIds.Contains(relation.ProcessingId) ||
+                    string.Equals(relation.ProcessingType, "Group", StringComparison.Ordinal) &&
+                    processingGroupIds.Contains(relation.ProcessingId);
+
+                if (usesDeletedPreprocessingSource || usesDeletedProcessingTarget)
+                {
+                    affectedRelations.Add(relation);
+                }
+            }
+
+            var relationNames = new List<string>();
+            foreach (ImageRelationSettings relation in affectedRelations)
+            {
+                relationNames.Add("關聯「" + (string.IsNullOrWhiteSpace(relation.DisplayName) ? "未命名關聯" : relation.DisplayName) + "」");
+            }
+
+            string message;
+/*
+            if (affectedRelations.Count == 0)
+            {
+                message = "是否要刪除" + itemDescription + "？";
+            }
+            else
+            {
+                message = "" + itemDescription + " 已建立影像關聯：\r\n" +
+                    string.Join("、", relationNames.ToArray()) +\n"\r\n刪除後，受影響的關聯也會一併刪除。\r\n是否要繼續？";
+            }
+
+*/
+            message = affectedRelations.Count == 0
+                ? "是否要刪除" + itemDescription + "？"
+                : itemDescription + " 已建立影像關聯：\r\n" +
+                    string.Join("、", relationNames.ToArray()) +
+                    "\r\n\r\n刪除後，受影響的關聯也會一併刪除。\r\n是否要繼續？";
+
+            if (MessageBox.Show(
+                    this,
+                    message,
+                    affectedRelations.Count == 0 ? "刪除確認" : "刪除前關聯確認",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return false;
+            }
+
+            foreach (ImageRelationSettings relation in affectedRelations)
+            {
+                systemParameters.ImageRelations.Remove(relation);
+            }
+
+            if (affectedRelations.Count > 0)
+            {
+                selectedImageRelationIndex = -1;
+                activeImageRelationSourceType = "Original";
+                activeImageRelationSourceId = null;
+                RebuildVisibleImageRelations();
+            }
+
+            return true;
         }
 
         private void ShowImageProcessingMenuContextMenu(Point location)
@@ -1558,11 +1953,17 @@ namespace IntegratedImageProcessingApp.Forms
             var groupIdsToDelete = new HashSet<string>(StringComparer.Ordinal);
             CollectImageProcessingGroupAndDescendantIds(group.Id, groupIdsToDelete);
             int stepCount = systemParameters.ImageProcessingSteps.Count(step => groupIdsToDelete.Contains(step.GroupId));
-            if (MessageBox.Show(
-                    "是否要刪除群組「" + group.DisplayName + "」及其底下的 " + stepCount + " 個處理？此動作無法復原。",
-                    "刪除群組",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning) != DialogResult.Yes)
+            var deletedStepIds = new HashSet<string>(
+                systemParameters.ImageProcessingSteps
+                    .Where(step => groupIdsToDelete.Contains(step.GroupId))
+                    .Select(step => step.Id),
+                StringComparer.Ordinal);
+            if (!ConfirmDeleteWithImageRelations(
+                    "影像處理群組「" + group.DisplayName + "」及其底下的 " + stepCount + " 個處理",
+                    new HashSet<string>(StringComparer.Ordinal),
+                    new HashSet<string>(StringComparer.Ordinal),
+                    deletedStepIds,
+                    groupIdsToDelete))
             {
                 return;
             }
@@ -1893,14 +2294,20 @@ namespace IntegratedImageProcessingApp.Forms
         private void DeleteImageProcessingStep()
         {
             string stepText = expandedImageProcessingStepText;
-            DialogResult result = MessageBox.Show(
-                this,
-                "是否要刪除該項處理？",
-                "刪除影像處理",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
+            int stepIndex = GetImageProcessingStepIndex(stepText);
+            if (stepIndex < 0 || stepIndex >= systemParameters.ImageProcessingSteps.Count)
+            {
+                return;
+            }
 
-            if (result != DialogResult.Yes)
+            ImageProcessingStepSettings step = systemParameters.ImageProcessingSteps[stepIndex];
+            var deletedStepIds = new HashSet<string>(StringComparer.Ordinal) { step.Id };
+            if (!ConfirmDeleteWithImageRelations(
+                    "處理「" + (string.IsNullOrWhiteSpace(step.DisplayName) ? step.Method : step.DisplayName) + "」",
+                    new HashSet<string>(StringComparer.Ordinal),
+                    new HashSet<string>(StringComparer.Ordinal),
+                    deletedStepIds,
+                    new HashSet<string>(StringComparer.Ordinal)))
             {
                 statusLabel.Text = "已取消刪除";
                 return;
@@ -1908,7 +2315,6 @@ namespace IntegratedImageProcessingApp.Forms
 
             RemoveImageProcessingStepCommandMenuItems();
             functionListBox.Items.Remove(stepText);
-            int stepIndex = GetImageProcessingStepIndex(stepText);
             if (stepIndex >= 0 && stepIndex < systemParameters.ImageProcessingSteps.Count)
             {
                 systemParameters.ImageProcessingSteps.RemoveAt(stepIndex);
@@ -2213,7 +2619,7 @@ namespace IntegratedImageProcessingApp.Forms
             parameterPlaceholderLabel.Visible = false;
 
             string method = systemParameters.ImageProcessingSteps[selectedImageProcessingStepIndex].Method;
-            if (IsEdgeDetectionMethod(method))
+            if (IsBinaryMaskProcessingMethod(method))
             {
                 ShowImageProcessingParameterPanel(method);
                 rightPanelTitleLabel.Text = stepText.Trim() + " 參數";
@@ -2222,6 +2628,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 HideImageProcessingParameterPanel();
                 imageProcessingFlowTreeView.Visible = true;
+                imageProcessingFlowTreeView.BringToFront();
                 SelectImageProcessingFlowNode(method);
                 rightPanelTitleLabel.Text = stepText.Trim() + " 流程";
             }
@@ -2247,6 +2654,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             parameterPlaceholderLabel.Visible = true;
             parameterPlaceholderLabel.Text = "群組結果會疊加顯示群組內每一個處理對原圖的結果。";
+            parameterPlaceholderLabel.BringToFront();
             rightPanelTitleLabel.Text = groupText.Trim() + " 結果";
             statusLabel.Text = "目前選擇：" + groupText.Trim();
         }
@@ -2382,7 +2790,7 @@ namespace IntegratedImageProcessingApp.Forms
             MarkProcessedImageDirty();
             ScheduleProcessedImageUpdateIfVisible();
             UpdateVisibleImageProcessingStepText(selectedImageProcessingStepIndex);
-            if (IsEdgeDetectionMethod(method))
+            if (IsBinaryMaskProcessingMethod(method))
             {
                 ShowImageProcessingParameterPanel(method);
                 rightPanelTitleLabel.Text = "處理" + (selectedImageProcessingStepIndex + 1) + "(" + method + ") 參數";
@@ -2434,6 +2842,7 @@ namespace IntegratedImageProcessingApp.Forms
             parameterPlaceholderLabel.Visible = false;
             imageProcessingParameterPanel.Visible = true;
             imageProcessingParameterPanel.Controls.Clear();
+            imageProcessingParameterPanel.BringToFront();
 
             isLoadingImageProcessingParameters = true;
             try
@@ -2465,6 +2874,25 @@ namespace IntegratedImageProcessingApp.Forms
                     AddComboParameter("Direction", "灰階變化方向", new[] { "X", "Y", "Any" }, "Any");
                     AddComboParameter("KernelSize", "核心大小", SobelKernelSizeOptions, "3");
                     AddNumericParameter("Threshold", "邊緣門檻", "30");
+                }
+                else if (method == "Global Threshold")
+                {
+                    AddNumericParameter("Threshold", "門檻值", "128");
+                    AddNumericParameter("MaxValue", "輸出最大值", "255");
+                    AddComboParameter("ThresholdType", "二值化方向", new[] { "Binary", "BinaryInv" }, "Binary");
+                }
+                else if (method == "Adaptive Threshold")
+                {
+                    AddNumericParameter("MaxValue", "輸出最大值", "255");
+                    AddComboParameter("AdaptiveMethod", "自適應方法", new[] { "MeanC", "GaussianC" }, "GaussianC");
+                    AddComboParameter("ThresholdType", "二值化方向", new[] { "Binary", "BinaryInv" }, "Binary");
+                    AddNumericParameter("BlockSize", "區塊大小", "11");
+                    AddNumericParameter("C", "常數 C", "2");
+                }
+                else if (method == "Otsu Threshold")
+                {
+                    AddNumericParameter("MaxValue", "輸出最大值", "255");
+                    AddComboParameter("ThresholdType", "二值化方向", new[] { "Binary", "BinaryInv" }, "Binary");
                 }
 
                 AddParameterEditButtons(false);
@@ -2541,7 +2969,7 @@ namespace IntegratedImageProcessingApp.Forms
             numericUpDown.Minimum = minimum;
             numericUpDown.Maximum = maximum;
             numericUpDown.Increment = increment;
-            numericUpDown.DecimalPlaces = key == "Scale" || key == "GaussianSigma" ? 2 : 0;
+            numericUpDown.DecimalPlaces = key == "Scale" || key == "GaussianSigma" || key == "C" ? 2 : 0;
             numericUpDown.Value = Clamp(value, minimum, maximum);
             numericUpDown.Tag = key;
             numericUpDown.ValueChanged += delegate(object sender, EventArgs e)
@@ -2862,6 +3290,22 @@ namespace IntegratedImageProcessingApp.Forms
                 maximum = 100;
                 increment = 0.1M;
             }
+            else if (key == "MaxValue")
+            {
+                minimum = 1;
+                maximum = 255;
+            }
+            else if (key == "BlockSize")
+            {
+                minimum = 3;
+                maximum = 999;
+            }
+            else if (key == "C")
+            {
+                minimum = -255;
+                maximum = 255;
+                increment = 0.1M;
+            }
             else if (key == "Delta")
             {
                 minimum = -255;
@@ -3015,6 +3459,21 @@ namespace IntegratedImageProcessingApp.Forms
                 return "Direction=Any;KernelSize=3;Threshold=30";
             }
 
+            if (method == "Global Threshold")
+            {
+                return "Threshold=128;MaxValue=255;ThresholdType=Binary";
+            }
+
+            if (method == "Adaptive Threshold")
+            {
+                return "MaxValue=255;AdaptiveMethod=GaussianC;ThresholdType=Binary;BlockSize=11;C=2";
+            }
+
+            if (method == "Otsu Threshold")
+            {
+                return "MaxValue=255;ThresholdType=Binary";
+            }
+
             return string.Empty;
         }
 
@@ -3023,6 +3482,18 @@ namespace IntegratedImageProcessingApp.Forms
             return method == "Polarity Edge" ||
                 method == "Canny Edge" ||
                 method == "Sobel Edge";
+        }
+
+        private static bool IsThresholdMethod(string method)
+        {
+            return method == "Global Threshold" ||
+                method == "Adaptive Threshold" ||
+                method == "Otsu Threshold";
+        }
+
+        private static bool IsBinaryMaskProcessingMethod(string method)
+        {
+            return IsEdgeDetectionMethod(method) || IsThresholdMethod(method);
         }
 
         private bool HasPreviewableImageProcessingStep()
@@ -3069,6 +3540,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private bool HasSelectedPreviewableImageProcessingSteps()
         {
+            if (!string.IsNullOrWhiteSpace(activeImageRelationGroupId))
+            {
+                return HasSelectedImageRelationGroupPreviewableSteps();
+            }
+
             List<ImageProcessingStepSettings> steps = GetSelectedImageProcessingSteps();
             if (steps.Count == 0)
             {
@@ -3077,7 +3553,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             foreach (ImageProcessingStepSettings step in steps)
             {
-                if (!IsEdgeDetectionMethod(step.Method))
+                if (!IsBinaryMaskProcessingMethod(step.Method))
                 {
                     return false;
                 }
@@ -3179,6 +3655,34 @@ namespace IntegratedImageProcessingApp.Forms
 
         private bool[,] CreateLargeEdgeMask(byte[,] gray, string method, Dictionary<string, string> parameters)
         {
+            if (method == "Global Threshold")
+            {
+                return CreateOpenCvGlobalThresholdMask(
+                    gray,
+                    GetIntParameter(parameters, "Threshold", 128),
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"));
+            }
+
+            if (method == "Adaptive Threshold")
+            {
+                return CreateOpenCvAdaptiveThresholdMask(
+                    gray,
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "AdaptiveMethod", "GaussianC"),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"),
+                    GetIntParameter(parameters, "BlockSize", 11),
+                    GetDoubleParameter(parameters, "C", 2));
+            }
+
+            if (method == "Otsu Threshold")
+            {
+                return CreateOpenCvOtsuThresholdMask(
+                    gray,
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"));
+            }
+
             if (method == "Sobel Edge")
             {
                 return CreateOpenCvSobelMask(
@@ -3676,6 +4180,36 @@ namespace IntegratedImageProcessingApp.Forms
 
         private string CreateProcessedImageCacheKey()
         {
+            if (!string.IsNullOrWhiteSpace(activeImageRelationGroupId))
+            {
+                var relationParts = new List<string>
+                {
+                    systemParameters.LastImagePath ?? string.Empty,
+                    "relation-group",
+                    activeImageRelationGroupId
+                };
+                foreach (ImageRelationSettings relation in GetImageRelationGroupRelations(activeImageRelationGroupId))
+                {
+                    relationParts.Add(relation.Id ?? string.Empty);
+                    relationParts.Add(relation.SourceType ?? string.Empty);
+                    relationParts.Add(relation.SourceId ?? string.Empty);
+                    relationParts.Add(relation.ProcessingType ?? string.Empty);
+                    relationParts.Add(relation.ProcessingId ?? string.Empty);
+                    foreach (ImageProcessingStepSettings step in GetImageProcessingStepsForRelation(relation))
+                    {
+                        relationParts.Add(step.Method ?? string.Empty);
+                        relationParts.Add(step.Parameters ?? string.Empty);
+                    }
+                }
+                foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+                {
+                    Rectangle roi = roiRegion.Bounds;
+                    relationParts.Add(roi.X + "," + roi.Y + "," + roi.Width + "," + roi.Height);
+                }
+
+                return string.Join("|", relationParts.ToArray());
+            }
+
             List<ImageProcessingStepSettings> selectedSteps = GetSelectedImageProcessingSteps();
             if (selectedSteps.Count == 0)
             {
@@ -3704,6 +4238,12 @@ namespace IntegratedImageProcessingApp.Forms
         {
             return (leftImageTabControl.Visible && leftImageTabControl.SelectedTab == leftProcessedTabPage) ||
                 (rightImageTabControl.Visible && rightImageTabControl.SelectedTab == rightProcessedTabPage);
+        }
+
+        private bool IsAnyBlockProcessingTabVisible()
+        {
+            return (leftImageTabControl.Visible && leftImageTabControl.SelectedTab == leftBlockProcessingTabPage) ||
+                (rightImageTabControl.Visible && rightImageTabControl.SelectedTab == rightBlockProcessingTabPage);
         }
 
         private void ApplyLatestProcessedImageToVisibleTabs()
@@ -3755,6 +4295,12 @@ namespace IntegratedImageProcessingApp.Forms
             if (systemParameters.RoiRegions.Count == 0 || !HasSelectedPreviewableImageProcessingSteps())
             {
                 ClearProcessedPreviewImages();
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(activeImageRelationGroupId))
+            {
+                PrepareLargeRelationGroupPreview();
                 return;
             }
 
@@ -3847,7 +4393,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void StartLargeProcessedMaskBuild(LargeImageSource source, Rectangle roi, ImageProcessingStepSettings step)
         {
-            if (source == null || roi.Width <= 0 || roi.Height <= 0 || step == null || !IsEdgeDetectionMethod(step.Method))
+            if (source == null || roi.Width <= 0 || roi.Height <= 0 || step == null || !IsBinaryMaskProcessingMethod(step.Method))
             {
                 return;
             }
@@ -4050,6 +4596,7 @@ namespace IntegratedImageProcessingApp.Forms
                                                 {
                                                     leftProcessedDisplayControl.InvalidateImageView();
                                                     rightProcessedDisplayControl.InvalidateImageView();
+                                                    InvalidateBlockProcessingDisplays();
                                                 }
                                             }));
                                 }
@@ -4076,6 +4623,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     statusLabel.Text = "大圖 ROI Mask 建立完成";
                                     leftProcessedDisplayControl.InvalidateImageView();
                                     rightProcessedDisplayControl.InvalidateImageView();
+                                    InvalidateBlockProcessingDisplays();
                                 }));
                     }
                     catch (Exception ex)
@@ -4096,6 +4644,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     statusLabel.Text = "大圖 ROI Mask 建立失敗：" + ex.Message;
                                     leftProcessedDisplayControl.InvalidateImageView();
                                     rightProcessedDisplayControl.InvalidateImageView();
+                                    InvalidateBlockProcessingDisplays();
                                 }));
                     }
                     finally
@@ -4127,6 +4676,7 @@ namespace IntegratedImageProcessingApp.Forms
                         statusLabel.Text = "大圖 ROI Mask 建立完成";
                         leftProcessedDisplayControl.InvalidateImageView();
                         rightProcessedDisplayControl.InvalidateImageView();
+                        InvalidateBlockProcessingDisplays();
                     }));
         }
 
@@ -4231,6 +4781,17 @@ namespace IntegratedImageProcessingApp.Forms
         {
             ImageDisplayControl display = sender as ImageDisplayControl;
             bool isPanning = display != null && display.IsPanning;
+
+            if (!string.IsNullOrWhiteSpace(activeImageRelationGroupId))
+            {
+                foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+                {
+                    PaintLargeProcessedRelationGroupOverlayForRoi(e, roiRegion.Bounds, isPanning);
+                }
+
+                return;
+            }
+
             List<ImageProcessingStepSettings> selectedSteps = GetSelectedImageProcessingSteps();
             if (selectedSteps.Count == 0)
             {
@@ -4241,7 +4802,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 foreach (ImageProcessingStepSettings step in selectedSteps)
                 {
-                    if (IsEdgeDetectionMethod(step.Method))
+                    if (IsBinaryMaskProcessingMethod(step.Method))
                     {
                         PaintLargeProcessedOverlayForRoi(e, roiRegion.Bounds, step, isPanning);
                     }
@@ -4279,7 +4840,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (!IsAnyProcessedTabVisible())
+            if (!IsAnyProcessedTabVisible() && !IsAnyBlockProcessingTabVisible())
             {
                 return;
             }
@@ -5095,7 +5656,73 @@ namespace IntegratedImageProcessingApp.Forms
         {
             return string.Equals(method, "Canny Edge", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(method, "Polarity Edge", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(method, "Sobel Edge", StringComparison.OrdinalIgnoreCase);
+                string.Equals(method, "Sobel Edge", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(method, "Global Threshold", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(method, "Adaptive Threshold", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(method, "Otsu Threshold", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static Cv.Mat CreateOpenCvGlobalThresholdBinaryMask(
+            Cv.Mat source,
+            int threshold,
+            int maxValue,
+            string thresholdType)
+        {
+            var result = new Cv.Mat();
+            Cv.ThresholdTypes type = string.Equals(thresholdType, "BinaryInv", StringComparison.OrdinalIgnoreCase)
+                ? Cv.ThresholdTypes.BinaryInv
+                : Cv.ThresholdTypes.Binary;
+            Cv.Cv2.Threshold(
+                source,
+                result,
+                ClampInt(threshold, 0, 255),
+                ClampInt(maxValue, 1, 255),
+                type);
+            return result;
+        }
+
+        private static Cv.Mat CreateOpenCvAdaptiveThresholdBinaryMask(
+            Cv.Mat source,
+            int maxValue,
+            string adaptiveMethod,
+            string thresholdType,
+            int blockSize,
+            double c)
+        {
+            var result = new Cv.Mat();
+            Cv.AdaptiveThresholdTypes adaptive = string.Equals(adaptiveMethod, "MeanC", StringComparison.OrdinalIgnoreCase)
+                ? Cv.AdaptiveThresholdTypes.MeanC
+                : Cv.AdaptiveThresholdTypes.GaussianC;
+            Cv.ThresholdTypes type = string.Equals(thresholdType, "BinaryInv", StringComparison.OrdinalIgnoreCase)
+                ? Cv.ThresholdTypes.BinaryInv
+                : Cv.ThresholdTypes.Binary;
+            Cv.Cv2.AdaptiveThreshold(
+                source,
+                result,
+                ClampInt(maxValue, 1, 255),
+                adaptive,
+                type,
+                EnsureOdd(Math.Max(3, blockSize)),
+                c);
+            return result;
+        }
+
+        private static Cv.Mat CreateOpenCvOtsuThresholdBinaryMask(
+            Cv.Mat source,
+            int maxValue,
+            string thresholdType)
+        {
+            var result = new Cv.Mat();
+            Cv.ThresholdTypes type = string.Equals(thresholdType, "BinaryInv", StringComparison.OrdinalIgnoreCase)
+                ? Cv.ThresholdTypes.BinaryInv
+                : Cv.ThresholdTypes.Binary;
+            Cv.Cv2.Threshold(
+                source,
+                result,
+                0,
+                ClampInt(maxValue, 1, 255),
+                type | Cv.ThresholdTypes.Otsu);
+            return result;
         }
 
         private static Cv.Mat CreateNativeLargeEdgeBinaryMask(
@@ -5103,6 +5730,34 @@ namespace IntegratedImageProcessingApp.Forms
             string method,
             Dictionary<string, string> parameters)
         {
+            if (string.Equals(method, "Global Threshold", StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateOpenCvGlobalThresholdBinaryMask(
+                    source,
+                    GetIntParameter(parameters, "Threshold", 128),
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"));
+            }
+
+            if (string.Equals(method, "Adaptive Threshold", StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateOpenCvAdaptiveThresholdBinaryMask(
+                    source,
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "AdaptiveMethod", "GaussianC"),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"),
+                    GetIntParameter(parameters, "BlockSize", 11),
+                    GetDoubleParameter(parameters, "C", 2));
+            }
+
+            if (string.Equals(method, "Otsu Threshold", StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateOpenCvOtsuThresholdBinaryMask(
+                    source,
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"));
+            }
+
             if (string.Equals(method, "Sobel Edge", StringComparison.OrdinalIgnoreCase))
             {
                 return CreateOpenCvSobelBinaryMask(
@@ -5883,6 +6538,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private Bitmap CreateCurrentProcessedImage()
         {
+            if (!string.IsNullOrWhiteSpace(activeImageRelationGroupId))
+            {
+                return CreateCurrentRelationGroupProcessedImage();
+            }
+
             List<ImageProcessingStepSettings> selectedSteps = GetSelectedImageProcessingSteps();
             if (systemParameters.RoiRegions.Count == 0 || !HasSelectedPreviewableImageProcessingSteps())
             {
@@ -5932,6 +6592,34 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static bool[,] CreateEdgeMask(byte[,] gray, string method, Dictionary<string, string> parameters)
         {
+            if (method == "Global Threshold")
+            {
+                return CreateOpenCvGlobalThresholdMask(
+                    gray,
+                    GetIntParameter(parameters, "Threshold", 128),
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"));
+            }
+
+            if (method == "Adaptive Threshold")
+            {
+                return CreateOpenCvAdaptiveThresholdMask(
+                    gray,
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "AdaptiveMethod", "GaussianC"),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"),
+                    GetIntParameter(parameters, "BlockSize", 11),
+                    GetDoubleParameter(parameters, "C", 2));
+            }
+
+            if (method == "Otsu Threshold")
+            {
+                return CreateOpenCvOtsuThresholdMask(
+                    gray,
+                    GetIntParameter(parameters, "MaxValue", 255),
+                    GetStringParameter(parameters, "ThresholdType", "Binary"));
+            }
+
             if (method == "Canny Edge")
             {
                 return CreateOpenCvCannyMask(
@@ -6179,6 +6867,8 @@ namespace IntegratedImageProcessingApp.Forms
                 rightPreprocessedDisplayControl.ClearRoiOverlay();
                 leftProcessedDisplayControl.ClearRoiOverlay();
                 rightProcessedDisplayControl.ClearRoiOverlay();
+                leftBlockProcessingDisplayControl.ClearRoiOverlay();
+                rightBlockProcessingDisplayControl.ClearRoiOverlay();
                 return;
             }
 
@@ -6188,6 +6878,8 @@ namespace IntegratedImageProcessingApp.Forms
             rightPreprocessedDisplayControl.SetRoiOverlay(roi.Value);
             leftProcessedDisplayControl.SetRoiOverlay(roi.Value);
             rightProcessedDisplayControl.SetRoiOverlay(roi.Value);
+            leftBlockProcessingDisplayControl.SetRoiOverlay(roi.Value);
+            rightBlockProcessingDisplayControl.SetRoiOverlay(roi.Value);
         }
 
         private Rectangle? GetSelectedRoi()
@@ -6371,7 +7063,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             for (int index = 0; index < systemParameters.ImageProcessingSteps.Count; index++)
             {
-                if (IsEdgeDetectionMethod(systemParameters.ImageProcessingSteps[index].Method))
+                if (IsBinaryMaskProcessingMethod(systemParameters.ImageProcessingSteps[index].Method))
                 {
                     return index;
                 }
@@ -6416,6 +7108,8 @@ namespace IntegratedImageProcessingApp.Forms
                     rightPreprocessedDisplayControl.ClearRoiOverlay();
                     leftProcessedDisplayControl.ClearRoiOverlay();
                     rightProcessedDisplayControl.ClearRoiOverlay();
+                    leftBlockProcessingDisplayControl.ClearRoiOverlay();
+                    rightBlockProcessingDisplayControl.ClearRoiOverlay();
                     systemParameters.LastImagePath = dialog.FileName;
                     systemParameters.RoiEnabled = false;
                     systemParameters.Roi = Rectangle.Empty;
@@ -6473,6 +7167,8 @@ namespace IntegratedImageProcessingApp.Forms
                     rightOriginalDisplayControl.SetSharedLargeImageSource(sharedSource);
                     leftPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
                     rightPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
+                    leftBlockProcessingDisplayControl.SetSharedLargeImageSource(sharedSource);
+                    rightBlockProcessingDisplayControl.SetSharedLargeImageSource(sharedSource);
                     statusLabel.Text = "已載入大圖共用切圖來源";
 
                     // Warm the shared full-resolution grayscale OpenCV source
@@ -6532,6 +7228,8 @@ namespace IntegratedImageProcessingApp.Forms
                 rightOriginalDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
                 leftPreprocessedDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
                 rightPreprocessedDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
+                leftBlockProcessingDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
+                rightBlockProcessingDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
             }
             finally
             {
@@ -6596,6 +7294,10 @@ namespace IntegratedImageProcessingApp.Forms
                     return FunctionMenuIcon.Filter;
                 case ImageProcessingMenuText:
                     return FunctionMenuIcon.Process;
+                case ImageRelationMenuText:
+                    return FunctionMenuIcon.Relation;
+                case ObjectJudgementMenuText:
+                    return FunctionMenuIcon.Object;
                 case "亮度 / 對比":
                     return FunctionMenuIcon.Brightness;
                 case "濾波與銳化":
@@ -6638,6 +7340,18 @@ namespace IntegratedImageProcessingApp.Forms
                         graphics.DrawRectangle(pen, bounds.Left + 2, bounds.Top + 2, 8, 8);
                         graphics.DrawRectangle(pen, bounds.Left + 6, bounds.Top + 6, 8, 8);
                         graphics.DrawLine(pen, bounds.Left + 1, bounds.Bottom - 1, bounds.Right - 1, bounds.Bottom - 1);
+                        break;
+                    case FunctionMenuIcon.Relation:
+                        graphics.DrawEllipse(pen, bounds.Left + 1, bounds.Top + 4, 9, 8);
+                        graphics.DrawEllipse(pen, bounds.Left + 6, bounds.Top + 4, 9, 8);
+                        graphics.DrawLine(pen, bounds.Left + 6, bounds.Top + 6, bounds.Left + 10, bounds.Top + 10);
+                        graphics.DrawLine(pen, bounds.Left + 6, bounds.Top + 10, bounds.Left + 10, bounds.Top + 6);
+                        break;
+                    case FunctionMenuIcon.Object:
+                        graphics.DrawEllipse(pen, bounds.Left + 2, bounds.Top + 2, 12, 12);
+                        graphics.DrawEllipse(pen, bounds.Left + 6, bounds.Top + 6, 4, 4);
+                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Top, bounds.Left + 8, bounds.Top + 2);
+                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Bottom - 2, bounds.Left + 8, bounds.Bottom);
                         break;
                     case FunctionMenuIcon.Brightness:
                         graphics.DrawEllipse(pen, bounds.Left + 5, bounds.Top + 5, 6, 6);

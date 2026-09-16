@@ -827,7 +827,11 @@ namespace IntegratedImageProcessingApp.Controls
                         new Cv.Size(previewWidth, previewHeight),
                         0,
                         0,
-                        Cv.InterpolationFlags.Area);
+                        // This bitmap is display-only. Linear sampling avoids
+                        // the full-image area integration cost while the
+                        // native Mat and all full-resolution processing remain
+                        // unchanged.
+                        Cv.InterpolationFlags.Linear);
                     fastestLevel.Bitmap = ConvertOpenCvGrayToBitmap(preview);
                 }
                 return;

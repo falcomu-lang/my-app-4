@@ -74,6 +74,45 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private static bool[,] CreateOpenCvGlobalThresholdMask(byte[,] gray, int threshold, int maxValue, string thresholdType)
+        {
+            using (var source = CreateOpenCvGrayMat(gray))
+            using (var mask = CreateOpenCvGlobalThresholdBinaryMask(source, threshold, maxValue, thresholdType))
+            {
+                return ConvertOpenCvBinaryMask(mask);
+            }
+        }
+
+        private static bool[,] CreateOpenCvAdaptiveThresholdMask(
+            byte[,] gray,
+            int maxValue,
+            string adaptiveMethod,
+            string thresholdType,
+            int blockSize,
+            double c)
+        {
+            using (var source = CreateOpenCvGrayMat(gray))
+            using (var mask = CreateOpenCvAdaptiveThresholdBinaryMask(
+                source,
+                maxValue,
+                adaptiveMethod,
+                thresholdType,
+                blockSize,
+                c))
+            {
+                return ConvertOpenCvBinaryMask(mask);
+            }
+        }
+
+        private static bool[,] CreateOpenCvOtsuThresholdMask(byte[,] gray, int maxValue, string thresholdType)
+        {
+            using (var source = CreateOpenCvGrayMat(gray))
+            using (var mask = CreateOpenCvOtsuThresholdBinaryMask(source, maxValue, thresholdType))
+            {
+                return ConvertOpenCvBinaryMask(mask);
+            }
+        }
+
         private void ProcessImageProcessingStep(string stepText)
         {
             int stepIndex = GetImageProcessingStepIndex(stepText);
@@ -84,6 +123,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             selectedImageProcessingStepIndex = stepIndex;
             selectedImageProcessingGroupId = null;
+            activeImageRelationGroupId = null;
             imageProcessingExecutionRequested = true;
             BeginParameterApplyStatus(false);
             MarkProcessedPreviewDirty();
@@ -102,6 +142,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             selectedImageProcessingStepIndex = -1;
             selectedImageProcessingGroupId = group.Id;
+            activeImageRelationGroupId = null;
             imageProcessingExecutionRequested = true;
             MarkProcessedPreviewDirty();
             ScheduleProcessedImageUpdateIfVisible();
