@@ -1815,6 +1815,7 @@ namespace IntegratedImageProcessingApp.Forms
             menu.Items.Add("上移", null, delegate { MoveImageProcessingGroup(group.Id, -1); });
             menu.Items.Add("下移", null, delegate { MoveImageProcessingGroup(group.Id, 1); });
             menu.Items.Add("命名", null, delegate { RenameImageProcessingGroup(group.Id); });
+            menu.Items.Add("新增處理", null, delegate { AddImageProcessingStepToGroup(group.Id); });
             menu.Items.Add("解除群組", null, delegate { UngroupImageProcessingGroup(group.Id); });
             menu.Items.Add("刪除", null, delegate { DeleteImageProcessingGroup(group.Id); });
             menu.Closed += delegate
@@ -2264,6 +2265,49 @@ namespace IntegratedImageProcessingApp.Forms
             RebuildVisibleImageProcessingSteps();
             functionListBox.SelectedItem = stepText;
             statusLabel.Text = "已新增" + stepText.Trim();
+        }
+
+        private void AddImageProcessingStepToGroup(string groupId)
+        {
+            ImageProcessingGroupSettings group = FindImageProcessingGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            RemoveImageProcessingStepCommandMenuItems();
+
+            var step = new ImageProcessingStepSettings
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                GroupId = group.Id
+            };
+            systemParameters.ImageProcessingSteps.Add(step);
+            int stepIndex = systemParameters.ImageProcessingSteps.Count - 1;
+
+            imageProcessingMenuExpanded = true;
+            expandedImageProcessingGroupIds.Add(group.Id);
+            SaveSystemParameters();
+            RebuildVisibleImageProcessingSteps();
+
+            string selectedStepText = null;
+            foreach (object item in functionListBox.Items)
+            {
+                string itemText = item as string;
+                if (IsImageProcessingStepMenuItem(itemText) &&
+                    GetImageProcessingStepIndex(itemText) == stepIndex)
+                {
+                    selectedStepText = itemText;
+                    break;
+                }
+            }
+
+            if (selectedStepText != null)
+            {
+                functionListBox.SelectedItem = selectedStepText;
+            }
+
+            statusLabel.Text = "已新增群組處理，請選擇處理方式";
         }
 
         private void ToggleImageProcessingStepMenu(string stepText)

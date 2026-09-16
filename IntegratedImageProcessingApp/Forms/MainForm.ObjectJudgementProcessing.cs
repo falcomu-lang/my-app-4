@@ -214,11 +214,15 @@ namespace IntegratedImageProcessingApp.Forms
                         .ToString(CultureInfo.InvariantCulture);
                 }
 
-                processing.Method = method;
+                // Store the canonical method name so settings created by older
+                // versions cannot break a later step in the same chain.
+                processing.Method = NormalizeObjectJudgementProcessingMethod(method);
                 processing.Parameters = FormatImageProcessingParameters(values);
                 SaveSystemParameters();
                 InvalidateObjectJudgementProcessingResults();
-                StartObjectJudgementProcessing(objectIndex);
+                // Applying step N evaluates step 1 through N. Do not include
+                // later, unfinished steps when the user is editing this step.
+                StartObjectJudgementProcessing(objectIndex, processingIndex);
                 if (!objectJudgementProcessingRequested)
                 {
                     FailObjectJudgementParameterApply("區塊尚未設定完整的來源或處理方式");
@@ -273,6 +277,13 @@ namespace IntegratedImageProcessingApp.Forms
 
             return ObjectJudgementProcessingMethods.FirstOrDefault(
                 item => string.Equals(item, method.Trim(), StringComparison.OrdinalIgnoreCase)) ?? method.Trim();
+        }
+
+        private static bool IsSupportedObjectJudgementProcessingMethod(string method)
+        {
+            string normalizedMethod = NormalizeObjectJudgementProcessingMethod(method);
+            return ObjectJudgementProcessingMethods.Any(
+                item => string.Equals(item, normalizedMethod, StringComparison.Ordinal));
         }
 
         private static int NormalizeObjectJudgementKernelSize(int value)
@@ -442,10 +453,19 @@ namespace IntegratedImageProcessingApp.Forms
             List<ObjectJudgementProcessingSettings> processingSteps =
                 GetObjectJudgementProcessingChain(objectJudgement, processingIndex);
             if (processingSteps.Count == 0 ||
-                processingSteps.Any(step => string.IsNullOrWhiteSpace(step.Method)))
+                processingSteps.Any(step => step == null || string.IsNullOrWhiteSpace(step.Method)))
             {
                 statusLabel.Text = GetObjectJudgementDisplayName(objectJudgement, objectIndex) +
                     " 尚未設定完整的區塊處理方式";
+                return;
+            }
+
+            ObjectJudgementProcessingSettings unsupportedStep = processingSteps.FirstOrDefault(
+                step => !IsSupportedObjectJudgementProcessingMethod(step.Method));
+            if (unsupportedStep != null)
+            {
+                statusLabel.Text = GetObjectJudgementDisplayName(objectJudgement, objectIndex) +
+                    " 區塊處理失效，不支援的區塊處理方式：" + unsupportedStep.Method;
                 return;
             }
 
@@ -935,8 +955,14 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 foreach (ObjectJudgementProcessingSettings processing in processingSteps)
                 {
+                    if (processing == null)
+                    {
+                        throw new InvalidOperationException("區塊處理步驟不存在");
+                    }
+
+                    string normalizedMethod = NormalizeObjectJudgementProcessingMethod(processing.Method);
                     Cv.Mat next = ApplyObjectJudgementProcessingStepOpenCv(
-                        current, processing.Method, ParseImageProcessingParameters(processing.Parameters));
+                        current, normalizedMethod, ParseImageProcessingParameters(processing.Parameters));
                     current.Dispose();
                     current = next;
                 }
