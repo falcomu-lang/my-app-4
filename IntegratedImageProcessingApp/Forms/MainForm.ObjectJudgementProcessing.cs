@@ -844,13 +844,11 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         using (Cv.Mat gray = GetOrCreateLargeRoiOpenCvGrayCache(relationSource, roi))
                         {
-                            foreach (ImageProcessingStepSettings step in GetImageProcessingStepsForRelation(relation))
+                            using (Cv.Mat relationMask = CreateSequentialImageProcessingGroupMask(
+                                gray,
+                                GetImageProcessingStepsForRelation(relation)))
                             {
-                                using (Cv.Mat mask = CreateNativeLargeEdgeBinaryMask(
-                                    gray, step.Method, ParseImageProcessingParameters(step.Parameters)))
-                                {
-                                    Cv.Cv2.BitwiseOr(combined, mask, combined);
-                                }
+                                Cv.Cv2.BitwiseOr(combined, relationMask, combined);
                             }
                         }
                     }
@@ -897,13 +895,11 @@ namespace IntegratedImageProcessingApp.Forms
                             relationGray,
                             new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height)))
                         {
-                            foreach (ImageProcessingStepSettings step in GetImageProcessingStepsForRelation(relation))
+                            using (Cv.Mat relationMask = CreateSequentialImageProcessingGroupMask(
+                                roiGray,
+                                GetImageProcessingStepsForRelation(relation)))
                             {
-                                using (Cv.Mat mask = CreateNativeLargeEdgeBinaryMask(
-                                    roiGray, step.Method, ParseImageProcessingParameters(step.Parameters)))
-                                {
-                                    Cv.Cv2.BitwiseOr(combined, mask, combined);
-                                }
+                                Cv.Cv2.BitwiseOr(combined, relationMask, combined);
                             }
                         }
                     }

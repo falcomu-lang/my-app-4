@@ -474,14 +474,18 @@ namespace IntegratedImageProcessingApp.Forms
                                 continue;
                             }
 
-                            byte[,] gray = CreateGrayValues(source, roi);
-                            foreach (ImageProcessingStepSettings step in GetImageProcessingStepsForRelation(relation))
+                            using (Cv.Mat gray = CreateOpenCvGrayMat(source))
+                            using (Cv.Mat roiGray = new Cv.Mat(
+                                gray,
+                                new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height)))
+                            using (Cv.Mat combined = CreateSequentialImageProcessingGroupMask(
+                                roiGray,
+                                GetImageProcessingStepsForRelation(relation)))
                             {
-                                bool[,] mask = CreateEdgeMask(
-                                    gray,
-                                    step.Method,
-                                    ParseImageProcessingParameters(step.Parameters));
-                                PaintRedOverlayImage(result, roi, mask);
+                                PaintRedOverlayImage(
+                                    result,
+                                    roi,
+                                    ConvertOpenCvBinaryMask(combined));
                             }
                         }
                     }
@@ -619,15 +623,11 @@ namespace IntegratedImageProcessingApp.Forms
                             {
                                 using (Cv.Mat gray = GetOrCreateLargeRoiOpenCvGrayCache(relationSource, roi))
                                 {
-                                    foreach (ImageProcessingStepSettings step in GetImageProcessingStepsForRelation(relation))
+                                    using (Cv.Mat relationMask = CreateSequentialImageProcessingGroupMask(
+                                        gray,
+                                        GetImageProcessingStepsForRelation(relation)))
                                     {
-                                        using (Cv.Mat mask = CreateNativeLargeEdgeBinaryMask(
-                                            gray,
-                                            step.Method,
-                                            ParseImageProcessingParameters(step.Parameters)))
-                                        {
-                                            Cv.Cv2.BitwiseOr(combined, mask, combined);
-                                        }
+                                        Cv.Cv2.BitwiseOr(combined, relationMask, combined);
                                     }
                                 }
                             }

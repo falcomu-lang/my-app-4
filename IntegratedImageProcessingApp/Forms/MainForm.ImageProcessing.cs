@@ -6,6 +6,62 @@ namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm
     {
+        private static Cv.Mat CreateSequentialImageProcessingGroupMask(
+            Cv.Mat source,
+            System.Collections.Generic.IEnumerable<ImageProcessingStepSettings> steps)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException("source");
+            }
+
+            var combined = new Cv.Mat(
+                source.Rows,
+                source.Cols,
+                Cv.MatType.CV_8UC1,
+                Cv.Scalar.All(0));
+            Cv.Mat current = source.Clone();
+            try
+            {
+                foreach (ImageProcessingStepSettings step in steps ??
+                    System.Linq.Enumerable.Empty<ImageProcessingStepSettings>())
+                {
+                    if (step == null || !IsBinaryMaskProcessingMethod(step.Method))
+                    {
+                        continue;
+                    }
+
+                    Cv.Mat next = CreateNativeLargeEdgeBinaryMask(
+                        current,
+                        step.Method,
+                        ParseImageProcessingParameters(step.Parameters));
+                    try
+                    {
+                        // Each step consumes the previous binary result, while
+                        // the group keeps the OR of every intermediate result.
+                        Cv.Cv2.BitwiseOr(combined, next, combined);
+                    }
+                    finally
+                    {
+                        current.Dispose();
+                    }
+
+                    current = next;
+                }
+
+                return combined;
+            }
+            catch
+            {
+                combined.Dispose();
+                throw;
+            }
+            finally
+            {
+                current.Dispose();
+            }
+        }
+
         private static bool[,] CreateOpenCvCannyMask(byte[,] gray, int lowThreshold, int highThreshold, int kernelSize, bool l2Gradient, int gaussianBlurSize, double gaussianSigma, string edgeSelection, int minEdgeLength, int maxGap)
         {
             using (var source = CreateOpenCvGrayMat(gray))
