@@ -260,6 +260,36 @@ namespace IntegratedImageProcessingApp.Forms
             StartObjectJudgementProcessing(objectIndex);
         }
 
+        private void RequestObjectJudgementRelatedImageDisplays(ObjectJudgementSettings objectJudgement)
+        {
+            if (objectJudgement == null || string.IsNullOrWhiteSpace(objectJudgement.RelationId))
+            {
+                return;
+            }
+
+            if (string.Equals(objectJudgement.RelationType, "Group", StringComparison.Ordinal))
+            {
+                // A block linked to a relation group shows the combined relation
+                // result in the processed-image tab before block processing runs.
+                ProcessImageRelationGroup(objectJudgement.RelationId);
+                return;
+            }
+
+            if (!string.Equals(objectJudgement.RelationType, "Relation", StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            int relationIndex = systemParameters.ImageRelations.FindIndex(
+                relation => string.Equals(relation.Id, objectJudgement.RelationId, StringComparison.Ordinal));
+            if (relationIndex >= 0)
+            {
+                // This also prepares the linked preprocessing source when the
+                // relation does not use the original image.
+                ProcessImageRelation(relationIndex);
+            }
+        }
+
         private void AddObjectJudgementProcessing(int objectIndex)
         {
             if (objectIndex < 0 || objectIndex >= systemParameters.ObjectJudgements.Count)
@@ -471,7 +501,10 @@ namespace IntegratedImageProcessingApp.Forms
             activeImageRelationSourceId = relation.SourceId;
             if (string.Equals(relation.ProcessingType, "Group", StringComparison.Ordinal))
             {
-                activeImageRelationGroupId = relation.ProcessingId;
+                // Processing groups and image-relation groups use different
+                // namespaces. Keep the processing group in its own selector;
+                // activeImageRelationGroupId is reserved for relation groups.
+                selectedImageProcessingGroupId = relation.ProcessingId;
                 InvalidateBlockProcessingDisplays();
                 return;
             }

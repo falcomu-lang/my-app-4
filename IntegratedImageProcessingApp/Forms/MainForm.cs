@@ -1543,6 +1543,7 @@ namespace IntegratedImageProcessingApp.Forms
             else
             {
                 preprocessingExecutionRequested = false;
+                RestorePreprocessedDisplaysToOriginalSource();
             }
             if (string.IsNullOrWhiteSpace(relation.ProcessingId))
             {
@@ -4415,9 +4416,9 @@ namespace IntegratedImageProcessingApp.Forms
                         ? sharedSource
                         : processingSource;
 
-                leftProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource);
+                leftProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource, true);
 
-                rightProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource);
+                rightProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource, true);
 
                 Rectangle? selectedRoi = GetSelectedRoi();
                 if (selectedRoi.HasValue)

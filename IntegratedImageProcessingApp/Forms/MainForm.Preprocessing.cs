@@ -157,8 +157,8 @@ namespace IntegratedImageProcessingApp.Forms
                         try
                         {
                             Stopwatch previewStopwatch = Stopwatch.StartNew();
-                            leftPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource);
-                            rightPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource);
+                            leftPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource, true);
+                            rightPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource, true);
                             lastDisplayProcessingElapsedMilliseconds = Math.Max(1, previewStopwatch.ElapsedMilliseconds);
                         }
                         finally { isSyncingImageView = false; }
@@ -778,8 +778,8 @@ namespace IntegratedImageProcessingApp.Forms
             isSyncingImageView = true;
             try
             {
-                leftPreprocessedDisplayControl.SetSharedLargeImageSource(source);
-                rightPreprocessedDisplayControl.SetSharedLargeImageSource(source);
+                leftPreprocessedDisplayControl.SetSharedLargeImageSource(source, true);
+                rightPreprocessedDisplayControl.SetSharedLargeImageSource(source, true);
             }
             finally
             {

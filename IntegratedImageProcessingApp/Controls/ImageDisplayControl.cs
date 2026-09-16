@@ -383,18 +383,32 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void SetLargeImageSource(LargeImageSource largeImageSource)
         {
+            SetLargeImageSource(largeImageSource, false);
+        }
+
+        private void SetLargeImageSource(LargeImageSource largeImageSource, bool preserveView)
+        {
             if (largeImageSource == null)
             {
                 throw new ArgumentNullException("largeImageSource");
             }
 
+            bool canPreserveView;
             lock (_imageLock)
             {
+                canPreserveView = preserveView &&
+                    _largeImageSource != null &&
+                    _largeImageSource.Width == largeImageSource.Width &&
+                    _largeImageSource.Height == largeImageSource.Height;
                 DisposeCurrentImage();
                 _largeImageSource = largeImageSource;
             }
 
-            FitImageToView();
+            if (!canPreserveView)
+            {
+                FitImageToView();
+            }
+
             UpdateStatusLabel();
             viewerPanel.Invalidate();
             largeImageSource.QueuePreviewBuilds(ScheduleTileRefresh);
@@ -403,12 +417,17 @@ namespace IntegratedImageProcessingApp.Controls
 
         public void SetSharedLargeImageSource(LargeImageSource largeImageSource)
         {
+            SetSharedLargeImageSource(largeImageSource, false);
+        }
+
+        public void SetSharedLargeImageSource(LargeImageSource largeImageSource, bool preserveView)
+        {
             if (largeImageSource == null)
             {
                 throw new ArgumentNullException("largeImageSource");
             }
 
-            SetLargeImageSource(largeImageSource.AddReference());
+            SetLargeImageSource(largeImageSource.AddReference(), preserveView);
         }
 
         public void SetImage(Bitmap bitmap)

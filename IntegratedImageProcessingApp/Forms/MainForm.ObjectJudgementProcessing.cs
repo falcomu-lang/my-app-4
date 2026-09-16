@@ -449,6 +449,8 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            RequestObjectJudgementRelatedImageDisplays(objectJudgement);
+
             // "處理" means a fresh run. Clear completed masks and relation
             // source caches so this block cannot analyze a stale preprocessing result.
             InvalidateObjectJudgementProcessingResults();

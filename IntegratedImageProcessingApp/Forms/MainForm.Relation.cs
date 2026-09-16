@@ -259,6 +259,10 @@ namespace IntegratedImageProcessingApp.Forms
             preprocessingExecutionRequestedByImageRelation =
                 relations.Exists(relation => !string.Equals(relation.SourceType, "Original", StringComparison.Ordinal));
             preprocessingExecutionRequested = preprocessingExecutionRequestedByImageRelation;
+            if (!preprocessingExecutionRequestedByImageRelation)
+            {
+                RestorePreprocessedDisplaysToOriginalSource();
+            }
 
             BeginParameterApplyStatus(false);
             MarkProcessedImageDirty();
@@ -546,8 +550,8 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
-                leftProcessedDisplayControl.SetSharedLargeImageSource(sharedSource);
-                rightProcessedDisplayControl.SetSharedLargeImageSource(sharedSource);
+                leftProcessedDisplayControl.SetSharedLargeImageSource(sharedSource, true);
+                rightProcessedDisplayControl.SetSharedLargeImageSource(sharedSource, true);
                 Rectangle? selectedRoi = GetSelectedRoi();
                 if (selectedRoi.HasValue)
                 {
