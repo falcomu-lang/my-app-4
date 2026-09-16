@@ -12,6 +12,15 @@
 
 目前工作樹的程式已加入區塊處理 OpenCV 流程，並已完成 Debug / Any CPU 建置驗證。這一版的重點是把「影像關聯輸出的二值 mask」交給「整合成區塊」的後處理鏈，再顯示到固定的 `區塊處理` 分頁。
 
+### 2026-09-16 最新整理
+
+- Global Threshold 已接入 OpenCV，支援單一門檻與雙邊範圍門檻；Range 模式使用 `Cv2.InRange`。
+- 區塊處理的顯示時間改為可見 `區塊處理` 分頁實際刷新後計時，不再以單純 `Invalidate` 的排程時間當作顯示時間；背景不可見分頁不強制刷新。
+- 影像檢視狀態修正：處理開始前保存目前可見分頁的 Zoom/Offset，處理完成後不以其他分頁的舊狀態覆蓋目前畫面。
+- `ImageDisplayControl` 在影像尺寸相同時，即使 Bitmap 與 `LargeImageSource` 互換，也保留目前縮放與平移位置。
+- 前處理狀態只還原前處理控制項，影像處理狀態只還原處理後控制項，避免背景完成通知造成原圖或其他分頁跳位。
+- 本次程式修改已通過 Debug / Any CPU 建置；提交前仍要以實際大圖手動確認快速切換、處理、縮放與平移。
+
 ## 2. 已完成的使用者功能
 
 ### 影像與 ROI
@@ -52,7 +61,7 @@
 - Sobel：方向、核心大小 `1/3/5/7`、門檻。
 - Polarity：極性、對比門檻、`CoreWidth`、平滑、高斯 Sigma、搜尋方向、邊界類型。
 
-Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已存在於流程樹，後續需確認每個方法的參數面板與 mask 結果都完整接入同一套 OpenCV pipeline。
+Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已接入流程樹與 OpenCV pipeline。Global Threshold 支援 Single 與 Range 兩種模式；Range 使用下限/上限範圍產生二值 mask。
 
 影像關聯以 GUID/ID 儲存，不以顯示名稱或索引作為鍵：
 
@@ -99,7 +108,7 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 - 狀態列不可每個 tile/ROI 都 `BeginInvoke`；只保留最新狀態並節流到約 200~300 ms。
 - 選取已完成項目應讀取快取並觸發必要 repaint，不得因缺少 completion callback 而顯示空白。
 
-處理時間要分開理解：ROI 準備時間、OpenCV 影像處理時間、可見區域預覽/overlay 顯示時間不是同一件事。前處理常需要建立記憶體型顯示來源，所以顯示時間可能比演算法時間長；處理後多半重用原圖 tile，因此顯示時間可能較短。
+處理時間要分開理解：ROI 準備時間、OpenCV 影像處理時間、可見區域預覽/overlay 顯示時間不是同一件事。前處理常需要建立記憶體型顯示來源，所以顯示時間可能比演算法時間長；處理後多半重用原圖 tile，因此顯示時間可能較短。區塊處理只有在區塊分頁可見並實際刷新時才計入顯示時間；不可見背景工作不應被誤報成畫面顯示時間。
 
 ## 5. 已知問題與曾經踩過的坑
 
@@ -113,6 +122,8 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 8. `MainForm.Designer.cs` 的區塊處理分頁目前是固定設計器元件；不要又改回只靠執行期動態插入，否則分頁可能不出現。
 9. 快速調參曾造成 GDI+ `ObjectDisposedException`、`InvalidOperationException`、`ArgumentException`；必須正確保留來源參考、clone 繪製 Bitmap 並在 UI 執行緒替換控制項。
 10. 讀取新圖片時必須清除上一張圖的 ROI、前處理、關聯、mask、overlay 與 generation，避免拿舊圖片分析。
+11. 影像處理或區塊處理時若發生視圖跳回 fit-to-view，先檢查是否切換了 Bitmap/`LargeImageSource` 類型，以及是否在處理前更新了 `sharedImageViewState`；不可直接在完成 callback 套用另一個分頁的 view state。
+12. `InvalidateImageView()` 只代表排程重繪，不代表畫面已經完成；需要顯示時間時，必須對可見控制項使用同步刷新後再停止計時。
 
 ## 6. 設定保存
 
@@ -152,7 +163,8 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 
 - 完整驗證 Threshold 三種方法的 OpenCV mask、參數面板與大圖顯示。
 - 以實際 16384 x 50000 圖片測試多 ROI、多關聯與多區塊的記憶體峰值。
-- 補上區塊處理的處理時間與每一步結果快取顯示，確認重複點選不會重算。
+- 補上區塊處理每一步結果的獨立快取顯示，確認重複點選不會重算；目前整個區塊鏈的處理與可見顯示計時已完成。
+- 以實際操作確認各分頁在執行單一步驟、群組、關聯與區塊處理時，Zoom/Offset 均維持不變。
 - 補上關聯被刪除、來源失效、區塊引用失效時的使用者警告。
 - 完成 E/D 等最終物件判定方法；目前區塊處理主要是二值 mask 結合與形態學後處理。
 - 完成剩餘 partial 拆分後，再評估純 OpenCV service 化。

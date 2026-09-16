@@ -1017,6 +1017,38 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private void CaptureSharedImageViewStateFromVisibleControls()
+        {
+            ImageDisplayControl source;
+            if (isImageViewerMaximized)
+            {
+                source = isLeftImageViewerMaximized
+                    ? GetVisibleLeftImageDisplayControl()
+                    : GetVisibleRightImageDisplayControl();
+            }
+            else
+            {
+                source = GetVisibleLeftImageDisplayControl();
+                if (source == null || !source.HasImage)
+                {
+                    source = GetVisibleRightImageDisplayControl();
+                }
+            }
+
+            if (source == null || !source.HasImage)
+            {
+                return;
+            }
+
+            sharedImageViewState = source.ViewState;
+            hasSharedImageViewState = true;
+            if (isImageViewerMaximized)
+            {
+                maximizedImageViewerViewState = sharedImageViewState;
+                hasMaximizedImageViewerViewState = true;
+            }
+        }
+
         private static bool IsAKeyDown()
         {
             return (GetAsyncKeyState((int)Keys.A) & 0x8000) != 0;
@@ -3741,6 +3773,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void MarkProcessedImageDirty()
         {
+            // Capture the view that is actually on screen before processing
+            // invalidates sources or replaces preview images. This keeps the
+            // current zoom/pan stable even when processing starts from another
+            // tab or switches between bitmap and large-image sources.
+            CaptureSharedImageViewStateFromVisibleControls();
             CaptureProcessedImageViewState();
             processedImageDirty = true;
             imageProcessingStepElapsedMilliseconds.Clear();

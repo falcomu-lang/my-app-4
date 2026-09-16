@@ -526,7 +526,6 @@ namespace IntegratedImageProcessingApp.Forms
 
                         latestObjectJudgementImage = result;
                         result = null;
-                        Stopwatch previewStopwatch = Stopwatch.StartNew();
                         isSyncingImageView = true;
                         try
                         {
@@ -542,10 +541,10 @@ namespace IntegratedImageProcessingApp.Forms
 
                         statusLabel.Text = "區塊處理完成，已使用 OpenCV";
                         ApplySharedImageViewStateToVisibleControls();
-                        previewStopwatch.Stop();
+                        long previewElapsedMilliseconds = RefreshVisibleObjectJudgementDisplays();
                         CompleteObjectJudgementParameterApplyStatus(
                             processingElapsedMilliseconds,
-                            previewStopwatch.ElapsedMilliseconds);
+                            previewElapsedMilliseconds);
                     }));
                 }
                 catch (Exception ex)
@@ -689,20 +688,26 @@ namespace IntegratedImageProcessingApp.Forms
                             }
 
                             statusLabel.Text = "區塊處理完成，已使用 OpenCV";
-                            Stopwatch previewStopwatch = Stopwatch.StartNew();
-                            leftBlockProcessingDisplayControl.InvalidateImageView();
-                            rightBlockProcessingDisplayControl.InvalidateImageView();
-                            previewStopwatch.Stop();
                             if (objectJudgementParameterApplyInProgress)
                             {
                                 objectJudgementAccumulatedProcessingMilliseconds += processingElapsedMilliseconds;
                                 objectJudgementPendingLargeMaskBuilds--;
                                 if (objectJudgementPendingLargeMaskBuilds <= 0)
                                 {
+                                    long previewElapsedMilliseconds = RefreshVisibleObjectJudgementDisplays();
                                     CompleteObjectJudgementParameterApplyStatus(
                                         objectJudgementAccumulatedProcessingMilliseconds,
-                                        previewStopwatch.ElapsedMilliseconds);
+                                        previewElapsedMilliseconds);
                                 }
+                                else
+                                {
+                                    leftBlockProcessingDisplayControl.InvalidateImageView();
+                                    rightBlockProcessingDisplayControl.InvalidateImageView();
+                                }
+                            }
+                            else
+                            {
+                                RefreshVisibleObjectJudgementDisplays();
                             }
                         }));
                     }
@@ -737,6 +742,33 @@ namespace IntegratedImageProcessingApp.Forms
                     sourceReference.ReleaseReference();
                 }
             });
+        }
+
+        private long RefreshVisibleObjectJudgementDisplays()
+        {
+            bool refreshed = false;
+            Stopwatch previewStopwatch = Stopwatch.StartNew();
+
+            if (leftImageTabControl.Visible &&
+                leftImageTabControl.SelectedTab == leftBlockProcessingTabPage &&
+                leftBlockProcessingDisplayControl != null &&
+                leftBlockProcessingDisplayControl.HasImage)
+            {
+                leftBlockProcessingDisplayControl.RefreshImageViewNow();
+                refreshed = true;
+            }
+
+            if (rightImageTabControl.Visible &&
+                rightImageTabControl.SelectedTab == rightBlockProcessingTabPage &&
+                rightBlockProcessingDisplayControl != null &&
+                rightBlockProcessingDisplayControl.HasImage)
+            {
+                rightBlockProcessingDisplayControl.RefreshImageViewNow();
+                refreshed = true;
+            }
+
+            previewStopwatch.Stop();
+            return refreshed ? Math.Max(1, previewStopwatch.ElapsedMilliseconds) : 0;
         }
 
         private bool IsObjectJudgementProcessingCurrent(string objectId, int generation)

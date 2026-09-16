@@ -20,7 +20,7 @@ C# Windows Forms 高解析度影像處理工具，使用 .NET Framework 4.7.2 �
 - 原圖、前處理、處理後與區塊處理的縮放、平移、重設視圖及左右同步。
 - 影像前處理：`Normalize`、`Gaussian Blur`、`CLAHE`、`Median Blur`、`Sharpen`、`Bilateral Filter`。
 - Edge Detect：OpenCV `Canny Edge`、`Sobel Edge`、`Polarity Edge`。
-- Threshold：OpenCV `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 選單已保留於流程樹。
+- Threshold：OpenCV `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold`；Global Threshold 支援 Single/Range。
 - 影像關聯：以固定 ID 選擇原圖、前處理步驟/群組，以及影像處理步驟/群組。
 - 整合成區塊：使用單一關聯或關聯群組的二值結果，再依序套用區塊處理。
 - 區塊處理 OpenCV 方法：`Dilate`、`Erode`、`Close`、`Open`、`Fill Contour`、`Fill Hole`、`Connect gap / bridge`、`Morphological Reconstruction`、`Merge by distance`、`Convex Hull`。
@@ -39,6 +39,14 @@ C# Windows Forms 高解析度影像處理工具，使用 .NET Framework 4.7.2 �
 8. 在區塊或區塊處理步驟上按右鍵選 `處理`，結果會顯示於 `區塊處理` 分頁。
 
 選取項目只負責顯示設定與已完成的結果，不應因切換分頁或縮放而重新執行演算法。影像載入時只建立原圖與已保存 ROI 的準備資料，不自動執行影像處理或前處理結果。
+
+## 最新更新（2026-09-16）
+
+- `Global Threshold` 已使用 OpenCV 實作，支援單一門檻與雙邊範圍門檻；範圍模式使用 `Cv2.InRange`。
+- 區塊處理的顯示時間現在以可見 `區塊處理` 分頁實際刷新完成為準，不再把 `InvalidateImageView()` 的排程時間當成顯示時間。
+- 處理前會保存目前實際可見分頁的縮放與平移狀態；處理完成不會把原圖、前處理或其他分頁套成錯誤的舊位置。
+- 只要新舊影像尺寸相同，Bitmap 與 `LargeImageSource` 互換時也會保留 Zoom/Offset。
+- 背景不可見分頁不強制刷新，切回前景時才更新，避免處理流程造成介面卡頓。
 
 ## OpenCV 與處理規則
 
@@ -75,6 +83,7 @@ Canny 不再提供 `Strongest`、`Longest`、最小邊緣長度與最大斷點�
 - `LargeImageSource` 由共享來源持有 tile，繪製前使用短期複本，避免快速平移或調參時發生 GDI+ 物件並行使用例外。
 - 背景工作必須保留來源參考，完成時檢查 image generation、項目 ID 與目前請求，過期結果直接釋放。
 - 不要讓每個 tile 或 ROI 更新一次狀態列；狀態更新需節流，避免大量 `BeginInvoke` 造成 UI 鈍化。
+- `InvalidateImageView()` 只代表排程重繪；若要計算顯示時間，必須對可見控制項完成同步刷新後再停止計時。不可見背景分頁不應被誤報為已完成顯示。
 - 16384 x 50000 類型的大圖會需要數個大型 native temporary Mat；目前優先保留連續、精準的全 ROI 結果，實際記憶體需求仍需以目標圖片壓力測試。
 - 使用 64 位元行程；專案的 `Prefer32Bit` 必須維持 `false`。
 

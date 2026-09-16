@@ -397,9 +397,12 @@ namespace IntegratedImageProcessingApp.Controls
             lock (_imageLock)
             {
                 canPreserveView = preserveView &&
-                    _largeImageSource != null &&
-                    _largeImageSource.Width == largeImageSource.Width &&
-                    _largeImageSource.Height == largeImageSource.Height;
+                    ((_largeImageSource != null &&
+                        _largeImageSource.Width == largeImageSource.Width &&
+                        _largeImageSource.Height == largeImageSource.Height) ||
+                    (_sourceBitmap != null &&
+                        _sourceBitmap.Width == largeImageSource.Width &&
+                        _sourceBitmap.Height == largeImageSource.Height));
                 DisposeCurrentImage();
                 _largeImageSource = largeImageSource;
             }
@@ -481,10 +484,12 @@ namespace IntegratedImageProcessingApp.Controls
             lock (_imageLock)
             {
                 canPreserveView = preserveView &&
-                    _sourceBitmap != null &&
-                    _largeImageSource == null &&
-                    _sourceBitmap.Width == bitmap.Width &&
-                    _sourceBitmap.Height == bitmap.Height;
+                    ((_sourceBitmap != null &&
+                        _sourceBitmap.Width == bitmap.Width &&
+                        _sourceBitmap.Height == bitmap.Height) ||
+                    (_largeImageSource != null &&
+                        _largeImageSource.Width == bitmap.Width &&
+                        _largeImageSource.Height == bitmap.Height));
                 DisposeCurrentImage();
                 _sourceBitmap = bitmap;
             }
