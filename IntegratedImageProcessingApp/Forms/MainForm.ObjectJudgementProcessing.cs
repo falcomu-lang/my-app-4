@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
@@ -36,6 +37,10 @@ namespace IntegratedImageProcessingApp.Forms
         private string activeObjectJudgementId;
         private bool objectJudgementProcessingRequested;
         private Bitmap latestObjectJudgementImage;
+        private Label objectJudgementParameterApplyStatusLabel;
+        private bool objectJudgementParameterApplyInProgress;
+        private int objectJudgementPendingLargeMaskBuilds;
+        private long objectJudgementAccumulatedProcessingMilliseconds;
 
         private void BuildObjectJudgementProcessingParameterPanel(
             Panel panel,
@@ -79,6 +84,26 @@ namespace IntegratedImageProcessingApp.Forms
                 Width = Math.Max(250, parameterPanel.Width - 18)
             };
             panel.Controls.Add(applyButton);
+
+            var cancelButton = new Button
+            {
+                Text = "取消",
+                Left = 8,
+                Width = Math.Max(250, parameterPanel.Width - 18)
+            };
+            panel.Controls.Add(cancelButton);
+
+            var applyStatusLabel = new Label
+            {
+                Left = 8,
+                Width = Math.Max(250, parameterPanel.Width - 18),
+                Height = 52,
+                AutoSize = false,
+                ForeColor = Color.FromArgb(55, 64, 76),
+                Text = string.Empty
+            };
+            objectJudgementParameterApplyStatusLabel = applyStatusLabel;
+            panel.Controls.Add(applyStatusLabel);
 
             Action rebuildOptions = delegate
             {
@@ -144,6 +169,9 @@ namespace IntegratedImageProcessingApp.Forms
 
                 optionsPanel.Height = Math.Max(48, top + 4);
                 applyButton.Top = optionsPanel.Top + optionsPanel.Height + 12;
+                cancelButton.Top = applyButton.Bottom + 8;
+                applyStatusLabel.Top = cancelButton.Bottom + 8;
+                panel.AutoScrollMinSize = new Size(0, applyStatusLabel.Bottom + 8);
             };
 
             applyButton.Click += delegate
@@ -188,7 +216,22 @@ namespace IntegratedImageProcessingApp.Forms
                 processing.Parameters = FormatImageProcessingParameters(values);
                 SaveSystemParameters();
                 InvalidateObjectJudgementProcessingResults();
-                statusLabel.Text = "已套用" + GetObjectJudgementProcessingDisplayName(processing, processingIndex);
+                BeginObjectJudgementParameterApplyStatus();
+                StartObjectJudgementProcessing(objectIndex);
+                if (!objectJudgementProcessingRequested)
+                {
+                    FailObjectJudgementParameterApply("區塊尚未設定完整的來源或處理方式");
+                }
+            };
+
+            cancelButton.Click += delegate
+            {
+                objectJudgementParameterApplyStatusLabel.Text = string.Empty;
+                string appliedMethod = NormalizeObjectJudgementProcessingMethod(processing.Method);
+                int appliedMethodIndex = Array.IndexOf(ObjectJudgementProcessingMethods, appliedMethod);
+                methodCombo.SelectedIndex = appliedMethodIndex >= 0 ? appliedMethodIndex : 0;
+                rebuildOptions();
+                statusLabel.Text = "已取消修改" + GetObjectJudgementProcessingDisplayName(processing, processingIndex);
             };
 
             methodCombo.SelectedIndexChanged += delegate { rebuildOptions(); };
@@ -237,6 +280,55 @@ namespace IntegratedImageProcessingApp.Forms
             return normalized % 2 == 0 ? normalized + 1 : normalized;
         }
 
+        private void BeginObjectJudgementParameterApplyStatus()
+        {
+            objectJudgementParameterApplyInProgress = true;
+            objectJudgementAccumulatedProcessingMilliseconds = 0;
+            objectJudgementPendingLargeMaskBuilds = 0;
+            SetObjectJudgementParameterApplyStatus("影像處理中...");
+        }
+
+        private void SetObjectJudgementParameterApplyStatus(string text)
+        {
+            if (objectJudgementParameterApplyStatusLabel != null &&
+                !objectJudgementParameterApplyStatusLabel.IsDisposed)
+            {
+                objectJudgementParameterApplyStatusLabel.Text = text ?? string.Empty;
+            }
+        }
+
+        private void FailObjectJudgementParameterApply(string message)
+        {
+            objectJudgementParameterApplyInProgress = false;
+            SetObjectJudgementParameterApplyStatus("處理失敗：" + message);
+        }
+
+        private void CompleteObjectJudgementParameterApplyStatus(
+            long processingElapsedMilliseconds,
+            long previewElapsedMilliseconds)
+        {
+            if (!objectJudgementParameterApplyInProgress)
+            {
+                return;
+            }
+
+            objectJudgementParameterApplyInProgress = false;
+            long processing = Math.Max(0, processingElapsedMilliseconds);
+            long preview = Math.Max(0, previewElapsedMilliseconds);
+            long total = processing + preview;
+            SetObjectJudgementParameterApplyStatus(string.Format(
+                CultureInfo.InvariantCulture,
+                "完成：處理時間共：{0} ms\r\n前處理時間：{1} ms || 預覽圖處理時間：{2} ms",
+                total,
+                processing,
+                preview));
+            statusLabel.Text = string.Format(
+                CultureInfo.InvariantCulture,
+                "區塊處理完成：前處理時間：{0} ms || 預覽圖處理時間：{1} ms",
+                processing,
+                preview);
+        }
+
         private void SetActiveObjectJudgement(ObjectJudgementSettings objectJudgement)
         {
             string id = objectJudgement == null ? null : objectJudgement.Id;
@@ -252,6 +344,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void InvalidateObjectJudgementProcessingResults()
         {
+            objectJudgementParameterApplyInProgress = false;
             lock (objectJudgementMaskLock)
             {
                 foreach (Cv.Mat mask in objectJudgementLargeMasks.Values)
@@ -365,7 +458,10 @@ namespace IntegratedImageProcessingApp.Forms
                 Bitmap result = null;
                 try
                 {
+                    Stopwatch processingStopwatch = Stopwatch.StartNew();
                     result = CreateObjectJudgementImage(original, objectJudgement);
+                    processingStopwatch.Stop();
+                    long processingElapsedMilliseconds = processingStopwatch.ElapsedMilliseconds;
                     BeginInvoke(new Action(delegate
                     {
                         if (!IsObjectJudgementProcessingCurrent(objectJudgement.Id, generation))
@@ -382,6 +478,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                         latestObjectJudgementImage = result;
                         result = null;
+                        Stopwatch previewStopwatch = Stopwatch.StartNew();
                         isSyncingImageView = true;
                         try
                         {
@@ -397,6 +494,10 @@ namespace IntegratedImageProcessingApp.Forms
 
                         statusLabel.Text = "區塊處理完成，已使用 OpenCV";
                         ApplySharedImageViewStateToVisibleControls();
+                        previewStopwatch.Stop();
+                        CompleteObjectJudgementParameterApplyStatus(
+                            processingElapsedMilliseconds,
+                            previewStopwatch.ElapsedMilliseconds);
                     }));
                 }
                 catch (Exception ex)
@@ -406,6 +507,7 @@ namespace IntegratedImageProcessingApp.Forms
                         if (IsObjectJudgementProcessingCurrent(objectJudgement.Id, generation))
                         {
                             statusLabel.Text = "區塊處理失敗：" + ex.Message;
+                            FailObjectJudgementParameterApply(ex.Message);
                         }
                     }));
                 }
@@ -435,9 +537,28 @@ namespace IntegratedImageProcessingApp.Forms
                 generation = objectJudgementMaskGeneration;
             }
 
-            foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+            List<Rectangle> validRois = systemParameters.RoiRegions
+                .Where(roiRegion => roiRegion.Bounds.Width > 0 && roiRegion.Bounds.Height > 0)
+                .Select(roiRegion => roiRegion.Bounds)
+                .ToList();
+            lock (objectJudgementMaskLock)
             {
-                StartLargeObjectJudgementMaskBuild(source, objectJudgement, roiRegion.Bounds, generation);
+                objectJudgementPendingLargeMaskBuilds = objectJudgementParameterApplyInProgress
+                    ? validRois.Count
+                    : 0;
+                objectJudgementAccumulatedProcessingMilliseconds = 0;
+            }
+
+            if (validRois.Count == 0)
+            {
+                FailObjectJudgementParameterApply("尚未設定有效的 ROI");
+                source.ReleaseReference();
+                return;
+            }
+
+            foreach (Rectangle roi in validRois)
+            {
+                StartLargeObjectJudgementMaskBuild(source, objectJudgement, roi, generation);
             }
 
             source.ReleaseReference();
@@ -482,44 +603,60 @@ namespace IntegratedImageProcessingApp.Forms
                             return;
                         }
 
+                        Stopwatch processingStopwatch = Stopwatch.StartNew();
                         using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(
                             sourceReference, objectJudgement, roi))
                         {
                             result = ApplyObjectJudgementProcessingOpenCv(
                                 baseMask, objectJudgement.ProcessingSteps);
                         }
+                        processingStopwatch.Stop();
+                        long processingElapsedMilliseconds = processingStopwatch.ElapsedMilliseconds;
+
+                        Cv.Mat completed = result;
+                        result = null;
+                        BeginInvoke(new Action(delegate
+                        {
+                            if (!IsObjectJudgementProcessingCurrent(objectJudgement.Id, generation))
+                            {
+                                completed.Dispose();
+                                return;
+                            }
+
+                            lock (objectJudgementMaskLock)
+                            {
+                                Cv.Mat previous;
+                                if (objectJudgementLargeMasks.TryGetValue(maskKey, out previous))
+                                {
+                                    previous.Dispose();
+                                }
+
+                                objectJudgementLargeMasks[maskKey] = completed;
+                                objectJudgementLargeMaskBuildKeys.Remove(maskKey);
+                            }
+
+                            statusLabel.Text = "區塊處理完成，已使用 OpenCV";
+                            Stopwatch previewStopwatch = Stopwatch.StartNew();
+                            leftBlockProcessingDisplayControl.InvalidateImageView();
+                            rightBlockProcessingDisplayControl.InvalidateImageView();
+                            previewStopwatch.Stop();
+                            if (objectJudgementParameterApplyInProgress)
+                            {
+                                objectJudgementAccumulatedProcessingMilliseconds += processingElapsedMilliseconds;
+                                objectJudgementPendingLargeMaskBuilds--;
+                                if (objectJudgementPendingLargeMaskBuilds <= 0)
+                                {
+                                    CompleteObjectJudgementParameterApplyStatus(
+                                        objectJudgementAccumulatedProcessingMilliseconds,
+                                        previewStopwatch.ElapsedMilliseconds);
+                                }
+                            }
+                        }));
                     }
                     finally
                     {
                         largeNativeProcessingGate.Release();
                     }
-
-                    Cv.Mat completed = result;
-                    result = null;
-                    BeginInvoke(new Action(delegate
-                    {
-                        if (!IsObjectJudgementProcessingCurrent(objectJudgement.Id, generation))
-                        {
-                            completed.Dispose();
-                            return;
-                        }
-
-                        lock (objectJudgementMaskLock)
-                        {
-                            Cv.Mat previous;
-                            if (objectJudgementLargeMasks.TryGetValue(maskKey, out previous))
-                            {
-                                previous.Dispose();
-                            }
-
-                            objectJudgementLargeMasks[maskKey] = completed;
-                            objectJudgementLargeMaskBuildKeys.Remove(maskKey);
-                        }
-
-                        statusLabel.Text = "區塊處理完成，已使用 OpenCV";
-                        leftBlockProcessingDisplayControl.InvalidateImageView();
-                        rightBlockProcessingDisplayControl.InvalidateImageView();
-                    }));
                 }
                 catch (Exception ex)
                 {
@@ -538,6 +675,7 @@ namespace IntegratedImageProcessingApp.Forms
                         if (IsObjectJudgementProcessingCurrent(objectJudgement.Id, generation))
                         {
                             statusLabel.Text = "區塊處理失敗：" + ex.Message;
+                            FailObjectJudgementParameterApply(ex.Message);
                         }
                     }));
                 }
