@@ -77,6 +77,7 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageDisplayControl leftPreprocessedDisplayControl;
         private ImageDisplayControl rightPreprocessedDisplayControl;
         private bool imagePreprocessingMenuExpanded;
+        private bool isRebuildingImagePreprocessingMenu;
         private bool preprocessingExecutionRequested;
         private int selectedImagePreprocessingStepIndex = -1;
         private string selectedImagePreprocessingGroupId;
@@ -398,6 +399,19 @@ namespace IntegratedImageProcessingApp.Forms
             return null;
         }
 
+        private bool TryGetSelectedImagePreprocessingStep(out ImageProcessingStepSettings step)
+        {
+            step = null;
+            int index = selectedImagePreprocessingStepIndex;
+            if (index < 0 || index >= systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return false;
+            }
+
+            step = systemParameters.ImagePreprocessingSteps[index];
+            return step != null;
+        }
+
         private static bool IsImagePreprocessingStepMenuItem(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
@@ -481,7 +495,12 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void SelectImagePreprocessingFlowNode(string method)
         {
-            if (string.IsNullOrWhiteSpace(method) || imagePreprocessingFlowTreeView == null) return;
+            if (string.IsNullOrWhiteSpace(method) || imagePreprocessingFlowTreeView == null ||
+                imagePreprocessingFlowTreeView.Nodes.Count == 0)
+            {
+                return;
+            }
+
             foreach (TreeNode node in imagePreprocessingFlowTreeView.Nodes[0].Nodes)
             {
                 if (string.Equals(node.Tag as string, method, StringComparison.Ordinal))
@@ -494,9 +513,19 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ImagePreprocessingFlowTreeView_AfterSelect(object sender, TreeViewEventArgs e)
         {
-            if (selectedImagePreprocessingStepIndex < 0 || e.Node.Nodes.Count > 0) return;
+            ImageProcessingStepSettings step;
+            if (e == null || e.Node == null || e.Node.Nodes.Count > 0 ||
+                !TryGetSelectedImagePreprocessingStep(out step))
+            {
+                return;
+            }
+
             string method = e.Node.Tag as string;
-            ImageProcessingStepSettings step = systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex];
+            if (!IsImagePreprocessingMethod(method))
+            {
+                return;
+            }
+
             step.Method = method;
             step.Parameters = CreateDefaultImagePreprocessingParameters(method);
             SaveSystemParameters();
@@ -564,8 +593,14 @@ namespace IntegratedImageProcessingApp.Forms
         private void SetPendingImagePreprocessingParameter(string key, string value)
         {
             if (string.IsNullOrEmpty(key)) return;
+            ImageProcessingStepSettings step;
+            if (!TryGetSelectedImagePreprocessingStep(out step))
+            {
+                return;
+            }
+
             if (pendingImagePreprocessingParameters == null)
-                pendingImagePreprocessingParameters = ParseImageProcessingParameters(systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters);
+                pendingImagePreprocessingParameters = ParseImageProcessingParameters(step.Parameters);
             pendingImagePreprocessingParameters[key] = value ?? string.Empty;
         }
 
@@ -1007,9 +1042,25 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ShowImagePreprocessingParameterPanel(string method)
         {
+            ImageProcessingStepSettings step;
+            if (!TryGetSelectedImagePreprocessingStep(out step))
+            {
+                pendingImagePreprocessingParameters = null;
+                HideImageProcessingParameterPanel();
+                if (imagePreprocessingFlowTreeView != null)
+                {
+                    imagePreprocessingFlowTreeView.Visible = false;
+                }
+
+                parameterPlaceholderLabel.Visible = true;
+                parameterPlaceholderLabel.Text = "前處理項目已不存在，請重新選擇前處理。";
+                parameterPlaceholderLabel.BringToFront();
+                rightPanelTitleLabel.Text = "前處理參數";
+                return;
+            }
+
             EnsureImageProcessingParameterPanel();
-            pendingImagePreprocessingParameters = ParseImageProcessingParameters(
-                systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Parameters);
+            pendingImagePreprocessingParameters = ParseImageProcessingParameters(step.Parameters);
             imagePreprocessingFlowTreeView.Visible = false;
             imageProcessingParameterPanel.Visible = true;
             imageProcessingParameterPanel.Controls.Clear();
@@ -1069,15 +1120,24 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void RemoveImagePreprocessingSubMenuItems()
         {
-            for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
+            bool wasRebuilding = isRebuildingImagePreprocessingMenu;
+            isRebuildingImagePreprocessingMenu = true;
+            try
             {
-                string itemText = functionListBox.Items[index] as string;
-                if (string.Equals(itemText == null ? null : itemText.Trim(),
-                        OriginalPreprocessingSourceText.Trim(), StringComparison.Ordinal) ||
-                    IsImagePreprocessingStepMenuItem(itemText) || IsImagePreprocessingGroupMenuItem(itemText))
-                    functionListBox.Items.RemoveAt(index);
+                for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
+                {
+                    string itemText = functionListBox.Items[index] as string;
+                    if (string.Equals(itemText == null ? null : itemText.Trim(),
+                            OriginalPreprocessingSourceText.Trim(), StringComparison.Ordinal) ||
+                        IsImagePreprocessingStepMenuItem(itemText) || IsImagePreprocessingGroupMenuItem(itemText))
+                        functionListBox.Items.RemoveAt(index);
+                }
+                imagePreprocessingMenuExpanded = false;
             }
-            imagePreprocessingMenuExpanded = false;
+            finally
+            {
+                isRebuildingImagePreprocessingMenu = wasRebuilding;
+            }
         }
 
         private void AddImagePreprocessingStep()
@@ -1096,26 +1156,35 @@ namespace IntegratedImageProcessingApp.Forms
         private void RebuildVisibleImagePreprocessingSteps()
         {
             if (!imagePreprocessingMenuExpanded) return;
-            RemoveImagePreprocessingSubMenuItems();
-            imagePreprocessingMenuExpanded = true;
-            int insertIndex = functionListBox.Items.IndexOf(ImagePreprocessingMenuText) + 1;
-            // Remove any stale duplicate source entries before rebuilding the visible list.
-            for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
+            bool wasRebuilding = isRebuildingImagePreprocessingMenu;
+            isRebuildingImagePreprocessingMenu = true;
+            try
             {
-                string itemText = functionListBox.Items[index] as string;
-                if (string.Equals(itemText == null ? null : itemText.Trim(),
-                        OriginalPreprocessingSourceText.Trim(), StringComparison.Ordinal))
+                RemoveImagePreprocessingSubMenuItems();
+                imagePreprocessingMenuExpanded = true;
+                int insertIndex = functionListBox.Items.IndexOf(ImagePreprocessingMenuText) + 1;
+                // Remove any stale duplicate source entries before rebuilding the visible list.
+                for (int index = functionListBox.Items.Count - 1; index >= 0; index--)
                 {
-                    functionListBox.Items.RemoveAt(index);
+                    string itemText = functionListBox.Items[index] as string;
+                    if (string.Equals(itemText == null ? null : itemText.Trim(),
+                            OriginalPreprocessingSourceText.Trim(), StringComparison.Ordinal))
+                    {
+                        functionListBox.Items.RemoveAt(index);
+                    }
                 }
+                functionListBox.Items.Insert(insertIndex, OriginalPreprocessingSourceText);
+                insertIndex++;
+                for (int index = 0; index < systemParameters.ImagePreprocessingSteps.Count; index++)
+                    if (string.IsNullOrWhiteSpace(systemParameters.ImagePreprocessingSteps[index].GroupId))
+                        functionListBox.Items.Insert(insertIndex++, CreateImagePreprocessingStepText(index + 1));
+                foreach (ImageProcessingGroupSettings group in systemParameters.ImagePreprocessingGroups)
+                    if (string.IsNullOrWhiteSpace(group.ParentGroupId)) InsertImagePreprocessingGroup(group, 0, ref insertIndex);
             }
-            functionListBox.Items.Insert(insertIndex, OriginalPreprocessingSourceText);
-            insertIndex++;
-            for (int index = 0; index < systemParameters.ImagePreprocessingSteps.Count; index++)
-                if (string.IsNullOrWhiteSpace(systemParameters.ImagePreprocessingSteps[index].GroupId))
-                    functionListBox.Items.Insert(insertIndex++, CreateImagePreprocessingStepText(index + 1));
-            foreach (ImageProcessingGroupSettings group in systemParameters.ImagePreprocessingGroups)
-                if (string.IsNullOrWhiteSpace(group.ParentGroupId)) InsertImagePreprocessingGroup(group, 0, ref insertIndex);
+            finally
+            {
+                isRebuildingImagePreprocessingMenu = wasRebuilding;
+            }
         }
 
         private void InsertImagePreprocessingGroup(ImageProcessingGroupSettings group, int depth, ref int insertIndex)

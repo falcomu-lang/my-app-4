@@ -742,7 +742,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void FunctionListBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (isUpdatingFunctionListText)
+            if (isUpdatingFunctionListText || isRebuildingImagePreprocessingMenu)
             {
                 return;
             }
@@ -3058,8 +3058,15 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 if (preprocessing)
                 {
-                    ShowImagePreprocessingParameterPanel(
-                        systemParameters.ImagePreprocessingSteps[selectedImagePreprocessingStepIndex].Method);
+                    ImageProcessingStepSettings step;
+                    if (TryGetSelectedImagePreprocessingStep(out step))
+                    {
+                        ShowImagePreprocessingParameterPanel(step.Method);
+                    }
+                    else
+                    {
+                        HideImageProcessingParameterPanel();
+                    }
                 }
                 else
                 {
