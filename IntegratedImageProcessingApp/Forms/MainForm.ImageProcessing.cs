@@ -119,10 +119,24 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private static bool[,] CreateOpenCvGlobalThresholdMask(byte[,] gray, int threshold, int maxValue, string thresholdType)
+        private static bool[,] CreateOpenCvGlobalThresholdMask(
+            byte[,] gray,
+            string thresholdMode,
+            int threshold,
+            int lowerThreshold,
+            int upperThreshold,
+            int maxValue,
+            string thresholdType)
         {
             using (var source = CreateOpenCvGrayMat(gray))
-            using (var mask = CreateOpenCvGlobalThresholdBinaryMask(source, threshold, maxValue, thresholdType))
+            using (var mask = CreateOpenCvGlobalThresholdBinaryMask(
+                source,
+                thresholdMode,
+                threshold,
+                lowerThreshold,
+                upperThreshold,
+                maxValue,
+                thresholdType))
             {
                 return ConvertOpenCvBinaryMask(mask);
             }
@@ -170,6 +184,7 @@ namespace IntegratedImageProcessingApp.Forms
             selectedImageProcessingGroupId = null;
             activeImageRelationGroupId = null;
             imageProcessingExecutionRequested = true;
+            explicitProcessedImageUpdateRequested = true;
             BeginParameterApplyStatus(false);
             MarkProcessedPreviewDirty();
             MarkProcessedImageDirty();
@@ -189,7 +204,11 @@ namespace IntegratedImageProcessingApp.Forms
             selectedImageProcessingGroupId = group.Id;
             activeImageRelationGroupId = null;
             imageProcessingExecutionRequested = true;
+            explicitProcessedImageUpdateRequested = true;
             MarkProcessedPreviewDirty();
+            // A group has its own combined-mask cache key. Invalidate the
+            // previous single-step/group result before rebuilding the OR mask.
+            MarkProcessedImageDirty();
             ScheduleProcessedImageUpdateIfVisible();
             statusLabel.Text = "已開始處理" + group.DisplayName;
         }

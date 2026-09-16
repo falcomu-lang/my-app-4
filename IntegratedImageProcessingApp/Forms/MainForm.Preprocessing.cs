@@ -754,14 +754,24 @@ namespace IntegratedImageProcessingApp.Forms
             isSyncingImageView = true;
             try
             {
-                ApplyImageViewState(GetVisibleLeftImageDisplayControl(), preprocessedImageViewState);
-                ApplyImageViewState(GetVisibleRightImageDisplayControl(), preprocessedImageViewState);
+                // Restore only preprocessing controls. Applying this state to
+                // the currently selected controls could move the original or
+                // processed view when preprocessing completed in the background.
+                ApplyImageViewState(leftPreprocessedDisplayControl, preprocessedImageViewState);
+                ApplyImageViewState(rightPreprocessedDisplayControl, preprocessedImageViewState);
                 if (isImageViewerMaximized)
                 {
-                    maximizedImageViewerViewState = preprocessedImageViewState;
-                    hasMaximizedImageViewerViewState = true;
+                    ImageDisplayControl active = isLeftImageViewerMaximized
+                        ? GetVisibleLeftImageDisplayControl()
+                        : GetVisibleRightImageDisplayControl();
+                    if (active == leftPreprocessedDisplayControl || active == rightPreprocessedDisplayControl)
+                    {
+                        maximizedImageViewerViewState = preprocessedImageViewState;
+                        hasMaximizedImageViewerViewState = true;
+                    }
                 }
-                else
+                else if (leftImageTabControl.SelectedTab == leftPreprocessedTabPage ||
+                    rightImageTabControl.SelectedTab == rightPreprocessedTabPage)
                 {
                     sharedImageViewState = preprocessedImageViewState;
                     hasSharedImageViewState = true;

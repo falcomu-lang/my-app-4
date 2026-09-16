@@ -47,6 +47,7 @@ namespace IntegratedImageProcessingApp.Forms
         private FlowLayoutPanel imageProcessingParameterPanel;
         private int selectedImageProcessingStepIndex = -1;
         private string selectedImageProcessingGroupId;
+        private bool explicitProcessedImageUpdateRequested;
         private readonly HashSet<string> expandedImageProcessingGroupIds = new HashSet<string>(StringComparer.Ordinal);
         private bool isUpdatingImageProcessingFlowTree;
         private bool isLoadingImageProcessingParameters;
@@ -2965,9 +2966,14 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else if (method == "Global Threshold")
                 {
+                    AddComboParameter("ThresholdMode", "門檻模式", new[] { "Single", "Range" }, "Single");
                     AddNumericParameter("Threshold", "門檻值", "128");
+                    AddNumericParameter("LowerThreshold", "範圍下限", "0");
+                    AddNumericParameter("UpperThreshold", "範圍上限", "255");
                     AddNumericParameter("MaxValue", "輸出最大值", "255");
                     AddComboParameter("ThresholdType", "二值化方向", new[] { "Binary", "BinaryInv" }, "Binary");
+                    SetGlobalThresholdParameterVisibility(
+                        GetImageProcessingParameterValue("ThresholdMode", "Single"));
                 }
                 else if (method == "Adaptive Threshold")
                 {
@@ -3052,6 +3058,7 @@ namespace IntegratedImageProcessingApp.Forms
             GetNumericParameterRange(key, out minimum, out maximum, out increment);
 
             var label = CreateParameterLabel(labelText);
+            label.Tag = key;
             var numericUpDown = new NumericUpDown();
             numericUpDown.Width = parameterPanel.Width - 18;
             numericUpDown.Minimum = minimum;
@@ -3077,6 +3084,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void AddComboParameter(string key, string labelText, string[] values, string defaultValue)
         {
             var label = CreateParameterLabel(labelText);
+            label.Tag = key;
             var comboBox = new ComboBox();
             comboBox.Width = parameterPanel.Width - 18;
             comboBox.DropDownStyle = ComboBoxStyle.DropDownList;
@@ -3098,6 +3106,44 @@ namespace IntegratedImageProcessingApp.Forms
 
             imageProcessingParameterPanel.Controls.Add(label);
             imageProcessingParameterPanel.Controls.Add(comboBox);
+
+            if (key == "ThresholdMode")
+            {
+                comboBox.SelectedIndexChanged += delegate(object sender, EventArgs e)
+                {
+                    if (!isLoadingImageProcessingParameters)
+                    {
+                        SetGlobalThresholdParameterVisibility(
+                            ((ComboBox)sender).SelectedItem as string);
+                    }
+                };
+            }
+        }
+
+        private void SetGlobalThresholdParameterVisibility(string mode)
+        {
+            bool isRange = string.Equals(mode, "Range", StringComparison.OrdinalIgnoreCase);
+            if (imageProcessingParameterPanel == null)
+            {
+                return;
+            }
+
+            foreach (Control control in imageProcessingParameterPanel.Controls)
+            {
+                string key = control.Tag as string;
+                if (key == "Threshold")
+                {
+                    control.Visible = !isRange;
+                }
+                else if (key == "LowerThreshold" || key == "UpperThreshold")
+                {
+                    control.Visible = isRange;
+                }
+                else if (key == "ThresholdType")
+                {
+                    control.Visible = !isRange;
+                }
+            }
         }
 
         private void AddCheckParameter(string key, string labelText, bool defaultValue)
@@ -3556,7 +3602,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (method == "Global Threshold")
             {
-                return "Threshold=128;MaxValue=255;ThresholdType=Binary";
+                return "ThresholdMode=Single;Threshold=128;LowerThreshold=0;UpperThreshold=255;MaxValue=255;ThresholdType=Binary";
             }
 
             if (method == "Adaptive Threshold")
@@ -3791,7 +3837,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return CreateOpenCvGlobalThresholdMask(
                     gray,
+                    GetStringParameter(parameters, "ThresholdMode", "Single"),
                     GetIntParameter(parameters, "Threshold", 128),
+                    GetIntParameter(parameters, "LowerThreshold", 0),
+                    GetIntParameter(parameters, "UpperThreshold", 255),
                     GetIntParameter(parameters, "MaxValue", 255),
                     GetStringParameter(parameters, "ThresholdType", "Binary"));
             }
@@ -4022,14 +4071,31 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void CaptureProcessedImageViewState()
         {
-            ImageDisplayControl source = isImageViewerMaximized
-                ? (isLeftImageViewerMaximized ? GetVisibleLeftImageDisplayControl() : GetVisibleRightImageDisplayControl())
-                : GetVisibleLeftImageDisplayControl();
+            ImageDisplayControl source = null;
+            if (isImageViewerMaximized)
+            {
+                ImageDisplayControl active = isLeftImageViewerMaximized
+                    ? GetVisibleLeftImageDisplayControl()
+                    : GetVisibleRightImageDisplayControl();
+                if (active == leftProcessedDisplayControl || active == rightProcessedDisplayControl)
+                {
+                    source = active;
+                }
+            }
+            else if (leftImageTabControl.SelectedTab == leftProcessedTabPage)
+            {
+                source = leftProcessedDisplayControl;
+            }
+            else if (rightImageTabControl.SelectedTab == rightProcessedTabPage)
+            {
+                source = rightProcessedDisplayControl;
+            }
+
             if (source == null || !source.HasImage)
             {
-                source = GetVisibleRightImageDisplayControl();
+                return;
             }
-            if (source == null || !source.HasImage) return;
+
             processedImageViewState = source.ViewState;
             hasProcessedImageViewState = true;
         }
@@ -4044,10 +4110,17 @@ namespace IntegratedImageProcessingApp.Forms
                 ApplyImageViewState(rightProcessedDisplayControl, processedImageViewState);
                 if (isImageViewerMaximized)
                 {
-                    maximizedImageViewerViewState = processedImageViewState;
-                    hasMaximizedImageViewerViewState = true;
+                    ImageDisplayControl active = isLeftImageViewerMaximized
+                        ? GetVisibleLeftImageDisplayControl()
+                        : GetVisibleRightImageDisplayControl();
+                    if (active == leftProcessedDisplayControl || active == rightProcessedDisplayControl)
+                    {
+                        maximizedImageViewerViewState = processedImageViewState;
+                        hasMaximizedImageViewerViewState = true;
+                    }
                 }
-                else
+                else if (leftImageTabControl.SelectedTab == leftProcessedTabPage ||
+                    rightImageTabControl.SelectedTab == rightProcessedTabPage)
                 {
                     sharedImageViewState = processedImageViewState;
                     hasSharedImageViewState = true;
@@ -4209,7 +4282,9 @@ namespace IntegratedImageProcessingApp.Forms
             // A large-image result is retained as an OpenCV mask, so prepare it
             // after parameter changes even when the user is currently viewing
             // the original tab.  Otherwise the update is silently skipped.
-            if (!rightOriginalDisplayControl.IsLargeImageMode && !IsAnyProcessedTabVisible())
+            if (!rightOriginalDisplayControl.IsLargeImageMode &&
+                !IsAnyProcessedTabVisible() &&
+                !explicitProcessedImageUpdateRequested)
             {
                 return;
             }
@@ -4226,7 +4301,9 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void UpdateVisibleProcessedImageIfNeeded()
         {
-            if (!rightOriginalDisplayControl.IsLargeImageMode && !IsAnyProcessedTabVisible())
+            if (!rightOriginalDisplayControl.IsLargeImageMode &&
+                !IsAnyProcessedTabVisible() &&
+                !explicitProcessedImageUpdateRequested)
             {
                 return;
             }
@@ -4238,12 +4315,14 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (!imageProcessingExecutionRequested)
             {
+                explicitProcessedImageUpdateRequested = false;
                 return;
             }
 
             if (!HasSelectedPreviewableImageProcessingSteps())
             {
                 processedImageDirty = false;
+                explicitProcessedImageUpdateRequested = false;
                 CompleteParameterApplyStatus();
                 return;
             }
@@ -4253,6 +4332,11 @@ namespace IntegratedImageProcessingApp.Forms
                 RequestPreprocessedImageUpdate();
                 return;
             }
+
+            // An explicit context-menu/A-key command is allowed to prepare
+            // the result while the processed tab is hidden. Only visible tabs
+            // are updated below, so background displays remain untouched.
+            explicitProcessedImageUpdateRequested = false;
 
             // Large images use LargeImageSource plus a cached ROI mask instead of
             // latestProcessedImage. Treat that pipeline as complete once it has
@@ -5798,11 +5882,36 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static Cv.Mat CreateOpenCvGlobalThresholdBinaryMask(
             Cv.Mat source,
+            string thresholdMode,
             int threshold,
+            int lowerThreshold,
+            int upperThreshold,
             int maxValue,
             string thresholdType)
         {
             var result = new Cv.Mat();
+            if (string.Equals(thresholdMode, "Range", StringComparison.OrdinalIgnoreCase))
+            {
+                int lower = ClampInt(Math.Min(lowerThreshold, upperThreshold), 0, 255);
+                int upper = ClampInt(Math.Max(lowerThreshold, upperThreshold), 0, 255);
+                Cv.Cv2.InRange(
+                    source,
+                    new Cv.Scalar(lower),
+                    new Cv.Scalar(upper),
+                    result);
+                if (ClampInt(maxValue, 1, 255) != 255)
+                {
+                    Cv.Cv2.Threshold(
+                        result,
+                        result,
+                        0,
+                        ClampInt(maxValue, 1, 255),
+                        Cv.ThresholdTypes.Binary);
+                }
+
+                return result;
+            }
+
             Cv.ThresholdTypes type = string.Equals(thresholdType, "BinaryInv", StringComparison.OrdinalIgnoreCase)
                 ? Cv.ThresholdTypes.BinaryInv
                 : Cv.ThresholdTypes.Binary;
@@ -5868,7 +5977,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return CreateOpenCvGlobalThresholdBinaryMask(
                     source,
+                    GetStringParameter(parameters, "ThresholdMode", "Single"),
                     GetIntParameter(parameters, "Threshold", 128),
+                    GetIntParameter(parameters, "LowerThreshold", 0),
+                    GetIntParameter(parameters, "UpperThreshold", 255),
                     GetIntParameter(parameters, "MaxValue", 255),
                     GetStringParameter(parameters, "ThresholdType", "Binary"));
             }
@@ -6747,7 +6859,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return CreateOpenCvGlobalThresholdMask(
                     gray,
+                    GetStringParameter(parameters, "ThresholdMode", "Single"),
                     GetIntParameter(parameters, "Threshold", 128),
+                    GetIntParameter(parameters, "LowerThreshold", 0),
+                    GetIntParameter(parameters, "UpperThreshold", 255),
                     GetIntParameter(parameters, "MaxValue", 255),
                     GetStringParameter(parameters, "ThresholdType", "Binary"));
             }
