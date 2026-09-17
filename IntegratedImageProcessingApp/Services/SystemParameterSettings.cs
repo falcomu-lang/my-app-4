@@ -15,6 +15,8 @@ namespace IntegratedImageProcessingApp.Services
             ImageRelations = new List<ImageRelationSettings>();
             ImageRelationGroups = new List<ImageRelationGroupSettings>();
             ObjectJudgements = new List<ObjectJudgementSettings>();
+            ObjectJudgementGroups = new List<ObjectJudgementGroupSettings>();
+            ObjectDefinitions = new List<ObjectDefinitionSettings>();
         }
 
         public string LastImagePath { get; set; }
@@ -38,6 +40,10 @@ namespace IntegratedImageProcessingApp.Services
         public List<ImageRelationGroupSettings> ImageRelationGroups { get; private set; }
 
         public List<ObjectJudgementSettings> ObjectJudgements { get; private set; }
+
+        public List<ObjectJudgementGroupSettings> ObjectJudgementGroups { get; private set; }
+
+        public List<ObjectDefinitionSettings> ObjectDefinitions { get; private set; }
     }
 
     public class RoiRegionSettings
@@ -108,6 +114,8 @@ namespace IntegratedImageProcessingApp.Services
 
         public string RelationId { get; set; }
 
+        public string GroupId { get; set; }
+
         public List<ObjectJudgementProcessingSettings> ProcessingSteps { get; private set; }
     }
 
@@ -120,5 +128,28 @@ namespace IntegratedImageProcessingApp.Services
         public string Method { get; set; }
 
         public string Parameters { get; set; }
+    }
+
+    public class ObjectJudgementGroupSettings
+    {
+        public string Id { get; set; }
+
+        public string ParentGroupId { get; set; }
+
+        public string DisplayName { get; set; }
+    }
+
+    public class ObjectDefinitionSettings
+    {
+        public ObjectDefinitionSettings()
+        {
+            ObjectJudgementIds = new List<string>();
+        }
+
+        public string Id { get; set; }
+
+        public string DisplayName { get; set; }
+
+        public List<string> ObjectJudgementIds { get; private set; }
     }
 }

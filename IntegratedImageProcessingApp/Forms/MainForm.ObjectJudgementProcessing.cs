@@ -33,8 +33,13 @@ namespace IntegratedImageProcessingApp.Forms
             new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
         private readonly HashSet<string> objectJudgementLargeMaskBuildKeys =
             new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, Cv.Mat> objectJudgementGroupLargeMasks =
+            new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
+        private readonly HashSet<string> objectJudgementGroupLargeMaskBuildKeys =
+            new HashSet<string>(StringComparer.Ordinal);
         private int objectJudgementMaskGeneration;
         private string activeObjectJudgementId;
+        private string activeObjectJudgementGroupId;
         private bool objectJudgementProcessingRequested;
         private Bitmap latestObjectJudgementImage;
         private Label objectJudgementParameterApplyStatusLabel;
@@ -45,6 +50,8 @@ namespace IntegratedImageProcessingApp.Forms
         private int activeObjectJudgementProcessingIndex = -1;
         private string activeObjectJudgementProcessingSignature;
         private string completedObjectJudgementProcessingSignature;
+        private string activeObjectJudgementGroupProcessingSignature;
+        private string completedObjectJudgementGroupProcessingSignature;
 
         private void BuildObjectJudgementProcessingParameterPanel(
             Panel panel,
@@ -307,6 +314,18 @@ namespace IntegratedImageProcessingApp.Forms
             SetObjectJudgementParameterApplyStatus("影像處理中...");
         }
 
+        private void BeginObjectJudgementGroupApplyStatus(string groupId)
+        {
+            objectJudgementParameterApplyInProgress = true;
+            objectJudgementAccumulatedProcessingMilliseconds = 0;
+            objectJudgementPendingLargeMaskBuilds = 0;
+            ObjectJudgementGroupSettings group = FindObjectJudgementGroup(groupId);
+            objectJudgementTimingName = group == null || string.IsNullOrWhiteSpace(group.DisplayName)
+                ? "群組"
+                : group.DisplayName.Trim();
+            SetObjectJudgementParameterApplyStatus("影像處理中...");
+        }
+
         private void SetObjectJudgementParameterApplyStatus(string text)
         {
             if (objectJudgementParameterApplyStatusLabel != null &&
@@ -347,7 +366,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectName));
             statusLabel.Text = string.Format(
                 CultureInfo.InvariantCulture,
-                "{0}處理時間：{1} ms || 顯示處理時間：{2} ms",
+                "{0}：運算時間：{1} ms || 顯示時間：{2} ms",
                 objectName,
                 processing,
                 preview);
@@ -358,10 +377,12 @@ namespace IntegratedImageProcessingApp.Forms
             string id = objectJudgement == null ? null : objectJudgement.Id;
             if (string.Equals(activeObjectJudgementId, id, StringComparison.Ordinal))
             {
+                activeObjectJudgementGroupId = null;
                 return;
             }
 
             activeObjectJudgementId = id;
+            activeObjectJudgementGroupId = null;
             InvalidateObjectJudgementProcessingResults();
             RestoreObjectJudgementDisplayToOriginal();
         }
@@ -372,6 +393,8 @@ namespace IntegratedImageProcessingApp.Forms
             activeObjectJudgementProcessingIndex = -1;
             activeObjectJudgementProcessingSignature = null;
             completedObjectJudgementProcessingSignature = null;
+            activeObjectJudgementGroupProcessingSignature = null;
+            completedObjectJudgementGroupProcessingSignature = null;
             ClearLargeRelationSourceCache();
             lock (objectJudgementMaskLock)
             {
@@ -385,6 +408,16 @@ namespace IntegratedImageProcessingApp.Forms
 
                 objectJudgementLargeMasks.Clear();
                 objectJudgementLargeMaskBuildKeys.Clear();
+                foreach (Cv.Mat mask in objectJudgementGroupLargeMasks.Values)
+                {
+                    if (mask != null)
+                    {
+                        mask.Dispose();
+                    }
+                }
+
+                objectJudgementGroupLargeMasks.Clear();
+                objectJudgementGroupLargeMaskBuildKeys.Clear();
                 objectJudgementMaskGeneration++;
             }
 
@@ -438,6 +471,177 @@ namespace IntegratedImageProcessingApp.Forms
             StartObjectJudgementProcessing(objectIndex, -1);
         }
 
+        private void StartObjectJudgementGroupProcessing(string groupId)
+        {
+            ObjectJudgementGroupSettings group = FindObjectJudgementGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            List<ObjectJudgementSettings> objectJudgements = GetObjectJudgementsInGroup(groupId);
+            if (objectJudgements.Count == 0)
+            {
+                statusLabel.Text = group.DisplayName + " 尚未包含任何區塊";
+                return;
+            }
+
+            foreach (ObjectJudgementSettings objectJudgement in objectJudgements)
+            {
+                List<ImageRelationSettings> relations = GetObjectJudgementRelations(objectJudgement);
+                if (relations.Count == 0 ||
+                    relations.Any(relation => GetImageProcessingStepsForRelation(relation).Count == 0))
+                {
+                    statusLabel.Text = GetObjectJudgementDisplayName(
+                        objectJudgement,
+                        systemParameters.ObjectJudgements.IndexOf(objectJudgement)) +
+                        " 尚未設定完整的影像關聯或影像處理";
+                    return;
+                }
+
+                List<ObjectJudgementProcessingSettings> processingSteps =
+                    GetObjectJudgementProcessingChain(objectJudgement, -1);
+                // A block may intentionally be relation-only. In that case its
+                // relation binary mask is the block result and can participate in
+                // the group's OR merge without an extra morphology step.
+                if (processingSteps.Any(step =>
+                    step == null || string.IsNullOrWhiteSpace(step.Method)))
+                {
+                    statusLabel.Text = GetObjectJudgementDisplayName(
+                        objectJudgement,
+                        systemParameters.ObjectJudgements.IndexOf(objectJudgement)) +
+                        " 尚未設定完整的區塊處理方式";
+                    return;
+                }
+
+                ObjectJudgementProcessingSettings unsupportedStep = processingSteps.FirstOrDefault(
+                    step => !IsSupportedObjectJudgementProcessingMethod(step.Method));
+                if (unsupportedStep != null)
+                {
+                    statusLabel.Text = "區塊群組處理失效，不支援的區塊處理方式：" + unsupportedStep.Method;
+                    return;
+                }
+            }
+
+            string processingSignature = CreateObjectJudgementGroupProcessingSignature(
+                groupId,
+                objectJudgements);
+            if (HasCompletedObjectJudgementGroupResult(
+                    groupId,
+                    objectJudgements,
+                    processingSignature))
+            {
+                statusLabel.Text = "已處理";
+                SetObjectJudgementParameterApplyStatus("已處理");
+                return;
+            }
+
+            foreach (ObjectJudgementSettings objectJudgement in objectJudgements)
+            {
+                RequestObjectJudgementRelatedImageDisplays(objectJudgement);
+            }
+
+            InvalidateObjectJudgementProcessingResults();
+            activeObjectJudgementId = null;
+            activeObjectJudgementGroupId = groupId;
+            objectJudgementProcessingRequested = true;
+            activeObjectJudgementGroupProcessingSignature = processingSignature;
+            BeginObjectJudgementGroupApplyStatus(groupId);
+            statusLabel.Text = "區塊群組處理中...使用 OpenCV";
+
+            if (rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                StartLargeObjectJudgementGroupProcessing(
+                    groupId,
+                    objectJudgements,
+                    processingSignature);
+                return;
+            }
+
+            Bitmap original = rightOriginalDisplayControl.CloneImage();
+            if (original == null)
+            {
+                statusLabel.Text = "請先載入圖片";
+                FailObjectJudgementParameterApply("請先載入圖片");
+                return;
+            }
+
+            int generation;
+            lock (objectJudgementMaskLock)
+            {
+                generation = objectJudgementMaskGeneration;
+            }
+
+            Task.Run(delegate
+            {
+                Bitmap result = null;
+                try
+                {
+                    Stopwatch processingStopwatch = Stopwatch.StartNew();
+                    result = CreateObjectJudgementGroupImage(original, objectJudgements);
+                    processingStopwatch.Stop();
+                    long processingElapsedMilliseconds = processingStopwatch.ElapsedMilliseconds;
+                    BeginInvoke(new Action(delegate
+                    {
+                        if (!IsObjectJudgementGroupProcessingCurrent(groupId, generation))
+                        {
+                            result.Dispose();
+                            result = null;
+                            return;
+                        }
+
+                        if (latestObjectJudgementImage != null)
+                        {
+                            latestObjectJudgementImage.Dispose();
+                        }
+
+                        latestObjectJudgementImage = result;
+                        result = null;
+                        completedObjectJudgementGroupProcessingSignature =
+                            activeObjectJudgementGroupProcessingSignature;
+                        isSyncingImageView = true;
+                        try
+                        {
+                            leftBlockProcessingDisplayControl.SetDisplayImage(
+                                new Bitmap(latestObjectJudgementImage), true);
+                            rightBlockProcessingDisplayControl.SetDisplayImage(
+                                new Bitmap(latestObjectJudgementImage), true);
+                        }
+                        finally
+                        {
+                            isSyncingImageView = false;
+                        }
+
+                        statusLabel.Text = "區塊群組處理完成，已使用 OpenCV";
+                        ApplySharedImageViewStateToVisibleControls();
+                        long previewElapsedMilliseconds = RefreshVisibleObjectJudgementDisplays();
+                        CompleteObjectJudgementParameterApplyStatus(
+                            processingElapsedMilliseconds,
+                            previewElapsedMilliseconds);
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    BeginInvoke(new Action(delegate
+                    {
+                        if (IsObjectJudgementGroupProcessingCurrent(groupId, generation))
+                        {
+                            statusLabel.Text = "區塊群組處理失敗：" + ex.Message;
+                            FailObjectJudgementParameterApply(ex.Message);
+                        }
+                    }));
+                }
+                finally
+                {
+                    original.Dispose();
+                    if (result != null)
+                    {
+                        result.Dispose();
+                    }
+                }
+            });
+        }
+
         private void StartObjectJudgementProcessing(int objectIndex, int processingIndex)
         {
             if (objectIndex < 0 || objectIndex >= systemParameters.ObjectJudgements.Count)
@@ -456,11 +660,16 @@ namespace IntegratedImageProcessingApp.Forms
 
             List<ObjectJudgementProcessingSettings> processingSteps =
                 GetObjectJudgementProcessingChain(objectJudgement, processingIndex);
-            if (processingSteps.Count == 0 ||
-                processingSteps.Any(step => step == null || string.IsNullOrWhiteSpace(step.Method)))
+            // A block may be relation-only. With no extra block-processing step,
+            // the relation's binary mask is the block result directly.
+            int incompleteStepIndex = processingSteps.FindIndex(
+                step => step == null || string.IsNullOrWhiteSpace(step.Method));
+            if (incompleteStepIndex >= 0)
             {
                 statusLabel.Text = GetObjectJudgementDisplayName(objectJudgement, objectIndex) +
-                    " 尚未設定完整的區塊處理方式";
+                    " 的處理" + (incompleteStepIndex + 1).ToString(CultureInfo.InvariantCulture) +
+                    " 尚未設定處理方式";
+                FocusObjectJudgementProcessing(objectIndex, incompleteStepIndex);
                 return;
             }
 
@@ -494,7 +703,14 @@ namespace IntegratedImageProcessingApp.Forms
             activeObjectJudgementProcessingIndex = processingIndex;
             activeObjectJudgementProcessingSignature = processingSignature;
             BeginObjectJudgementParameterApplyStatus(objectIndex);
-            statusLabel.Text = "區塊處理中...使用 OpenCV";
+            string processingChainText = processingSteps.Count == 0
+                ? "關聯二值結果"
+                : string.Join(
+                    " -> ",
+                    processingSteps.Select((step, index) =>
+                        GetObjectJudgementProcessingDisplayName(step, index)).ToArray());
+            statusLabel.Text = GetObjectJudgementDisplayName(objectJudgement, objectIndex) +
+                " 處理中... " + processingChainText + "（OpenCV）";
 
             if (rightOriginalDisplayControl.IsLargeImageMode)
             {
@@ -632,6 +848,226 @@ namespace IntegratedImageProcessingApp.Forms
             source.ReleaseReference();
             leftBlockProcessingDisplayControl.InvalidateImageView();
             rightBlockProcessingDisplayControl.InvalidateImageView();
+        }
+
+        private void StartLargeObjectJudgementGroupProcessing(
+            string groupId,
+            IList<ObjectJudgementSettings> objectJudgements,
+            string processingSignature)
+        {
+            LargeImageSource source = rightOriginalDisplayControl.GetSharedLargeImageSource();
+            if (source == null)
+            {
+                statusLabel.Text = "請先載入圖片";
+                FailObjectJudgementParameterApply("請先載入圖片");
+                return;
+            }
+
+            int generation;
+            lock (objectJudgementMaskLock)
+            {
+                generation = objectJudgementMaskGeneration;
+            }
+
+            List<Rectangle> validRois = systemParameters.RoiRegions
+                .Where(roiRegion => roiRegion.Bounds.Width > 0 && roiRegion.Bounds.Height > 0)
+                .Select(roiRegion => roiRegion.Bounds)
+                .ToList();
+            lock (objectJudgementMaskLock)
+            {
+                objectJudgementPendingLargeMaskBuilds = objectJudgementParameterApplyInProgress
+                    ? validRois.Count
+                    : 0;
+                objectJudgementAccumulatedProcessingMilliseconds = 0;
+            }
+
+            if (validRois.Count == 0)
+            {
+                FailObjectJudgementParameterApply("尚未設定有效的 ROI");
+                source.ReleaseReference();
+                return;
+            }
+
+            foreach (Rectangle roi in validRois)
+            {
+                StartLargeObjectJudgementGroupMaskBuild(
+                    source,
+                    groupId,
+                    objectJudgements,
+                    processingSignature,
+                    roi,
+                    generation);
+            }
+
+            source.ReleaseReference();
+            leftBlockProcessingDisplayControl.InvalidateImageView();
+            rightBlockProcessingDisplayControl.InvalidateImageView();
+        }
+
+        private void StartLargeObjectJudgementGroupMaskBuild(
+            LargeImageSource originalSource,
+            string groupId,
+            IList<ObjectJudgementSettings> objectJudgements,
+            string processingSignature,
+            Rectangle roi,
+            int generation)
+        {
+            if (roi.Width <= 0 || roi.Height <= 0)
+            {
+                return;
+            }
+
+            string maskKey = CreateObjectJudgementGroupMaskKey(processingSignature, roi);
+            lock (objectJudgementMaskLock)
+            {
+                if (objectJudgementGroupLargeMasks.ContainsKey(maskKey) ||
+                    objectJudgementGroupLargeMaskBuildKeys.Contains(maskKey))
+                {
+                    return;
+                }
+
+                objectJudgementGroupLargeMaskBuildKeys.Add(maskKey);
+            }
+
+            LargeImageSource sourceReference = originalSource.AddReference();
+            Task.Run(delegate
+            {
+                Cv.Mat result = null;
+                try
+                {
+                    largeNativeProcessingGate.Wait();
+                    try
+                    {
+                        if (!IsObjectJudgementGroupProcessingCurrent(groupId, generation))
+                        {
+                            return;
+                        }
+
+                        Stopwatch processingStopwatch = Stopwatch.StartNew();
+                        result = CreateLargeObjectJudgementGroupMask(
+                            sourceReference,
+                            objectJudgements,
+                            roi);
+                        processingStopwatch.Stop();
+                        long processingElapsedMilliseconds = processingStopwatch.ElapsedMilliseconds;
+
+                        Cv.Mat completed = result;
+                        result = null;
+                        BeginInvoke(new Action(delegate
+                        {
+                            if (!IsObjectJudgementGroupProcessingCurrent(groupId, generation))
+                            {
+                                completed.Dispose();
+                                return;
+                            }
+
+                            lock (objectJudgementMaskLock)
+                            {
+                                Cv.Mat previous;
+                                if (objectJudgementGroupLargeMasks.TryGetValue(maskKey, out previous))
+                                {
+                                    previous.Dispose();
+                                }
+
+                                objectJudgementGroupLargeMasks[maskKey] = completed;
+                                objectJudgementGroupLargeMaskBuildKeys.Remove(maskKey);
+                            }
+
+                            statusLabel.Text = "區塊群組處理完成，已使用 OpenCV";
+                            if (objectJudgementParameterApplyInProgress)
+                            {
+                                objectJudgementAccumulatedProcessingMilliseconds += processingElapsedMilliseconds;
+                                objectJudgementPendingLargeMaskBuilds--;
+                                if (objectJudgementPendingLargeMaskBuilds <= 0)
+                                {
+                                    completedObjectJudgementGroupProcessingSignature =
+                                        activeObjectJudgementGroupProcessingSignature;
+                                    long previewElapsedMilliseconds =
+                                        RefreshVisibleObjectJudgementDisplays();
+                                    CompleteObjectJudgementParameterApplyStatus(
+                                        objectJudgementAccumulatedProcessingMilliseconds,
+                                        previewElapsedMilliseconds);
+                                }
+                                else
+                                {
+                                    leftBlockProcessingDisplayControl.InvalidateImageView();
+                                    rightBlockProcessingDisplayControl.InvalidateImageView();
+                                }
+                            }
+                            else
+                            {
+                                RefreshVisibleObjectJudgementDisplays();
+                            }
+                        }));
+                    }
+                    finally
+                    {
+                        largeNativeProcessingGate.Release();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (result != null)
+                    {
+                        result.Dispose();
+                    }
+
+                    BeginInvoke(new Action(delegate
+                    {
+                        lock (objectJudgementMaskLock)
+                        {
+                            objectJudgementGroupLargeMaskBuildKeys.Remove(maskKey);
+                        }
+
+                        if (IsObjectJudgementGroupProcessingCurrent(groupId, generation))
+                        {
+                            statusLabel.Text = "區塊群組處理失敗：" + ex.Message;
+                            FailObjectJudgementParameterApply(ex.Message);
+                        }
+                    }));
+                }
+                finally
+                {
+                    sourceReference.ReleaseReference();
+                }
+            });
+        }
+
+        private Cv.Mat CreateLargeObjectJudgementGroupMask(
+            LargeImageSource originalSource,
+            IList<ObjectJudgementSettings> objectJudgements,
+            Rectangle roi)
+        {
+            var combined = new Cv.Mat(
+                roi.Height,
+                roi.Width,
+                Cv.MatType.CV_8UC1,
+                Cv.Scalar.All(0));
+            try
+            {
+                foreach (ObjectJudgementSettings objectJudgement in objectJudgements)
+                {
+                    List<ObjectJudgementProcessingSettings> processingSteps =
+                        GetObjectJudgementProcessingChain(objectJudgement, -1);
+                    using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(
+                        originalSource,
+                        objectJudgement,
+                        roi))
+                    using (Cv.Mat objectMask = ApplyObjectJudgementProcessingOpenCv(
+                        baseMask,
+                        processingSteps))
+                    {
+                        Cv.Cv2.BitwiseOr(combined, objectMask, combined);
+                    }
+                }
+
+                return combined;
+            }
+            catch
+            {
+                combined.Dispose();
+                throw;
+            }
         }
 
         private void StartLargeObjectJudgementMaskBuild(
@@ -800,6 +1236,16 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private bool IsObjectJudgementGroupProcessingCurrent(string groupId, int generation)
+        {
+            lock (objectJudgementMaskLock)
+            {
+                return objectJudgementProcessingRequested &&
+                    generation == objectJudgementMaskGeneration &&
+                    string.Equals(activeObjectJudgementGroupId, groupId, StringComparison.Ordinal);
+            }
+        }
+
         private List<ObjectJudgementProcessingSettings> GetObjectJudgementProcessingChain(
             ObjectJudgementSettings objectJudgement,
             int processingIndex)
@@ -906,6 +1352,33 @@ namespace IntegratedImageProcessingApp.Forms
             return string.Join("|", parts.ToArray());
         }
 
+        private string CreateObjectJudgementGroupProcessingSignature(
+            string groupId,
+            IList<ObjectJudgementSettings> objectJudgements)
+        {
+            var parts = new List<string>
+            {
+                "object-judgement-group-result",
+                groupId ?? string.Empty,
+                systemParameters.LastImagePath ?? string.Empty,
+                imageSourceGeneration.ToString(CultureInfo.InvariantCulture),
+                preprocessedImageGeneration.ToString(CultureInfo.InvariantCulture)
+            };
+
+            foreach (ObjectJudgementSettings objectJudgement in objectJudgements ??
+                new List<ObjectJudgementSettings>())
+            {
+                parts.Add(objectJudgement == null ? string.Empty : objectJudgement.Id ?? string.Empty);
+                parts.Add(CreateObjectJudgementProcessingSignature(
+                    objectJudgement,
+                    objectJudgement == null
+                        ? Enumerable.Empty<ObjectJudgementProcessingSettings>()
+                        : objectJudgement.ProcessingSteps));
+            }
+
+            return string.Join("|", parts.ToArray());
+        }
+
         private bool HasCompletedObjectJudgementResult(
             ObjectJudgementSettings objectJudgement,
             IList<ObjectJudgementProcessingSettings> processingSteps,
@@ -955,6 +1428,104 @@ namespace IntegratedImageProcessingApp.Forms
             return true;
         }
 
+        private bool HasCompletedObjectJudgementGroupResult(
+            string groupId,
+            IList<ObjectJudgementSettings> objectJudgements,
+            string processingSignature)
+        {
+            if (!objectJudgementProcessingRequested ||
+                !string.Equals(activeObjectJudgementGroupId, groupId, StringComparison.Ordinal) ||
+                !string.Equals(activeObjectJudgementGroupProcessingSignature, processingSignature,
+                    StringComparison.Ordinal) ||
+                !string.Equals(completedObjectJudgementGroupProcessingSignature, processingSignature,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (rightOriginalDisplayControl == null || !rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                return latestObjectJudgementImage != null;
+            }
+
+            List<Rectangle> validRois = systemParameters.RoiRegions
+                .Where(roiRegion => roiRegion.Bounds.Width > 0 && roiRegion.Bounds.Height > 0)
+                .Select(roiRegion => roiRegion.Bounds)
+                .ToList();
+            if (validRois.Count == 0)
+            {
+                return false;
+            }
+
+            lock (objectJudgementMaskLock)
+            {
+                foreach (Rectangle roi in validRois)
+                {
+                    string maskKey = CreateObjectJudgementGroupMaskKey(
+                        processingSignature, roi);
+                    if (!objectJudgementGroupLargeMasks.ContainsKey(maskKey) ||
+                        objectJudgementGroupLargeMaskBuildKeys.Contains(maskKey))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        private List<ObjectJudgementSettings> GetObjectJudgementsInGroup(string groupId)
+        {
+            var result = new List<ObjectJudgementSettings>();
+            var visitedGroups = new HashSet<string>(StringComparer.Ordinal);
+            CollectObjectJudgementsInGroup(groupId, result, visitedGroups);
+            return result;
+        }
+
+        private void CollectObjectJudgementsInGroup(
+            string groupId,
+            List<ObjectJudgementSettings> result,
+            HashSet<string> visitedGroups)
+        {
+            if (string.IsNullOrWhiteSpace(groupId) || !visitedGroups.Add(groupId))
+            {
+                return;
+            }
+
+            foreach (ObjectJudgementSettings objectJudgement in systemParameters.ObjectJudgements)
+            {
+                if (string.Equals(objectJudgement.GroupId, groupId, StringComparison.Ordinal))
+                {
+                    result.Add(objectJudgement);
+                }
+            }
+
+            foreach (ObjectJudgementGroupSettings childGroup in systemParameters.ObjectJudgementGroups)
+            {
+                if (string.Equals(childGroup.ParentGroupId, groupId, StringComparison.Ordinal))
+                {
+                    CollectObjectJudgementsInGroup(childGroup.Id, result, visitedGroups);
+                }
+            }
+        }
+
+        private static string CreateObjectJudgementGroupMaskKey(
+            string processingSignature,
+            Rectangle roi)
+        {
+            return string.Join(
+                "|",
+                new[]
+                {
+                    "object-judgement-group-mask",
+                    processingSignature ?? string.Empty,
+                    roi.X.ToString(CultureInfo.InvariantCulture),
+                    roi.Y.ToString(CultureInfo.InvariantCulture),
+                    roi.Width.ToString(CultureInfo.InvariantCulture),
+                    roi.Height.ToString(CultureInfo.InvariantCulture)
+                });
+        }
+
         private List<ImageRelationSettings> GetObjectJudgementRelations(ObjectJudgementSettings objectJudgement)
         {
             if (objectJudgement == null || string.IsNullOrWhiteSpace(objectJudgement.RelationId))
@@ -972,6 +1543,54 @@ namespace IntegratedImageProcessingApp.Forms
             return relation == null
                 ? new List<ImageRelationSettings>()
                 : new List<ImageRelationSettings> { relation };
+        }
+
+        private Bitmap CreateObjectJudgementGroupImage(
+            Bitmap original,
+            IList<ObjectJudgementSettings> objectJudgements)
+        {
+            var result = new Bitmap(original);
+            using (Cv.Mat originalGray = CreateOpenCvGrayMat(original))
+            {
+                foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+                {
+                    Rectangle roi = Rectangle.Intersect(
+                        roiRegion.Bounds,
+                        new Rectangle(0, 0, original.Width, original.Height));
+                    if (roi.Width <= 0 || roi.Height <= 0)
+                    {
+                        continue;
+                    }
+
+                    using (var combined = new Cv.Mat(
+                        roi.Height,
+                        roi.Width,
+                        Cv.MatType.CV_8UC1,
+                        Cv.Scalar.All(0)))
+                    {
+                        foreach (ObjectJudgementSettings objectJudgement in objectJudgements)
+                        {
+                            List<ObjectJudgementProcessingSettings> processingSteps =
+                                GetObjectJudgementProcessingChain(objectJudgement, -1);
+                            using (Cv.Mat baseMask = CreateObjectJudgementBaseMaskFromBitmap(
+                                original,
+                                originalGray,
+                                objectJudgement,
+                                roi))
+                            using (Cv.Mat objectMask = ApplyObjectJudgementProcessingOpenCv(
+                                baseMask,
+                                processingSteps))
+                            {
+                                Cv.Cv2.BitwiseOr(combined, objectMask, combined);
+                            }
+                        }
+
+                        PaintRedOverlayImage(result, roi, ConvertOpenCvBinaryMask(combined));
+                    }
+                }
+            }
+
+            return result;
         }
 
         private Bitmap CreateObjectJudgementImage(
@@ -1395,6 +2014,63 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void PaintLargeObjectJudgementOverlay(object sender, LargeImageOverlayPaintEventArgs e)
         {
+            string selectedGroupId = GetObjectJudgementGroupId(functionListBox.SelectedItem as string);
+            if (objectJudgementProcessingRequested &&
+                !string.IsNullOrEmpty(activeObjectJudgementGroupId) &&
+                string.Equals(activeObjectJudgementGroupId, selectedGroupId, StringComparison.Ordinal))
+            {
+                List<ObjectJudgementSettings> objectJudgements =
+                    GetObjectJudgementsInGroup(selectedGroupId);
+                foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+                {
+                    Rectangle visibleRoi = Rectangle.Intersect(e.VisibleSourceRect, roiRegion.Bounds);
+                    if (visibleRoi.Width <= 0 || visibleRoi.Height <= 0)
+                    {
+                        continue;
+                    }
+
+                    string maskKey = CreateObjectJudgementGroupMaskKey(
+                        activeObjectJudgementGroupProcessingSignature,
+                        roiRegion.Bounds);
+                    Cv.Mat mask;
+                    bool building;
+                    lock (objectJudgementMaskLock)
+                    {
+                        objectJudgementGroupLargeMasks.TryGetValue(maskKey, out mask);
+                        building = objectJudgementGroupLargeMaskBuildKeys.Contains(maskKey);
+                    }
+
+                    if (mask == null)
+                    {
+                        if (!building)
+                        {
+                            StartLargeObjectJudgementGroupProcessing(
+                                selectedGroupId,
+                                objectJudgements,
+                                activeObjectJudgementGroupProcessingSignature);
+                        }
+
+                        continue;
+                    }
+
+                    var syntheticStep = new ImageProcessingStepSettings
+                    {
+                        Id = maskKey,
+                        Method = "Object Judgement Group",
+                        Parameters = objectJudgements.Count.ToString(CultureInfo.InvariantCulture)
+                    };
+                    PaintLargeProcessedBinaryViewportOverlay(
+                        e,
+                        roiRegion.Bounds,
+                        visibleRoi,
+                        syntheticStep,
+                        maskKey,
+                        mask);
+                }
+
+                return;
+            }
+
             int objectIndex = GetSelectedObjectJudgementIndex();
             if (objectIndex < 0 || objectIndex >= systemParameters.ObjectJudgements.Count)
             {

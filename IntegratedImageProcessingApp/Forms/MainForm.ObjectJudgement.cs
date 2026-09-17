@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
+using System.Linq;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
 using IntegratedImageProcessingApp.Services;
@@ -9,6 +12,10 @@ namespace IntegratedImageProcessingApp.Forms
     public partial class MainForm
     {
         private bool objectJudgementMenuExpanded;
+        private readonly HashSet<string> expandedObjectJudgementIds =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> expandedObjectJudgementGroupIds =
+            new HashSet<string>(StringComparer.Ordinal);
         private Panel objectJudgementParameterPanel;
         private ImageDisplayControl leftBlockProcessingDisplayControl;
         private ImageDisplayControl rightBlockProcessingDisplayControl;
@@ -98,9 +105,63 @@ namespace IntegratedImageProcessingApp.Forms
             return "    區塊" + objectNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        private static string CreateObjectJudgementText(int objectNumber, int depth)
+        {
+            return new string(' ', 4 + (depth * 2)) + "區塊" +
+                objectNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
         private static string CreateObjectJudgementProcessingText(int processingNumber)
         {
             return "        處理" + processingNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static string CreateObjectJudgementProcessingText(int processingNumber, int depth)
+        {
+            return new string(' ', 6 + (depth * 2)) + "處理" +
+                processingNumber.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static string CreateObjectJudgementGroupText(
+            ObjectJudgementGroupSettings group,
+            int depth)
+        {
+            string displayName = string.IsNullOrWhiteSpace(group.DisplayName)
+                ? "物件群組"
+                : group.DisplayName.Trim();
+            return new string(' ', 4 + (depth * 2)) + "物件群組(" + displayName + ")";
+        }
+
+        private ObjectJudgementGroupSettings FindObjectJudgementGroup(string groupId)
+        {
+            return systemParameters.ObjectJudgementGroups.Find(
+                group => string.Equals(group.Id, groupId, StringComparison.Ordinal));
+        }
+
+        private string GetObjectJudgementGroupId(string menuText)
+        {
+            if (string.IsNullOrWhiteSpace(menuText))
+            {
+                return null;
+            }
+
+            string trimmedText = menuText.Trim();
+            foreach (ObjectJudgementGroupSettings group in systemParameters.ObjectJudgementGroups)
+            {
+                if (string.Equals(
+                    trimmedText,
+                    CreateObjectJudgementGroupText(group, 0).Trim(),
+                    StringComparison.Ordinal) ||
+                    string.Equals(
+                        trimmedText,
+                        CreateObjectJudgementGroupText(group, 1).Trim(),
+                        StringComparison.Ordinal))
+                {
+                    return group.Id;
+                }
+            }
+
+            return null;
         }
 
         private int GetObjectJudgementIndex(string menuText)
@@ -113,9 +174,9 @@ namespace IntegratedImageProcessingApp.Forms
             string name = menuText.Trim();
             for (int index = 0; index < systemParameters.ObjectJudgements.Count; index++)
             {
-                ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[index];
-                string displayName = string.IsNullOrWhiteSpace(objectJudgement.DisplayName)
-                    ? "區塊" + (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[index];
+            string displayName = string.IsNullOrWhiteSpace(objectJudgement.DisplayName)
+                ? "區塊" + (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)
                     : objectJudgement.DisplayName.Trim();
                 if (string.Equals(displayName, name, StringComparison.Ordinal))
                 {
@@ -126,11 +187,57 @@ namespace IntegratedImageProcessingApp.Forms
             return -1;
         }
 
+        private void SelectObjectJudgementItem(int objectIndex)
+        {
+            for (int itemIndex = 0; itemIndex < functionListBox.Items.Count; itemIndex++)
+            {
+                if (GetObjectJudgementIndex(functionListBox.Items[itemIndex] as string) == objectIndex)
+                {
+                    functionListBox.SelectedIndex = itemIndex;
+                    return;
+                }
+            }
+        }
+
         private void ToggleObjectJudgementMenu()
         {
             objectJudgementMenuExpanded = !objectJudgementMenuExpanded;
             RebuildVisibleObjectJudgements();
             statusLabel.Text = objectJudgementMenuExpanded ? "已展開整合成區塊" : "已收合整合成區塊";
+        }
+
+        private void ToggleObjectJudgement(int objectIndex)
+        {
+            if (objectIndex < 0 || objectIndex >= systemParameters.ObjectJudgements.Count)
+            {
+                return;
+            }
+
+            string objectId = systemParameters.ObjectJudgements[objectIndex].Id;
+            if (!expandedObjectJudgementIds.Remove(objectId))
+            {
+                expandedObjectJudgementIds.Add(objectId);
+            }
+
+            RebuildVisibleObjectJudgements();
+            SelectObjectJudgementItem(objectIndex);
+        }
+
+        private void ToggleObjectJudgementGroup(string groupId)
+        {
+            ObjectJudgementGroupSettings group = FindObjectJudgementGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            if (!expandedObjectJudgementGroupIds.Remove(group.Id))
+            {
+                expandedObjectJudgementGroupIds.Add(group.Id);
+            }
+
+            RebuildVisibleObjectJudgements();
+            SelectObjectJudgementGroup(group);
         }
 
         private void AddObjectJudgement()
@@ -178,13 +285,72 @@ namespace IntegratedImageProcessingApp.Forms
             for (int index = 0; index < systemParameters.ObjectJudgements.Count; index++)
             {
                 ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[index];
-                functionListBox.Items.Insert(insertIndex++, "    " + GetObjectJudgementDisplayName(objectJudgement, index));
-                for (int processingIndex = 0; processingIndex < objectJudgement.ProcessingSteps.Count; processingIndex++)
+                if (string.IsNullOrWhiteSpace(objectJudgement.GroupId))
                 {
-                    ObjectJudgementProcessingSettings processing = objectJudgement.ProcessingSteps[processingIndex];
-                    functionListBox.Items.Insert(
-                        insertIndex++,
-                        "        " + GetObjectJudgementProcessingDisplayName(processing, processingIndex));
+                    InsertVisibleObjectJudgement(objectJudgement, index, 0, ref insertIndex);
+                }
+            }
+
+            foreach (ObjectJudgementGroupSettings group in systemParameters.ObjectJudgementGroups)
+            {
+                if (string.IsNullOrWhiteSpace(group.ParentGroupId))
+                {
+                    InsertVisibleObjectJudgementGroup(group, 0, ref insertIndex);
+                }
+            }
+        }
+
+        private void InsertVisibleObjectJudgement(
+            ObjectJudgementSettings objectJudgement,
+            int objectIndex,
+            int depth,
+            ref int insertIndex)
+        {
+            functionListBox.Items.Insert(
+                insertIndex++,
+                new string(' ', 4 + (depth * 2)) +
+                GetObjectJudgementDisplayName(objectJudgement, objectIndex));
+            if (!expandedObjectJudgementIds.Contains(objectJudgement.Id) ||
+                objectJudgement.ProcessingSteps.Count == 0)
+            {
+                return;
+            }
+
+            for (int processingIndex = 0; processingIndex < objectJudgement.ProcessingSteps.Count; processingIndex++)
+            {
+                ObjectJudgementProcessingSettings processing = objectJudgement.ProcessingSteps[processingIndex];
+                functionListBox.Items.Insert(
+                    insertIndex++,
+                    new string(' ', 6 + ((depth + 1) * 2)) +
+                    GetObjectJudgementProcessingDisplayName(processing, processingIndex));
+            }
+        }
+
+        private void InsertVisibleObjectJudgementGroup(
+            ObjectJudgementGroupSettings group,
+            int depth,
+            ref int insertIndex)
+        {
+            functionListBox.Items.Insert(insertIndex++, CreateObjectJudgementGroupText(group, depth));
+            if (!expandedObjectJudgementGroupIds.Contains(group.Id))
+            {
+                return;
+            }
+
+            for (int index = 0; index < systemParameters.ObjectJudgements.Count; index++)
+            {
+                ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[index];
+                if (string.Equals(objectJudgement.GroupId, group.Id, StringComparison.Ordinal))
+                {
+                    InsertVisibleObjectJudgement(objectJudgement, index, depth + 1, ref insertIndex);
+                }
+            }
+
+            foreach (ObjectJudgementGroupSettings childGroup in systemParameters.ObjectJudgementGroups)
+            {
+                if (string.Equals(childGroup.ParentGroupId, group.Id, StringComparison.Ordinal))
+                {
+                    InsertVisibleObjectJudgementGroup(childGroup, depth + 1, ref insertIndex);
                 }
             }
         }
@@ -195,6 +361,272 @@ namespace IntegratedImageProcessingApp.Forms
             var menu = new ContextMenuStrip();
             menu.Items.Add("新增區塊", null, delegate { AddObjectJudgement(); });
             menu.Show(functionListBox, location);
+        }
+
+        private List<int> GetSelectedObjectJudgementIndexes()
+        {
+            var indexes = new List<int>();
+            foreach (int selectedIndex in functionListBox.SelectedIndices)
+            {
+                int objectIndex = GetObjectJudgementIndex(functionListBox.Items[selectedIndex] as string);
+                if (objectIndex >= 0 && !indexes.Contains(objectIndex))
+                {
+                    indexes.Add(objectIndex);
+                }
+            }
+
+            indexes.Sort();
+            return indexes;
+        }
+
+        private List<string> GetSelectedObjectJudgementGroupIds()
+        {
+            var groupIds = new List<string>();
+            foreach (int selectedIndex in functionListBox.SelectedIndices)
+            {
+                string groupId = GetObjectJudgementGroupId(functionListBox.Items[selectedIndex] as string);
+                if (!string.IsNullOrEmpty(groupId) && !groupIds.Contains(groupId))
+                {
+                    groupIds.Add(groupId);
+                }
+            }
+
+            return groupIds;
+        }
+
+        private void ShowObjectJudgementMultiSelectContextMenu(
+            List<int> objectIndexes,
+            Point location)
+        {
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("分組", null, delegate { CreateObjectJudgementGroup(objectIndexes); });
+            menu.Show(functionListBox, location);
+        }
+
+        private void CreateObjectJudgementGroup(List<int> objectIndexes)
+        {
+            if (objectIndexes == null || objectIndexes.Count < 2)
+            {
+                statusLabel.Text = "至少選擇兩個區塊才能分組";
+                return;
+            }
+
+            List<int> rootObjectIndexes = objectIndexes
+                .Where(index => index >= 0 && index < systemParameters.ObjectJudgements.Count)
+                .Where(index => string.IsNullOrWhiteSpace(systemParameters.ObjectJudgements[index].GroupId))
+                .Distinct()
+                .OrderBy(index => index)
+                .ToList();
+            if (rootObjectIndexes.Count < 2)
+            {
+                statusLabel.Text = "只能將尚未分組的區塊建立群組";
+                return;
+            }
+
+            var newGroup = new ObjectJudgementGroupSettings
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                DisplayName = "群組" +
+                    (systemParameters.ObjectJudgementGroups.Count + 1).ToString(CultureInfo.InvariantCulture),
+                ParentGroupId = string.Empty
+            };
+            systemParameters.ObjectJudgementGroups.Add(newGroup);
+            foreach (int objectIndex in rootObjectIndexes)
+            {
+                systemParameters.ObjectJudgements[objectIndex].GroupId = newGroup.Id;
+            }
+
+            objectJudgementMenuExpanded = true;
+            expandedObjectJudgementGroupIds.Add(newGroup.Id);
+            SaveSystemParameters();
+            RebuildVisibleObjectJudgements();
+            functionListBox.SelectedItem = CreateObjectJudgementGroupText(newGroup, 0);
+            statusLabel.Text = "已建立物件群組";
+        }
+
+        private void ShowObjectJudgementGroupContextMenu(string groupId, Point location)
+        {
+            ObjectJudgementGroupSettings group = FindObjectJudgementGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("處理", null, delegate { ProcessObjectJudgementGroup(group.Id); });
+            menu.Items.Add("上移", null, delegate { MoveObjectJudgementGroup(group.Id, -1); });
+            menu.Items.Add("下移", null, delegate { MoveObjectJudgementGroup(group.Id, 1); });
+            menu.Items.Add("命名", null, delegate { RenameObjectJudgementGroup(group.Id); });
+            menu.Items.Add("解除群組", null, delegate { UngroupObjectJudgements(group.Id); });
+            menu.Items.Add("刪除", null, delegate { DeleteObjectJudgementGroup(group.Id); });
+            menu.Show(functionListBox, location);
+        }
+
+        private void ShowObjectJudgementGroupMultiSelectContextMenu(
+            List<string> groupIds,
+            Point location)
+        {
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("分組", null, delegate { CreateObjectJudgementGroupFromGroups(groupIds); });
+            menu.Show(functionListBox, location);
+        }
+
+        private void CreateObjectJudgementGroupFromGroups(List<string> groupIds)
+        {
+            if (groupIds == null || groupIds.Count < 2)
+            {
+                statusLabel.Text = "至少選擇兩個群組才能分組";
+                return;
+            }
+
+            List<ObjectJudgementGroupSettings> selectedGroups = groupIds
+                .Select(FindObjectJudgementGroup)
+                .Where(group => group != null)
+                .Distinct()
+                .ToList();
+            if (selectedGroups.Count < 2)
+            {
+                statusLabel.Text = "至少選擇兩個有效群組才能分組";
+                return;
+            }
+
+            var newGroup = new ObjectJudgementGroupSettings
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                DisplayName = "群組" +
+                    (systemParameters.ObjectJudgementGroups.Count + 1).ToString(CultureInfo.InvariantCulture),
+                ParentGroupId = string.Empty
+            };
+            systemParameters.ObjectJudgementGroups.Add(newGroup);
+            foreach (ObjectJudgementGroupSettings selectedGroup in selectedGroups)
+            {
+                selectedGroup.ParentGroupId = newGroup.Id;
+            }
+
+            objectJudgementMenuExpanded = true;
+            expandedObjectJudgementGroupIds.Add(newGroup.Id);
+            SaveSystemParameters();
+            RebuildVisibleObjectJudgements();
+            SelectObjectJudgementGroup(newGroup);
+            statusLabel.Text = "已建立物件群組";
+        }
+
+        private void SelectObjectJudgementGroup(ObjectJudgementGroupSettings group)
+        {
+            if (group == null)
+            {
+                return;
+            }
+
+            for (int itemIndex = 0; itemIndex < functionListBox.Items.Count; itemIndex++)
+            {
+                if (string.Equals(
+                    GetObjectJudgementGroupId(functionListBox.Items[itemIndex] as string),
+                    group.Id,
+                    StringComparison.Ordinal))
+                {
+                    functionListBox.SelectedIndex = itemIndex;
+                    return;
+                }
+            }
+        }
+
+        private void MoveObjectJudgementGroup(string groupId, int direction)
+        {
+            int index = systemParameters.ObjectJudgementGroups.FindIndex(
+                group => string.Equals(group.Id, groupId, StringComparison.Ordinal));
+            int targetIndex = index + direction;
+            if (index < 0 || targetIndex < 0 ||
+                targetIndex >= systemParameters.ObjectJudgementGroups.Count)
+            {
+                return;
+            }
+
+            ObjectJudgementGroupSettings movedGroup = systemParameters.ObjectJudgementGroups[index];
+            systemParameters.ObjectJudgementGroups.RemoveAt(index);
+            systemParameters.ObjectJudgementGroups.Insert(targetIndex, movedGroup);
+            SaveSystemParameters();
+            RebuildVisibleObjectJudgements();
+            SelectObjectJudgementGroup(movedGroup);
+        }
+
+        private void RenameObjectJudgementGroup(string groupId)
+        {
+            ObjectJudgementGroupSettings group = FindObjectJudgementGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            string currentName = string.IsNullOrWhiteSpace(group.DisplayName)
+                ? "物件群組"
+                : group.DisplayName.Trim();
+            string name = PromptForText("物件群組名稱", "請輸入物件群組名稱：", currentName);
+            if (name == null || string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
+
+            group.DisplayName = name.Trim();
+            SaveSystemParameters();
+            RebuildVisibleObjectJudgements();
+            SelectObjectJudgementGroup(group);
+        }
+
+        private void UngroupObjectJudgements(string groupId)
+        {
+            ObjectJudgementGroupSettings group = FindObjectJudgementGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            string parentGroupId = group.ParentGroupId ?? string.Empty;
+            foreach (ObjectJudgementSettings objectJudgement in systemParameters.ObjectJudgements)
+            {
+                if (string.Equals(objectJudgement.GroupId, group.Id, StringComparison.Ordinal))
+                {
+                    objectJudgement.GroupId = parentGroupId;
+                }
+            }
+
+            foreach (ObjectJudgementGroupSettings childGroup in systemParameters.ObjectJudgementGroups)
+            {
+                if (string.Equals(childGroup.ParentGroupId, group.Id, StringComparison.Ordinal))
+                {
+                    childGroup.ParentGroupId = parentGroupId;
+                }
+            }
+
+            systemParameters.ObjectJudgementGroups.Remove(group);
+            expandedObjectJudgementGroupIds.Remove(group.Id);
+            SaveSystemParameters();
+            RebuildVisibleObjectJudgements();
+            statusLabel.Text = "已解除物件群組";
+        }
+
+        private void DeleteObjectJudgementGroup(string groupId)
+        {
+            ObjectJudgementGroupSettings group = FindObjectJudgementGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            if (MessageBox.Show(
+                    this,
+                    "刪除群組後會保留其中的區塊，是否繼續？",
+                    "刪除物件群組",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            UngroupObjectJudgements(group.Id);
         }
 
         private bool TryGetObjectJudgementProcessingLocation(
@@ -257,7 +689,59 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[objectIndex];
+            // A block command always runs the complete child chain. Keep this
+            // separate from the child command, which intentionally runs only
+            // through the clicked child index.
             StartObjectJudgementProcessing(objectIndex);
+        }
+
+        private void FocusObjectJudgementProcessing(int objectIndex, int processingIndex)
+        {
+            if (objectIndex < 0 || objectIndex >= systemParameters.ObjectJudgements.Count)
+            {
+                return;
+            }
+
+            ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[objectIndex];
+            if (processingIndex < 0 || processingIndex >= objectJudgement.ProcessingSteps.Count)
+            {
+                return;
+            }
+
+            objectJudgementMenuExpanded = true;
+            expandedObjectJudgementIds.Add(objectJudgement.Id);
+            RebuildVisibleObjectJudgements();
+
+            for (int itemIndex = 0; itemIndex < functionListBox.Items.Count; itemIndex++)
+            {
+                int selectedObjectIndex;
+                int selectedProcessingIndex;
+                if (TryGetObjectJudgementProcessingLocation(
+                        functionListBox.Items[itemIndex] as string,
+                        out selectedObjectIndex,
+                        out selectedProcessingIndex) &&
+                    selectedObjectIndex == objectIndex &&
+                    selectedProcessingIndex == processingIndex)
+                {
+                    functionListBox.SelectedIndex = itemIndex;
+                    return;
+                }
+            }
+
+            // A block inside a collapsed object group may not be visible in
+            // the list. The parameter panel can still be opened directly.
+            ShowObjectJudgementProcessingParameterPanel(objectIndex, processingIndex);
+        }
+
+        private void ProcessObjectJudgementGroup(string groupId)
+        {
+            if (FindObjectJudgementGroup(groupId) == null)
+            {
+                return;
+            }
+
+            StartObjectJudgementGroupProcessing(groupId);
         }
 
         private void RequestObjectJudgementRelatedImageDisplays(ObjectJudgementSettings objectJudgement)
@@ -307,6 +791,7 @@ namespace IntegratedImageProcessingApp.Forms
             });
             SaveSystemParameters();
             objectJudgementMenuExpanded = true;
+            expandedObjectJudgementIds.Add(objectJudgement.Id);
             RebuildVisibleObjectJudgements();
             functionListBox.SelectedItem = "        " + GetObjectJudgementProcessingDisplayName(
                 objectJudgement.ProcessingSteps[objectJudgement.ProcessingSteps.Count - 1],
@@ -558,7 +1043,7 @@ namespace IntegratedImageProcessingApp.Forms
             systemParameters.ObjectJudgements.Insert(targetIndex, objectJudgement);
             SaveSystemParameters();
             RebuildVisibleObjectJudgements();
-            functionListBox.SelectedItem = "    " + GetObjectJudgementDisplayName(objectJudgement, targetIndex);
+            SelectObjectJudgementItem(targetIndex);
         }
 
         private void RenameObjectJudgement(int objectIndex)
@@ -579,7 +1064,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectJudgement.DisplayName = name.Trim();
             SaveSystemParameters();
             RebuildVisibleObjectJudgements();
-            functionListBox.SelectedItem = "    " + objectJudgement.DisplayName;
+            SelectObjectJudgementItem(objectIndex);
         }
 
         private void DeleteObjectJudgement(int objectIndex)
@@ -700,6 +1185,11 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 SaveSystemParameters();
+                // Changing a block relation invalidates both the block result and
+                // any group result that may contain this block. Re-activate the
+                // selected source so the next run cannot reuse the old relation.
+                InvalidateObjectJudgementProcessingResults();
+                ActivateObjectJudgementRelation(objectJudgement);
                 statusLabel.Text = "已套用" + objectJudgement.DisplayName + " 的影像關聯";
             };
             panel.Controls.Add(apply);

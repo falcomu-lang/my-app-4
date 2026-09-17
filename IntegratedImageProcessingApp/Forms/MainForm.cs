@@ -111,6 +111,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string RoiMenuText = "指定 ROI";
         private const string ImageProcessingMenuText = "影像處理";
         private const string ObjectJudgementMenuText = "整合成區塊";
+        private const string ObjectDefinitionMenuText = "物件定義";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
@@ -163,8 +164,16 @@ namespace IntegratedImageProcessingApp.Forms
                 int relationIndex = functionListBox.Items.IndexOf(ImageRelationMenuText);
                 functionListBox.Items.Insert(relationIndex < 0 ? functionListBox.Items.Count : relationIndex + 1, ObjectJudgementMenuText);
             }
+            if (!functionListBox.Items.Contains(ObjectDefinitionMenuText))
+            {
+                int objectJudgementIndex = functionListBox.Items.IndexOf(ObjectJudgementMenuText);
+                functionListBox.Items.Insert(
+                    objectJudgementIndex < 0 ? functionListBox.Items.Count : objectJudgementIndex + 1,
+                    ObjectDefinitionMenuText);
+            }
             RebuildVisibleImageRelations();
             RebuildVisibleObjectJudgements();
+            RebuildVisibleObjectDefinitions();
 
             if (!IsRunningInDesigner())
             {
@@ -788,6 +797,19 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 parameterPlaceholderLabel.Text = "這裡會顯示整合成區塊的設定與結果。";
             }
+            else if (selectedFunction == ObjectDefinitionMenuText)
+            {
+                parameterPlaceholderLabel.Text = "右鍵選擇「新增物件組定義」，建立物件定義項目。";
+            }
+            else if (GetObjectJudgementGroupId(selectedFunction) != null)
+            {
+                parameterPlaceholderLabel.Text = "目前選擇物件群組，可展開或收合其中的區塊。";
+                if (IsAKeyDown())
+                {
+                    ProcessObjectJudgementGroup(GetObjectJudgementGroupId(selectedFunction));
+                    aKeyProcessedFunctionListIndex = functionListBox.SelectedIndex;
+                }
+            }
             else
             {
                 int objectIndex;
@@ -814,12 +836,17 @@ namespace IntegratedImageProcessingApp.Forms
                         aKeyProcessedFunctionListIndex = functionListBox.SelectedIndex;
                     }
                 }
+                else if (GetObjectDefinitionIndex(selectedFunction) >= 0)
+                {
+                    ShowObjectDefinitionPlaceholder(GetObjectDefinitionIndex(selectedFunction));
+                }
                 else if (GetImageRelationGroupId(selectedFunction) != null)
                 {
+                    string imageRelationGroupId = GetImageRelationGroupId(selectedFunction);
                     ShowImageRelationGroup(selectedFunction);
                     if (IsAKeyDown())
                     {
-                        ProcessImageRelationGroup(GetImageRelationGroupId(selectedFunction));
+                        ProcessImageRelationGroup(imageRelationGroupId);
                     }
                 }
                 else if (GetImageRelationIndex(selectedFunction) >= 0)
@@ -846,15 +873,6 @@ namespace IntegratedImageProcessingApp.Forms
                     activeImageRelationSourceType = "Original";
                     activeImageRelationSourceId = null;
                     parameterPlaceholderLabel.Text = "目前影像來源：原始影像。直接執行影像處理時會使用原圖。";
-                }
-                else if (GetImageRelationGroupId(selectedFunction) != null)
-                {
-                    string groupId = GetImageRelationGroupId(selectedFunction);
-                    if (IsAKeyDown())
-                    {
-                        ProcessImageRelationGroup(groupId);
-                    }
-                    ToggleImageRelationGroup(selectedFunction);
                 }
                 else if (IsImagePreprocessingStepMenuItem(selectedFunction))
                 {
@@ -945,12 +963,26 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ToggleObjectJudgementMenu();
             }
+            else if (selectedFunction == ObjectDefinitionMenuText)
+            {
+                ToggleObjectDefinitionMenu();
+            }
             else if (string.Equals(selectedFunction, OriginalPreprocessingSourceText, StringComparison.Ordinal))
             {
                 activeImageRelationSourceType = "Original";
                 activeImageRelationSourceId = null;
                 RestorePreprocessedDisplaysToOriginalSource();
                 statusLabel.Text = "目前選擇：原始影像";
+            }
+            else if (GetImageRelationGroupId(selectedFunction) != null)
+            {
+                // Only a normal left click changes expansion. Ctrl/Shift are
+                // reserved for selecting multiple relation groups.
+                if ((ModifierKeys & (Keys.Control | Keys.Shift)) == Keys.None &&
+                    functionListBox.SelectedIndices.Count <= 1)
+                {
+                    ToggleImageRelationGroup(selectedFunction);
+                }
             }
             else
             {
@@ -972,6 +1004,26 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else
                 {
+                    string objectJudgementGroupId = GetObjectJudgementGroupId(selectedFunction);
+                    if (!string.IsNullOrEmpty(objectJudgementGroupId))
+                    {
+                        if (IsAKeyDown() && aKeyProcessedFunctionListIndex != clickedIndex)
+                        {
+                            ProcessObjectJudgementGroup(objectJudgementGroupId);
+                        }
+
+                        // A group click expands or collapses its children. Ctrl-click
+                        // multi-selection is handled by the ListBox and must not
+                        // rebuild the list between selected items.
+                        if ((ModifierKeys & (Keys.Control | Keys.Shift)) == Keys.None &&
+                            functionListBox.SelectedIndices.Count <= 1)
+                        {
+                            ToggleObjectJudgementGroup(objectJudgementGroupId);
+                        }
+                        aKeyProcessedFunctionListIndex = -1;
+                    }
+                    else
+                    {
                     int objectIndex = GetObjectJudgementIndex(selectedFunction);
                     if (objectIndex >= 0)
                     {
@@ -980,7 +1032,21 @@ namespace IntegratedImageProcessingApp.Forms
                             ProcessObjectJudgement(objectIndex);
                         }
 
+                        // A block click only selects the block. Its processing
+                        // children are expanded by a normal left click. Ctrl/Shift
+                        // are reserved for multi-selection and must not rebuild
+                        // the list between selected blocks.
+                        if ((ModifierKeys & (Keys.Control | Keys.Shift)) == Keys.None &&
+                            functionListBox.SelectedIndices.Count <= 1)
+                        {
+                            ToggleObjectJudgement(objectIndex);
+                        }
                         aKeyProcessedFunctionListIndex = -1;
+                    }
+                    else if (GetObjectDefinitionIndex(selectedFunction) >= 0)
+                    {
+                        ShowObjectDefinitionPlaceholder(GetObjectDefinitionIndex(selectedFunction));
+                    }
                     }
                 }
             }
@@ -998,7 +1064,10 @@ namespace IntegratedImageProcessingApp.Forms
                     ProcessImagePreprocessingGroup(
                         GetImagePreprocessingGroupId(selectedFunction));
                 }
-                ToggleImagePreprocessingGroup(selectedFunction);
+                if ((ModifierKeys & (Keys.Control | Keys.Shift)) == Keys.None)
+                {
+                    ToggleImagePreprocessingGroup(selectedFunction);
+                }
             }
             else if (GetImageProcessingGroupId(selectedFunction) != null)
             {
@@ -1006,7 +1075,10 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     ProcessImageProcessingGroup(GetImageProcessingGroupId(selectedFunction));
                 }
-                ToggleImageProcessingGroup(selectedFunction);
+                if ((ModifierKeys & (Keys.Control | Keys.Shift)) == Keys.None)
+                {
+                    ToggleImageProcessingGroup(selectedFunction);
+                }
             }
             else if (IsImageProcessingStepMenuItem(selectedFunction))
             {
@@ -1104,6 +1176,36 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (stepText == ObjectDefinitionMenuText)
+            {
+                ShowObjectDefinitionMenuContextMenu(e.Location);
+                return;
+            }
+
+            string objectJudgementGroupId = GetObjectJudgementGroupId(stepText);
+            if (!string.IsNullOrEmpty(objectJudgementGroupId))
+            {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                List<string> selectedObjectJudgementGroupIds =
+                    GetSelectedObjectJudgementGroupIds();
+                if (selectedObjectJudgementGroupIds.Count >= 2)
+                {
+                    ShowObjectJudgementGroupMultiSelectContextMenu(
+                        selectedObjectJudgementGroupIds,
+                        e.Location);
+                }
+                else
+                {
+                    ShowObjectJudgementGroupContextMenu(objectJudgementGroupId, e.Location);
+                }
+                return;
+            }
+
             int objectProcessingOwnerIndex;
             int objectProcessingIndex;
             if (TryGetObjectJudgementProcessingLocation(
@@ -1133,7 +1235,17 @@ namespace IntegratedImageProcessingApp.Forms
                     functionListBox.SelectedIndex = clickedIndex;
                 }
 
-                ShowObjectJudgementItemContextMenu(objectJudgementIndex, e.Location);
+                List<int> selectedObjectJudgementIndexes = GetSelectedObjectJudgementIndexes();
+                if (selectedObjectJudgementIndexes.Count >= 2)
+                {
+                    ShowObjectJudgementMultiSelectContextMenu(
+                        selectedObjectJudgementIndexes,
+                        e.Location);
+                }
+                else
+                {
+                    ShowObjectJudgementItemContextMenu(objectJudgementIndex, e.Location);
+                }
                 return;
             }
 
@@ -7595,6 +7707,8 @@ namespace IntegratedImageProcessingApp.Forms
                 case ImageRelationMenuText:
                     return FunctionMenuIcon.Relation;
                 case ObjectJudgementMenuText:
+                    return FunctionMenuIcon.Object;
+                case ObjectDefinitionMenuText:
                     return FunctionMenuIcon.Object;
                 case "亮度 / 對比":
                     return FunctionMenuIcon.Brightness;

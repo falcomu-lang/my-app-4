@@ -96,6 +96,10 @@
       <DependentUpon>MainForm.cs</DependentUpon>
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Forms\MainForm.ObjectDefinition.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Forms\MainForm.ObjectJudgementProcessing.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
       <SubType>Form</SubType>

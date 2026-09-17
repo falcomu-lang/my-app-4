@@ -15,6 +15,8 @@ namespace IntegratedImageProcessingApp.Services
         private const string SectionImagePreprocessing = "ImagePreprocessing";
         private const string SectionImageRelations = "ImageRelations";
         private const string SectionObjectJudgement = "ObjectJudgement";
+        private const string SectionObjectJudgementGroups = "ObjectJudgementGroups";
+        private const string SectionObjectDefinition = "ObjectDefinition";
         private readonly string filePath;
 
         public SystemParameterIniService(string filePath)
@@ -129,6 +131,30 @@ namespace IntegratedImageProcessingApp.Services
                 }
             }
 
+            int objectJudgementGroupCount = GetInt(sections, SectionObjectJudgementGroups, "Count", 0);
+            for (int index = 1; index <= objectJudgementGroupCount; index++)
+            {
+                string prefix = "Group" + index;
+                string id = GetValue(sections, SectionObjectJudgementGroups, prefix + ".Id", string.Empty);
+                if (!string.IsNullOrWhiteSpace(id))
+                {
+                    settings.ObjectJudgementGroups.Add(new ObjectJudgementGroupSettings
+                    {
+                        Id = id,
+                        ParentGroupId = GetValue(
+                            sections,
+                            SectionObjectJudgementGroups,
+                            prefix + ".ParentGroupId",
+                            string.Empty),
+                        DisplayName = GetValue(
+                            sections,
+                            SectionObjectJudgementGroups,
+                            prefix + ".DisplayName",
+                            string.Empty)
+                    });
+                }
+            }
+
             int objectJudgementCount = GetInt(sections, SectionObjectJudgement, "Count", 0);
             for (int index = 1; index <= objectJudgementCount; index++)
             {
@@ -141,7 +167,8 @@ namespace IntegratedImageProcessingApp.Services
                         Id = id,
                         DisplayName = GetValue(sections, SectionObjectJudgement, prefix + ".DisplayName", string.Empty),
                         RelationType = GetValue(sections, SectionObjectJudgement, prefix + ".RelationType", string.Empty),
-                        RelationId = GetValue(sections, SectionObjectJudgement, prefix + ".RelationId", string.Empty)
+                        RelationId = GetValue(sections, SectionObjectJudgement, prefix + ".RelationId", string.Empty),
+                        GroupId = GetValue(sections, SectionObjectJudgement, prefix + ".GroupId", string.Empty)
                     });
 
                     ObjectJudgementSettings objectJudgement = settings.ObjectJudgements[settings.ObjectJudgements.Count - 1];
@@ -158,6 +185,38 @@ namespace IntegratedImageProcessingApp.Services
                         });
                     }
                 }
+            }
+
+            int objectDefinitionCount = GetInt(sections, SectionObjectDefinition, "Count", 0);
+            for (int index = 1; index <= objectDefinitionCount; index++)
+            {
+                string prefix = "Definition" + index;
+                string id = GetValue(sections, SectionObjectDefinition, prefix + ".Id", string.Empty);
+                if (string.IsNullOrWhiteSpace(id))
+                {
+                    continue;
+                }
+
+                var definition = new ObjectDefinitionSettings
+                {
+                    Id = id,
+                    DisplayName = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".DisplayName",
+                        string.Empty)
+                };
+                string memberIds = GetValue(
+                    sections,
+                    SectionObjectDefinition,
+                    prefix + ".ObjectJudgementIds",
+                    string.Empty);
+                foreach (string memberId in memberIds.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    definition.ObjectJudgementIds.Add(memberId);
+                }
+
+                settings.ObjectDefinitions.Add(definition);
             }
 
             int imagePreprocessingGroupCount = GetInt(sections, SectionImagePreprocessing, "GroupCount", 0);
@@ -309,6 +368,7 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(objectJudgement.DisplayName));
                     writer.WriteLine("{0}.RelationType={1}", prefix, Escape(objectJudgement.RelationType));
                     writer.WriteLine("{0}.RelationId={1}", prefix, Escape(objectJudgement.RelationId));
+                    writer.WriteLine("{0}.GroupId={1}", prefix, Escape(objectJudgement.GroupId));
                     writer.WriteLine("{0}.ProcessingCount={1}", prefix, objectJudgement.ProcessingSteps.Count.ToString(CultureInfo.InvariantCulture));
                     for (int processingIndex = 0; processingIndex < objectJudgement.ProcessingSteps.Count; processingIndex++)
                     {
@@ -319,6 +379,33 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.Method={1}", processingPrefix, Escape(processing.Method));
                         writer.WriteLine("{0}.Parameters={1}", processingPrefix, Escape(processing.Parameters));
                     }
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("[ObjectJudgementGroups]");
+                writer.WriteLine("Count={0}", settings.ObjectJudgementGroups.Count.ToString(CultureInfo.InvariantCulture));
+                for (int index = 0; index < settings.ObjectJudgementGroups.Count; index++)
+                {
+                    ObjectJudgementGroupSettings group = settings.ObjectJudgementGroups[index];
+                    string prefix = "Group" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", prefix, Escape(group.Id));
+                    writer.WriteLine("{0}.ParentGroupId={1}", prefix, Escape(group.ParentGroupId));
+                    writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(group.DisplayName));
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("[ObjectDefinition]");
+                writer.WriteLine("Count={0}", settings.ObjectDefinitions.Count.ToString(CultureInfo.InvariantCulture));
+                for (int index = 0; index < settings.ObjectDefinitions.Count; index++)
+                {
+                    ObjectDefinitionSettings definition = settings.ObjectDefinitions[index];
+                    string prefix = "Definition" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", prefix, Escape(definition.Id));
+                    writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(definition.DisplayName));
+                    writer.WriteLine(
+                        "{0}.ObjectJudgementIds={1}",
+                        prefix,
+                        Escape(string.Join("|", definition.ObjectJudgementIds.ToArray())));
                 }
             }
         }

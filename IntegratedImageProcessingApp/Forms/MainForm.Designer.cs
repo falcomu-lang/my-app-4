@@ -227,7 +227,6 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedPreviewTopPanel.SuspendLayout();
             this.leftBlockProcessingTabPage.SuspendLayout();
             this.leftObjectsTabPage.SuspendLayout();
-            this.leftBlockProcessingDisplayHostPanel.SuspendLayout();
             this.leftObjectsDisplayHostPanel.SuspendLayout();
             this.leftObjectsPreviewBottomPanel.SuspendLayout();
             this.leftObjectsPreviewTopPanel.SuspendLayout();
@@ -247,7 +246,6 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedPreviewTopPanel.SuspendLayout();
             this.rightBlockProcessingTabPage.SuspendLayout();
             this.rightObjectsTabPage.SuspendLayout();
-            this.rightBlockProcessingDisplayHostPanel.SuspendLayout();
             this.rightObjectsDisplayHostPanel.SuspendLayout();
             this.rightObjectsPreviewBottomPanel.SuspendLayout();
             this.rightObjectsPreviewTopPanel.SuspendLayout();
@@ -1438,7 +1436,6 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedPreviewTopPanel.ResumeLayout(false);
             this.leftProcessedPreviewTopPanel.PerformLayout();
             this.leftBlockProcessingTabPage.ResumeLayout(false);
-            this.leftBlockProcessingDisplayHostPanel.ResumeLayout(false);
             this.leftObjectsTabPage.ResumeLayout(false);
             this.leftObjectsDisplayHostPanel.ResumeLayout(false);
             this.leftObjectsPreviewBottomPanel.ResumeLayout(false);
@@ -1466,7 +1463,6 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedPreviewTopPanel.ResumeLayout(false);
             this.rightProcessedPreviewTopPanel.PerformLayout();
             this.rightBlockProcessingTabPage.ResumeLayout(false);
-            this.rightBlockProcessingDisplayHostPanel.ResumeLayout(false);
             this.rightObjectsTabPage.ResumeLayout(false);
             this.rightObjectsDisplayHostPanel.ResumeLayout(false);
             this.rightObjectsPreviewBottomPanel.ResumeLayout(false);
