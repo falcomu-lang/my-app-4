@@ -12,6 +12,7 @@ namespace IntegratedImageProcessingApp.Forms
     public partial class MainForm
     {
         private bool objectJudgementMenuExpanded;
+        private bool isRebuildingObjectJudgementMenu;
         private readonly HashSet<string> expandedObjectJudgementIds =
             new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> expandedObjectJudgementGroupIds =
@@ -24,7 +25,9 @@ namespace IntegratedImageProcessingApp.Forms
             object sender,
             LargeImageOverlayPaintEventArgs e)
         {
-            if (GetSelectedObjectJudgementIndex() < 0)
+            string selectedFunction = functionListBox.SelectedItem as string;
+            if (GetSelectedObjectJudgementIndex() < 0 &&
+                string.IsNullOrEmpty(GetObjectJudgementGroupId(selectedFunction)))
             {
                 return;
             }
@@ -258,45 +261,54 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void RebuildVisibleObjectJudgements()
         {
-            int objectMenuIndex = functionListBox.Items.IndexOf(ObjectJudgementMenuText);
-            if (objectMenuIndex < 0)
+            bool wasRebuilding = isRebuildingObjectJudgementMenu;
+            isRebuildingObjectJudgementMenu = true;
+            try
             {
-                return;
-            }
-
-            int removeIndex = objectMenuIndex + 1;
-            while (removeIndex < functionListBox.Items.Count)
-            {
-                string text = functionListBox.Items[removeIndex] as string;
-                if (string.IsNullOrEmpty(text) || !text.StartsWith("    ", StringComparison.Ordinal))
+                int objectMenuIndex = functionListBox.Items.IndexOf(ObjectJudgementMenuText);
+                if (objectMenuIndex < 0)
                 {
-                    break;
+                    return;
                 }
 
-                functionListBox.Items.RemoveAt(removeIndex);
-            }
-
-            if (!objectJudgementMenuExpanded)
-            {
-                return;
-            }
-
-            int insertIndex = objectMenuIndex + 1;
-            for (int index = 0; index < systemParameters.ObjectJudgements.Count; index++)
-            {
-                ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[index];
-                if (string.IsNullOrWhiteSpace(objectJudgement.GroupId))
+                int removeIndex = objectMenuIndex + 1;
+                while (removeIndex < functionListBox.Items.Count)
                 {
-                    InsertVisibleObjectJudgement(objectJudgement, index, 0, ref insertIndex);
+                    string text = functionListBox.Items[removeIndex] as string;
+                    if (string.IsNullOrEmpty(text) || !text.StartsWith("    ", StringComparison.Ordinal))
+                    {
+                        break;
+                    }
+
+                    functionListBox.Items.RemoveAt(removeIndex);
+                }
+
+                if (!objectJudgementMenuExpanded)
+                {
+                    return;
+                }
+
+                int insertIndex = objectMenuIndex + 1;
+                for (int index = 0; index < systemParameters.ObjectJudgements.Count; index++)
+                {
+                    ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[index];
+                    if (string.IsNullOrWhiteSpace(objectJudgement.GroupId))
+                    {
+                        InsertVisibleObjectJudgement(objectJudgement, index, 0, ref insertIndex);
+                    }
+                }
+
+                foreach (ObjectJudgementGroupSettings group in systemParameters.ObjectJudgementGroups)
+                {
+                    if (string.IsNullOrWhiteSpace(group.ParentGroupId))
+                    {
+                        InsertVisibleObjectJudgementGroup(group, 0, ref insertIndex);
+                    }
                 }
             }
-
-            foreach (ObjectJudgementGroupSettings group in systemParameters.ObjectJudgementGroups)
+            finally
             {
-                if (string.IsNullOrWhiteSpace(group.ParentGroupId))
-                {
-                    InsertVisibleObjectJudgementGroup(group, 0, ref insertIndex);
-                }
+                isRebuildingObjectJudgementMenu = wasRebuilding;
             }
         }
 
@@ -459,9 +471,36 @@ namespace IntegratedImageProcessingApp.Forms
             menu.Items.Add("上移", null, delegate { MoveObjectJudgementGroup(group.Id, -1); });
             menu.Items.Add("下移", null, delegate { MoveObjectJudgementGroup(group.Id, 1); });
             menu.Items.Add("命名", null, delegate { RenameObjectJudgementGroup(group.Id); });
+            menu.Items.Add("新增區塊", null, delegate { AddObjectJudgementToGroup(group.Id); });
             menu.Items.Add("解除群組", null, delegate { UngroupObjectJudgements(group.Id); });
             menu.Items.Add("刪除", null, delegate { DeleteObjectJudgementGroup(group.Id); });
             menu.Show(functionListBox, location);
+        }
+
+        private void AddObjectJudgementToGroup(string groupId)
+        {
+            ObjectJudgementGroupSettings group = FindObjectJudgementGroup(groupId);
+            if (group == null)
+            {
+                return;
+            }
+
+            int objectNumber = systemParameters.ObjectJudgements.Count + 1;
+            var objectJudgement = new ObjectJudgementSettings
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                DisplayName = "區塊" + objectNumber.ToString(CultureInfo.InvariantCulture),
+                RelationType = string.Empty,
+                RelationId = string.Empty,
+                GroupId = group.Id
+            };
+            systemParameters.ObjectJudgements.Add(objectJudgement);
+            objectJudgementMenuExpanded = true;
+            expandedObjectJudgementGroupIds.Add(group.Id);
+            SaveSystemParameters();
+            RebuildVisibleObjectJudgements();
+            SelectObjectJudgementItem(systemParameters.ObjectJudgements.Count - 1);
+            statusLabel.Text = "已新增" + objectJudgement.DisplayName + "至" + group.DisplayName;
         }
 
         private void ShowObjectJudgementGroupMultiSelectContextMenu(
@@ -634,18 +673,52 @@ namespace IntegratedImageProcessingApp.Forms
             out int objectIndex,
             out int processingIndex)
         {
+            return TryGetObjectJudgementProcessingLocation(
+                functionListBox == null ? -1 : functionListBox.SelectedIndex,
+                menuText,
+                out objectIndex,
+                out processingIndex);
+        }
+
+        private bool TryGetObjectJudgementProcessingLocation(
+            int visibleItemIndex,
+            string menuText,
+            out int objectIndex,
+            out int processingIndex)
+        {
             objectIndex = -1;
             processingIndex = -1;
-            if (string.IsNullOrWhiteSpace(menuText) || !menuText.StartsWith("        ", StringComparison.Ordinal))
+            if (functionListBox == null ||
+                visibleItemIndex < 0 ||
+                visibleItemIndex >= functionListBox.Items.Count ||
+                string.IsNullOrWhiteSpace(menuText) ||
+                !menuText.StartsWith("        ", StringComparison.Ordinal))
             {
                 return false;
             }
 
             string name = menuText.Trim();
-            for (int currentObjectIndex = 0; currentObjectIndex < systemParameters.ObjectJudgements.Count; currentObjectIndex++)
+            int processingIndent = CountLeadingSpaces(menuText);
+            for (int itemIndex = visibleItemIndex - 1; itemIndex >= 0; itemIndex--)
             {
-                ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[currentObjectIndex];
-                for (int currentProcessingIndex = 0; currentProcessingIndex < objectJudgement.ProcessingSteps.Count; currentProcessingIndex++)
+                string candidateText = functionListBox.Items[itemIndex] as string;
+                if (string.IsNullOrWhiteSpace(candidateText) ||
+                    CountLeadingSpaces(candidateText) >= processingIndent)
+                {
+                    continue;
+                }
+
+                int candidateObjectIndex = GetObjectJudgementIndex(candidateText);
+                if (candidateObjectIndex < 0)
+                {
+                    continue;
+                }
+
+                ObjectJudgementSettings objectJudgement =
+                    systemParameters.ObjectJudgements[candidateObjectIndex];
+                for (int currentProcessingIndex = 0;
+                    currentProcessingIndex < objectJudgement.ProcessingSteps.Count;
+                    currentProcessingIndex++)
                 {
                     if (string.Equals(
                         GetObjectJudgementProcessingDisplayName(
@@ -654,14 +727,32 @@ namespace IntegratedImageProcessingApp.Forms
                         name,
                         StringComparison.Ordinal))
                     {
-                        objectIndex = currentObjectIndex;
+                        objectIndex = candidateObjectIndex;
                         processingIndex = currentProcessingIndex;
                         return true;
                     }
                 }
+
+                return false;
             }
 
             return false;
+        }
+
+        private static int CountLeadingSpaces(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return 0;
+            }
+
+            int count = 0;
+            while (count < value.Length && value[count] == ' ')
+            {
+                count++;
+            }
+
+            return count;
         }
 
         private void ShowObjectJudgementItemContextMenu(int objectIndex, Point location)

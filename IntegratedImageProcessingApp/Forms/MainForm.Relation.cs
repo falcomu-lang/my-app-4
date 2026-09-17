@@ -266,7 +266,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             BeginParameterApplyStatus(false);
             MarkProcessedImageDirty();
-            ScheduleProcessedImageUpdateIfVisible();
+            RequestExplicitProcessedImageUpdate();
             statusLabel.Text = "已開始處理關聯群組：" + group.DisplayName;
         }
 

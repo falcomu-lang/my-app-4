@@ -202,7 +202,7 @@ namespace IntegratedImageProcessingApp.Forms
                     // source.  A standalone preprocessing run must not start
                     // an unrelated processed-image refresh.
                     preprocessingExecutionRequestedByImageRelation = false;
-                    ScheduleProcessedImageUpdateIfVisible();
+                    RequestExplicitProcessedImageUpdate();
                 }
             }
             catch (Exception ex)
@@ -371,18 +371,6 @@ namespace IntegratedImageProcessingApp.Forms
             parameterPlaceholderLabel.BringToFront();
             rightPanelTitleLabel.Text = groupText.Trim() + " 結果";
             statusLabel.Text = "目前選擇：" + groupText.Trim();
-        }
-
-        private void ProcessImagePreprocessingGroup(ImageProcessingGroupSettings group)
-        {
-            if (group == null) return;
-            selectedImageProcessingStepIndex = -1;
-            selectedImageProcessingGroupId = group.Id;
-            imageProcessingExecutionRequested = true;
-            BeginParameterApplyStatus(false);
-            MarkProcessedPreviewDirty();
-            ScheduleProcessedImageUpdateIfVisible();
-            statusLabel.Text = "已開始處理" + group.DisplayName;
         }
 
         private string CreateImagePreprocessingStepText(int stepNumber)

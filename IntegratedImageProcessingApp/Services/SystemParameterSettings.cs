@@ -1,3 +1,4 @@
+using System;
 using System.Drawing;
 using System.Collections.Generic;
 
@@ -48,11 +49,23 @@ namespace IntegratedImageProcessingApp.Services
 
     public class RoiRegionSettings
     {
+        public RoiRegionSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+        }
+
+        public string Id { get; set; }
+
         public Rectangle Bounds { get; set; }
     }
 
     public class ImageProcessingStepSettings
     {
+        public ImageProcessingStepSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+        }
+
         public string Id { get; set; }
 
         public string DisplayName { get; set; }
@@ -66,6 +79,11 @@ namespace IntegratedImageProcessingApp.Services
 
     public class ImageProcessingGroupSettings
     {
+        public ImageProcessingGroupSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+        }
+
         public string Id { get; set; }
 
         public string ParentGroupId { get; set; }
@@ -75,6 +93,11 @@ namespace IntegratedImageProcessingApp.Services
 
     public class ImageRelationSettings
     {
+        public ImageRelationSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+        }
+
         public string Id { get; set; }
 
         public string DisplayName { get; set; }
@@ -92,6 +115,11 @@ namespace IntegratedImageProcessingApp.Services
 
     public class ImageRelationGroupSettings
     {
+        public ImageRelationGroupSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+        }
+
         public string Id { get; set; }
 
         public string ParentGroupId { get; set; }
@@ -103,6 +131,7 @@ namespace IntegratedImageProcessingApp.Services
     {
         public ObjectJudgementSettings()
         {
+            Id = Guid.NewGuid().ToString("N");
             ProcessingSteps = new List<ObjectJudgementProcessingSettings>();
         }
 
@@ -121,6 +150,11 @@ namespace IntegratedImageProcessingApp.Services
 
     public class ObjectJudgementProcessingSettings
     {
+        public ObjectJudgementProcessingSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+        }
+
         public string Id { get; set; }
 
         public string DisplayName { get; set; }
@@ -132,6 +166,11 @@ namespace IntegratedImageProcessingApp.Services
 
     public class ObjectJudgementGroupSettings
     {
+        public ObjectJudgementGroupSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+        }
+
         public string Id { get; set; }
 
         public string ParentGroupId { get; set; }
@@ -143,6 +182,7 @@ namespace IntegratedImageProcessingApp.Services
     {
         public ObjectDefinitionSettings()
         {
+            Id = Guid.NewGuid().ToString("N");
             ObjectJudgementIds = new List<string>();
         }
 

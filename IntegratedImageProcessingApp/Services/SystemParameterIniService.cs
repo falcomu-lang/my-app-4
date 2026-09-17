@@ -52,7 +52,11 @@ namespace IntegratedImageProcessingApp.Services
                     GetInt(sections, SectionRois, "Roi" + index + ".Height", 0));
                 if (roi.Width > 0 && roi.Height > 0)
                 {
-                    settings.RoiRegions.Add(new RoiRegionSettings { Bounds = roi });
+                    settings.RoiRegions.Add(new RoiRegionSettings
+                    {
+                        Id = GetValue(sections, SectionRois, "Roi" + index + ".Id", string.Empty),
+                        Bounds = roi
+                    });
                 }
             }
 
@@ -100,15 +104,12 @@ namespace IntegratedImageProcessingApp.Services
             {
                 string prefix = "Group" + index;
                 string id = GetValue(sections, SectionImageRelations, prefix + ".Id", string.Empty);
-                if (!string.IsNullOrWhiteSpace(id))
+                settings.ImageRelationGroups.Add(new ImageRelationGroupSettings
                 {
-                    settings.ImageRelationGroups.Add(new ImageRelationGroupSettings
-                    {
-                        Id = id,
-                        ParentGroupId = GetValue(sections, SectionImageRelations, prefix + ".ParentGroupId", string.Empty),
-                        DisplayName = GetValue(sections, SectionImageRelations, prefix + ".DisplayName", string.Empty)
-                    });
-                }
+                    Id = id,
+                    ParentGroupId = GetValue(sections, SectionImageRelations, prefix + ".ParentGroupId", string.Empty),
+                    DisplayName = GetValue(sections, SectionImageRelations, prefix + ".DisplayName", string.Empty)
+                });
             }
 
             int relationCount = GetInt(sections, SectionImageRelations, "Count", 0);
@@ -116,19 +117,16 @@ namespace IntegratedImageProcessingApp.Services
             {
                 string prefix = "Relation" + index;
                 string id = GetValue(sections, SectionImageRelations, prefix + ".Id", string.Empty);
-                if (!string.IsNullOrWhiteSpace(id))
+                settings.ImageRelations.Add(new ImageRelationSettings
                 {
-                    settings.ImageRelations.Add(new ImageRelationSettings
-                    {
-                        Id = id,
-                        DisplayName = GetValue(sections, SectionImageRelations, prefix + ".DisplayName", string.Empty),
-                        SourceType = GetValue(sections, SectionImageRelations, prefix + ".SourceType", string.Empty),
-                        SourceId = GetValue(sections, SectionImageRelations, prefix + ".SourceId", string.Empty),
-                        ProcessingType = GetValue(sections, SectionImageRelations, prefix + ".ProcessingType", string.Empty),
-                        ProcessingId = GetValue(sections, SectionImageRelations, prefix + ".ProcessingId", string.Empty),
-                        GroupId = GetValue(sections, SectionImageRelations, prefix + ".GroupId", string.Empty)
-                    });
-                }
+                    Id = id,
+                    DisplayName = GetValue(sections, SectionImageRelations, prefix + ".DisplayName", string.Empty),
+                    SourceType = GetValue(sections, SectionImageRelations, prefix + ".SourceType", string.Empty),
+                    SourceId = GetValue(sections, SectionImageRelations, prefix + ".SourceId", string.Empty),
+                    ProcessingType = GetValue(sections, SectionImageRelations, prefix + ".ProcessingType", string.Empty),
+                    ProcessingId = GetValue(sections, SectionImageRelations, prefix + ".ProcessingId", string.Empty),
+                    GroupId = GetValue(sections, SectionImageRelations, prefix + ".GroupId", string.Empty)
+                });
             }
 
             int objectJudgementGroupCount = GetInt(sections, SectionObjectJudgementGroups, "Count", 0);
@@ -136,23 +134,20 @@ namespace IntegratedImageProcessingApp.Services
             {
                 string prefix = "Group" + index;
                 string id = GetValue(sections, SectionObjectJudgementGroups, prefix + ".Id", string.Empty);
-                if (!string.IsNullOrWhiteSpace(id))
+                settings.ObjectJudgementGroups.Add(new ObjectJudgementGroupSettings
                 {
-                    settings.ObjectJudgementGroups.Add(new ObjectJudgementGroupSettings
-                    {
-                        Id = id,
-                        ParentGroupId = GetValue(
-                            sections,
-                            SectionObjectJudgementGroups,
-                            prefix + ".ParentGroupId",
-                            string.Empty),
-                        DisplayName = GetValue(
-                            sections,
-                            SectionObjectJudgementGroups,
-                            prefix + ".DisplayName",
-                            string.Empty)
-                    });
-                }
+                    Id = id,
+                    ParentGroupId = GetValue(
+                        sections,
+                        SectionObjectJudgementGroups,
+                        prefix + ".ParentGroupId",
+                        string.Empty),
+                    DisplayName = GetValue(
+                        sections,
+                        SectionObjectJudgementGroups,
+                        prefix + ".DisplayName",
+                        string.Empty)
+                });
             }
 
             int objectJudgementCount = GetInt(sections, SectionObjectJudgement, "Count", 0);
@@ -160,30 +155,27 @@ namespace IntegratedImageProcessingApp.Services
             {
                 string prefix = "Object" + index;
                 string id = GetValue(sections, SectionObjectJudgement, prefix + ".Id", string.Empty);
-                if (!string.IsNullOrWhiteSpace(id))
+                settings.ObjectJudgements.Add(new ObjectJudgementSettings
                 {
-                    settings.ObjectJudgements.Add(new ObjectJudgementSettings
-                    {
-                        Id = id,
-                        DisplayName = GetValue(sections, SectionObjectJudgement, prefix + ".DisplayName", string.Empty),
-                        RelationType = GetValue(sections, SectionObjectJudgement, prefix + ".RelationType", string.Empty),
-                        RelationId = GetValue(sections, SectionObjectJudgement, prefix + ".RelationId", string.Empty),
-                        GroupId = GetValue(sections, SectionObjectJudgement, prefix + ".GroupId", string.Empty)
-                    });
+                    Id = id,
+                    DisplayName = GetValue(sections, SectionObjectJudgement, prefix + ".DisplayName", string.Empty),
+                    RelationType = GetValue(sections, SectionObjectJudgement, prefix + ".RelationType", string.Empty),
+                    RelationId = GetValue(sections, SectionObjectJudgement, prefix + ".RelationId", string.Empty),
+                    GroupId = GetValue(sections, SectionObjectJudgement, prefix + ".GroupId", string.Empty)
+                });
 
-                    ObjectJudgementSettings objectJudgement = settings.ObjectJudgements[settings.ObjectJudgements.Count - 1];
-                    int processingCount = GetInt(sections, SectionObjectJudgement, prefix + ".ProcessingCount", 0);
-                    for (int processingIndex = 1; processingIndex <= processingCount; processingIndex++)
+                ObjectJudgementSettings objectJudgement = settings.ObjectJudgements[settings.ObjectJudgements.Count - 1];
+                int processingCount = GetInt(sections, SectionObjectJudgement, prefix + ".ProcessingCount", 0);
+                for (int processingIndex = 1; processingIndex <= processingCount; processingIndex++)
+                {
+                    string processingPrefix = prefix + ".Processing" + processingIndex;
+                    objectJudgement.ProcessingSteps.Add(new ObjectJudgementProcessingSettings
                     {
-                        string processingPrefix = prefix + ".Processing" + processingIndex;
-                        objectJudgement.ProcessingSteps.Add(new ObjectJudgementProcessingSettings
-                        {
-                            Id = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Id", string.Empty),
-                            DisplayName = GetValue(sections, SectionObjectJudgement, processingPrefix + ".DisplayName", string.Empty),
-                            Method = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Method", string.Empty),
-                            Parameters = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Parameters", string.Empty)
-                        });
-                    }
+                        Id = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Id", string.Empty),
+                        DisplayName = GetValue(sections, SectionObjectJudgement, processingPrefix + ".DisplayName", string.Empty),
+                        Method = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Method", string.Empty),
+                        Parameters = GetValue(sections, SectionObjectJudgement, processingPrefix + ".Parameters", string.Empty)
+                    });
                 }
             }
 
@@ -192,11 +184,6 @@ namespace IntegratedImageProcessingApp.Services
             {
                 string prefix = "Definition" + index;
                 string id = GetValue(sections, SectionObjectDefinition, prefix + ".Id", string.Empty);
-                if (string.IsNullOrWhiteSpace(id))
-                {
-                    continue;
-                }
-
                 var definition = new ObjectDefinitionSettings
                 {
                     Id = id,
@@ -224,15 +211,12 @@ namespace IntegratedImageProcessingApp.Services
             {
                 string keyPrefix = "Group" + index;
                 string id = GetValue(sections, SectionImagePreprocessing, keyPrefix + ".Id", string.Empty);
-                if (!string.IsNullOrWhiteSpace(id))
+                settings.ImagePreprocessingGroups.Add(new ImageProcessingGroupSettings
                 {
-                    settings.ImagePreprocessingGroups.Add(new ImageProcessingGroupSettings
-                    {
-                        Id = id,
-                        ParentGroupId = GetValue(sections, SectionImagePreprocessing, keyPrefix + ".ParentGroupId", string.Empty),
-                        DisplayName = GetValue(sections, SectionImagePreprocessing, keyPrefix + ".DisplayName", string.Empty)
-                    });
-                }
+                    Id = id,
+                    ParentGroupId = GetValue(sections, SectionImagePreprocessing, keyPrefix + ".ParentGroupId", string.Empty),
+                    DisplayName = GetValue(sections, SectionImagePreprocessing, keyPrefix + ".DisplayName", string.Empty)
+                });
             }
 
             int imageProcessingGroupCount = GetInt(sections, SectionImageProcessing, "GroupCount", 0);
@@ -240,17 +224,15 @@ namespace IntegratedImageProcessingApp.Services
             {
                 string keyPrefix = "Group" + index;
                 string id = GetValue(sections, SectionImageProcessing, keyPrefix + ".Id", string.Empty);
-                if (!string.IsNullOrWhiteSpace(id))
+                settings.ImageProcessingGroups.Add(new ImageProcessingGroupSettings
                 {
-                    settings.ImageProcessingGroups.Add(new ImageProcessingGroupSettings
-                    {
-                        Id = id,
-                        ParentGroupId = GetValue(sections, SectionImageProcessing, keyPrefix + ".ParentGroupId", string.Empty),
-                        DisplayName = GetValue(sections, SectionImageProcessing, keyPrefix + ".DisplayName", string.Empty)
-                    });
-                }
+                    Id = id,
+                    ParentGroupId = GetValue(sections, SectionImageProcessing, keyPrefix + ".ParentGroupId", string.Empty),
+                    DisplayName = GetValue(sections, SectionImageProcessing, keyPrefix + ".DisplayName", string.Empty)
+                });
             }
 
+            EnsureAllEntityIds(settings);
             return settings;
         }
 
@@ -280,6 +262,7 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     Rectangle roi = settings.RoiRegions[index].Bounds;
                     string keyPrefix = "Roi" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", keyPrefix, Escape(settings.RoiRegions[index].Id));
                     writer.WriteLine("{0}.X={1}", keyPrefix, roi.X.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.Y={1}", keyPrefix, roi.Y.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.Width={1}", keyPrefix, roi.Width.ToString(CultureInfo.InvariantCulture));
@@ -410,14 +393,254 @@ namespace IntegratedImageProcessingApp.Services
             }
         }
 
+        private static void EnsureAllEntityIds(SystemParameterSettings settings)
+        {
+            EnsureRoiIds(settings.RoiRegions);
+            EnsureStepIds(settings.ImageProcessingSteps);
+            EnsureStepIds(settings.ImagePreprocessingSteps);
+            EnsureImageProcessingGroupIds(settings.ImageProcessingGroups);
+            EnsureImageProcessingGroupIds(settings.ImagePreprocessingGroups);
+            EnsureImageRelationGroupIds(settings.ImageRelationGroups);
+            EnsureImageRelationIds(settings.ImageRelations);
+            EnsureObjectJudgementGroupIds(settings.ObjectJudgementGroups);
+
+            var objectIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ObjectJudgementSettings objectJudgement in settings.ObjectJudgements)
+            {
+                objectJudgement.Id = EnsureUniqueId(objectJudgement.Id, objectIds);
+                EnsureObjectJudgementProcessingIds(objectJudgement.ProcessingSteps);
+            }
+
+            var definitionIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ObjectDefinitionSettings definition in settings.ObjectDefinitions)
+            {
+                definition.Id = EnsureUniqueId(definition.Id, definitionIds);
+            }
+
+            RepairReferences(settings);
+        }
+
+        private static void EnsureRoiIds(List<RoiRegionSettings> rois)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (RoiRegionSettings roi in rois)
+            {
+                roi.Id = EnsureUniqueId(roi.Id, ids);
+            }
+        }
+
         private static void EnsureStepIds(List<ImageProcessingStepSettings> steps)
         {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
             foreach (ImageProcessingStepSettings step in steps)
             {
-                if (string.IsNullOrWhiteSpace(step.Id))
+                step.Id = EnsureUniqueId(step.Id, ids);
+            }
+        }
+
+        private static void EnsureImageProcessingGroupIds(List<ImageProcessingGroupSettings> groups)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ImageProcessingGroupSettings group in groups)
+            {
+                group.Id = EnsureUniqueId(group.Id, ids);
+            }
+        }
+
+        private static void EnsureImageRelationGroupIds(List<ImageRelationGroupSettings> groups)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ImageRelationGroupSettings group in groups)
+            {
+                group.Id = EnsureUniqueId(group.Id, ids);
+            }
+        }
+
+        private static void EnsureImageRelationIds(List<ImageRelationSettings> relations)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ImageRelationSettings relation in relations)
+            {
+                relation.Id = EnsureUniqueId(relation.Id, ids);
+            }
+        }
+
+        private static void EnsureObjectJudgementGroupIds(List<ObjectJudgementGroupSettings> groups)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ObjectJudgementGroupSettings group in groups)
+            {
+                group.Id = EnsureUniqueId(group.Id, ids);
+            }
+        }
+
+        private static void EnsureObjectJudgementProcessingIds(
+            List<ObjectJudgementProcessingSettings> processingSteps)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ObjectJudgementProcessingSettings processing in processingSteps)
+            {
+                processing.Id = EnsureUniqueId(processing.Id, ids);
+            }
+        }
+
+        private static string EnsureUniqueId(string id, HashSet<string> usedIds)
+        {
+            string normalizedId = id == null ? string.Empty : id.Trim();
+            if (normalizedId.Length == 0 || usedIds.Contains(normalizedId))
+            {
+                do
                 {
-                    step.Id = Guid.NewGuid().ToString("N");
+                    normalizedId = Guid.NewGuid().ToString("N");
                 }
+                while (usedIds.Contains(normalizedId));
+            }
+
+            usedIds.Add(normalizedId);
+            return normalizedId;
+        }
+
+        private static void RepairReferences(SystemParameterSettings settings)
+        {
+            var preprocessingStepIds = new HashSet<string>(
+                settings.ImagePreprocessingSteps.ConvertAll(step => step.Id),
+                StringComparer.Ordinal);
+            var preprocessingGroupIds = new HashSet<string>(
+                settings.ImagePreprocessingGroups.ConvertAll(group => group.Id),
+                StringComparer.Ordinal);
+            var processingStepIds = new HashSet<string>(
+                settings.ImageProcessingSteps.ConvertAll(step => step.Id),
+                StringComparer.Ordinal);
+            var processingGroupIds = new HashSet<string>(
+                settings.ImageProcessingGroups.ConvertAll(group => group.Id),
+                StringComparer.Ordinal);
+            var relationIds = new HashSet<string>(
+                settings.ImageRelations.ConvertAll(relation => relation.Id),
+                StringComparer.Ordinal);
+            var relationGroupIds = new HashSet<string>(
+                settings.ImageRelationGroups.ConvertAll(group => group.Id),
+                StringComparer.Ordinal);
+            var objectJudgementIds = new HashSet<string>(
+                settings.ObjectJudgements.ConvertAll(objectJudgement => objectJudgement.Id),
+                StringComparer.Ordinal);
+            var objectJudgementGroupIds = new HashSet<string>(
+                settings.ObjectJudgementGroups.ConvertAll(group => group.Id),
+                StringComparer.Ordinal);
+
+            foreach (ImageProcessingStepSettings step in settings.ImageProcessingSteps)
+            {
+                if (!string.IsNullOrWhiteSpace(step.GroupId) &&
+                    !processingGroupIds.Contains(step.GroupId))
+                {
+                    step.GroupId = string.Empty;
+                }
+            }
+
+            foreach (ImageProcessingStepSettings step in settings.ImagePreprocessingSteps)
+            {
+                if (!string.IsNullOrWhiteSpace(step.GroupId) &&
+                    !preprocessingGroupIds.Contains(step.GroupId))
+                {
+                    step.GroupId = string.Empty;
+                }
+            }
+
+            foreach (ImageProcessingGroupSettings group in settings.ImageProcessingGroups)
+            {
+                if (!string.IsNullOrWhiteSpace(group.ParentGroupId) &&
+                    !processingGroupIds.Contains(group.ParentGroupId))
+                {
+                    group.ParentGroupId = string.Empty;
+                }
+            }
+
+            foreach (ImageProcessingGroupSettings group in settings.ImagePreprocessingGroups)
+            {
+                if (!string.IsNullOrWhiteSpace(group.ParentGroupId) &&
+                    !preprocessingGroupIds.Contains(group.ParentGroupId))
+                {
+                    group.ParentGroupId = string.Empty;
+                }
+            }
+
+            foreach (ImageRelationGroupSettings group in settings.ImageRelationGroups)
+            {
+                if (!string.IsNullOrWhiteSpace(group.ParentGroupId) &&
+                    !relationGroupIds.Contains(group.ParentGroupId))
+                {
+                    group.ParentGroupId = string.Empty;
+                }
+            }
+
+            foreach (ImageRelationSettings relation in settings.ImageRelations)
+            {
+                if (string.Equals(relation.SourceType, "Step", StringComparison.Ordinal) &&
+                    !preprocessingStepIds.Contains(relation.SourceId))
+                {
+                    relation.SourceId = string.Empty;
+                }
+                else if (string.Equals(relation.SourceType, "Group", StringComparison.Ordinal) &&
+                    !preprocessingGroupIds.Contains(relation.SourceId))
+                {
+                    relation.SourceId = string.Empty;
+                }
+                else if (string.Equals(relation.SourceType, "Original", StringComparison.Ordinal))
+                {
+                    relation.SourceId = string.Empty;
+                }
+
+                if (string.Equals(relation.ProcessingType, "Step", StringComparison.Ordinal) &&
+                    !processingStepIds.Contains(relation.ProcessingId))
+                {
+                    relation.ProcessingId = string.Empty;
+                }
+                else if (string.Equals(relation.ProcessingType, "Group", StringComparison.Ordinal) &&
+                    !processingGroupIds.Contains(relation.ProcessingId))
+                {
+                    relation.ProcessingId = string.Empty;
+                }
+
+                if (!string.IsNullOrWhiteSpace(relation.GroupId) &&
+                    !relationGroupIds.Contains(relation.GroupId))
+                {
+                    relation.GroupId = string.Empty;
+                }
+            }
+
+            foreach (ObjectJudgementSettings objectJudgement in settings.ObjectJudgements)
+            {
+                if (string.Equals(objectJudgement.RelationType, "Relation", StringComparison.Ordinal) &&
+                    !relationIds.Contains(objectJudgement.RelationId))
+                {
+                    objectJudgement.RelationType = string.Empty;
+                    objectJudgement.RelationId = string.Empty;
+                }
+                else if (string.Equals(objectJudgement.RelationType, "Group", StringComparison.Ordinal) &&
+                    !relationGroupIds.Contains(objectJudgement.RelationId))
+                {
+                    objectJudgement.RelationType = string.Empty;
+                    objectJudgement.RelationId = string.Empty;
+                }
+
+                if (!string.IsNullOrWhiteSpace(objectJudgement.GroupId) &&
+                    !objectJudgementGroupIds.Contains(objectJudgement.GroupId))
+                {
+                    objectJudgement.GroupId = string.Empty;
+                }
+            }
+
+            foreach (ObjectJudgementGroupSettings group in settings.ObjectJudgementGroups)
+            {
+                if (!string.IsNullOrWhiteSpace(group.ParentGroupId) &&
+                    !objectJudgementGroupIds.Contains(group.ParentGroupId))
+                {
+                    group.ParentGroupId = string.Empty;
+                }
+            }
+
+            foreach (ObjectDefinitionSettings definition in settings.ObjectDefinitions)
+            {
+                definition.ObjectJudgementIds.RemoveAll(id => !objectJudgementIds.Contains(id));
             }
         }
 

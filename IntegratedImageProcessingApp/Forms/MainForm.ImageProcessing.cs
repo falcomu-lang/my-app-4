@@ -177,6 +177,7 @@ namespace IntegratedImageProcessingApp.Forms
             int stepIndex = GetImageProcessingStepIndex(stepText);
             if (stepIndex < 0 || stepIndex >= systemParameters.ImageProcessingSteps.Count)
             {
+                statusLabel.Text = "影像處理項目不存在，請重新選擇影像處理項目";
                 return;
             }
 
@@ -188,7 +189,7 @@ namespace IntegratedImageProcessingApp.Forms
             BeginParameterApplyStatus(false);
             MarkProcessedPreviewDirty();
             MarkProcessedImageDirty();
-            ScheduleProcessedImageUpdateIfVisible();
+            RequestExplicitProcessedImageUpdate();
             statusLabel.Text = "已開始處理" + stepText.Trim();
         }
 
@@ -197,6 +198,7 @@ namespace IntegratedImageProcessingApp.Forms
             ImageProcessingGroupSettings group = FindImageProcessingGroup(groupId);
             if (group == null)
             {
+                statusLabel.Text = "影像處理群組不存在，請重新選擇影像處理群組";
                 return;
             }
 
@@ -209,7 +211,7 @@ namespace IntegratedImageProcessingApp.Forms
             // A group has its own combined-mask cache key. Invalidate the
             // previous single-step/group result before rebuilding the OR mask.
             MarkProcessedImageDirty();
-            ScheduleProcessedImageUpdateIfVisible();
+            RequestExplicitProcessedImageUpdate();
             statusLabel.Text = "已開始處理" + group.DisplayName;
         }
     }
