@@ -92,6 +92,7 @@ namespace IntegratedImageProcessingApp.Forms
         private bool parameterApplyInProgress;
         private bool parameterApplyIsPreprocessing;
         private long lastImageProcessingElapsedMilliseconds;
+        private long lastObjectJudgementElapsedMilliseconds;
         private readonly object backgroundStatusLock = new object();
         private System.Threading.Timer backgroundStatusTimer;
         private string pendingBackgroundStatusText;
@@ -3431,6 +3432,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void BeginParameterApplyStatus(bool preprocessing)
         {
+            ResetPipelineTiming();
             parameterApplyStopwatch = Stopwatch.StartNew();
             parameterApplyInProgress = true;
             parameterApplyIsPreprocessing = preprocessing;
@@ -3439,6 +3441,58 @@ namespace IntegratedImageProcessingApp.Forms
                 imageProcessingDisplayPending = false;
             }
             SetParameterApplyStatus("影像處理中...");
+        }
+
+        private void ResetPipelineTiming()
+        {
+            lastPreprocessingElapsedMilliseconds = 0;
+            lastImageProcessingElapsedMilliseconds = 0;
+            lastObjectJudgementElapsedMilliseconds = 0;
+            lastDisplayProcessingElapsedMilliseconds = 0;
+            includeImageProcessingTimeOnNextDisplay = false;
+            imageProcessingDisplayPending = false;
+        }
+
+        private string BuildPipelineTimingText(
+            bool includeImageProcessing,
+            bool includeObjectJudgement,
+            string displayTimeText = null)
+        {
+            long preprocessing = Math.Max(0, lastPreprocessingElapsedMilliseconds);
+            long imageProcessing = includeImageProcessing
+                ? Math.Max(0, lastImageProcessingElapsedMilliseconds)
+                : 0;
+            long objectJudgement = includeObjectJudgement
+                ? Math.Max(0, lastObjectJudgementElapsedMilliseconds)
+                : 0;
+            string display = string.IsNullOrWhiteSpace(displayTimeText)
+                ? Math.Max(0, lastDisplayProcessingElapsedMilliseconds).ToString(CultureInfo.InvariantCulture) + " ms"
+                : displayTimeText;
+            long displayMilliseconds = string.Equals(displayTimeText, "待顯示", StringComparison.Ordinal)
+                ? 0
+                : Math.Max(0, lastDisplayProcessingElapsedMilliseconds);
+            long total = preprocessing + imageProcessing + objectJudgement + displayMilliseconds;
+
+            string text = string.Format(
+                CultureInfo.InvariantCulture,
+                "影像處理全部時間：{0} ms || 影像前處理時間：{1} ms",
+                total,
+                preprocessing);
+            if (includeImageProcessing)
+            {
+                text += string.Format(
+                    CultureInfo.InvariantCulture,
+                    " || 影像處理時間：{0} ms",
+                    imageProcessing);
+            }
+            if (includeObjectJudgement)
+            {
+                text += string.Format(
+                    CultureInfo.InvariantCulture,
+                    " || 整合成區塊處理：{0} ms",
+                    objectJudgement);
+            }
+            return text + " || 顯示時間：" + display;
         }
 
         private void SetParameterApplyStatus(string text)
@@ -3514,7 +3568,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            long total = parameterApplyStopwatch.ElapsedMilliseconds;
+            long applyElapsedMilliseconds = parameterApplyStopwatch.ElapsedMilliseconds;
             parameterApplyStopwatch.Stop();
             parameterApplyInProgress = false;
             string operationLabel = parameterApplyIsPreprocessing ? "前處理時間" : "影像處理時間";
@@ -3523,13 +3577,22 @@ namespace IntegratedImageProcessingApp.Forms
                 : lastImageProcessingElapsedMilliseconds;
             bool waitForDisplay = !parameterApplyIsPreprocessing && displayPending;
             imageProcessingDisplayPending = waitForDisplay;
-            // The apply stopwatch covers the complete operation, including
-            // converting/publishing the full result for preview. Keep the
-            // displayed values additive instead of reporting only the final
-            // control assignment as preview time.
-            lastDisplayProcessingElapsedMilliseconds = waitForDisplay
-                ? 0
-                : Math.Max(0, total - operationElapsed);
+            // If a real preview was measured by the display path, preserve it.
+            // Otherwise derive only the unmeasured display remainder. For an
+            // image-processing request the apply stopwatch can also include
+            // preprocessing, so remove that stage before deriving display time.
+            if (waitForDisplay)
+            {
+                lastDisplayProcessingElapsedMilliseconds = 0;
+            }
+            else if (lastDisplayProcessingElapsedMilliseconds <= 0)
+            {
+                long measuredStages = operationElapsed +
+                    (parameterApplyIsPreprocessing ? 0 : lastPreprocessingElapsedMilliseconds);
+                lastDisplayProcessingElapsedMilliseconds = Math.Max(
+                    0,
+                    applyElapsedMilliseconds - measuredStages);
+            }
             string displayTimeText = waitForDisplay
                 ? "待顯示"
                 : lastDisplayProcessingElapsedMilliseconds.ToString(CultureInfo.InvariantCulture) + " ms";
@@ -3542,16 +3605,17 @@ namespace IntegratedImageProcessingApp.Forms
                    selectedImageProcessingStepIndex < systemParameters.ImageProcessingSteps.Count
                     ? CreateImageProcessingStepText(selectedImageProcessingStepIndex + 1).Trim()
                     : GetTimingGroupName(selectedImageProcessingGroupId, false));
-            statusLabel.Text = string.Format(
-                CultureInfo.InvariantCulture,
-                "{0}: 影像處理時間：{1} ms || 顯示時間：{2}",
-                operationName,
-                operationElapsed,
+            statusLabel.Text = operationName + ": " + BuildPipelineTimingText(
+                !parameterApplyIsPreprocessing,
+                false,
                 displayTimeText);
             SetParameterApplyStatus(string.Format(
                 CultureInfo.InvariantCulture,
-                "完成：處理時間共：{0} ms\r\n{1}：{2} ms || 預覽圖處理時間：{3}",
-                waitForDisplay ? operationElapsed : total,
+                "完成：{0}\r\n{1}：{2} ms || 預覽圖處理時間：{3}",
+                BuildPipelineTimingText(
+                    !parameterApplyIsPreprocessing,
+                    false,
+                    displayTimeText),
                 operationLabel,
                 operationElapsed,
                 displayTimeText));
@@ -6365,21 +6429,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void UpdateProcessingTimingStatus(bool includeImageProcessingTime)
         {
-            if (includeImageProcessingTime)
-            {
-                imageProcessingDisplayPending = false;
-                statusLabel.Text = string.Format(
-                    CultureInfo.InvariantCulture,
-                    "影像處理時間：{0} ms || 顯示時間：{1} ms",
-                    lastImageProcessingElapsedMilliseconds,
-                    lastDisplayProcessingElapsedMilliseconds);
-                return;
-            }
-
-            statusLabel.Text = string.Format(
-                CultureInfo.InvariantCulture,
-                "顯示時間：{0} ms",
-                lastDisplayProcessingElapsedMilliseconds);
+            imageProcessingDisplayPending = false;
+            statusLabel.Text = BuildPipelineTimingText(includeImageProcessingTime, false);
         }
 
         private void QueueLargeProcessedBinaryOverview(Cv.Mat mask, Rectangle roi, string maskKey, int generation)

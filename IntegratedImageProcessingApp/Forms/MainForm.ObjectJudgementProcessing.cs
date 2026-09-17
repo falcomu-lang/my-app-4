@@ -303,6 +303,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void BeginObjectJudgementParameterApplyStatus(int objectIndex)
         {
+            ResetPipelineTiming();
             objectJudgementParameterApplyInProgress = true;
             objectJudgementAccumulatedProcessingMilliseconds = 0;
             objectJudgementPendingLargeMaskBuilds = 0;
@@ -316,6 +317,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void BeginObjectJudgementGroupApplyStatus(string groupId)
         {
+            ResetPipelineTiming();
             objectJudgementParameterApplyInProgress = true;
             objectJudgementAccumulatedProcessingMilliseconds = 0;
             objectJudgementPendingLargeMaskBuilds = 0;
@@ -353,23 +355,19 @@ namespace IntegratedImageProcessingApp.Forms
             objectJudgementParameterApplyInProgress = false;
             long processing = Math.Max(0, processingElapsedMilliseconds);
             long preview = Math.Max(0, previewElapsedMilliseconds);
-            long total = processing + preview;
+            lastObjectJudgementElapsedMilliseconds = processing;
+            lastDisplayProcessingElapsedMilliseconds = preview;
             string objectName = string.IsNullOrWhiteSpace(objectJudgementTimingName)
                 ? "區塊"
                 : objectJudgementTimingName;
             SetObjectJudgementParameterApplyStatus(string.Format(
                 CultureInfo.InvariantCulture,
-                "完成：處理時間共：{0} ms\r\n{3}處理時間：{1} ms || 顯示處理時間：{2} ms",
-                total,
-                processing,
-                preview,
-                objectName));
-            statusLabel.Text = string.Format(
-                CultureInfo.InvariantCulture,
-                "{0}：運算時間：{1} ms || 顯示時間：{2} ms",
+                "完成：{0}\r\n{1}處理時間：{2} ms || 顯示處理時間：{3} ms",
+                BuildPipelineTimingText(true, true),
                 objectName,
                 processing,
-                preview);
+                preview));
+            statusLabel.Text = objectName + "：" + BuildPipelineTimingText(true, true);
         }
 
         private void SetActiveObjectJudgement(ObjectJudgementSettings objectJudgement)
