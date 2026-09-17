@@ -2820,11 +2820,6 @@ namespace IntegratedImageProcessingApp.Forms
 
             AddImageProcessingFlowNode("Edge Detection", "Polarity Edge", "Canny Edge", "Sobel Edge");
             AddImageProcessingFlowNode("Threshold", "Global Threshold", "Adaptive Threshold", "Otsu Threshold");
-            AddImageProcessingFlowNode("Morphology", "Erode", "Dilate", "Open", "Close", "Fill Hole");
-            AddImageProcessingFlowNode("Contour Analysis", "Find Contours", "Contour Hierarchy");
-            AddImageProcessingFlowNode("Feature Filter", "Area Filter", "Width / Height Filter", "Circularity Filter", "Position Filter");
-            AddImageProcessingFlowNode("Object Selector", "Largest Object", "Smallest Object", "Object By Index", "Best Match Object");
-            AddImageProcessingFlowNode("Object Result", "Bounding Box", "Center Point", "Area", "Width / Height", "Angle", "Count");
             imageProcessingFlowTreeView.ExpandAll();
         }
 

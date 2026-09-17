@@ -43,6 +43,8 @@ namespace IntegratedImageProcessingApp.Forms
         private long objectJudgementAccumulatedProcessingMilliseconds;
         private string objectJudgementTimingName;
         private int activeObjectJudgementProcessingIndex = -1;
+        private string activeObjectJudgementProcessingSignature;
+        private string completedObjectJudgementProcessingSignature;
 
         private void BuildObjectJudgementProcessingParameterPanel(
             Panel panel,
@@ -368,6 +370,8 @@ namespace IntegratedImageProcessingApp.Forms
         {
             objectJudgementParameterApplyInProgress = false;
             activeObjectJudgementProcessingIndex = -1;
+            activeObjectJudgementProcessingSignature = null;
+            completedObjectJudgementProcessingSignature = null;
             ClearLargeRelationSourceCache();
             lock (objectJudgementMaskLock)
             {
@@ -469,6 +473,16 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            string processingSignature = CreateObjectJudgementProcessingSignature(
+                objectJudgement,
+                processingSteps);
+            if (HasCompletedObjectJudgementResult(objectJudgement, processingSteps, processingSignature))
+            {
+                statusLabel.Text = "已處理";
+                SetObjectJudgementParameterApplyStatus("已處理");
+                return;
+            }
+
             RequestObjectJudgementRelatedImageDisplays(objectJudgement);
 
             // "處理" means a fresh run. Clear completed masks and relation
@@ -478,6 +492,7 @@ namespace IntegratedImageProcessingApp.Forms
             ActivateObjectJudgementRelation(objectJudgement);
             objectJudgementProcessingRequested = true;
             activeObjectJudgementProcessingIndex = processingIndex;
+            activeObjectJudgementProcessingSignature = processingSignature;
             BeginObjectJudgementParameterApplyStatus(objectIndex);
             statusLabel.Text = "區塊處理中...使用 OpenCV";
 
@@ -526,6 +541,8 @@ namespace IntegratedImageProcessingApp.Forms
 
                         latestObjectJudgementImage = result;
                         result = null;
+                        completedObjectJudgementProcessingSignature =
+                            activeObjectJudgementProcessingSignature;
                         isSyncingImageView = true;
                         try
                         {
@@ -694,6 +711,8 @@ namespace IntegratedImageProcessingApp.Forms
                                 objectJudgementPendingLargeMaskBuilds--;
                                 if (objectJudgementPendingLargeMaskBuilds <= 0)
                                 {
+                                    completedObjectJudgementProcessingSignature =
+                                        activeObjectJudgementProcessingSignature;
                                     long previewElapsedMilliseconds = RefreshVisibleObjectJudgementDisplays();
                                     CompleteObjectJudgementParameterApplyStatus(
                                         objectJudgementAccumulatedProcessingMilliseconds,
@@ -829,6 +848,111 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return string.Join("|", parts.ToArray());
+        }
+
+        private string CreateObjectJudgementProcessingSignature(
+            ObjectJudgementSettings objectJudgement,
+            IEnumerable<ObjectJudgementProcessingSettings> processingSteps)
+        {
+            var parts = new List<string>
+            {
+                "object-judgement-result",
+                systemParameters.LastImagePath ?? string.Empty,
+                imageSourceGeneration.ToString(CultureInfo.InvariantCulture),
+                preprocessedImageGeneration.ToString(CultureInfo.InvariantCulture),
+                objectJudgement == null ? string.Empty : objectJudgement.Id ?? string.Empty,
+                objectJudgement == null ? string.Empty : objectJudgement.RelationType ?? string.Empty,
+                objectJudgement == null ? string.Empty : objectJudgement.RelationId ?? string.Empty
+            };
+
+            foreach (ImageRelationSettings relation in GetObjectJudgementRelations(objectJudgement))
+            {
+                parts.Add("relation");
+                parts.Add(relation.Id ?? string.Empty);
+                parts.Add(relation.SourceType ?? string.Empty);
+                parts.Add(relation.SourceId ?? string.Empty);
+                parts.Add(relation.ProcessingType ?? string.Empty);
+                parts.Add(relation.ProcessingId ?? string.Empty);
+                parts.Add(relation.GroupId ?? string.Empty);
+
+                foreach (ImageProcessingStepSettings step in GetImageProcessingStepsForRelation(relation))
+                {
+                    parts.Add("relation-step");
+                    parts.Add(step.Id ?? string.Empty);
+                    parts.Add(step.Method ?? string.Empty);
+                    parts.Add(step.Parameters ?? string.Empty);
+                }
+            }
+
+            foreach (ObjectJudgementProcessingSettings step in processingSteps ??
+                Enumerable.Empty<ObjectJudgementProcessingSettings>())
+            {
+                parts.Add("object-step");
+                parts.Add(step.Id ?? string.Empty);
+                parts.Add(step.Method ?? string.Empty);
+                parts.Add(step.Parameters ?? string.Empty);
+            }
+
+            foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+            {
+                Rectangle bounds = roiRegion.Bounds;
+                parts.Add("roi");
+                parts.Add(bounds.X.ToString(CultureInfo.InvariantCulture));
+                parts.Add(bounds.Y.ToString(CultureInfo.InvariantCulture));
+                parts.Add(bounds.Width.ToString(CultureInfo.InvariantCulture));
+                parts.Add(bounds.Height.ToString(CultureInfo.InvariantCulture));
+            }
+
+            return string.Join("|", parts.ToArray());
+        }
+
+        private bool HasCompletedObjectJudgementResult(
+            ObjectJudgementSettings objectJudgement,
+            IList<ObjectJudgementProcessingSettings> processingSteps,
+            string processingSignature)
+        {
+            if (!objectJudgementProcessingRequested ||
+                !string.Equals(activeObjectJudgementId, objectJudgement == null ? null : objectJudgement.Id,
+                    StringComparison.Ordinal) ||
+                !string.Equals(activeObjectJudgementProcessingSignature, processingSignature,
+                    StringComparison.Ordinal) ||
+                !string.Equals(completedObjectJudgementProcessingSignature, processingSignature,
+                    StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (rightOriginalDisplayControl == null || !rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                return latestObjectJudgementImage != null;
+            }
+
+            List<Rectangle> validRois = systemParameters.RoiRegions
+                .Where(roiRegion => roiRegion.Bounds.Width > 0 && roiRegion.Bounds.Height > 0)
+                .Select(roiRegion => roiRegion.Bounds)
+                .ToList();
+            if (validRois.Count == 0)
+            {
+                return false;
+            }
+
+            lock (objectJudgementMaskLock)
+            {
+                foreach (Rectangle roi in validRois)
+                {
+                    string maskKey = CreateObjectJudgementMaskKey(
+                        objectJudgement,
+                        processingSteps,
+                        roi);
+                    if (!objectJudgementLargeMasks.ContainsKey(maskKey) ||
+                        objectJudgementLargeMaskBuildKeys.Contains(maskKey))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         private List<ImageRelationSettings> GetObjectJudgementRelations(ObjectJudgementSettings objectJudgement)

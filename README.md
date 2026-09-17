@@ -21,6 +21,7 @@ C# Windows Forms 高解析度影像處理工具，使用 .NET Framework 4.7.2 �
 - 影像前處理：`Normalize`、`Gaussian Blur`、`CLAHE`、`Median Blur`、`Sharpen`、`Bilateral Filter`。
 - Edge Detect：OpenCV `Canny Edge`、`Sobel Edge`、`Polarity Edge`。
 - Threshold：OpenCV `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold`；Global Threshold 支援 Single/Range。
+- `影像處理` 流程樹只保留 `Edge Detection` 與 `Threshold` 兩個主分類；形態學、輪廓與物件判定功能改由後續區塊/判定流程負責。
 - 影像關聯：以固定 ID 選擇原圖、前處理步驟/群組，以及影像處理步驟/群組。
 - 整合成區塊：使用單一關聯或關聯群組的二值結果，再依序套用區塊處理。
 - 區塊處理 OpenCV 方法：`Dilate`、`Erode`、`Close`、`Open`、`Fill Contour`、`Fill Hole`、`Connect gap / bridge`、`Morphological Reconstruction`、`Merge by distance`、`Convex Hull`。

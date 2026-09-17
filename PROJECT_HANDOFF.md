@@ -63,6 +63,8 @@
 
 Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已接入流程樹與 OpenCV pipeline。Global Threshold 支援 Single 與 Range 兩種模式；Range 使用下限/上限範圍產生二值 mask。
 
+影像處理流程樹目前只保留兩個主分類：`Edge Detection` 與 `Threshold`。形態學、輪廓分析、特徵篩選與物件選擇不再放在影像處理流程樹，應分別由整合成區塊與後續判定物件流程負責；既有 OpenCV 實作與舊 INI 設定仍保留相容性，不在此次介面整理中刪除。
+
 影像關聯以 GUID/ID 儲存，不以顯示名稱或索引作為鍵：
 
 - 來源可為原始影像、單一前處理步驟或前處理群組。
