@@ -184,6 +184,7 @@ namespace IntegratedImageProcessingApp.Services
         {
             Id = Guid.NewGuid().ToString("N");
             ObjectJudgementIds = new List<string>();
+            ProcessingSteps = new List<ObjectDefinitionProcessingSettings>();
         }
 
         public string Id { get; set; }
@@ -191,5 +192,23 @@ namespace IntegratedImageProcessingApp.Services
         public string DisplayName { get; set; }
 
         public List<string> ObjectJudgementIds { get; private set; }
+
+        public List<ObjectDefinitionProcessingSettings> ProcessingSteps { get; private set; }
+    }
+
+    public class ObjectDefinitionProcessingSettings
+    {
+        public ObjectDefinitionProcessingSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+        }
+
+        public string Id { get; set; }
+
+        public string DisplayName { get; set; }
+
+        public string Method { get; set; }
+
+        public string Parameters { get; set; }
     }
 }

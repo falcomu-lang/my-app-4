@@ -158,6 +158,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             InitializeComponent();
             NormalizeObjectJudgementDefaultNames();
+            NormalizeObjectDefinitionDefaultNames();
             functionListBox.SelectionMode = SelectionMode.MultiExtended;
             functionListBox.MouseUp += FunctionListBox_MouseUp;
             if (!functionListBox.Items.Contains(ImageRelationMenuText))
@@ -763,7 +764,8 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (isUpdatingFunctionListText ||
                 isRebuildingImagePreprocessingMenu ||
-                isRebuildingObjectJudgementMenu)
+                isRebuildingObjectJudgementMenu ||
+                isRebuildingObjectDefinitionMenu)
             {
                 return;
             }
@@ -807,7 +809,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             else if (selectedFunction == ObjectDefinitionMenuText)
             {
-                parameterPlaceholderLabel.Text = "右鍵選擇「新增物件組定義」，建立物件定義項目。";
+                parameterPlaceholderLabel.Text = "右鍵選擇「新增物件組」，建立物件組項目。";
             }
             else if (GetObjectJudgementGroupId(selectedFunction) != null)
             {
@@ -820,6 +822,40 @@ namespace IntegratedImageProcessingApp.Forms
             }
             else
             {
+                string objectDefinitionId;
+                int objectDefinitionProcessingIndex;
+                if (TryGetObjectDefinitionProcessingLocation(
+                        functionListBox.SelectedIndex,
+                        out objectDefinitionId,
+                        out objectDefinitionProcessingIndex))
+                {
+                    ShowObjectDefinitionProcessingParameterPanel(
+                        objectDefinitionId,
+                        objectDefinitionProcessingIndex);
+                    if (IsAKeyDown())
+                    {
+                        ProcessObjectDefinitionProcessing(
+                            objectDefinitionId,
+                            GetObjectDefinitionProcessingId(functionListBox.SelectedIndex));
+                        aKeyProcessedFunctionListIndex = functionListBox.SelectedIndex;
+                    }
+                    return;
+                }
+
+                objectDefinitionId = GetObjectDefinitionId(
+                    functionListBox.SelectedIndex,
+                    selectedFunction);
+                if (!string.IsNullOrEmpty(objectDefinitionId))
+                {
+                    ShowObjectDefinitionParameterPanel(objectDefinitionId);
+                    if (IsAKeyDown())
+                    {
+                        ProcessObjectDefinition(objectDefinitionId);
+                        aKeyProcessedFunctionListIndex = functionListBox.SelectedIndex;
+                    }
+                    return;
+                }
+
                 int objectIndex;
                 int processingIndex;
                 if (TryGetObjectJudgementProcessingLocation(
@@ -847,7 +883,8 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else if (GetObjectDefinitionIndex(selectedFunction) >= 0)
                 {
-                    ShowObjectDefinitionPlaceholder(GetObjectDefinitionIndex(selectedFunction));
+                    ShowObjectDefinitionParameterPanel(
+                        GetObjectDefinitionId(functionListBox.SelectedIndex, selectedFunction));
                 }
                 else if (GetImageRelationGroupId(selectedFunction) != null)
                 {
@@ -918,6 +955,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             HideImageRelationParameterPanel();
             HideObjectJudgementParameterPanel();
+            HideObjectDefinitionParameterPanel();
             HideImageProcessingFlowTree();
             parameterPlaceholderLabel.Visible = true;
             parameterPlaceholderLabel.BringToFront();
@@ -993,6 +1031,38 @@ namespace IntegratedImageProcessingApp.Forms
                     ToggleImageRelationGroup(selectedFunction);
                 }
             }
+            string objectDefinitionId;
+            int objectDefinitionProcessingIndex;
+            if (TryGetObjectDefinitionProcessingLocation(
+                         clickedIndex,
+                         out objectDefinitionId,
+                         out objectDefinitionProcessingIndex))
+            {
+                string processingId = GetObjectDefinitionProcessingId(clickedIndex);
+                if (IsAKeyDown() && aKeyProcessedFunctionListIndex != clickedIndex)
+                {
+                    ProcessObjectDefinitionProcessing(objectDefinitionId, processingId);
+                }
+
+                aKeyProcessedFunctionListIndex = -1;
+            }
+            else if (!string.IsNullOrEmpty(objectDefinitionId = GetObjectDefinitionId(
+                         clickedIndex,
+                         selectedFunction)))
+            {
+                if (IsAKeyDown() && aKeyProcessedFunctionListIndex != clickedIndex)
+                {
+                    ProcessObjectDefinition(objectDefinitionId);
+                }
+
+                if ((ModifierKeys & (Keys.Control | Keys.Shift)) == Keys.None &&
+                    functionListBox.SelectedIndices.Count <= 1)
+                {
+                    ToggleObjectDefinition(objectDefinitionId);
+                }
+
+                aKeyProcessedFunctionListIndex = -1;
+            }
             else
             {
                 int objectProcessingOwnerIndex;
@@ -1055,7 +1125,8 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     else if (GetObjectDefinitionIndex(selectedFunction) >= 0)
                     {
-                        ShowObjectDefinitionPlaceholder(GetObjectDefinitionIndex(selectedFunction));
+                        ShowObjectDefinitionParameterPanel(
+                            GetObjectDefinitionId(functionListBox.SelectedIndex, selectedFunction));
                     }
                     }
                 }
@@ -1189,6 +1260,39 @@ namespace IntegratedImageProcessingApp.Forms
             if (stepText == ObjectDefinitionMenuText)
             {
                 ShowObjectDefinitionMenuContextMenu(e.Location);
+                return;
+            }
+
+            string objectDefinitionId;
+            int objectDefinitionProcessingIndex;
+            if (TryGetObjectDefinitionProcessingLocation(
+                    clickedIndex,
+                    out objectDefinitionId,
+                    out objectDefinitionProcessingIndex))
+            {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                ShowObjectDefinitionProcessingContextMenu(
+                    objectDefinitionId,
+                    GetObjectDefinitionProcessingId(clickedIndex),
+                    e.Location);
+                return;
+            }
+
+            objectDefinitionId = GetObjectDefinitionId(clickedIndex, stepText);
+            if (!string.IsNullOrEmpty(objectDefinitionId))
+            {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                ShowObjectDefinitionItemContextMenu(objectDefinitionId, e.Location);
                 return;
             }
 
@@ -3468,10 +3572,9 @@ namespace IntegratedImageProcessingApp.Forms
             string display = string.IsNullOrWhiteSpace(displayTimeText)
                 ? Math.Max(0, lastDisplayProcessingElapsedMilliseconds).ToString(CultureInfo.InvariantCulture) + " ms"
                 : displayTimeText;
-            long displayMilliseconds = string.Equals(displayTimeText, "待顯示", StringComparison.Ordinal)
-                ? 0
-                : Math.Max(0, lastDisplayProcessingElapsedMilliseconds);
-            long total = preprocessing + imageProcessing + objectJudgement + displayMilliseconds;
+            // "影像處理全部時間" is the algorithm pipeline only. Display
+            // conversion/rendering is reported separately and is not included.
+            long total = preprocessing + imageProcessing + objectJudgement;
 
             string text = string.Format(
                 CultureInfo.InvariantCulture,

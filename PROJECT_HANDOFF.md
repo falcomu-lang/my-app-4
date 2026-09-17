@@ -8,7 +8,7 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C# WinForms、.NET Framework 4.7.2、OpenCvSharp
-- 本次文件整理日期：2026-09-16
+- 本次文件整理日期：2026-09-17
 
 目前工作樹的程式已加入區塊處理 OpenCV 流程，並已完成 Debug / Any CPU 建置驗證。這一版的重點是把「影像關聯輸出的二值 mask」交給「整合成區塊」的後處理鏈，再顯示到固定的 `區塊處理` 分頁。
 
@@ -20,6 +20,18 @@
 - `ImageDisplayControl` 在影像尺寸相同時，即使 Bitmap 與 `LargeImageSource` 互換，也保留目前縮放與平移位置。
 - 前處理狀態只還原前處理控制項，影像處理狀態只還原處理後控制項，避免背景完成通知造成原圖或其他分頁跳位。
 - 本次程式修改已通過 Debug / Any CPU 建置；提交前仍要以實際大圖手動確認快速切換、處理、縮放與平移。
+
+### 2026-09-17 最新進度
+
+- `物件定義` 已從 placeholder 擴充為可操作的物件組清單。
+- 新增物件組預設名稱為 `物件組1`、`物件組2`；舊版精確的預設名稱 `物件組定義N` 會在啟動時轉為新名稱，使用者自訂名稱不會被覆蓋。
+- 選取物件組後，右側顯示「來源區塊」下拉選單；按「確認」後，來源區塊 ID 保存至物件組。
+- 物件組右鍵選單包含：處理、上移、下移、命名、新增處理、刪除。
+- 物件組下可新增 `處理1`、`處理2` 等子項目；子項目右鍵選單包含：處理、上移、下移、命名、刪除。
+- 物件組與其處理子項目均使用 GUID；清單重建、改名、排序後，操作仍透過 ID 找回資料，不依賴顯示名稱。
+- `SystemParameters.ini` 已支援物件組來源區塊 ID，以及子處理的 ID、名稱、方法與參數保存/載入；舊 INI 沒有子處理欄位時會以空清單載入。
+- 統一處理時間的顯示規則：影像處理全部時間只加總演算法階段，不包含顯示時間；整合成區塊會另外列出區塊處理時間。
+- 本次程式與文件修改完成後，必須重新建置並確認執行中的 `IntegratedImageProcessingApp.exe` 已關閉，再提交到 GitHub。
 
 ## 2. 已完成的使用者功能
 
@@ -100,7 +112,17 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 
 ### 3.1 物件定義入口
 
-`整合成區塊` 下方已新增 `物件定義` 主項目，主項目前有物件圖示，右鍵可新增多個 `物件組定義`。目前物件組定義先保存固定 ID、顯示名稱與預留的區塊 ID 清單；尚未接入區塊選擇、合併方式與 E/D 等最終判定規則，不應自行假設為影像處理流程。
+`整合成區塊` 下方已新增 `物件定義` 主項目，主項目前有物件圖示。右鍵可新增多個 `物件組`；物件組選取後，右側可選擇一個來源區塊並按 `確認` 保存。來源以區塊 GUID 放在 `ObjectJudgementIds` 清單中，目前 UI 先使用單一來源區塊，資料結構保留清單形式供未來擴充多來源。
+
+物件組右鍵功能：
+
+- `處理`：目前先驗證是否已指定來源區塊；物件組實際影像判定演算法尚未定義。
+- `上移`、`下移`：只改變物件組在清單中的順序，不改變 ID。
+- `命名`：只改變 DisplayName，不改變 ID，也不會破壞來源。
+- `新增處理`：建立具獨立 GUID 的 `處理N` 子項目，並自動展開物件組。
+- `刪除`：刪除物件組及其所屬子處理。
+
+物件組處理子項目目前也有自己的唯一 ID、顯示名稱、方法與參數欄位，並可排序、命名及刪除。實際方法與參數面板要等物件組的判定規格確認後再接入，不應先把區塊形態學方法直接當成物件判定方法。
 
 整合成區塊清單現在支援每個區塊獨立展開/收合處理步驟；多選兩個以上尚未分組的區塊後按右鍵可建立物件群組，也可多選兩個以上群組建立上層群組。群組與區塊均以 ID 保存，群組收合時隱藏子區塊與其處理步驟，避免清單佔用過多空間。群組刪除會保留區塊並解除群組歸屬。
 
@@ -117,6 +139,14 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 - 選取已完成項目應讀取快取並觸發必要 repaint，不得因缺少 completion callback 而顯示空白。
 
 處理時間要分開理解：ROI 準備時間、OpenCV 影像處理時間、可見區域預覽/overlay 顯示時間不是同一件事。前處理常需要建立記憶體型顯示來源，所以顯示時間可能比演算法時間長；處理後多半重用原圖 tile，因此顯示時間可能較短。區塊處理只有在區塊分頁可見並實際刷新時才計入顯示時間；不可見背景工作不應被誤報成畫面顯示時間。
+
+目前狀態列時間格式：
+
+- 影像處理或關聯：`影像處理全部時間：xx ms || 影像前處理時間：xx ms || 影像處理時間：xx ms || 顯示時間：xx ms`
+- 整合成區塊：`影像處理全部時間：xx ms || 影像前處理時間：xx ms || 影像處理時間：xx ms || 整合成區塊處理：xx ms || 顯示時間：xx ms`
+- 影像處理全部時間 = 前處理 + 影像處理；整合成區塊時再加上區塊處理。
+- 顯示時間永遠不加入影像處理全部時間，只代表可見結果實際更新的時間。
+- 本次沒有重新執行的快取階段顯示 `0 ms`；背景分頁尚未顯示時，不應把尚未發生的顯示工作算入演算法時間。
 
 ## 5. 已知問題與曾經踩過的坑
 
@@ -155,6 +185,7 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 - `MainForm.Relation.cs`：關聯欄位、`RelationChoice` 與基礎資料。
 - `MainForm.ObjectJudgement.cs`：整合成區塊 UI、關聯選取、右鍵操作、區塊處理分頁接線。
 - `MainForm.ObjectJudgementProcessing.cs`：區塊處理參數、OpenCV 演算法、mask cache 與大圖 overlay。
+- `MainForm.ObjectDefinition.cs`：物件組清單、來源區塊選擇、唯一 ID 對應、右鍵選單與物件組處理子項目。
 
 仍集中在 `MainForm.cs` 或建議後續拆出：
 
@@ -163,13 +194,17 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 3. `MainForm.Parameters.cs`：共用參數控制、Apply/Cancel、pending 值與時間狀態。
 4. `MainForm.Roi.cs`：ROI 編輯、顯示全部、座標保存與 ROI 影像準備。
 5. `MainForm.Cache.cs`：各種 cache、generation、取消/淘汰與 Bitmap/Mat ownership。
-6. `Services/OpenCvProcessingService.cs`：partial 拆分完成且行為穩定後，再抽離不依賴 UI 的純 OpenCV 函數。
+6. `MainForm.ObjectDefinitionProcessing.cs`：物件組實際判定、子處理參數與物件組結果顯示，等演算法規格確認後再拆。
+7. `Services/OpenCvProcessingService.cs`：partial 拆分完成且行為穩定後，再抽離不依賴 UI 的純 OpenCV 函數。
 
 拆分守則：先用 partial 保持行為不變；每一批移動後建置；用 `rg` 確認參考；最後才刪除重複方法與 using。`MainForm.Designer.cs` 要保留可由 Visual Studio Designer 開啟的狀態。
 
 ## 8. 尚未完成/下一步
 
 - 完整驗證 Threshold 三種方法的 OpenCV mask、參數面板與大圖顯示。
+- 定義物件組處理子項目的實際演算法、參數與結果呈現；目前只完成資料、來源區塊與操作框架。
+- 定義物件組是否允許多個來源區塊，以及多來源時的合併規則；目前 UI 先指定單一來源，模型保留 ID 清單。
+- 決定物件組結果要顯示於 `區塊處理`、`區塊結果` 或新增的物件判定分頁，並補上紅點/輪廓顯示規則。
 - 以實際 16384 x 50000 圖片測試多 ROI、多關聯與多區塊的記憶體峰值。
 - 補上區塊處理每一步結果的獨立快取顯示，確認重複點選不會重算；目前整個區塊鏈的處理與可見顯示計時已完成。
 - 以實際操作確認各分頁在執行單一步驟、群組、關聯與區塊處理時，Zoom/Offset 均維持不變。

@@ -203,6 +203,39 @@ namespace IntegratedImageProcessingApp.Services
                     definition.ObjectJudgementIds.Add(memberId);
                 }
 
+                int processingCount = GetInt(
+                    sections,
+                    SectionObjectDefinition,
+                    prefix + ".ProcessingCount",
+                    0);
+                for (int processingIndex = 1; processingIndex <= processingCount; processingIndex++)
+                {
+                    string processingPrefix = prefix + ".Processing" + processingIndex;
+                    definition.ProcessingSteps.Add(new ObjectDefinitionProcessingSettings
+                    {
+                        Id = GetValue(
+                            sections,
+                            SectionObjectDefinition,
+                            processingPrefix + ".Id",
+                            string.Empty),
+                        DisplayName = GetValue(
+                            sections,
+                            SectionObjectDefinition,
+                            processingPrefix + ".DisplayName",
+                            string.Empty),
+                        Method = GetValue(
+                            sections,
+                            SectionObjectDefinition,
+                            processingPrefix + ".Method",
+                            string.Empty),
+                        Parameters = GetValue(
+                            sections,
+                            SectionObjectDefinition,
+                            processingPrefix + ".Parameters",
+                            string.Empty)
+                    });
+                }
+
                 settings.ObjectDefinitions.Add(definition);
             }
 
@@ -389,6 +422,20 @@ namespace IntegratedImageProcessingApp.Services
                         "{0}.ObjectJudgementIds={1}",
                         prefix,
                         Escape(string.Join("|", definition.ObjectJudgementIds.ToArray())));
+                    writer.WriteLine(
+                        "{0}.ProcessingCount={1}",
+                        prefix,
+                        definition.ProcessingSteps.Count.ToString(CultureInfo.InvariantCulture));
+                    for (int processingIndex = 0; processingIndex < definition.ProcessingSteps.Count; processingIndex++)
+                    {
+                        ObjectDefinitionProcessingSettings processing = definition.ProcessingSteps[processingIndex];
+                        string processingPrefix = prefix + ".Processing" +
+                            (processingIndex + 1).ToString(CultureInfo.InvariantCulture);
+                        writer.WriteLine("{0}.Id={1}", processingPrefix, Escape(processing.Id));
+                        writer.WriteLine("{0}.DisplayName={1}", processingPrefix, Escape(processing.DisplayName));
+                        writer.WriteLine("{0}.Method={1}", processingPrefix, Escape(processing.Method));
+                        writer.WriteLine("{0}.Parameters={1}", processingPrefix, Escape(processing.Parameters));
+                    }
                 }
             }
         }
@@ -415,9 +462,20 @@ namespace IntegratedImageProcessingApp.Services
             foreach (ObjectDefinitionSettings definition in settings.ObjectDefinitions)
             {
                 definition.Id = EnsureUniqueId(definition.Id, definitionIds);
+                EnsureObjectDefinitionProcessingIds(definition.ProcessingSteps);
             }
 
             RepairReferences(settings);
+        }
+
+        private static void EnsureObjectDefinitionProcessingIds(
+            List<ObjectDefinitionProcessingSettings> processingSteps)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ObjectDefinitionProcessingSettings processing in processingSteps)
+            {
+                processing.Id = EnsureUniqueId(processing.Id, ids);
+            }
         }
 
         private static void EnsureRoiIds(List<RoiRegionSettings> rois)
