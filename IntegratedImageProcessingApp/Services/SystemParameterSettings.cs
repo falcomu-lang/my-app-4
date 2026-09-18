@@ -192,6 +192,8 @@ namespace IntegratedImageProcessingApp.Services
             NumberingOrder = "TopToBottomLeftToRight";
             MergeMethod = "None";
             MaxMergeDistance = 0;
+            GroupMinArea = 0;
+            GroupMaxArea = 0;
             ResultBoxLineWidth = 2;
             ResultNumberFontSize = 10;
         }
@@ -216,6 +218,10 @@ namespace IntegratedImageProcessingApp.Services
         public string MergeMethod { get; set; }
 
         public int MaxMergeDistance { get; set; }
+
+        public double GroupMinArea { get; set; }
+
+        public double GroupMaxArea { get; set; }
 
         public int ResultBoxLineWidth { get; set; }
 

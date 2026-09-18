@@ -36,9 +36,11 @@ namespace IntegratedImageProcessingApp.Forms
             public Rectangle Bounds { get; set; }
 
             public double Area { get; set; }
+
+            public List<int> SourceLabels { get; set; }
         }
 
-        private sealed class ObjectDefinitionAcceptedComponent
+        private sealed class ObjectDefinitionComponentRegion
         {
             public int Label { get; set; }
 
@@ -1056,108 +1058,48 @@ namespace IntegratedImageProcessingApp.Forms
                     Cv.MatType.CV_32SC1);
                 var result = new List<ObjectDefinitionDetectedObject>();
                 var accepted = new bool[labelCount];
+                var acceptedComponents = new List<ObjectDefinitionComponentRegion>();
+                var rejectedComponents = new List<ObjectDefinitionComponentRegion>();
+                long acceptedBoundsArea = 0;
                 for (int label = 1; label < labelCount; label++)
                 {
                     int area = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Area);
+                    int x = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
+                    int y = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Top);
+                    int width = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Width);
+                    int height = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Height);
+                    var component = new ObjectDefinitionComponentRegion
+                    {
+                        Label = label,
+                        X = x,
+                        Y = y,
+                        Width = width,
+                        Height = height
+                    };
                     if (definition.MinArea > 0 && area < definition.MinArea)
                     {
+                        rejectedComponents.Add(component);
                         continue;
                     }
 
                     if (definition.MaxArea > 0 && area > definition.MaxArea)
                     {
+                        rejectedComponents.Add(component);
                         continue;
                     }
 
                     accepted[label] = true;
-                    int x = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
-                    int y = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Top);
-                    int width = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Width);
-                    int height = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Height);
+                    acceptedComponents.Add(component);
+                    acceptedBoundsArea += (long)width * height;
                     result.Add(new ObjectDefinitionDetectedObject
                     {
                         Bounds = new Rectangle(roi.X + x, roi.Y + y, width, height),
-                        Area = area
+                        Area = area,
+                        SourceLabels = new List<int> { label }
                     });
                 }
                 cclStopwatch.Stop();
                 cclElapsedMilliseconds = cclStopwatch.ElapsedMilliseconds;
-
-                Stopwatch retainedMaskStopwatch = Stopwatch.StartNew();
-                retainedMask = new Cv.Mat(
-                    sourceMask.Rows,
-                    sourceMask.Cols,
-                    Cv.MatType.CV_8UC1,
-                    Cv.Scalar.All(0));
-                if (result.Count > 0)
-                {
-                    var acceptedComponents = new List<ObjectDefinitionAcceptedComponent>();
-                    long acceptedBoundsArea = 0;
-                    for (int label = 1; label < labelCount; label++)
-                    {
-                        if (!accepted[label])
-                        {
-                            continue;
-                        }
-
-                        int x = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
-                        int y = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Top);
-                        int width = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Width);
-                        int height = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Height);
-                        acceptedComponents.Add(new ObjectDefinitionAcceptedComponent
-                        {
-                            Label = label,
-                            X = x,
-                            Y = y,
-                            Width = width,
-                            Height = height
-                        });
-                        acceptedBoundsArea += (long)width * height;
-                    }
-
-                    long imageArea = (long)sourceMask.Width * sourceMask.Height;
-                    if (acceptedBoundsArea * 4 < imageArea * 3)
-                    {
-                        foreach (ObjectDefinitionAcceptedComponent component in acceptedComponents)
-                        {
-                            using (var labelRoi = new Cv.Mat(
-                                labels,
-                                new Cv.Rect(
-                                    component.X,
-                                    component.Y,
-                                    component.Width,
-                                    component.Height)))
-                            using (var componentMask = new Cv.Mat())
-                            using (var retainedRoi = new Cv.Mat(
-                                retainedMask,
-                                new Cv.Rect(
-                                    component.X,
-                                    component.Y,
-                                    component.Width,
-                                    component.Height)))
-                            {
-                                Cv.Cv2.Compare(
-                                    labelRoi,
-                                    component.Label,
-                                    componentMask,
-                                    Cv.CmpType.EQ);
-                                Cv.Cv2.BitwiseOr(
-                                    retainedRoi,
-                                    componentMask,
-                                    retainedRoi);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        CreateObjectDefinitionRetainedMaskByRows(
-                            labels,
-                            retainedMask,
-                            accepted);
-                    }
-                }
-                retainedMaskStopwatch.Stop();
-                retainedMaskElapsedMilliseconds = retainedMaskStopwatch.ElapsedMilliseconds;
 
                 if (string.Equals(definition.MergeMethod, "Distance", StringComparison.Ordinal) &&
                     definition.MaxMergeDistance > 0)
@@ -1170,7 +1112,166 @@ namespace IntegratedImageProcessingApp.Forms
                     mergeElapsedMilliseconds = mergeStopwatch.ElapsedMilliseconds;
                 }
 
+                result = FilterObjectDefinitionGroupsByArea(
+                    result,
+                    definition.GroupMinArea,
+                    definition.GroupMaxArea);
+                var retainedLabels = new HashSet<int>(
+                    result
+                        .SelectMany(item => item.SourceLabels ?? Enumerable.Empty<int>()));
+                for (int label = 1; label < accepted.Length; label++)
+                {
+                    accepted[label] = retainedLabels.Contains(label);
+                }
+
+                Stopwatch retainedMaskStopwatch = Stopwatch.StartNew();
+                long imageArea = (long)sourceMask.Width * sourceMask.Height;
+                if (rejectedComponents.Count == 0 && retainedLabels.Count == acceptedComponents.Count)
+                {
+                    retainedMask = sourceMask.Clone();
+                }
+                else
+                {
+                    rejectedComponents = acceptedComponents
+                        .Where(component => !retainedLabels.Contains(component.Label))
+                        .Concat(rejectedComponents)
+                        .ToList();
+                    long finalRejectedBoundsArea = rejectedComponents.Sum(
+                        component => (long)component.Width * component.Height);
+                    if (finalRejectedBoundsArea * 2 < acceptedBoundsArea && result.Count > 0)
+                    {
+                        retainedMask = CreateObjectDefinitionRetainedMaskByCloneAndRemove(
+                            sourceMask,
+                            labels,
+                            rejectedComponents);
+                    }
+                    else
+                    {
+                        retainedMask = new Cv.Mat(
+                            sourceMask.Rows,
+                            sourceMask.Cols,
+                            Cv.MatType.CV_8UC1,
+                            Cv.Scalar.All(0));
+                        if (result.Count > 0 && acceptedBoundsArea * 4 < imageArea * 3)
+                        {
+                            CreateObjectDefinitionRetainedMaskByAcceptedComponents(
+                                labels,
+                                retainedMask,
+                                acceptedComponents.Where(component => retainedLabels.Contains(component.Label)));
+                        }
+                        else if (result.Count > 0)
+                        {
+                            CreateObjectDefinitionRetainedMaskByRows(
+                                labels,
+                                retainedMask,
+                                accepted);
+                        }
+                    }
+                }
+                retainedMaskStopwatch.Stop();
+                retainedMaskElapsedMilliseconds = retainedMaskStopwatch.ElapsedMilliseconds;
+
                 return result;
+            }
+        }
+
+        private static List<ObjectDefinitionDetectedObject> FilterObjectDefinitionGroupsByArea(
+            IEnumerable<ObjectDefinitionDetectedObject> objects,
+            double minArea,
+            double maxArea)
+        {
+            IEnumerable<ObjectDefinitionDetectedObject> filtered = objects ??
+                Enumerable.Empty<ObjectDefinitionDetectedObject>();
+            if (minArea > 0)
+            {
+                filtered = filtered.Where(item => item.Area >= minArea);
+            }
+
+            if (maxArea > 0)
+            {
+                filtered = filtered.Where(item => item.Area <= maxArea);
+            }
+
+            return filtered.ToList();
+        }
+
+        private static Cv.Mat CreateObjectDefinitionRetainedMaskByCloneAndRemove(
+            Cv.Mat sourceMask,
+            Cv.Mat labels,
+            IEnumerable<ObjectDefinitionComponentRegion> rejectedComponents)
+        {
+            Cv.Mat retainedMask = sourceMask.Clone();
+            try
+            {
+                foreach (ObjectDefinitionComponentRegion component in rejectedComponents)
+                {
+                    using (var labelRoi = new Cv.Mat(
+                        labels,
+                        new Cv.Rect(
+                            component.X,
+                            component.Y,
+                            component.Width,
+                            component.Height)))
+                    using (var componentMask = new Cv.Mat())
+                    using (var retainedRoi = new Cv.Mat(
+                        retainedMask,
+                        new Cv.Rect(
+                            component.X,
+                            component.Y,
+                            component.Width,
+                            component.Height)))
+                    {
+                        Cv.Cv2.Compare(
+                            labelRoi,
+                            component.Label,
+                            componentMask,
+                            Cv.CmpType.EQ);
+                        retainedRoi.SetTo(Cv.Scalar.All(0), componentMask);
+                    }
+                }
+
+                return retainedMask;
+            }
+            catch
+            {
+                retainedMask.Dispose();
+                throw;
+            }
+        }
+
+        private static void CreateObjectDefinitionRetainedMaskByAcceptedComponents(
+            Cv.Mat labels,
+            Cv.Mat retainedMask,
+            IEnumerable<ObjectDefinitionComponentRegion> acceptedComponents)
+        {
+            foreach (ObjectDefinitionComponentRegion component in acceptedComponents)
+            {
+                using (var labelRoi = new Cv.Mat(
+                    labels,
+                    new Cv.Rect(
+                        component.X,
+                        component.Y,
+                        component.Width,
+                        component.Height)))
+                using (var componentMask = new Cv.Mat())
+                using (var retainedRoi = new Cv.Mat(
+                    retainedMask,
+                    new Cv.Rect(
+                        component.X,
+                        component.Y,
+                        component.Width,
+                        component.Height)))
+                {
+                    Cv.Cv2.Compare(
+                        labelRoi,
+                        component.Label,
+                        componentMask,
+                        Cv.CmpType.EQ);
+                    Cv.Cv2.BitwiseOr(
+                        retainedRoi,
+                        componentMask,
+                        retainedRoi);
+                }
             }
         }
 
@@ -1353,13 +1454,19 @@ namespace IntegratedImageProcessingApp.Forms
                     merged[root] = new ObjectDefinitionDetectedObject
                     {
                         Bounds = objects[index].Bounds,
-                        Area = objects[index].Area
+                        Area = objects[index].Area,
+                        SourceLabels = new List<int>(
+                            objects[index].SourceLabels ?? Enumerable.Empty<int>())
                     };
                     continue;
                 }
 
                 current.Bounds = Rectangle.Union(current.Bounds, objects[index].Bounds);
                 current.Area += objects[index].Area;
+                if (objects[index].SourceLabels != null)
+                {
+                    current.SourceLabels.AddRange(objects[index].SourceLabels);
+                }
             }
 
             return merged.Values.ToList();

@@ -705,36 +705,15 @@ namespace IntegratedImageProcessingApp.Forms
 
             panel.Controls.Add(new Label
             {
-                Text = "編號順序",
-                Left = 8,
-                Top = 246,
-                Width = 250
-            });
-            var numberingOrder = new ComboBox
-            {
-                Left = 8,
-                Top = 268,
-                Width = parameterPanel.Width - 18,
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-            numberingOrder.Items.Add(new ObjectDefinitionOption("由上到下、由左到右", "TopToBottomLeftToRight"));
-            numberingOrder.Items.Add(new ObjectDefinitionOption("由左到右、由上到下", "LeftToRightTopToBottom"));
-            numberingOrder.Items.Add(new ObjectDefinitionOption("面積由大到小", "AreaDescending"));
-            numberingOrder.Items.Add(new ObjectDefinitionOption("面積由小到大", "AreaAscending"));
-            SelectObjectDefinitionOption(numberingOrder, definition.NumberingOrder, "TopToBottomLeftToRight");
-            panel.Controls.Add(numberingOrder);
-
-            panel.Controls.Add(new Label
-            {
                 Text = "物件連結方式",
                 Left = 8,
-                Top = 302,
+                Top = 246,
                 Width = 250
             });
             var mergeMethod = new ComboBox
             {
                 Left = 8,
-                Top = 324,
+                Top = 268,
                 Width = parameterPanel.Width - 18,
                 DropDownStyle = ComboBoxStyle.DropDownList
             };
@@ -747,13 +726,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Text = "最大合併距離（pixels）",
                 Left = 8,
-                Top = 358,
+                Top = 302,
                 Width = 250
             });
             var mergeDistance = CreateObjectDefinitionNumberBox(
                 definition.MaxMergeDistance,
                 8,
-                380,
+                324,
                 parameterPanel.Width - 18);
             mergeDistance.Maximum = 10000;
             mergeDistance.Enabled = string.Equals(definition.MergeMethod, "Distance", StringComparison.Ordinal);
@@ -767,15 +746,64 @@ namespace IntegratedImageProcessingApp.Forms
 
             panel.Controls.Add(new Label
             {
-                Text = "黃框線寬度（pixels）",
+                Text = "合併後群最小面積（0 表示不限）",
+                Left = 8,
+                Top = 358,
+                Width = 250
+            });
+            var groupMinArea = CreateObjectDefinitionNumberBox(
+                definition.GroupMinArea,
+                8,
+                380,
+                parameterPanel.Width - 18);
+            panel.Controls.Add(groupMinArea);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "合併後群最大面積（0 表示不限）",
                 Left = 8,
                 Top = 414,
+                Width = 250
+            });
+            var groupMaxArea = CreateObjectDefinitionNumberBox(
+                definition.GroupMaxArea,
+                8,
+                436,
+                parameterPanel.Width - 18);
+            panel.Controls.Add(groupMaxArea);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "編號順序",
+                Left = 8,
+                Top = 470,
+                Width = 250
+            });
+            var numberingOrder = new ComboBox
+            {
+                Left = 8,
+                Top = 492,
+                Width = parameterPanel.Width - 18,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            numberingOrder.Items.Add(new ObjectDefinitionOption("由上到下、由左到右", "TopToBottomLeftToRight"));
+            numberingOrder.Items.Add(new ObjectDefinitionOption("由左到右、由上到下", "LeftToRightTopToBottom"));
+            numberingOrder.Items.Add(new ObjectDefinitionOption("面積由大到小", "AreaDescending"));
+            numberingOrder.Items.Add(new ObjectDefinitionOption("面積由小到大", "AreaAscending"));
+            SelectObjectDefinitionOption(numberingOrder, definition.NumberingOrder, "TopToBottomLeftToRight");
+            panel.Controls.Add(numberingOrder);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "黃框線寬度（pixels）",
+                Left = 8,
+                Top = 526,
                 Width = 250
             });
             var resultBoxLineWidth = CreateObjectDefinitionNumberBox(
                 definition.ResultBoxLineWidth,
                 8,
-                436,
+                548,
                 parameterPanel.Width - 18);
             resultBoxLineWidth.Maximum = 20;
             resultBoxLineWidth.Value = Math.Max(1, Math.Min(resultBoxLineWidth.Maximum, definition.ResultBoxLineWidth));
@@ -785,13 +813,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Text = "編號文字大小（points）",
                 Left = 8,
-                Top = 470,
+                Top = 582,
                 Width = 250
             });
             var resultNumberFontSize = CreateObjectDefinitionNumberBox(
                 definition.ResultNumberFontSize,
                 8,
-                492,
+                604,
                 parameterPanel.Width - 18);
             resultNumberFontSize.Maximum = 72;
             resultNumberFontSize.Value = Math.Max(6, Math.Min(resultNumberFontSize.Maximum, definition.ResultNumberFontSize));
@@ -801,7 +829,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Text = "量測來源固定使用原始二值影像；連結設定只影響物件編號，不修改量測邊界。",
                 Left = 8,
-                Top = 534,
+                Top = 638,
                 Width = parameterPanel.Width - 18,
                 Height = 42,
                 AutoEllipsis = false
@@ -812,7 +840,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Text = "套用",
                 Left = 8,
-                Top = 586,
+                Top = 690,
                 Width = parameterPanel.Width - 18
             };
             apply.Click += delegate
@@ -841,12 +869,19 @@ namespace IntegratedImageProcessingApp.Forms
                 definition.MaxMergeDistance = definition.MergeMethod == "Distance"
                     ? (int)mergeDistance.Value
                     : 0;
+                definition.GroupMinArea = (double)groupMinArea.Value;
+                definition.GroupMaxArea = (double)groupMaxArea.Value;
                 definition.ResultBoxLineWidth = Math.Max(1, Math.Min(20, (int)resultBoxLineWidth.Value));
                 definition.ResultNumberFontSize = Math.Max(6, Math.Min(72, (int)resultNumberFontSize.Value));
 
                 if (definition.MaxArea > 0 && definition.MaxArea < definition.MinArea)
                 {
                     definition.MaxArea = definition.MinArea;
+                }
+
+                if (definition.GroupMaxArea > 0 && definition.GroupMaxArea < definition.GroupMinArea)
+                {
+                    definition.GroupMaxArea = definition.GroupMinArea;
                 }
 
                 SaveSystemParameters();
@@ -859,7 +894,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Text = "取消",
                 Left = 8,
-                Top = 622,
+                Top = 726,
                 Width = parameterPanel.Width - 18
             };
             cancel.Click += delegate

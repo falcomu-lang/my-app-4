@@ -232,6 +232,16 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDefinition,
                         prefix + ".MaxMergeDistance",
                         0),
+                    GroupMinArea = GetDouble(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".GroupMinArea",
+                        0),
+                    GroupMaxArea = GetDouble(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".GroupMaxArea",
+                        0),
                     ResultBoxLineWidth = GetInt(
                         sections,
                         SectionObjectDefinition,
@@ -476,6 +486,8 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.NumberingOrder={1}", prefix, Escape(definition.NumberingOrder));
                     writer.WriteLine("{0}.MergeMethod={1}", prefix, Escape(definition.MergeMethod));
                     writer.WriteLine("{0}.MaxMergeDistance={1}", prefix, definition.MaxMergeDistance.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.GroupMinArea={1}", prefix, definition.GroupMinArea.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.GroupMaxArea={1}", prefix, definition.GroupMaxArea.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.ResultBoxLineWidth={1}", prefix, definition.ResultBoxLineWidth.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.ResultNumberFontSize={1}", prefix, definition.ResultNumberFontSize.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine(
@@ -790,6 +802,16 @@ namespace IntegratedImageProcessingApp.Services
                 if (definition.MaxMergeDistance < 0)
                 {
                     definition.MaxMergeDistance = 0;
+                }
+
+                if (definition.GroupMinArea < 0)
+                {
+                    definition.GroupMinArea = 0;
+                }
+
+                if (definition.GroupMaxArea < 0)
+                {
+                    definition.GroupMaxArea = 0;
                 }
 
                 definition.ResultBoxLineWidth = Math.Max(1, Math.Min(20, definition.ResultBoxLineWidth));
