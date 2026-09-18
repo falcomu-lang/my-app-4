@@ -387,6 +387,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 InvalidateBlockProcessingDisplays();
             }
+            UpdateObjectDefinitionDisplayTimingIfNeeded();
             if (isImageViewerMaximized)
             {
                 ApplyMaximizedSideViewState(sender as TabControl);

@@ -16,9 +16,13 @@ namespace IntegratedImageProcessingApp.Forms
         private readonly object objectDefinitionResultLock = new object();
         private readonly Dictionary<string, List<ObjectDefinitionDetectedObject>> objectDefinitionResults =
             new Dictionary<string, List<ObjectDefinitionDetectedObject>>(StringComparer.Ordinal);
+        private readonly Dictionary<string, Cv.Mat> objectDefinitionSourceMasks =
+            new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
         private int objectDefinitionResultGeneration;
         private string activeObjectDefinitionResultId;
         private bool objectDefinitionProcessingRequested;
+        private long objectDefinitionProcessingElapsedMilliseconds;
+        private bool objectDefinitionDisplayTimePending;
 
         private sealed class ObjectDefinitionDetectedObject
         {
@@ -90,7 +94,10 @@ namespace IntegratedImageProcessingApp.Forms
                 generation = objectDefinitionResultGeneration;
                 activeObjectDefinitionResultId = definition.Id;
                 objectDefinitionProcessingRequested = true;
+                objectDefinitionProcessingElapsedMilliseconds = 0;
+                objectDefinitionDisplayTimePending = true;
                 objectDefinitionResults.Clear();
+                DisposeObjectDefinitionSourceMasksUnsafe();
             }
 
             statusLabel.Text = definition.DisplayName + " 影像處理中...使用 OpenCV CCL";
@@ -98,6 +105,9 @@ namespace IntegratedImageProcessingApp.Forms
                 delegate
                 {
                     var completedResults = new Dictionary<string, List<ObjectDefinitionDetectedObject>>(StringComparer.Ordinal);
+                    var completedSourceMasks = new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
+                    Dictionary<string, Cv.Mat> displaySourceMasks = null;
+                    bool displaySourceMasksTransferred = false;
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
@@ -106,8 +116,11 @@ namespace IntegratedImageProcessingApp.Forms
                             EnsureObjectDefinitionRequestIsCurrent(definition.Id, generation);
                             using (Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(source, definition, roi))
                             {
-                                completedResults[CreateObjectDefinitionResultKey(definition.Id, roi)] =
+                                string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
+                                completedResults[resultKey] =
                                     CreateObjectDefinitionDetectedObjects(sourceMask, roi, definition);
+                                completedSourceMasks[resultKey] =
+                                    CreateObjectDefinitionRetainedMask(sourceMask, definition);
                             }
                         }
 
@@ -123,6 +136,8 @@ namespace IntegratedImageProcessingApp.Forms
 
                         stopwatch.Stop();
                         long elapsedMilliseconds = Math.Max(1, stopwatch.ElapsedMilliseconds);
+                        displaySourceMasks = completedSourceMasks;
+                        completedSourceMasks = null;
                         BeginInvoke(
                             new Action(
                                 delegate
@@ -132,6 +147,8 @@ namespace IntegratedImageProcessingApp.Forms
                                         if (generation != objectDefinitionResultGeneration ||
                                             !string.Equals(activeObjectDefinitionResultId, definition.Id, StringComparison.Ordinal))
                                         {
+                                            DisposeObjectDefinitionSourceMasks(displaySourceMasks);
+                                            displaySourceMasks = null;
                                             return;
                                         }
 
@@ -140,18 +157,28 @@ namespace IntegratedImageProcessingApp.Forms
                                         {
                                             objectDefinitionResults[item.Key] = item.Value;
                                         }
+
+                                        DisposeObjectDefinitionSourceMasksUnsafe();
+                                        foreach (KeyValuePair<string, Cv.Mat> item in displaySourceMasks)
+                                        {
+                                            objectDefinitionSourceMasks[item.Key] = item.Value;
+                                        }
+                                        displaySourceMasks = null;
                                     }
 
                                     int count = completedResults.Values.Sum(items => items.Count);
+                                    objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
+                                    long displayElapsedMilliseconds =
+                                        RefreshVisibleObjectDefinitionDisplays();
                                     statusLabel.Text = definition.DisplayName +
                                         " 已完成：OpenCV CCL，找到 " +
                                         count.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                                        " 個物件，處理時間：" +
-                                        elapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                                        " ms";
-                                    leftObjectsDisplayControl.InvalidateImageView();
-                                    rightObjectsDisplayControl.InvalidateImageView();
+                                        " 個物件，" +
+                                        BuildObjectDefinitionTimingText(
+                                            elapsedMilliseconds,
+                                            displayElapsedMilliseconds);
                                 }));
+                        displaySourceMasksTransferred = true;
                     }
                     catch (Exception ex)
                     {
@@ -177,6 +204,11 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     finally
                     {
+                        DisposeObjectDefinitionSourceMasks(completedSourceMasks);
+                        if (!displaySourceMasksTransferred)
+                        {
+                            DisposeObjectDefinitionSourceMasks(displaySourceMasks);
+                        }
                         source.ReleaseReference();
                     }
                 });
@@ -203,7 +235,10 @@ namespace IntegratedImageProcessingApp.Forms
                 generation = objectDefinitionResultGeneration;
                 activeObjectDefinitionResultId = definition.Id;
                 objectDefinitionProcessingRequested = true;
+                objectDefinitionProcessingElapsedMilliseconds = 0;
+                objectDefinitionDisplayTimePending = true;
                 objectDefinitionResults.Clear();
+                DisposeObjectDefinitionSourceMasksUnsafe();
             }
 
             statusLabel.Text = definition.DisplayName + " 影像處理中...使用 OpenCV CCL";
@@ -211,6 +246,9 @@ namespace IntegratedImageProcessingApp.Forms
                 delegate
                 {
                     var completedResults = new Dictionary<string, List<ObjectDefinitionDetectedObject>>(StringComparer.Ordinal);
+                    var completedSourceMasks = new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
+                    Dictionary<string, Cv.Mat> displaySourceMasks = null;
+                    bool displaySourceMasksTransferred = false;
                     Bitmap leftResult = null;
                     Bitmap rightResult = null;
                     Stopwatch stopwatch = Stopwatch.StartNew();
@@ -227,8 +265,11 @@ namespace IntegratedImageProcessingApp.Forms
                                     definition,
                                     roi))
                                 {
-                                    completedResults[CreateObjectDefinitionResultKey(definition.Id, roi)] =
+                                    string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
+                                    completedResults[resultKey] =
                                         CreateObjectDefinitionDetectedObjects(sourceMask, roi, definition);
+                                    completedSourceMasks[resultKey] =
+                                        CreateObjectDefinitionRetainedMask(sourceMask, definition);
                                 }
                             }
                         }
@@ -243,10 +284,17 @@ namespace IntegratedImageProcessingApp.Forms
                             orderedObjects[index].Number = index + 1;
                         }
 
-                        leftResult = CreateObjectDefinitionAnnotatedBitmap(original, completedResults, definition, rois);
+                        leftResult = CreateObjectDefinitionAnnotatedBitmap(
+                            original,
+                            completedResults,
+                            completedSourceMasks,
+                            definition,
+                            rois);
                         rightResult = new Bitmap(leftResult);
                         stopwatch.Stop();
                         long elapsedMilliseconds = Math.Max(1, stopwatch.ElapsedMilliseconds);
+                        displaySourceMasks = completedSourceMasks;
+                        completedSourceMasks = null;
                         Bitmap displayLeftResult = leftResult;
                         Bitmap displayRightResult = rightResult;
                         leftResult = null;
@@ -265,15 +313,24 @@ namespace IntegratedImageProcessingApp.Forms
                                             if (isCurrent)
                                             {
                                                 objectDefinitionResults.Clear();
-                                                foreach (KeyValuePair<string, List<ObjectDefinitionDetectedObject>> item in completedResults)
-                                                {
-                                                    objectDefinitionResults[item.Key] = item.Value;
-                                                }
+                                            foreach (KeyValuePair<string, List<ObjectDefinitionDetectedObject>> item in completedResults)
+                                            {
+                                                objectDefinitionResults[item.Key] = item.Value;
+                                            }
+
+                                            DisposeObjectDefinitionSourceMasksUnsafe();
+                                            foreach (KeyValuePair<string, Cv.Mat> item in displaySourceMasks)
+                                            {
+                                                objectDefinitionSourceMasks[item.Key] = item.Value;
+                                            }
+                                            displaySourceMasks = null;
                                             }
                                         }
 
                                         if (!isCurrent)
                                         {
+                                            DisposeObjectDefinitionSourceMasks(displaySourceMasks);
+                                            displaySourceMasks = null;
                                             displayLeftResult.Dispose();
                                             displayRightResult.Dispose();
                                             displayLeftResult = null;
@@ -288,12 +345,16 @@ namespace IntegratedImageProcessingApp.Forms
                                             rightObjectsDisplayControl.SetDisplayImage(displayRightResult, true);
                                             displayRightResult = null;
                                             int count = completedResults.Values.Sum(items => items.Count);
+                                            objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
+                                            long displayElapsedMilliseconds =
+                                                RefreshVisibleObjectDefinitionDisplays();
                                             statusLabel.Text = definition.DisplayName +
                                                 " 已完成：OpenCV CCL，找到 " +
                                                 count.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                                                " 個物件，處理時間：" +
-                                                elapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                                                " ms";
+                                                " 個物件，" +
+                                                BuildObjectDefinitionTimingText(
+                                                    elapsedMilliseconds,
+                                                    displayElapsedMilliseconds);
                                         }
                                         catch
                                         {
@@ -312,6 +373,7 @@ namespace IntegratedImageProcessingApp.Forms
                                             throw;
                                         }
                                     }));
+                            displaySourceMasksTransferred = true;
                         }
                         catch
                         {
@@ -352,6 +414,12 @@ namespace IntegratedImageProcessingApp.Forms
                         if (rightResult != null)
                         {
                             rightResult.Dispose();
+                        }
+
+                        DisposeObjectDefinitionSourceMasks(completedSourceMasks);
+                        if (!displaySourceMasksTransferred)
+                        {
+                            DisposeObjectDefinitionSourceMasks(displaySourceMasks);
                         }
 
                         original.Dispose();
@@ -410,7 +478,10 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionResultGeneration++;
                 activeObjectDefinitionResultId = null;
                 objectDefinitionProcessingRequested = false;
+                objectDefinitionProcessingElapsedMilliseconds = 0;
+                objectDefinitionDisplayTimePending = false;
                 objectDefinitionResults.Clear();
+                DisposeObjectDefinitionSourceMasksUnsafe();
             }
 
             if (leftObjectsDisplayControl != null)
@@ -424,6 +495,77 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private long RefreshVisibleObjectDefinitionDisplays()
+        {
+            Stopwatch displayStopwatch = Stopwatch.StartNew();
+            bool refreshed = false;
+
+            if (leftImageTabControl.Visible &&
+                leftImageTabControl.SelectedTab == leftObjectsTabPage &&
+                leftObjectsDisplayControl != null &&
+                leftObjectsDisplayControl.HasImage)
+            {
+                leftObjectsDisplayControl.RefreshImageViewNow();
+                refreshed = true;
+            }
+
+            if (rightImageTabControl.Visible &&
+                rightImageTabControl.SelectedTab == rightObjectsTabPage &&
+                rightObjectsDisplayControl != null &&
+                rightObjectsDisplayControl.HasImage)
+            {
+                rightObjectsDisplayControl.RefreshImageViewNow();
+                refreshed = true;
+            }
+
+            displayStopwatch.Stop();
+            if (!refreshed)
+            {
+                objectDefinitionDisplayTimePending = true;
+                return 0;
+            }
+
+            objectDefinitionDisplayTimePending = false;
+            return Math.Max(1, displayStopwatch.ElapsedMilliseconds);
+        }
+
+        private string BuildObjectDefinitionTimingText(
+            long processingElapsedMilliseconds,
+            long displayElapsedMilliseconds)
+        {
+            string displayText = displayElapsedMilliseconds > 0
+                ? displayElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms"
+                : "待顯示";
+            return "影像處理時間：" +
+                Math.Max(0, processingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || 顯示時間：" + displayText;
+        }
+
+        private void UpdateObjectDefinitionDisplayTimingIfNeeded()
+        {
+            if (!objectDefinitionDisplayTimePending ||
+                !objectDefinitionProcessingRequested ||
+                string.IsNullOrWhiteSpace(activeObjectDefinitionResultId) ||
+                objectDefinitionResults.Count == 0)
+            {
+                return;
+            }
+
+            long displayElapsedMilliseconds = RefreshVisibleObjectDefinitionDisplays();
+            if (displayElapsedMilliseconds <= 0)
+            {
+                return;
+            }
+
+            ObjectDefinitionSettings definition = FindObjectDefinition(activeObjectDefinitionResultId);
+            string name = definition == null || string.IsNullOrWhiteSpace(definition.DisplayName)
+                ? "物件組"
+                : definition.DisplayName;
+            statusLabel.Text = name + "：" + BuildObjectDefinitionTimingText(
+                objectDefinitionProcessingElapsedMilliseconds,
+                displayElapsedMilliseconds);
+        }
+
         private void InvalidateObjectDefinitionDisplayOnly(string definitionId)
         {
             if (rightOriginalDisplayControl != null && rightOriginalDisplayControl.IsLargeImageMode)
@@ -434,6 +576,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             Dictionary<string, List<ObjectDefinitionDetectedObject>> results;
+            Dictionary<string, Cv.Mat> sourceMasks;
             lock (objectDefinitionResultLock)
             {
                 if (!objectDefinitionProcessingRequested ||
@@ -449,6 +592,10 @@ namespace IntegratedImageProcessingApp.Forms
                     item => item.Key,
                     item => new List<ObjectDefinitionDetectedObject>(item.Value),
                     StringComparer.Ordinal);
+                sourceMasks = objectDefinitionSourceMasks.ToDictionary(
+                    item => item.Key,
+                    item => item.Value.Clone(),
+                    StringComparer.Ordinal);
             }
 
             ObjectDefinitionSettings definition = FindObjectDefinition(definitionId);
@@ -462,6 +609,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (definition == null || original == null)
             {
+                DisposeObjectDefinitionSourceMasks(sourceMasks);
                 if (original != null)
                 {
                     original.Dispose();
@@ -475,7 +623,7 @@ namespace IntegratedImageProcessingApp.Forms
             try
             {
                 List<Rectangle> rois = GetValidObjectDefinitionBitmapRois(original.Size);
-                leftResult = CreateObjectDefinitionAnnotatedBitmap(original, results, definition, rois);
+                leftResult = CreateObjectDefinitionAnnotatedBitmap(original, results, sourceMasks, definition, rois);
                 rightResult = new Bitmap(leftResult);
                 leftObjectsDisplayControl.SetDisplayImage(leftResult, true);
                 leftResult = null;
@@ -494,8 +642,42 @@ namespace IntegratedImageProcessingApp.Forms
                     rightResult.Dispose();
                 }
 
+                DisposeObjectDefinitionSourceMasks(sourceMasks);
+
                 original.Dispose();
             }
+        }
+
+        private void DisposeObjectDefinitionSourceMasksUnsafe()
+        {
+            foreach (Cv.Mat mask in objectDefinitionSourceMasks.Values)
+            {
+                if (mask != null)
+                {
+                    mask.Dispose();
+                }
+            }
+
+            objectDefinitionSourceMasks.Clear();
+        }
+
+        private static void DisposeObjectDefinitionSourceMasks(
+            IDictionary<string, Cv.Mat> masks)
+        {
+            if (masks == null)
+            {
+                return;
+            }
+
+            foreach (Cv.Mat mask in masks.Values)
+            {
+                if (mask != null)
+                {
+                    mask.Dispose();
+                }
+            }
+
+            masks.Clear();
         }
 
         private Cv.Mat CreateObjectDefinitionSourceMask(
@@ -612,6 +794,7 @@ namespace IntegratedImageProcessingApp.Forms
         private Bitmap CreateObjectDefinitionAnnotatedBitmap(
             Bitmap original,
             IDictionary<string, List<ObjectDefinitionDetectedObject>> results,
+            IDictionary<string, Cv.Mat> sourceMasks,
             ObjectDefinitionSettings definition,
             IEnumerable<Rectangle> rois)
         {
@@ -632,6 +815,12 @@ namespace IntegratedImageProcessingApp.Forms
                     if (!results.TryGetValue(key, out objects))
                     {
                         continue;
+                    }
+
+                    Cv.Mat sourceMask;
+                    if (sourceMasks != null && sourceMasks.TryGetValue(key, out sourceMask))
+                    {
+                        PaintRedOverlayImage(result, roi, ConvertOpenCvBinaryMask(sourceMask));
                     }
 
                     foreach (ObjectDefinitionDetectedObject item in objects)
@@ -711,6 +900,65 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private static Cv.Mat CreateObjectDefinitionRetainedMask(
+            Cv.Mat sourceMask,
+            ObjectDefinitionSettings definition)
+        {
+            if (sourceMask == null || sourceMask.Empty())
+            {
+                return new Cv.Mat();
+            }
+
+            if (definition == null ||
+                (definition.MinArea <= 0 && definition.MaxArea <= 0))
+            {
+                return sourceMask.Clone();
+            }
+
+            using (var labels = new Cv.Mat())
+            using (var stats = new Cv.Mat())
+            using (var centroids = new Cv.Mat())
+            {
+                Cv.PixelConnectivity connectivity = definition.Connectivity == 4
+                    ? Cv.PixelConnectivity.Connectivity4
+                    : Cv.PixelConnectivity.Connectivity8;
+                int labelCount = Cv.Cv2.ConnectedComponentsWithStats(
+                    sourceMask,
+                    labels,
+                    stats,
+                    centroids,
+                    connectivity,
+                    Cv.MatType.CV_32SC1);
+                var retainedMask = new Cv.Mat(
+                    sourceMask.Rows,
+                    sourceMask.Cols,
+                    Cv.MatType.CV_8UC1,
+                    Cv.Scalar.All(0));
+
+                for (int label = 1; label < labelCount; label++)
+                {
+                    int area = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Area);
+                    if (definition.MinArea > 0 && area < definition.MinArea)
+                    {
+                        continue;
+                    }
+
+                    if (definition.MaxArea > 0 && area > definition.MaxArea)
+                    {
+                        continue;
+                    }
+
+                    using (var componentMask = new Cv.Mat())
+                    {
+                        Cv.Cv2.Compare(labels, label, componentMask, Cv.CmpType.EQ);
+                        Cv.Cv2.BitwiseOr(retainedMask, componentMask, retainedMask);
+                    }
+                }
+
+                return retainedMask;
+            }
+        }
+
         private static List<ObjectDefinitionDetectedObject> OrderObjectDefinitionDetectedObjects(
             IEnumerable<ObjectDefinitionDetectedObject> objects,
             ObjectDefinitionSettings definition)
@@ -734,6 +982,61 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return ordered.ToList();
+        }
+
+        private void PaintObjectDefinitionSourceMaskOverlay(
+            LargeImageOverlayPaintEventArgs e,
+            Rectangle roi,
+            Rectangle visibleRoi,
+            string maskKey,
+            Cv.Mat sourceMask)
+        {
+            if (sourceMask == null || visibleRoi.Width <= 0 || visibleRoi.Height <= 0)
+            {
+                return;
+            }
+
+            int targetWidth = Math.Max(1, Math.Min(2048, (int)Math.Ceiling(visibleRoi.Width * e.Zoom)));
+            int targetHeight = Math.Max(1, Math.Min(2048, (int)Math.Ceiling(visibleRoi.Height * e.Zoom)));
+            string cacheKey = string.Join(
+                "|",
+                "object-definition-source",
+                maskKey,
+                visibleRoi.X.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                visibleRoi.Y.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                visibleRoi.Width.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                visibleRoi.Height.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                targetWidth.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                targetHeight.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            Bitmap overlay;
+            if (TryGetLargeProcessedOverlayFromCache(cacheKey, out overlay))
+            {
+                DrawLargeProcessedOverlayTile(e.Graphics, overlay, visibleRoi, e.Zoom, e.Offset);
+                return;
+            }
+
+            try
+            {
+                int maskX = visibleRoi.X - roi.X;
+                int maskY = visibleRoi.Y - roi.Y;
+                using (var visibleMask = new Cv.Mat(
+                    sourceMask,
+                    new Cv.Rect(maskX, maskY, visibleRoi.Width, visibleRoi.Height)))
+                {
+                    overlay = CreateLargeProcessedBinaryViewportOverlay(
+                        visibleMask,
+                        targetWidth,
+                        targetHeight);
+                }
+
+                TrimLargeProcessedOverlayCache();
+                largeProcessedOverlayCache[cacheKey] = overlay;
+                DrawLargeProcessedOverlayTile(e.Graphics, overlay, visibleRoi, e.Zoom, e.Offset);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Object definition red overlay failed: " + ex);
+            }
         }
 
         private static List<ObjectDefinitionDetectedObject> MergeObjectDefinitionDetectedObjects(
@@ -890,18 +1193,41 @@ namespace IntegratedImageProcessingApp.Forms
             List<ObjectDefinitionDetectedObject> objects = new List<ObjectDefinitionDetectedObject>();
             foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
             {
-                List<ObjectDefinitionDetectedObject> roiObjects;
+                Rectangle visibleRoi = Rectangle.Intersect(e.VisibleSourceRect, roiRegion.Bounds);
+                if (visibleRoi.Width <= 0 || visibleRoi.Height <= 0)
+                {
+                    continue;
+                }
+
+                List<ObjectDefinitionDetectedObject> roiObjects = null;
+                Cv.Mat sourceMask = null;
+                string resultKey = CreateObjectDefinitionResultKey(definitionId, roiRegion.Bounds);
+                int resultGeneration;
                 lock (objectDefinitionResultLock)
                 {
                     if (!objectDefinitionProcessingRequested ||
-                        !string.Equals(activeObjectDefinitionResultId, definitionId, StringComparison.Ordinal) ||
-                        !objectDefinitionResults.TryGetValue(
-                            CreateObjectDefinitionResultKey(definitionId, roiRegion.Bounds),
-                            out roiObjects))
+                        !string.Equals(activeObjectDefinitionResultId, definitionId, StringComparison.Ordinal))
                     {
                         continue;
                     }
 
+                    resultGeneration = objectDefinitionResultGeneration;
+                    objectDefinitionResults.TryGetValue(resultKey, out roiObjects);
+                    objectDefinitionSourceMasks.TryGetValue(resultKey, out sourceMask);
+                }
+
+                if (sourceMask != null)
+                {
+                    PaintObjectDefinitionSourceMaskOverlay(
+                        e,
+                        roiRegion.Bounds,
+                        visibleRoi,
+                        resultKey + "|generation=" + resultGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                        sourceMask);
+                }
+
+                if (roiObjects != null)
+                {
                     objects.AddRange(roiObjects);
                 }
             }
