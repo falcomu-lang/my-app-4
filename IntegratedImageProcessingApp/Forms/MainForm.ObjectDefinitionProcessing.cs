@@ -27,6 +27,8 @@ namespace IntegratedImageProcessingApp.Forms
         private long objectDefinitionCclElapsedMilliseconds;
         private long objectDefinitionRetainedMaskElapsedMilliseconds;
         private long objectDefinitionMergeElapsedMilliseconds;
+        private int objectDefinitionSourceCacheHitCount = -1;
+        private int objectDefinitionSourceCacheMissCount = -1;
         private bool objectDefinitionDisplayTimePending;
 
         private sealed class ObjectDefinitionDetectedObject
@@ -119,6 +121,8 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionCclElapsedMilliseconds = 0;
                 objectDefinitionRetainedMaskElapsedMilliseconds = 0;
                 objectDefinitionMergeElapsedMilliseconds = 0;
+                objectDefinitionSourceCacheHitCount = 0;
+                objectDefinitionSourceCacheMissCount = 0;
                 objectDefinitionDisplayTimePending = true;
                 objectDefinitionResults.Clear();
                 DisposeObjectDefinitionSourceMasksUnsafe();
@@ -136,6 +140,8 @@ namespace IntegratedImageProcessingApp.Forms
                     long cclElapsedMilliseconds = 0;
                     long retainedMaskElapsedMilliseconds = 0;
                     long mergeElapsedMilliseconds = 0;
+                    int sourceCacheHitCount = 0;
+                    int sourceCacheMissCount = 0;
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
@@ -143,8 +149,21 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             EnsureObjectDefinitionRequestIsCurrent(definition.Id, generation);
                             Stopwatch sourceStopwatch = Stopwatch.StartNew();
-                            Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(source, definition, roi);
+                            bool sourceCacheHit;
+                            Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(
+                                source,
+                                definition,
+                                roi,
+                                out sourceCacheHit);
                             sourceStopwatch.Stop();
+                            if (sourceCacheHit)
+                            {
+                                sourceCacheHitCount++;
+                            }
+                            else
+                            {
+                                sourceCacheMissCount++;
+                            }
                             sourceProcessingElapsedMilliseconds += sourceStopwatch.ElapsedMilliseconds;
                             using (sourceMask)
                             {
@@ -217,6 +236,8 @@ namespace IntegratedImageProcessingApp.Forms
                                     objectDefinitionCclElapsedMilliseconds = cclElapsedMilliseconds;
                                     objectDefinitionRetainedMaskElapsedMilliseconds = retainedMaskElapsedMilliseconds;
                                     objectDefinitionMergeElapsedMilliseconds = mergeElapsedMilliseconds;
+                                    objectDefinitionSourceCacheHitCount = sourceCacheHitCount;
+                                    objectDefinitionSourceCacheMissCount = sourceCacheMissCount;
                                     long displayElapsedMilliseconds =
                                         RefreshVisibleObjectDefinitionDisplays();
                                     statusLabel.Text = definition.DisplayName +
@@ -229,7 +250,9 @@ namespace IntegratedImageProcessingApp.Forms
                                             sourceProcessingElapsedMilliseconds,
                                             cclElapsedMilliseconds,
                                             retainedMaskElapsedMilliseconds,
-                                            mergeElapsedMilliseconds);
+                                            mergeElapsedMilliseconds,
+                                            sourceCacheHitCount,
+                                            sourceCacheMissCount);
                                     leftObjectsDisplayControl.InvalidateImageView();
                                     rightObjectsDisplayControl.InvalidateImageView();
                                 }));
@@ -627,11 +650,19 @@ namespace IntegratedImageProcessingApp.Forms
             long sourceProcessingElapsedMilliseconds,
             long cclElapsedMilliseconds,
             long retainedMaskElapsedMilliseconds,
-            long mergeElapsedMilliseconds)
+            long mergeElapsedMilliseconds,
+            int sourceCacheHitCount = -1,
+            int sourceCacheMissCount = -1)
         {
             string displayText = displayElapsedMilliseconds > 0
                 ? displayElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms"
                 : "待顯示";
+            string cacheText = sourceCacheHitCount >= 0 && sourceCacheMissCount >= 0
+                ? " || 來源快取：命中 " +
+                    sourceCacheHitCount.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    "／未命中 " +
+                    sourceCacheMissCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                : string.Empty;
             return "來源區塊處理時間：" +
                 Math.Max(0, sourceProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
                 " ms || CCL時間：" +
@@ -642,7 +673,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Math.Max(0, mergeElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
                 " ms || 影像處理總時間：" +
                 Math.Max(0, processingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                " ms || 顯示時間：" + displayText;
+                " ms || 顯示時間：" + displayText + cacheText;
         }
 
         private void UpdateObjectDefinitionDisplayTimingIfNeeded()
@@ -671,7 +702,9 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionSourceProcessingElapsedMilliseconds,
                 objectDefinitionCclElapsedMilliseconds,
                 objectDefinitionRetainedMaskElapsedMilliseconds,
-                objectDefinitionMergeElapsedMilliseconds);
+                objectDefinitionMergeElapsedMilliseconds,
+                objectDefinitionSourceCacheHitCount,
+                objectDefinitionSourceCacheMissCount);
         }
 
         private void InvalidateObjectDefinitionDisplayOnly(string definitionId)
@@ -791,13 +824,17 @@ namespace IntegratedImageProcessingApp.Forms
         private Cv.Mat CreateObjectDefinitionSourceMask(
             LargeImageSource source,
             ObjectDefinitionSettings definition,
-            Rectangle roi)
+            Rectangle roi,
+            out bool sourceCacheHit)
         {
             Cv.Mat cachedMask;
             if (TryGetCachedObjectDefinitionSourceMask(definition, roi, out cachedMask))
             {
+                sourceCacheHit = true;
                 return cachedMask;
             }
+
+            sourceCacheHit = false;
 
             string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
                 ? "ObjectJudgement"
