@@ -24,6 +24,10 @@ namespace IntegratedImageProcessingApp.Forms
         private bool objectDefinitionProcessingRequested;
         private long objectDefinitionProcessingElapsedMilliseconds;
         private long objectDefinitionSourceProcessingElapsedMilliseconds;
+        private long objectDefinitionSourceRelationElapsedMilliseconds;
+        private long objectDefinitionSourceGrayElapsedMilliseconds;
+        private long objectDefinitionSourceImageProcessingElapsedMilliseconds;
+        private long objectDefinitionSourceMergeElapsedMilliseconds;
         private long objectDefinitionCclElapsedMilliseconds;
         private long objectDefinitionRetainedMaskElapsedMilliseconds;
         private long objectDefinitionMergeElapsedMilliseconds;
@@ -53,6 +57,17 @@ namespace IntegratedImageProcessingApp.Forms
             public int Width { get; set; }
 
             public int Height { get; set; }
+        }
+
+        private sealed class ObjectDefinitionSourceTiming
+        {
+            public long RelationSourceMilliseconds { get; set; }
+
+            public long GrayPreparationMilliseconds { get; set; }
+
+            public long ImageProcessingMilliseconds { get; set; }
+
+            public long MaskMergeMilliseconds { get; set; }
         }
 
         private void StartObjectDefinitionProcessing(string definitionId)
@@ -118,6 +133,10 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionProcessingRequested = true;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceRelationElapsedMilliseconds = 0;
+                objectDefinitionSourceGrayElapsedMilliseconds = 0;
+                objectDefinitionSourceImageProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceMergeElapsedMilliseconds = 0;
                 objectDefinitionCclElapsedMilliseconds = 0;
                 objectDefinitionRetainedMaskElapsedMilliseconds = 0;
                 objectDefinitionMergeElapsedMilliseconds = 0;
@@ -137,6 +156,10 @@ namespace IntegratedImageProcessingApp.Forms
                     Dictionary<string, Cv.Mat> displaySourceMasks = null;
                     bool displaySourceMasksTransferred = false;
                     long sourceProcessingElapsedMilliseconds = 0;
+                    long sourceRelationElapsedMilliseconds = 0;
+                    long sourceGrayElapsedMilliseconds = 0;
+                    long sourceImageProcessingElapsedMilliseconds = 0;
+                    long sourceMergeElapsedMilliseconds = 0;
                     long cclElapsedMilliseconds = 0;
                     long retainedMaskElapsedMilliseconds = 0;
                     long mergeElapsedMilliseconds = 0;
@@ -150,11 +173,13 @@ namespace IntegratedImageProcessingApp.Forms
                             EnsureObjectDefinitionRequestIsCurrent(definition.Id, generation);
                             Stopwatch sourceStopwatch = Stopwatch.StartNew();
                             bool sourceCacheHit;
+                            var sourceTiming = new ObjectDefinitionSourceTiming();
                             Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(
                                 source,
                                 definition,
                                 roi,
-                                out sourceCacheHit);
+                                out sourceCacheHit,
+                                sourceTiming);
                             sourceStopwatch.Stop();
                             if (sourceCacheHit)
                             {
@@ -165,6 +190,10 @@ namespace IntegratedImageProcessingApp.Forms
                                 sourceCacheMissCount++;
                             }
                             sourceProcessingElapsedMilliseconds += sourceStopwatch.ElapsedMilliseconds;
+                            sourceRelationElapsedMilliseconds += sourceTiming.RelationSourceMilliseconds;
+                            sourceGrayElapsedMilliseconds += sourceTiming.GrayPreparationMilliseconds;
+                            sourceImageProcessingElapsedMilliseconds += sourceTiming.ImageProcessingMilliseconds;
+                            sourceMergeElapsedMilliseconds += sourceTiming.MaskMergeMilliseconds;
                             using (sourceMask)
                             {
                                 string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
@@ -233,6 +262,10 @@ namespace IntegratedImageProcessingApp.Forms
                                     int count = completedResults.Values.Sum(items => items.Count);
                                     objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
                                     objectDefinitionSourceProcessingElapsedMilliseconds = sourceProcessingElapsedMilliseconds;
+                                    objectDefinitionSourceRelationElapsedMilliseconds = sourceRelationElapsedMilliseconds;
+                                    objectDefinitionSourceGrayElapsedMilliseconds = sourceGrayElapsedMilliseconds;
+                                    objectDefinitionSourceImageProcessingElapsedMilliseconds = sourceImageProcessingElapsedMilliseconds;
+                                    objectDefinitionSourceMergeElapsedMilliseconds = sourceMergeElapsedMilliseconds;
                                     objectDefinitionCclElapsedMilliseconds = cclElapsedMilliseconds;
                                     objectDefinitionRetainedMaskElapsedMilliseconds = retainedMaskElapsedMilliseconds;
                                     objectDefinitionMergeElapsedMilliseconds = mergeElapsedMilliseconds;
@@ -251,6 +284,10 @@ namespace IntegratedImageProcessingApp.Forms
                                             cclElapsedMilliseconds,
                                             retainedMaskElapsedMilliseconds,
                                             mergeElapsedMilliseconds,
+                                            sourceRelationElapsedMilliseconds,
+                                            sourceGrayElapsedMilliseconds,
+                                            sourceImageProcessingElapsedMilliseconds,
+                                            sourceMergeElapsedMilliseconds,
                                             sourceCacheHitCount,
                                             sourceCacheMissCount);
                                     leftObjectsDisplayControl.InvalidateImageView();
@@ -448,7 +485,7 @@ namespace IntegratedImageProcessingApp.Forms
                                             rightObjectsDisplayControl.SetDisplayImage(displayRightResult, true);
                                             displayRightResult = null;
                                             int count = completedResults.Values.Sum(items => items.Count);
-                                            objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
+                                    objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
                                             objectDefinitionSourceProcessingElapsedMilliseconds = sourceProcessingElapsedMilliseconds;
                                             objectDefinitionCclElapsedMilliseconds = cclElapsedMilliseconds;
                                             objectDefinitionRetainedMaskElapsedMilliseconds = retainedMaskElapsedMilliseconds;
@@ -591,6 +628,10 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionProcessingRequested = false;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceRelationElapsedMilliseconds = 0;
+                objectDefinitionSourceGrayElapsedMilliseconds = 0;
+                objectDefinitionSourceImageProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceMergeElapsedMilliseconds = 0;
                 objectDefinitionCclElapsedMilliseconds = 0;
                 objectDefinitionRetainedMaskElapsedMilliseconds = 0;
                 objectDefinitionMergeElapsedMilliseconds = 0;
@@ -651,6 +692,10 @@ namespace IntegratedImageProcessingApp.Forms
             long cclElapsedMilliseconds,
             long retainedMaskElapsedMilliseconds,
             long mergeElapsedMilliseconds,
+            long sourceRelationElapsedMilliseconds = -1,
+            long sourceGrayElapsedMilliseconds = -1,
+            long sourceImageProcessingElapsedMilliseconds = -1,
+            long sourceMergeElapsedMilliseconds = -1,
             int sourceCacheHitCount = -1,
             int sourceCacheMissCount = -1)
         {
@@ -663,6 +708,17 @@ namespace IntegratedImageProcessingApp.Forms
                     "／未命中 " +
                     sourceCacheMissCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 : string.Empty;
+            string sourceDetailText = sourceRelationElapsedMilliseconds >= 0
+                ? " || 來源取得時間：" +
+                    sourceRelationElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    " ms || 灰階準備時間：" +
+                    Math.Max(0, sourceGrayElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    " ms || 來源影像處理時間：" +
+                    Math.Max(0, sourceImageProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    " ms || 來源遮罩合併時間：" +
+                    Math.Max(0, sourceMergeElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    " ms"
+                : string.Empty;
             return "來源區塊處理時間：" +
                 Math.Max(0, sourceProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
                 " ms || CCL時間：" +
@@ -673,7 +729,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Math.Max(0, mergeElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
                 " ms || 影像處理總時間：" +
                 Math.Max(0, processingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                " ms || 顯示時間：" + displayText + cacheText;
+                " ms || 顯示時間：" + displayText + sourceDetailText + cacheText;
         }
 
         private void UpdateObjectDefinitionDisplayTimingIfNeeded()
@@ -703,6 +759,10 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionCclElapsedMilliseconds,
                 objectDefinitionRetainedMaskElapsedMilliseconds,
                 objectDefinitionMergeElapsedMilliseconds,
+                objectDefinitionSourceRelationElapsedMilliseconds,
+                objectDefinitionSourceGrayElapsedMilliseconds,
+                objectDefinitionSourceImageProcessingElapsedMilliseconds,
+                objectDefinitionSourceMergeElapsedMilliseconds,
                 objectDefinitionSourceCacheHitCount,
                 objectDefinitionSourceCacheMissCount);
         }
@@ -825,7 +885,8 @@ namespace IntegratedImageProcessingApp.Forms
             LargeImageSource source,
             ObjectDefinitionSettings definition,
             Rectangle roi,
-            out bool sourceCacheHit)
+            out bool sourceCacheHit,
+            ObjectDefinitionSourceTiming timing = null)
         {
             Cv.Mat cachedMask;
             if (TryGetCachedObjectDefinitionSourceMask(definition, roi, out cachedMask))
@@ -853,7 +914,28 @@ namespace IntegratedImageProcessingApp.Forms
                     throw new InvalidOperationException("物件組來源群組沒有區塊");
                 }
 
-                return CreateLargeObjectJudgementGroupMask(source, objectJudgements, roi);
+                Cv.Mat createdGroupMask = null;
+                try
+                {
+                    createdGroupMask = CreateLargeObjectJudgementGroupMask(
+                        source,
+                        objectJudgements,
+                        roi,
+                        timing);
+                    return StoreObjectDefinitionSourceMaskInCache(
+                        definition,
+                        roi,
+                        ref createdGroupMask);
+                }
+                catch
+                {
+                    if (createdGroupMask != null)
+                    {
+                        createdGroupMask.Dispose();
+                    }
+
+                    throw;
+                }
             }
 
             ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements.Find(
@@ -865,9 +947,31 @@ namespace IntegratedImageProcessingApp.Forms
 
             List<ObjectJudgementProcessingSettings> processingSteps =
                 GetObjectJudgementProcessingChain(objectJudgement, -1);
-            using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(source, objectJudgement, roi))
+            Cv.Mat createdMask = null;
+            try
             {
-                return ApplyObjectJudgementProcessingOpenCv(baseMask, processingSteps);
+                using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(
+                    source,
+                    objectJudgement,
+                    roi,
+                    timing))
+                {
+                    createdMask = ApplyObjectJudgementProcessingOpenCv(baseMask, processingSteps);
+                }
+
+                return StoreObjectDefinitionSourceMaskInCache(
+                    definition,
+                    roi,
+                    ref createdMask);
+            }
+            catch
+            {
+                if (createdMask != null)
+                {
+                    createdMask.Dispose();
+                }
+
+                throw;
             }
         }
 
@@ -981,6 +1085,76 @@ namespace IntegratedImageProcessingApp.Forms
                     mask,
                     new Rectangle(0, 0, mask.Cols, mask.Rows));
                 return true;
+            }
+        }
+
+        private Cv.Mat StoreObjectDefinitionSourceMaskInCache(
+            ObjectDefinitionSettings definition,
+            Rectangle roi,
+            ref Cv.Mat sourceMask)
+        {
+            if (sourceMask == null)
+            {
+                throw new ArgumentNullException("sourceMask");
+            }
+
+            string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
+                ? "ObjectJudgement"
+                : definition.SourceType;
+            string maskKey;
+            Dictionary<string, Cv.Mat> cache;
+            if (string.Equals(sourceType, "Group", StringComparison.Ordinal))
+            {
+                ObjectJudgementGroupSettings group = FindObjectJudgementGroup(definition.SourceId);
+                if (group == null)
+                {
+                    throw new InvalidOperationException("物件組來源群組不存在");
+                }
+
+                List<ObjectJudgementSettings> objectJudgements = GetObjectJudgementsInGroup(group.Id);
+                maskKey = CreateObjectJudgementGroupMaskKey(
+                    CreateObjectJudgementGroupProcessingSignature(group.Id, objectJudgements),
+                    roi);
+                cache = objectJudgementGroupLargeMasks;
+            }
+            else
+            {
+                ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements.Find(
+                    item => string.Equals(item.Id, definition.SourceId, StringComparison.Ordinal));
+                if (objectJudgement == null)
+                {
+                    throw new InvalidOperationException("物件組來源區塊不存在");
+                }
+
+                maskKey = CreateObjectJudgementMaskKey(
+                    objectJudgement,
+                    GetObjectJudgementProcessingChain(objectJudgement, -1),
+                    roi);
+                cache = objectJudgementLargeMasks;
+            }
+
+            lock (objectJudgementMaskLock)
+            {
+                Cv.Mat previous;
+                if (cache.TryGetValue(maskKey, out previous) && previous != null)
+                {
+                    previous.Dispose();
+                }
+
+                Cv.Mat view = CreateLargeRoiMatView(
+                    sourceMask,
+                    new Rectangle(0, 0, sourceMask.Cols, sourceMask.Rows));
+                try
+                {
+                    cache[maskKey] = sourceMask;
+                    sourceMask = null;
+                    return view;
+                }
+                catch
+                {
+                    view.Dispose();
+                    throw;
+                }
             }
         }
 

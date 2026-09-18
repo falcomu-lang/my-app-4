@@ -1035,7 +1035,8 @@ namespace IntegratedImageProcessingApp.Forms
         private Cv.Mat CreateLargeObjectJudgementGroupMask(
             LargeImageSource originalSource,
             IList<ObjectJudgementSettings> objectJudgements,
-            Rectangle roi)
+            Rectangle roi,
+            ObjectDefinitionSourceTiming timing = null)
         {
             var combined = new Cv.Mat(
                 roi.Height,
@@ -1070,7 +1071,15 @@ namespace IntegratedImageProcessingApp.Forms
                         baseMask,
                         processingSteps))
                     {
+                        Stopwatch mergeStopwatch = timing == null
+                            ? null
+                            : Stopwatch.StartNew();
                         Cv.Cv2.BitwiseOr(combined, objectMask, combined);
+                        if (mergeStopwatch != null)
+                        {
+                            mergeStopwatch.Stop();
+                            timing.MaskMergeMilliseconds += mergeStopwatch.ElapsedMilliseconds;
+                        }
                     }
                 }
 
@@ -1640,23 +1649,58 @@ namespace IntegratedImageProcessingApp.Forms
         private Cv.Mat CreateLargeObjectJudgementBaseMask(
             LargeImageSource originalSource,
             ObjectJudgementSettings objectJudgement,
-            Rectangle roi)
+            Rectangle roi,
+            ObjectDefinitionSourceTiming timing = null)
         {
             var combined = new Cv.Mat(roi.Height, roi.Width, Cv.MatType.CV_8UC1, Cv.Scalar.All(0));
             try
             {
                 foreach (ImageRelationSettings relation in GetObjectJudgementRelations(objectJudgement))
                 {
+                    Stopwatch relationSourceStopwatch = timing == null
+                        ? null
+                        : Stopwatch.StartNew();
                     LargeImageSource relationSource = GetLargeRelationSource(originalSource, relation);
+                    if (relationSourceStopwatch != null)
+                    {
+                        relationSourceStopwatch.Stop();
+                        timing.RelationSourceMilliseconds += relationSourceStopwatch.ElapsedMilliseconds;
+                    }
                     try
                     {
+                        Stopwatch grayStopwatch = timing == null
+                            ? null
+                            : Stopwatch.StartNew();
                         using (Cv.Mat gray = GetOrCreateLargeRoiOpenCvGrayCache(relationSource, roi))
                         {
+                            if (grayStopwatch != null)
+                            {
+                                grayStopwatch.Stop();
+                                timing.GrayPreparationMilliseconds += grayStopwatch.ElapsedMilliseconds;
+                            }
+
+                            Stopwatch processingStopwatch = timing == null
+                                ? null
+                                : Stopwatch.StartNew();
                             using (Cv.Mat relationMask = CreateCombinedImageProcessingGroupMask(
                                 gray,
                                 GetImageProcessingStepsForRelation(relation)))
                             {
+                                if (processingStopwatch != null)
+                                {
+                                    processingStopwatch.Stop();
+                                    timing.ImageProcessingMilliseconds += processingStopwatch.ElapsedMilliseconds;
+                                }
+
+                                Stopwatch mergeStopwatch = timing == null
+                                    ? null
+                                    : Stopwatch.StartNew();
                                 Cv.Cv2.BitwiseOr(combined, relationMask, combined);
+                                if (mergeStopwatch != null)
+                                {
+                                    mergeStopwatch.Stop();
+                                    timing.MaskMergeMilliseconds += mergeStopwatch.ElapsedMilliseconds;
+                                }
                             }
                         }
                     }
