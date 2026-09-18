@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using IntegratedImageProcessingApp.Controls;
 using IntegratedImageProcessingApp.Services;
@@ -877,11 +878,7 @@ namespace IntegratedImageProcessingApp.Forms
                     connectivity,
                     Cv.MatType.CV_32SC1);
                 var result = new List<ObjectDefinitionDetectedObject>();
-                retainedMask = new Cv.Mat(
-                    sourceMask.Rows,
-                    sourceMask.Cols,
-                    Cv.MatType.CV_8UC1,
-                    Cv.Scalar.All(0));
+                var accepted = new bool[labelCount];
                 for (int label = 1; label < labelCount; label++)
                 {
                     int area = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Area);
@@ -895,12 +892,7 @@ namespace IntegratedImageProcessingApp.Forms
                         continue;
                     }
 
-                    using (var componentMask = new Cv.Mat())
-                    {
-                        Cv.Cv2.Compare(labels, label, componentMask, Cv.CmpType.EQ);
-                        Cv.Cv2.BitwiseOr(retainedMask, componentMask, retainedMask);
-                    }
-
+                    accepted[label] = true;
                     int x = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
                     int y = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Top);
                     int width = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Width);
@@ -910,6 +902,39 @@ namespace IntegratedImageProcessingApp.Forms
                         Bounds = new Rectangle(roi.X + x, roi.Y + y, width, height),
                         Area = area
                     });
+                }
+
+                retainedMask = new Cv.Mat(
+                    sourceMask.Rows,
+                    sourceMask.Cols,
+                    Cv.MatType.CV_8UC1,
+                    Cv.Scalar.All(0));
+                int[] labelsRow = new int[sourceMask.Width];
+                byte[] retainedRow = new byte[sourceMask.Width];
+                long labelsStride = labels.Step();
+                long retainedStride = retainedMask.Step();
+                for (int y = 0; y < sourceMask.Height; y++)
+                {
+                    Marshal.Copy(
+                        labels.Data + checked((int)(y * labelsStride)),
+                        labelsRow,
+                        0,
+                        labelsRow.Length);
+                    Array.Clear(retainedRow, 0, retainedRow.Length);
+                    for (int x = 0; x < labelsRow.Length; x++)
+                    {
+                        int label = labelsRow[x];
+                        if (label > 0 && label < accepted.Length && accepted[label])
+                        {
+                            retainedRow[x] = 255;
+                        }
+                    }
+
+                    Marshal.Copy(
+                        retainedRow,
+                        0,
+                        retainedMask.Data + checked((int)(y * retainedStride)),
+                        retainedRow.Length);
                 }
 
                 if (string.Equals(definition.MergeMethod, "Distance", StringComparison.Ordinal) &&
