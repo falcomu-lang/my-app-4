@@ -851,11 +851,19 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            string displaySignature = CreateObjectJudgementRelatedDisplaySignature(objectJudgement);
+            if (string.Equals(requestedObjectJudgementDisplaySignature, displaySignature, StringComparison.Ordinal) &&
+                IsObjectJudgementRelatedDisplayStateActive(objectJudgement))
+            {
+                return;
+            }
+
             if (string.Equals(objectJudgement.RelationType, "Group", StringComparison.Ordinal))
             {
                 // A block linked to a relation group shows the combined relation
                 // result in the processed-image tab before block processing runs.
                 ProcessImageRelationGroup(objectJudgement.RelationId);
+                requestedObjectJudgementDisplaySignature = displaySignature;
                 return;
             }
 
@@ -871,7 +879,75 @@ namespace IntegratedImageProcessingApp.Forms
                 // This also prepares the linked preprocessing source when the
                 // relation does not use the original image.
                 ProcessImageRelation(relationIndex);
+                requestedObjectJudgementDisplaySignature = displaySignature;
             }
+        }
+
+        private string CreateObjectJudgementRelatedDisplaySignature(ObjectJudgementSettings objectJudgement)
+        {
+            var parts = new List<string>
+            {
+                systemParameters.LastImagePath ?? string.Empty,
+                imageSourceGeneration.ToString(CultureInfo.InvariantCulture),
+                objectJudgement.RelationType ?? string.Empty,
+                objectJudgement.RelationId ?? string.Empty
+            };
+
+            List<ImageRelationSettings> relations;
+            if (string.Equals(objectJudgement.RelationType, "Group", StringComparison.Ordinal))
+            {
+                relations = GetImageRelationGroupRelations(objectJudgement.RelationId);
+            }
+            else
+            {
+                ImageRelationSettings relation = systemParameters.ImageRelations.FirstOrDefault(
+                    item => string.Equals(item.Id, objectJudgement.RelationId, StringComparison.Ordinal));
+                relations = relation == null
+                    ? new List<ImageRelationSettings>()
+                    : new List<ImageRelationSettings> { relation };
+            }
+
+            foreach (ImageRelationSettings relation in relations)
+            {
+                parts.Add(relation.Id ?? string.Empty);
+                parts.Add(relation.SourceType ?? string.Empty);
+                parts.Add(relation.SourceId ?? string.Empty);
+                parts.Add(relation.ProcessingType ?? string.Empty);
+                parts.Add(relation.ProcessingId ?? string.Empty);
+                foreach (ImageProcessingStepSettings step in GetImageProcessingStepsForRelation(relation))
+                {
+                    parts.Add(step.Id ?? string.Empty);
+                    parts.Add(step.Method ?? string.Empty);
+                    parts.Add(step.Parameters ?? string.Empty);
+                }
+            }
+
+            foreach (ImageProcessingStepSettings step in systemParameters.ImagePreprocessingSteps)
+            {
+                parts.Add("preprocess");
+                parts.Add(step.Id ?? string.Empty);
+                parts.Add(step.Method ?? string.Empty);
+                parts.Add(step.Parameters ?? string.Empty);
+            }
+
+            return string.Join("|", parts.ToArray());
+        }
+
+        private bool IsObjectJudgementRelatedDisplayStateActive(ObjectJudgementSettings objectJudgement)
+        {
+            if (string.Equals(objectJudgement.RelationType, "Group", StringComparison.Ordinal))
+            {
+                return string.Equals(activeImageRelationGroupId, objectJudgement.RelationId, StringComparison.Ordinal) &&
+                    imageProcessingExecutionRequested;
+            }
+
+            ImageRelationSettings relation = systemParameters.ImageRelations.FirstOrDefault(
+                item => string.Equals(item.Id, objectJudgement.RelationId, StringComparison.Ordinal));
+            return relation != null &&
+                string.IsNullOrWhiteSpace(activeImageRelationGroupId) &&
+                string.Equals(activeImageRelationSourceType, relation.SourceType, StringComparison.Ordinal) &&
+                string.Equals(activeImageRelationSourceId, relation.SourceId, StringComparison.Ordinal) &&
+                imageProcessingExecutionRequested;
         }
 
         private void AddObjectJudgementProcessing(int objectIndex)

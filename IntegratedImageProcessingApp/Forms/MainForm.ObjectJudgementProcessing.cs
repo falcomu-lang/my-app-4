@@ -52,6 +52,7 @@ namespace IntegratedImageProcessingApp.Forms
         private string completedObjectJudgementProcessingSignature;
         private string activeObjectJudgementGroupProcessingSignature;
         private string completedObjectJudgementGroupProcessingSignature;
+        private string requestedObjectJudgementDisplaySignature;
 
         private void BuildObjectJudgementProcessingParameterPanel(
             Panel panel,
@@ -535,10 +536,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            foreach (ObjectJudgementSettings objectJudgement in objectJudgements)
-            {
-                RequestObjectJudgementRelatedImageDisplays(objectJudgement);
-            }
+            // A group can contain several blocks and therefore several
+            // relation sources. Keep the first relation as the foreground
+            // preview, while the block pipeline still evaluates every
+            // relation in the background.
+            RequestObjectJudgementRelatedImageDisplays(objectJudgements[0]);
 
             InvalidateObjectJudgementProcessingResults();
             activeObjectJudgementId = null;
