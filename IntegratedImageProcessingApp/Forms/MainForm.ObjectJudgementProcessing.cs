@@ -1066,19 +1066,31 @@ namespace IntegratedImageProcessingApp.Forms
                     using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(
                         originalSource,
                         objectJudgement,
-                        roi))
-                    using (Cv.Mat objectMask = ApplyObjectJudgementProcessingOpenCv(
-                        baseMask,
-                        processingSteps))
+                        roi,
+                        timing))
                     {
+                        Stopwatch objectProcessingStopwatch = timing == null
+                            ? null
+                            : Stopwatch.StartNew();
+                        using (Cv.Mat objectMask = ApplyObjectJudgementProcessingOpenCv(
+                            baseMask,
+                            processingSteps))
+                        {
+                            if (objectProcessingStopwatch != null)
+                            {
+                                objectProcessingStopwatch.Stop();
+                                timing.ObjectProcessingMilliseconds += objectProcessingStopwatch.ElapsedMilliseconds;
+                            }
+
                         Stopwatch mergeStopwatch = timing == null
                             ? null
                             : Stopwatch.StartNew();
-                        Cv.Cv2.BitwiseOr(combined, objectMask, combined);
-                        if (mergeStopwatch != null)
-                        {
-                            mergeStopwatch.Stop();
-                            timing.MaskMergeMilliseconds += mergeStopwatch.ElapsedMilliseconds;
+                            Cv.Cv2.BitwiseOr(combined, objectMask, combined);
+                            if (mergeStopwatch != null)
+                            {
+                                mergeStopwatch.Stop();
+                                timing.MaskMergeMilliseconds += mergeStopwatch.ElapsedMilliseconds;
+                            }
                         }
                     }
                 }

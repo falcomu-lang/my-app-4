@@ -28,6 +28,7 @@ namespace IntegratedImageProcessingApp.Forms
         private long objectDefinitionSourceGrayElapsedMilliseconds;
         private long objectDefinitionSourceImageProcessingElapsedMilliseconds;
         private long objectDefinitionSourceMergeElapsedMilliseconds;
+        private long objectDefinitionSourceObjectProcessingElapsedMilliseconds;
         private long objectDefinitionCclElapsedMilliseconds;
         private long objectDefinitionRetainedMaskElapsedMilliseconds;
         private long objectDefinitionMergeElapsedMilliseconds;
@@ -68,6 +69,8 @@ namespace IntegratedImageProcessingApp.Forms
             public long ImageProcessingMilliseconds { get; set; }
 
             public long MaskMergeMilliseconds { get; set; }
+
+            public long ObjectProcessingMilliseconds { get; set; }
         }
 
         private void StartObjectDefinitionProcessing(string definitionId)
@@ -137,6 +140,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionSourceGrayElapsedMilliseconds = 0;
                 objectDefinitionSourceImageProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceMergeElapsedMilliseconds = 0;
+                objectDefinitionSourceObjectProcessingElapsedMilliseconds = 0;
                 objectDefinitionCclElapsedMilliseconds = 0;
                 objectDefinitionRetainedMaskElapsedMilliseconds = 0;
                 objectDefinitionMergeElapsedMilliseconds = 0;
@@ -160,6 +164,7 @@ namespace IntegratedImageProcessingApp.Forms
                     long sourceGrayElapsedMilliseconds = 0;
                     long sourceImageProcessingElapsedMilliseconds = 0;
                     long sourceMergeElapsedMilliseconds = 0;
+                    long sourceObjectProcessingElapsedMilliseconds = 0;
                     long cclElapsedMilliseconds = 0;
                     long retainedMaskElapsedMilliseconds = 0;
                     long mergeElapsedMilliseconds = 0;
@@ -194,6 +199,7 @@ namespace IntegratedImageProcessingApp.Forms
                             sourceGrayElapsedMilliseconds += sourceTiming.GrayPreparationMilliseconds;
                             sourceImageProcessingElapsedMilliseconds += sourceTiming.ImageProcessingMilliseconds;
                             sourceMergeElapsedMilliseconds += sourceTiming.MaskMergeMilliseconds;
+                            sourceObjectProcessingElapsedMilliseconds += sourceTiming.ObjectProcessingMilliseconds;
                             using (sourceMask)
                             {
                                 string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
@@ -266,6 +272,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     objectDefinitionSourceGrayElapsedMilliseconds = sourceGrayElapsedMilliseconds;
                                     objectDefinitionSourceImageProcessingElapsedMilliseconds = sourceImageProcessingElapsedMilliseconds;
                                     objectDefinitionSourceMergeElapsedMilliseconds = sourceMergeElapsedMilliseconds;
+                                    objectDefinitionSourceObjectProcessingElapsedMilliseconds = sourceObjectProcessingElapsedMilliseconds;
                                     objectDefinitionCclElapsedMilliseconds = cclElapsedMilliseconds;
                                     objectDefinitionRetainedMaskElapsedMilliseconds = retainedMaskElapsedMilliseconds;
                                     objectDefinitionMergeElapsedMilliseconds = mergeElapsedMilliseconds;
@@ -288,6 +295,7 @@ namespace IntegratedImageProcessingApp.Forms
                                             sourceGrayElapsedMilliseconds,
                                             sourceImageProcessingElapsedMilliseconds,
                                             sourceMergeElapsedMilliseconds,
+                                            sourceObjectProcessingElapsedMilliseconds,
                                             sourceCacheHitCount,
                                             sourceCacheMissCount);
                                     leftObjectsDisplayControl.InvalidateImageView();
@@ -632,6 +640,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionSourceGrayElapsedMilliseconds = 0;
                 objectDefinitionSourceImageProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceMergeElapsedMilliseconds = 0;
+                objectDefinitionSourceObjectProcessingElapsedMilliseconds = 0;
                 objectDefinitionCclElapsedMilliseconds = 0;
                 objectDefinitionRetainedMaskElapsedMilliseconds = 0;
                 objectDefinitionMergeElapsedMilliseconds = 0;
@@ -696,6 +705,7 @@ namespace IntegratedImageProcessingApp.Forms
             long sourceGrayElapsedMilliseconds = -1,
             long sourceImageProcessingElapsedMilliseconds = -1,
             long sourceMergeElapsedMilliseconds = -1,
+            long sourceObjectProcessingElapsedMilliseconds = -1,
             int sourceCacheHitCount = -1,
             int sourceCacheMissCount = -1)
         {
@@ -708,15 +718,13 @@ namespace IntegratedImageProcessingApp.Forms
                     "／未命中 " +
                     sourceCacheMissCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 : string.Empty;
-            string sourceDetailText = sourceRelationElapsedMilliseconds >= 0
-                ? " || 來源取得時間：" +
-                    sourceRelationElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                    " ms || 灰階準備時間：" +
-                    Math.Max(0, sourceGrayElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                    " ms || 來源影像處理時間：" +
+            string sourceDetailText = sourceImageProcessingElapsedMilliseconds >= 0
+                ? " || 來源影像處理時間：" +
                     Math.Max(0, sourceImageProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
                     " ms || 來源遮罩合併時間：" +
                     Math.Max(0, sourceMergeElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    " ms || 區塊後處理時間：" +
+                    Math.Max(0, sourceObjectProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
                     " ms"
                 : string.Empty;
             return "來源區塊處理時間：" +
@@ -763,6 +771,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionSourceGrayElapsedMilliseconds,
                 objectDefinitionSourceImageProcessingElapsedMilliseconds,
                 objectDefinitionSourceMergeElapsedMilliseconds,
+                objectDefinitionSourceObjectProcessingElapsedMilliseconds,
                 objectDefinitionSourceCacheHitCount,
                 objectDefinitionSourceCacheMissCount);
         }
@@ -956,7 +965,15 @@ namespace IntegratedImageProcessingApp.Forms
                     roi,
                     timing))
                 {
+                    Stopwatch objectProcessingStopwatch = timing == null
+                        ? null
+                        : Stopwatch.StartNew();
                     createdMask = ApplyObjectJudgementProcessingOpenCv(baseMask, processingSteps);
+                    if (objectProcessingStopwatch != null)
+                    {
+                        objectProcessingStopwatch.Stop();
+                        timing.ObjectProcessingMilliseconds += objectProcessingStopwatch.ElapsedMilliseconds;
+                    }
                 }
 
                 return StoreObjectDefinitionSourceMaskInCache(
