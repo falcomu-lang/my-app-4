@@ -25,6 +25,15 @@ namespace IntegratedImageProcessingApp.Forms
             object sender,
             LargeImageOverlayPaintEventArgs e)
         {
+            // During panning, draw only the base image. The block-result overlay
+            // is intentionally restored by the normal repaint after MouseUp so
+            // repeated viewport movement does not keep compositing red pixels.
+            ImageDisplayControl display = sender as ImageDisplayControl;
+            if (display != null && display.IsPanning)
+            {
+                return;
+            }
+
             string selectedFunction = functionListBox.SelectedItem as string;
             if (GetSelectedObjectJudgementIndex() < 0 &&
                 string.IsNullOrEmpty(GetObjectJudgementGroupId(selectedFunction)))

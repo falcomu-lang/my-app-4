@@ -387,6 +387,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void InvalidateObjectJudgementProcessingResults()
         {
+            InvalidateObjectDefinitionResults();
             objectJudgementParameterApplyInProgress = false;
             activeObjectJudgementProcessingIndex = -1;
             activeObjectJudgementProcessingSignature = null;

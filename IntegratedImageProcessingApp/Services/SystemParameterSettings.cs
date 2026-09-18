@@ -185,11 +185,41 @@ namespace IntegratedImageProcessingApp.Services
             Id = Guid.NewGuid().ToString("N");
             ObjectJudgementIds = new List<string>();
             ProcessingSteps = new List<ObjectDefinitionProcessingSettings>();
+            SourceType = "ObjectJudgement";
+            Connectivity = 8;
+            MinArea = 0;
+            MaxArea = 0;
+            NumberingOrder = "TopToBottomLeftToRight";
+            MergeMethod = "None";
+            MaxMergeDistance = 0;
+            ResultBoxLineWidth = 2;
+            ResultNumberFontSize = 10;
         }
 
         public string Id { get; set; }
 
         public string DisplayName { get; set; }
+
+        // The source is stored independently from the display name and list order.
+        public string SourceType { get; set; }
+
+        public string SourceId { get; set; }
+
+        public int Connectivity { get; set; }
+
+        public double MinArea { get; set; }
+
+        public double MaxArea { get; set; }
+
+        public string NumberingOrder { get; set; }
+
+        public string MergeMethod { get; set; }
+
+        public int MaxMergeDistance { get; set; }
+
+        public int ResultBoxLineWidth { get; set; }
+
+        public int ResultNumberFontSize { get; set; }
 
         public List<string> ObjectJudgementIds { get; private set; }
 

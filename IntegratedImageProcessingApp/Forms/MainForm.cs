@@ -294,8 +294,10 @@ namespace IntegratedImageProcessingApp.Forms
             rightOriginalDisplayControl.RoiSelected += ImageDisplayControl_RoiSelected;
             leftProcessedDisplayControl.LargeImageOverlayPaint += ProcessedDisplayControl_LargeImageOverlayPaint;
             leftBlockProcessingDisplayControl.LargeImageOverlayPaint += BlockProcessingDisplayControl_LargeImageOverlayPaint;
+            leftObjectsDisplayControl.LargeImageOverlayPaint += ObjectDefinitionDisplayControl_LargeImageOverlayPaint;
             rightProcessedDisplayControl.LargeImageOverlayPaint += ProcessedDisplayControl_LargeImageOverlayPaint;
             rightBlockProcessingDisplayControl.LargeImageOverlayPaint += BlockProcessingDisplayControl_LargeImageOverlayPaint;
+            rightObjectsDisplayControl.LargeImageOverlayPaint += ObjectDefinitionDisplayControl_LargeImageOverlayPaint;
             imageProcessingDebounceTimer = new System.Windows.Forms.Timer();
             imageProcessingDebounceTimer.Interval = 200;
             imageProcessingDebounceTimer.Tick += ImageProcessingDebounceTimer_Tick;
@@ -7849,6 +7851,8 @@ namespace IntegratedImageProcessingApp.Forms
                     rightPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
                     leftBlockProcessingDisplayControl.SetSharedLargeImageSource(sharedSource);
                     rightBlockProcessingDisplayControl.SetSharedLargeImageSource(sharedSource);
+                    leftObjectsDisplayControl.SetSharedLargeImageSource(sharedSource);
+                    rightObjectsDisplayControl.SetSharedLargeImageSource(sharedSource);
                     statusLabel.Text = "已載入大圖共用切圖來源";
 
                     // Warm the shared full-resolution grayscale OpenCV source
@@ -7910,6 +7914,8 @@ namespace IntegratedImageProcessingApp.Forms
                 rightPreprocessedDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
                 leftBlockProcessingDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
                 rightBlockProcessingDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
+                leftObjectsDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
+                rightObjectsDisplayControl.SetDisplayImage(new Bitmap(loadedBitmap), false);
             }
             finally
             {

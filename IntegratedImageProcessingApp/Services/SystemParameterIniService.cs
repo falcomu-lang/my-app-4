@@ -191,7 +191,57 @@ namespace IntegratedImageProcessingApp.Services
                         sections,
                         SectionObjectDefinition,
                         prefix + ".DisplayName",
-                        string.Empty)
+                        string.Empty),
+                    SourceType = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceType",
+                        "ObjectJudgement"),
+                    SourceId = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceId",
+                        string.Empty),
+                    Connectivity = GetInt(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".Connectivity",
+                        8),
+                    MinArea = GetDouble(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".MinArea",
+                        0),
+                    MaxArea = GetDouble(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".MaxArea",
+                        0),
+                    NumberingOrder = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".NumberingOrder",
+                        "TopToBottomLeftToRight"),
+                    MergeMethod = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".MergeMethod",
+                        "None"),
+                    MaxMergeDistance = GetInt(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".MaxMergeDistance",
+                        0),
+                    ResultBoxLineWidth = GetInt(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".ResultBoxLineWidth",
+                        2),
+                    ResultNumberFontSize = GetInt(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".ResultNumberFontSize",
+                        10)
                 };
                 string memberIds = GetValue(
                     sections,
@@ -418,6 +468,16 @@ namespace IntegratedImageProcessingApp.Services
                     string prefix = "Definition" + (index + 1).ToString(CultureInfo.InvariantCulture);
                     writer.WriteLine("{0}.Id={1}", prefix, Escape(definition.Id));
                     writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(definition.DisplayName));
+                    writer.WriteLine("{0}.SourceType={1}", prefix, Escape(definition.SourceType));
+                    writer.WriteLine("{0}.SourceId={1}", prefix, Escape(definition.SourceId));
+                    writer.WriteLine("{0}.Connectivity={1}", prefix, definition.Connectivity.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MinArea={1}", prefix, definition.MinArea.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MaxArea={1}", prefix, definition.MaxArea.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.NumberingOrder={1}", prefix, Escape(definition.NumberingOrder));
+                    writer.WriteLine("{0}.MergeMethod={1}", prefix, Escape(definition.MergeMethod));
+                    writer.WriteLine("{0}.MaxMergeDistance={1}", prefix, definition.MaxMergeDistance.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.ResultBoxLineWidth={1}", prefix, definition.ResultBoxLineWidth.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.ResultNumberFontSize={1}", prefix, definition.ResultNumberFontSize.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine(
                         "{0}.ObjectJudgementIds={1}",
                         prefix,
@@ -699,6 +759,41 @@ namespace IntegratedImageProcessingApp.Services
             foreach (ObjectDefinitionSettings definition in settings.ObjectDefinitions)
             {
                 definition.ObjectJudgementIds.RemoveAll(id => !objectJudgementIds.Contains(id));
+                if (string.Equals(definition.SourceType, "ObjectJudgement", StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(definition.SourceId) &&
+                    !objectJudgementIds.Contains(definition.SourceId))
+                {
+                    definition.SourceId = string.Empty;
+                }
+                else if (string.Equals(definition.SourceType, "Group", StringComparison.Ordinal) &&
+                    !string.IsNullOrWhiteSpace(definition.SourceId) &&
+                    !objectJudgementGroupIds.Contains(definition.SourceId))
+                {
+                    definition.SourceId = string.Empty;
+                }
+
+                if (definition.Connectivity != 4 && definition.Connectivity != 8)
+                {
+                    definition.Connectivity = 8;
+                }
+
+                if (definition.MinArea < 0)
+                {
+                    definition.MinArea = 0;
+                }
+
+                if (definition.MaxArea < 0)
+                {
+                    definition.MaxArea = 0;
+                }
+
+                if (definition.MaxMergeDistance < 0)
+                {
+                    definition.MaxMergeDistance = 0;
+                }
+
+                definition.ResultBoxLineWidth = Math.Max(1, Math.Min(20, definition.ResultBoxLineWidth));
+                definition.ResultNumberFontSize = Math.Max(6, Math.Min(72, definition.ResultNumberFontSize));
             }
         }
 
@@ -762,6 +857,14 @@ namespace IntegratedImageProcessingApp.Services
         {
             int value;
             return int.TryParse(GetValue(sections, section, key, string.Empty), NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
+                ? value
+                : defaultValue;
+        }
+
+        private static double GetDouble(Dictionary<string, Dictionary<string, string>> sections, string section, string key, double defaultValue)
+        {
+            double value;
+            return double.TryParse(GetValue(sections, section, key, string.Empty), NumberStyles.Float, CultureInfo.InvariantCulture, out value)
                 ? value
                 : defaultValue;
         }

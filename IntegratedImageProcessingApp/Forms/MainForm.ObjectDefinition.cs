@@ -252,18 +252,9 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            for (int processingIndex = 0;
-                processingIndex < definition.ProcessingSteps.Count;
-                processingIndex++)
-            {
-                ObjectDefinitionProcessingSettings processing = definition.ProcessingSteps[processingIndex];
-                int processingVisibleIndex = insertIndex;
-                functionListBox.Items.Insert(
-                    insertIndex++,
-                    "        " + GetObjectDefinitionProcessingDisplayName(processing, processingIndex));
-                visibleObjectDefinitionProcessingIds[processingVisibleIndex] = processing.Id;
-                visibleObjectDefinitionProcessingOwnerIds[processingVisibleIndex] = definition.Id;
-            }
+            // Object definitions are configured as one complete numbering flow
+            // in the right parameter panel. Legacy child-processing records are
+            // kept in the model for INI compatibility, but are no longer shown.
         }
 
         private void SelectObjectDefinitionItem(string definitionId)
@@ -312,7 +303,6 @@ namespace IntegratedImageProcessingApp.Forms
             menu.Items.Add("上移", null, delegate { MoveObjectDefinition(definition.Id, -1); });
             menu.Items.Add("下移", null, delegate { MoveObjectDefinition(definition.Id, 1); });
             menu.Items.Add("命名", null, delegate { RenameObjectDefinition(definition.Id); });
-            menu.Items.Add("新增處理", null, delegate { AddObjectDefinitionProcessing(definition.Id); });
             menu.Items.Add("刪除", null, delegate { DeleteObjectDefinition(definition.Id); });
             menu.Show(functionListBox, location);
         }
@@ -368,16 +358,34 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            string sourceId = definition.ObjectJudgementIds.FirstOrDefault(
-                id => systemParameters.ObjectJudgements.Any(
-                    objectJudgement => string.Equals(objectJudgement.Id, id, StringComparison.Ordinal)));
-            if (string.IsNullOrEmpty(sourceId))
+            if (string.IsNullOrWhiteSpace(definition.SourceId) &&
+                definition.ObjectJudgementIds.Count > 0)
+            {
+                // Preserve compatibility with older settings that only stored the first source ID.
+                definition.SourceType = "ObjectJudgement";
+                definition.SourceId = definition.ObjectJudgementIds.FirstOrDefault(
+                    id => systemParameters.ObjectJudgements.Any(
+                        objectJudgement => string.Equals(objectJudgement.Id, id, StringComparison.Ordinal)));
+            }
+
+            bool hasSource = !string.IsNullOrWhiteSpace(definition.SourceId);
+            if (hasSource && string.Equals(definition.SourceType, "Group", StringComparison.Ordinal))
+            {
+                hasSource = FindObjectJudgementGroup(definition.SourceId) != null;
+            }
+            else if (hasSource)
+            {
+                hasSource = systemParameters.ObjectJudgements.Any(
+                    objectJudgement => string.Equals(objectJudgement.Id, definition.SourceId, StringComparison.Ordinal));
+            }
+
+            if (!hasSource)
             {
                 statusLabel.Text = definition.DisplayName + " 尚未設定來源區塊";
                 return;
             }
 
-            statusLabel.Text = definition.DisplayName + " 已開始處理，來源為" + GetObjectJudgementDisplayNameById(sourceId);
+            StartObjectDefinitionProcessing(definition.Id);
         }
 
         private void ProcessObjectDefinitionProcessing(string definitionId, string processingId)
@@ -588,6 +596,7 @@ namespace IntegratedImageProcessingApp.Forms
             parameterPlaceholderLabel.Visible = false;
             var panel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
             objectDefinitionParameterPanel = panel;
+
             panel.Controls.Add(new Label
             {
                 Text = "來源區塊",
@@ -606,7 +615,8 @@ namespace IntegratedImageProcessingApp.Forms
             source.Items.Add(new ObjectDefinitionSourceChoice
             {
                 DisplayText = "未指定來源區塊",
-                Id = string.Empty
+                Id = string.Empty,
+                SourceType = string.Empty
             });
             for (int index = 0; index < systemParameters.ObjectJudgements.Count; index++)
             {
@@ -614,16 +624,38 @@ namespace IntegratedImageProcessingApp.Forms
                 source.Items.Add(new ObjectDefinitionSourceChoice
                 {
                     DisplayText = GetObjectJudgementDisplayName(objectJudgement, index),
-                    Id = objectJudgement.Id
+                    Id = objectJudgement.Id,
+                    SourceType = "ObjectJudgement"
                 });
             }
 
-            string currentSourceId = definition.ObjectJudgementIds.FirstOrDefault();
+            for (int index = 0; index < systemParameters.ObjectJudgementGroups.Count; index++)
+            {
+                ObjectJudgementGroupSettings group = systemParameters.ObjectJudgementGroups[index];
+                source.Items.Add(new ObjectDefinitionSourceChoice
+                {
+                    DisplayText = "群組：" + CreateObjectJudgementGroupText(group, 0).Trim(),
+                    Id = group.Id,
+                    SourceType = "Group"
+                });
+            }
+
+            string currentSourceType = string.IsNullOrWhiteSpace(definition.SourceType)
+                ? "ObjectJudgement"
+                : definition.SourceType;
+            string currentSourceId = definition.SourceId;
+            if (string.IsNullOrWhiteSpace(currentSourceId))
+            {
+                currentSourceId = definition.ObjectJudgementIds.FirstOrDefault();
+            }
+
             source.SelectedIndex = 0;
             for (int index = 0; index < source.Items.Count; index++)
             {
                 ObjectDefinitionSourceChoice choice = source.Items[index] as ObjectDefinitionSourceChoice;
-                if (choice != null && string.Equals(choice.Id, currentSourceId, StringComparison.Ordinal))
+                if (choice != null &&
+                    string.Equals(choice.Id, currentSourceId, StringComparison.Ordinal) &&
+                    string.Equals(choice.SourceType, currentSourceType, StringComparison.Ordinal))
                 {
                     source.SelectedIndex = index;
                     break;
@@ -631,29 +663,257 @@ namespace IntegratedImageProcessingApp.Forms
             }
             panel.Controls.Add(source);
 
+            panel.Controls.Add(new Label
+            {
+                Text = "連通方式",
+                Left = 8,
+                Top = 78,
+                Width = 250
+            });
+
+            var connectivity = new ComboBox
+            {
+                Left = 8,
+                Top = 100,
+                Width = parameterPanel.Width - 18,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            connectivity.Items.Add(new ObjectDefinitionOption("4-連通", 4));
+            connectivity.Items.Add(new ObjectDefinitionOption("8-連通", 8));
+            connectivity.SelectedIndex = definition.Connectivity == 4 ? 0 : 1;
+            panel.Controls.Add(connectivity);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "最小面積（0 表示不限）",
+                Left = 8,
+                Top = 134,
+                Width = 250
+            });
+            var minArea = CreateObjectDefinitionNumberBox(definition.MinArea, 8, 156, parameterPanel.Width - 18);
+            panel.Controls.Add(minArea);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "最大面積（0 表示不限）",
+                Left = 8,
+                Top = 190,
+                Width = 250
+            });
+            var maxArea = CreateObjectDefinitionNumberBox(definition.MaxArea, 8, 212, parameterPanel.Width - 18);
+            panel.Controls.Add(maxArea);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "編號順序",
+                Left = 8,
+                Top = 246,
+                Width = 250
+            });
+            var numberingOrder = new ComboBox
+            {
+                Left = 8,
+                Top = 268,
+                Width = parameterPanel.Width - 18,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            numberingOrder.Items.Add(new ObjectDefinitionOption("由上到下、由左到右", "TopToBottomLeftToRight"));
+            numberingOrder.Items.Add(new ObjectDefinitionOption("由左到右、由上到下", "LeftToRightTopToBottom"));
+            numberingOrder.Items.Add(new ObjectDefinitionOption("面積由大到小", "AreaDescending"));
+            numberingOrder.Items.Add(new ObjectDefinitionOption("面積由小到大", "AreaAscending"));
+            SelectObjectDefinitionOption(numberingOrder, definition.NumberingOrder, "TopToBottomLeftToRight");
+            panel.Controls.Add(numberingOrder);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "物件連結方式",
+                Left = 8,
+                Top = 302,
+                Width = 250
+            });
+            var mergeMethod = new ComboBox
+            {
+                Left = 8,
+                Top = 324,
+                Width = parameterPanel.Width - 18,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            mergeMethod.Items.Add(new ObjectDefinitionOption("不合併", "None"));
+            mergeMethod.Items.Add(new ObjectDefinitionOption("依距離合併（Merge by Distance）", "Distance"));
+            SelectObjectDefinitionOption(mergeMethod, definition.MergeMethod, "None");
+            panel.Controls.Add(mergeMethod);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "最大合併距離（pixels）",
+                Left = 8,
+                Top = 358,
+                Width = 250
+            });
+            var mergeDistance = CreateObjectDefinitionNumberBox(
+                definition.MaxMergeDistance,
+                8,
+                380,
+                parameterPanel.Width - 18);
+            mergeDistance.Maximum = 10000;
+            mergeDistance.Enabled = string.Equals(definition.MergeMethod, "Distance", StringComparison.Ordinal);
+            panel.Controls.Add(mergeDistance);
+            mergeMethod.SelectedIndexChanged += delegate
+            {
+                ObjectDefinitionOption option = mergeMethod.SelectedItem as ObjectDefinitionOption;
+                mergeDistance.Enabled = option != null &&
+                    string.Equals(Convert.ToString(option.Value, CultureInfo.InvariantCulture), "Distance", StringComparison.Ordinal);
+            };
+
+            panel.Controls.Add(new Label
+            {
+                Text = "黃框線寬度（pixels）",
+                Left = 8,
+                Top = 414,
+                Width = 250
+            });
+            var resultBoxLineWidth = CreateObjectDefinitionNumberBox(
+                definition.ResultBoxLineWidth,
+                8,
+                436,
+                parameterPanel.Width - 18);
+            resultBoxLineWidth.Maximum = 20;
+            resultBoxLineWidth.Value = Math.Max(1, Math.Min(resultBoxLineWidth.Maximum, definition.ResultBoxLineWidth));
+            panel.Controls.Add(resultBoxLineWidth);
+
+            panel.Controls.Add(new Label
+            {
+                Text = "編號文字大小（points）",
+                Left = 8,
+                Top = 470,
+                Width = 250
+            });
+            var resultNumberFontSize = CreateObjectDefinitionNumberBox(
+                definition.ResultNumberFontSize,
+                8,
+                492,
+                parameterPanel.Width - 18);
+            resultNumberFontSize.Maximum = 72;
+            resultNumberFontSize.Value = Math.Max(6, Math.Min(resultNumberFontSize.Maximum, definition.ResultNumberFontSize));
+            panel.Controls.Add(resultNumberFontSize);
+
+            var measurementNote = new Label
+            {
+                Text = "量測來源固定使用原始二值影像；連結設定只影響物件編號，不修改量測邊界。",
+                Left = 8,
+                Top = 534,
+                Width = parameterPanel.Width - 18,
+                Height = 42,
+                AutoEllipsis = false
+            };
+            panel.Controls.Add(measurementNote);
+
             var apply = new Button
             {
-                Text = "確認",
+                Text = "套用",
                 Left = 8,
-                Top = 76,
+                Top = 586,
                 Width = parameterPanel.Width - 18
             };
             apply.Click += delegate
             {
                 ObjectDefinitionSourceChoice choice = source.SelectedItem as ObjectDefinitionSourceChoice;
+                ObjectDefinitionOption connectivityOption = connectivity.SelectedItem as ObjectDefinitionOption;
+                ObjectDefinitionOption orderOption = numberingOrder.SelectedItem as ObjectDefinitionOption;
+                ObjectDefinitionOption mergeOption = mergeMethod.SelectedItem as ObjectDefinitionOption;
+
+                definition.SourceType = choice == null ? string.Empty : choice.SourceType;
+                definition.SourceId = choice == null ? string.Empty : choice.Id;
                 definition.ObjectJudgementIds.Clear();
-                if (choice != null && !string.IsNullOrEmpty(choice.Id))
+                if (choice != null && string.Equals(choice.SourceType, "ObjectJudgement", StringComparison.Ordinal) &&
+                    !string.IsNullOrEmpty(choice.Id))
                 {
                     definition.ObjectJudgementIds.Add(choice.Id);
                 }
 
+                definition.Connectivity = connectivityOption == null ? 8 : (int)connectivityOption.Value;
+                definition.MinArea = (double)minArea.Value;
+                definition.MaxArea = (double)maxArea.Value;
+                definition.NumberingOrder = orderOption == null
+                    ? "TopToBottomLeftToRight"
+                    : Convert.ToString(orderOption.Value, CultureInfo.InvariantCulture);
+                definition.MergeMethod = mergeOption == null ? "None" : Convert.ToString(mergeOption.Value, CultureInfo.InvariantCulture);
+                definition.MaxMergeDistance = definition.MergeMethod == "Distance"
+                    ? (int)mergeDistance.Value
+                    : 0;
+                definition.ResultBoxLineWidth = Math.Max(1, Math.Min(20, (int)resultBoxLineWidth.Value));
+                definition.ResultNumberFontSize = Math.Max(6, Math.Min(72, (int)resultNumberFontSize.Value));
+
+                if (definition.MaxArea > 0 && definition.MaxArea < definition.MinArea)
+                {
+                    definition.MaxArea = definition.MinArea;
+                }
+
                 SaveSystemParameters();
-                statusLabel.Text = "已確認" + definition.DisplayName + "的來源區塊";
+                InvalidateObjectDefinitionDisplayOnly(definition.Id);
+                statusLabel.Text = "已套用" + definition.DisplayName + "設定，等待物件編號處理";
             };
             panel.Controls.Add(apply);
+
+            var cancel = new Button
+            {
+                Text = "取消",
+                Left = 8,
+                Top = 622,
+                Width = parameterPanel.Width - 18
+            };
+            cancel.Click += delegate
+            {
+                ShowObjectDefinitionParameterPanel(definition.Id);
+                statusLabel.Text = "已取消" + definition.DisplayName + "的修改";
+            };
+            panel.Controls.Add(cancel);
+
             parameterPanel.Controls.Add(panel);
             panel.BringToFront();
             rightPanelTitleLabel.Text = definition.DisplayName + " 參數";
+        }
+
+        private static NumericUpDown CreateObjectDefinitionNumberBox(
+            double value,
+            int left,
+            int top,
+            int width)
+        {
+            var numberBox = new NumericUpDown
+            {
+                Left = left,
+                Top = top,
+                Width = width,
+                Minimum = 0,
+                Maximum = 2000000000,
+                DecimalPlaces = 0,
+                Increment = 1,
+                ThousandsSeparator = true
+            };
+            numberBox.Value = Math.Max(
+                numberBox.Minimum,
+                Math.Min(numberBox.Maximum, (decimal)Math.Max(0, value)));
+            return numberBox;
+        }
+
+        private static void SelectObjectDefinitionOption(
+            ComboBox comboBox,
+            string selectedValue,
+            string defaultValue)
+        {
+            string value = string.IsNullOrWhiteSpace(selectedValue) ? defaultValue : selectedValue;
+            for (int index = 0; index < comboBox.Items.Count; index++)
+            {
+                ObjectDefinitionOption option = comboBox.Items[index] as ObjectDefinitionOption;
+                if (option != null && string.Equals(Convert.ToString(option.Value, CultureInfo.InvariantCulture), value, StringComparison.Ordinal))
+                {
+                    comboBox.SelectedIndex = index;
+                    return;
+                }
+            }
+
+            comboBox.SelectedIndex = comboBox.Items.Count > 0 ? 0 : -1;
         }
 
         private void ShowObjectDefinitionProcessingParameterPanel(
@@ -715,6 +975,25 @@ namespace IntegratedImageProcessingApp.Forms
         {
             public string DisplayText { get; set; }
             public string Id { get; set; }
+            public string SourceType { get; set; }
+
+            public override string ToString()
+            {
+                return DisplayText;
+            }
+        }
+
+        private sealed class ObjectDefinitionOption
+        {
+            public ObjectDefinitionOption(string displayText, object value)
+            {
+                DisplayText = displayText;
+                Value = value;
+            }
+
+            public string DisplayText { get; private set; }
+
+            public object Value { get; private set; }
 
             public override string ToString()
             {
