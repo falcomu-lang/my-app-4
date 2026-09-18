@@ -117,10 +117,14 @@ namespace IntegratedImageProcessingApp.Forms
                             using (Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(source, definition, roi))
                             {
                                 string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
+                                Cv.Mat retainedMask;
                                 completedResults[resultKey] =
-                                    CreateObjectDefinitionDetectedObjects(sourceMask, roi, definition);
-                                completedSourceMasks[resultKey] =
-                                    CreateObjectDefinitionRetainedMask(sourceMask, definition);
+                                    CreateObjectDefinitionDetectedObjects(
+                                        sourceMask,
+                                        roi,
+                                        definition,
+                                        out retainedMask);
+                                completedSourceMasks[resultKey] = retainedMask;
                             }
                         }
 
@@ -177,6 +181,8 @@ namespace IntegratedImageProcessingApp.Forms
                                         BuildObjectDefinitionTimingText(
                                             elapsedMilliseconds,
                                             displayElapsedMilliseconds);
+                                    leftObjectsDisplayControl.InvalidateImageView();
+                                    rightObjectsDisplayControl.InvalidateImageView();
                                 }));
                         displaySourceMasksTransferred = true;
                     }
@@ -266,10 +272,14 @@ namespace IntegratedImageProcessingApp.Forms
                                     roi))
                                 {
                                     string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
+                                    Cv.Mat retainedMask;
                                     completedResults[resultKey] =
-                                        CreateObjectDefinitionDetectedObjects(sourceMask, roi, definition);
-                                    completedSourceMasks[resultKey] =
-                                        CreateObjectDefinitionRetainedMask(sourceMask, definition);
+                                        CreateObjectDefinitionDetectedObjects(
+                                            sourceMask,
+                                            roi,
+                                            definition,
+                                            out retainedMask);
+                                    completedSourceMasks[resultKey] = retainedMask;
                                 }
                             }
                         }
@@ -842,13 +852,16 @@ namespace IntegratedImageProcessingApp.Forms
         private static List<ObjectDefinitionDetectedObject> CreateObjectDefinitionDetectedObjects(
             Cv.Mat sourceMask,
             Rectangle roi,
-            ObjectDefinitionSettings definition)
+            ObjectDefinitionSettings definition,
+            out Cv.Mat retainedMask)
         {
             if (sourceMask == null || sourceMask.Empty())
             {
+                retainedMask = new Cv.Mat();
                 return new List<ObjectDefinitionDetectedObject>();
             }
 
+            retainedMask = null;
             using (var labels = new Cv.Mat())
             using (var stats = new Cv.Mat())
             using (var centroids = new Cv.Mat())
@@ -864,6 +877,11 @@ namespace IntegratedImageProcessingApp.Forms
                     connectivity,
                     Cv.MatType.CV_32SC1);
                 var result = new List<ObjectDefinitionDetectedObject>();
+                retainedMask = new Cv.Mat(
+                    sourceMask.Rows,
+                    sourceMask.Cols,
+                    Cv.MatType.CV_8UC1,
+                    Cv.Scalar.All(0));
                 for (int label = 1; label < labelCount; label++)
                 {
                     int area = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Area);
@@ -875,6 +893,12 @@ namespace IntegratedImageProcessingApp.Forms
                     if (definition.MaxArea > 0 && area > definition.MaxArea)
                     {
                         continue;
+                    }
+
+                    using (var componentMask = new Cv.Mat())
+                    {
+                        Cv.Cv2.Compare(labels, label, componentMask, Cv.CmpType.EQ);
+                        Cv.Cv2.BitwiseOr(retainedMask, componentMask, retainedMask);
                     }
 
                     int x = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
@@ -897,65 +921,6 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 return result;
-            }
-        }
-
-        private static Cv.Mat CreateObjectDefinitionRetainedMask(
-            Cv.Mat sourceMask,
-            ObjectDefinitionSettings definition)
-        {
-            if (sourceMask == null || sourceMask.Empty())
-            {
-                return new Cv.Mat();
-            }
-
-            if (definition == null ||
-                (definition.MinArea <= 0 && definition.MaxArea <= 0))
-            {
-                return sourceMask.Clone();
-            }
-
-            using (var labels = new Cv.Mat())
-            using (var stats = new Cv.Mat())
-            using (var centroids = new Cv.Mat())
-            {
-                Cv.PixelConnectivity connectivity = definition.Connectivity == 4
-                    ? Cv.PixelConnectivity.Connectivity4
-                    : Cv.PixelConnectivity.Connectivity8;
-                int labelCount = Cv.Cv2.ConnectedComponentsWithStats(
-                    sourceMask,
-                    labels,
-                    stats,
-                    centroids,
-                    connectivity,
-                    Cv.MatType.CV_32SC1);
-                var retainedMask = new Cv.Mat(
-                    sourceMask.Rows,
-                    sourceMask.Cols,
-                    Cv.MatType.CV_8UC1,
-                    Cv.Scalar.All(0));
-
-                for (int label = 1; label < labelCount; label++)
-                {
-                    int area = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Area);
-                    if (definition.MinArea > 0 && area < definition.MinArea)
-                    {
-                        continue;
-                    }
-
-                    if (definition.MaxArea > 0 && area > definition.MaxArea)
-                    {
-                        continue;
-                    }
-
-                    using (var componentMask = new Cv.Mat())
-                    {
-                        Cv.Cv2.Compare(labels, label, componentMask, Cv.CmpType.EQ);
-                        Cv.Cv2.BitwiseOr(retainedMask, componentMask, retainedMask);
-                    }
-                }
-
-                return retainedMask;
             }
         }
 
