@@ -898,7 +898,13 @@ namespace IntegratedImageProcessingApp.Forms
                     return false;
                 }
 
-                cachedMask = mask.Clone();
+                // The cached mask owns the pixel buffer. A full Clone here can
+                // copy hundreds of megabytes before CCL even starts. Keep a
+                // shared OpenCV header view instead; disposing the view does
+                // not duplicate or accumulate the cached pixel buffer.
+                cachedMask = CreateLargeRoiMatView(
+                    mask,
+                    new Rectangle(0, 0, mask.Cols, mask.Rows));
                 return true;
             }
         }
