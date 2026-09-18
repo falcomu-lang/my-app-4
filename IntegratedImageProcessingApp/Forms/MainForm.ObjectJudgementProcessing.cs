@@ -819,10 +819,10 @@ namespace IntegratedImageProcessingApp.Forms
                 generation = objectJudgementMaskGeneration;
             }
 
-            List<Rectangle> validRois = systemParameters.RoiRegions
+            List<Rectangle> validRois = OrderRoiRectanglesForVisibleArea(systemParameters.RoiRegions
                 .Where(roiRegion => roiRegion.Bounds.Width > 0 && roiRegion.Bounds.Height > 0)
                 .Select(roiRegion => roiRegion.Bounds)
-                .ToList();
+                .ToList());
             lock (objectJudgementMaskLock)
             {
                 objectJudgementPendingLargeMaskBuilds = objectJudgementParameterApplyInProgress
@@ -868,10 +868,10 @@ namespace IntegratedImageProcessingApp.Forms
                 generation = objectJudgementMaskGeneration;
             }
 
-            List<Rectangle> validRois = systemParameters.RoiRegions
+            List<Rectangle> validRois = OrderRoiRectanglesForVisibleArea(systemParameters.RoiRegions
                 .Where(roiRegion => roiRegion.Bounds.Width > 0 && roiRegion.Bounds.Height > 0)
                 .Select(roiRegion => roiRegion.Bounds)
-                .ToList();
+                .ToList());
             lock (objectJudgementMaskLock)
             {
                 objectJudgementPendingLargeMaskBuilds = objectJudgementParameterApplyInProgress

@@ -112,7 +112,8 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
-                List<Rectangle> bitmapRois = GetValidObjectDefinitionBitmapRois(bitmap.Size);
+                List<Rectangle> bitmapRois = OrderRoiRectanglesForVisibleArea(
+                    GetValidObjectDefinitionBitmapRois(bitmap.Size));
                 if (bitmapRois.Count == 0)
                 {
                     bitmap.Dispose();
@@ -124,10 +125,10 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            List<Rectangle> rois = systemParameters.RoiRegions
+            List<Rectangle> rois = OrderRoiRectanglesForVisibleArea(systemParameters.RoiRegions
                 .Where(region => region.Bounds.Width > 0 && region.Bounds.Height > 0)
                 .Select(region => region.Bounds)
-                .ToList();
+                .ToList());
             if (rois.Count == 0)
             {
                 source.ReleaseReference();
@@ -375,6 +376,7 @@ namespace IntegratedImageProcessingApp.Forms
             Bitmap original,
             List<Rectangle> rois)
         {
+            rois = OrderRoiRectanglesForVisibleArea(rois);
             int generation;
             lock (objectDefinitionResultLock)
             {
@@ -1692,10 +1694,70 @@ namespace IntegratedImageProcessingApp.Forms
             }
             else
             {
-                ordered = ordered.OrderBy(item => item.Bounds.Top).ThenBy(item => item.Bounds.Left);
+                ordered = OrderObjectDefinitionObjectsByRows(ordered);
             }
 
             return ordered.ToList();
+        }
+
+        private static IEnumerable<ObjectDefinitionDetectedObject> OrderObjectDefinitionObjectsByRows(
+            IEnumerable<ObjectDefinitionDetectedObject> objects)
+        {
+            List<ObjectDefinitionDetectedObject> items = (objects ??
+                Enumerable.Empty<ObjectDefinitionDetectedObject>()).ToList();
+            if (items.Count <= 1)
+            {
+                return items;
+            }
+
+            List<int> heights = items
+                .Where(item => item.Bounds.Height > 0)
+                .Select(item => item.Bounds.Height)
+                .OrderBy(height => height)
+                .ToList();
+            int typicalHeight = heights.Count == 0
+                ? 1
+                : heights[heights.Count / 2];
+            double rowTolerance = Math.Max(1.0, typicalHeight * 0.5);
+
+            var rows = new List<ObjectDefinitionNumberingRow>();
+            foreach (ObjectDefinitionDetectedObject item in items
+                .OrderBy(item => item.Bounds.Top + (item.Bounds.Height / 2.0))
+                .ThenBy(item => item.Bounds.Left))
+            {
+                double centerY = item.Bounds.Top + (item.Bounds.Height / 2.0);
+                ObjectDefinitionNumberingRow row = rows
+                    .OrderBy(candidate => Math.Abs(candidate.CenterY - centerY))
+                    .FirstOrDefault(candidate =>
+                        Math.Abs(candidate.CenterY - centerY) <= rowTolerance);
+                if (row == null)
+                {
+                    row = new ObjectDefinitionNumberingRow();
+                    rows.Add(row);
+                }
+
+                row.Items.Add(item);
+                row.CenterY = row.Items
+                    .Average(candidate => candidate.Bounds.Top + (candidate.Bounds.Height / 2.0));
+            }
+
+            return rows
+                .OrderBy(row => row.CenterY)
+                .SelectMany(row => row.Items
+                    .OrderBy(item => item.Bounds.Left)
+                    .ThenBy(item => item.Bounds.Top));
+        }
+
+        private sealed class ObjectDefinitionNumberingRow
+        {
+            public ObjectDefinitionNumberingRow()
+            {
+                Items = new List<ObjectDefinitionDetectedObject>();
+            }
+
+            public double CenterY { get; set; }
+
+            public List<ObjectDefinitionDetectedObject> Items { get; private set; }
         }
 
         private void PaintObjectDefinitionSourceMaskOverlay(

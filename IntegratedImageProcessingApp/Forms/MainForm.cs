@@ -755,6 +755,77 @@ namespace IntegratedImageProcessingApp.Forms
             return null;
         }
 
+        private List<Rectangle> OrderRoiRectanglesForVisibleArea(IEnumerable<Rectangle> roiRectangles)
+        {
+            var rois = roiRectangles == null
+                ? new List<Rectangle>()
+                : roiRectangles.Where(roi => roi.Width > 0 && roi.Height > 0).ToList();
+            if (rois.Count < 2)
+            {
+                return rois;
+            }
+
+            var visibleRectangles = new List<Rectangle>();
+            ImageDisplayControl leftVisible = leftImageTabControl != null && leftImageTabControl.Visible
+                ? GetVisibleLeftImageDisplayControl()
+                : null;
+            ImageDisplayControl rightVisible = rightImageTabControl != null && rightImageTabControl.Visible
+                ? GetVisibleRightImageDisplayControl()
+                : null;
+
+            Rectangle visibleSourceRect;
+            if (leftVisible != null && leftVisible.IsLargeImageMode &&
+                leftVisible.TryGetVisibleSourceRectangle(out visibleSourceRect))
+            {
+                visibleRectangles.Add(visibleSourceRect);
+            }
+
+            if (rightVisible != null && rightVisible.IsLargeImageMode &&
+                rightVisible.TryGetVisibleSourceRectangle(out visibleSourceRect))
+            {
+                visibleRectangles.Add(visibleSourceRect);
+            }
+
+            if (visibleRectangles.Count == 0)
+            {
+                return rois;
+            }
+
+            var scored = new List<Tuple<Rectangle, long, double>>();
+            foreach (Rectangle roi in rois)
+            {
+                long bestIntersectionArea = 0;
+                double bestCenterDistance = double.MaxValue;
+                foreach (Rectangle visible in visibleRectangles)
+                {
+                    Rectangle intersection = Rectangle.Intersect(roi, visible);
+                    long intersectionArea = (long)intersection.Width * intersection.Height;
+                    double roiCenterX = roi.Left + (roi.Width / 2.0);
+                    double roiCenterY = roi.Top + (roi.Height / 2.0);
+                    double visibleCenterX = visible.Left + (visible.Width / 2.0);
+                    double visibleCenterY = visible.Top + (visible.Height / 2.0);
+                    double dx = roiCenterX - visibleCenterX;
+                    double dy = roiCenterY - visibleCenterY;
+                    double centerDistance = (dx * dx) + (dy * dy);
+                    if (intersectionArea > bestIntersectionArea ||
+                        (intersectionArea == bestIntersectionArea && centerDistance < bestCenterDistance))
+                    {
+                        bestIntersectionArea = intersectionArea;
+                        bestCenterDistance = centerDistance;
+                    }
+                }
+
+                scored.Add(Tuple.Create(roi, bestIntersectionArea, bestCenterDistance));
+            }
+
+            return scored
+                .OrderByDescending(item => item.Item2 > 0)
+                .ThenByDescending(item => item.Item2)
+                .ThenBy(item => item.Item3)
+                .Select(item => item.Item1)
+                .ToList();
+        }
+
         private void MainForm_Load(object sender, EventArgs e)
         {
             WindowState = FormWindowState.Maximized;
@@ -4984,11 +5055,12 @@ namespace IntegratedImageProcessingApp.Forms
                     rightProcessedDisplayControl.SetRoiOverlay(selectedRoi.Value);
                 }
 
-                foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+                foreach (Rectangle roi in OrderRoiRectanglesForVisibleArea(
+                    systemParameters.RoiRegions.Select(region => region.Bounds)))
                 {
                     foreach (ImageProcessingStepSettings step in selectedSteps)
                     {
-                        StartLargeProcessedMaskBuild(processingSource, roiRegion.Bounds, step);
+                        StartLargeProcessedMaskBuild(processingSource, roi, step);
                     }
                 }
             }

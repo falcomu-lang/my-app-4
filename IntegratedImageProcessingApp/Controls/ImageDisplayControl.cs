@@ -430,6 +430,19 @@ namespace IntegratedImageProcessingApp.Controls
                 throw new ArgumentNullException("largeImageSource");
             }
 
+            if (preserveView)
+            {
+                lock (_imageLock)
+                {
+                    if (ReferenceEquals(_largeImageSource, largeImageSource))
+                    {
+                        // The source is already owned by this control.  Do
+                        // not reattach it or queue the same preview work.
+                        return;
+                    }
+                }
+            }
+
             SetLargeImageSource(largeImageSource.AddReference(), preserveView);
         }
 
@@ -761,6 +774,28 @@ namespace IntegratedImageProcessingApp.Controls
                 zoom = _zoom;
                 offset = _imageOffset;
                 return width > 0 && height > 0;
+            }
+        }
+
+        public bool TryGetVisibleSourceRectangle(out Rectangle visibleSourceRect)
+        {
+            lock (_imageLock)
+            {
+                int imageWidth;
+                int imageHeight;
+                if (!TryGetImageSizeUnsafe(out imageWidth, out imageHeight))
+                {
+                    visibleSourceRect = Rectangle.Empty;
+                    return false;
+                }
+
+                visibleSourceRect = GetVisibleSourceRectangle(
+                    imageWidth,
+                    imageHeight,
+                    viewerPanel.ClientRectangle,
+                    _zoom,
+                    _imageOffset);
+                return visibleSourceRect.Width > 0 && visibleSourceRect.Height > 0;
             }
         }
 

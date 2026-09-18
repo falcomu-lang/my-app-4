@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
@@ -563,9 +564,10 @@ namespace IntegratedImageProcessingApp.Forms
                     rightProcessedDisplayControl.SetRoiOverlay(selectedRoi.Value);
                 }
 
-                foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+                foreach (Rectangle roi in OrderRoiRectanglesForVisibleArea(
+                    systemParameters.RoiRegions.Select(region => region.Bounds)))
                 {
-                    StartLargeRelationGroupMaskBuild(sharedSource, roiRegion.Bounds);
+                    StartLargeRelationGroupMaskBuild(sharedSource, roi);
                 }
             }
             finally
