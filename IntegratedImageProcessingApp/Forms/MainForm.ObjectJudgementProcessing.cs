@@ -1048,6 +1048,20 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     List<ObjectJudgementProcessingSettings> processingSteps =
                         GetObjectJudgementProcessingChain(objectJudgement, -1);
+                    Cv.Mat cachedObjectMask;
+                    if (TryGetCachedObjectJudgementMask(
+                        objectJudgement,
+                        processingSteps,
+                        roi,
+                        out cachedObjectMask))
+                    {
+                        using (cachedObjectMask)
+                        {
+                            Cv.Cv2.BitwiseOr(combined, cachedObjectMask, combined);
+                        }
+                        continue;
+                    }
+
                     using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(
                         originalSource,
                         objectJudgement,

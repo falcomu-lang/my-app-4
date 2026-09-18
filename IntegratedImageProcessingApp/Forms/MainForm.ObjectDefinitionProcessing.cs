@@ -882,8 +882,11 @@ namespace IntegratedImageProcessingApp.Forms
 
                 List<ObjectJudgementProcessingSettings> processingSteps =
                     GetObjectJudgementProcessingChain(objectJudgement, -1);
-                maskKey = CreateObjectJudgementMaskKey(objectJudgement, processingSteps, roi);
-                cache = objectJudgementLargeMasks;
+                return TryGetCachedObjectJudgementMask(
+                    objectJudgement,
+                    processingSteps,
+                    roi,
+                    out cachedMask);
             }
 
             lock (objectJudgementMaskLock)
@@ -902,6 +905,41 @@ namespace IntegratedImageProcessingApp.Forms
                 // copy hundreds of megabytes before CCL even starts. Keep a
                 // shared OpenCV header view instead; disposing the view does
                 // not duplicate or accumulate the cached pixel buffer.
+                cachedMask = CreateLargeRoiMatView(
+                    mask,
+                    new Rectangle(0, 0, mask.Cols, mask.Rows));
+                return true;
+            }
+        }
+
+        private bool TryGetCachedObjectJudgementMask(
+            ObjectJudgementSettings objectJudgement,
+            IEnumerable<ObjectJudgementProcessingSettings> processingSteps,
+            Rectangle roi,
+            out Cv.Mat cachedMask)
+        {
+            cachedMask = null;
+            if (objectJudgement == null || roi.Width <= 0 || roi.Height <= 0)
+            {
+                return false;
+            }
+
+            string maskKey = CreateObjectJudgementMaskKey(
+                objectJudgement,
+                processingSteps,
+                roi);
+            lock (objectJudgementMaskLock)
+            {
+                Cv.Mat mask;
+                if (!objectJudgementLargeMasks.TryGetValue(maskKey, out mask) ||
+                    mask == null ||
+                    mask.Empty() ||
+                    mask.Rows != roi.Height ||
+                    mask.Cols != roi.Width)
+                {
+                    return false;
+                }
+
                 cachedMask = CreateLargeRoiMatView(
                     mask,
                     new Rectangle(0, 0, mask.Cols, mask.Rows));
