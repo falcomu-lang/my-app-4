@@ -1074,7 +1074,8 @@ namespace IntegratedImageProcessingApp.Forms
                             : Stopwatch.StartNew();
                         using (Cv.Mat objectMask = ApplyObjectJudgementProcessingOpenCv(
                             baseMask,
-                            processingSteps))
+                            processingSteps,
+                            timing))
                         {
                             if (objectProcessingStopwatch != null)
                             {
@@ -1792,9 +1793,20 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static Cv.Mat ApplyObjectJudgementProcessingOpenCv(
             Cv.Mat source,
-            IEnumerable<ObjectJudgementProcessingSettings> processingSteps)
+            IEnumerable<ObjectJudgementProcessingSettings> processingSteps,
+            ObjectDefinitionSourceTiming timing = null)
         {
+            Stopwatch cloneStopwatch = timing == null
+                ? null
+                : Stopwatch.StartNew();
             Cv.Mat current = source.Clone();
+            if (cloneStopwatch != null)
+            {
+                cloneStopwatch.Stop();
+                timing.InitialCloneMilliseconds += cloneStopwatch.ElapsedMilliseconds;
+                timing.ObjectProcessingDetails.Add(
+                    "處理前 Clone：" + cloneStopwatch.ElapsedMilliseconds + " ms");
+            }
             try
             {
                 foreach (ObjectJudgementProcessingSettings processing in processingSteps)
@@ -1805,8 +1817,18 @@ namespace IntegratedImageProcessingApp.Forms
                     }
 
                     string normalizedMethod = NormalizeObjectJudgementProcessingMethod(processing.Method);
+                    Stopwatch stepStopwatch = timing == null
+                        ? null
+                        : Stopwatch.StartNew();
                     Cv.Mat next = ApplyObjectJudgementProcessingStepOpenCv(
                         current, normalizedMethod, ParseImageProcessingParameters(processing.Parameters));
+                    if (stepStopwatch != null)
+                    {
+                        stepStopwatch.Stop();
+                        long elapsedMilliseconds = stepStopwatch.ElapsedMilliseconds;
+                        timing.ObjectProcessingDetails.Add(
+                            normalizedMethod + "：" + elapsedMilliseconds + " ms");
+                    }
                     current.Dispose();
                     current = next;
                 }

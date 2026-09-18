@@ -12,6 +12,7 @@ namespace IntegratedImageProcessingApp.Forms
         private System.Windows.Forms.Panel rightPanel;
         private System.Windows.Forms.Label leftPanelTitleLabel;
         private System.Windows.Forms.ListBox functionListBox;
+        private System.Windows.Forms.TextBox debugTimingMemo;
         private System.Windows.Forms.Label rightPanelTitleLabel;
         private System.Windows.Forms.Panel parameterPanel;
         private System.Windows.Forms.Label parameterPlaceholderLabel;
@@ -208,6 +209,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.parameterPanel = new System.Windows.Forms.Panel();
             this.parameterPlaceholderLabel = new System.Windows.Forms.Label();
             this.rightPanelTitleLabel = new System.Windows.Forms.Label();
+            this.debugTimingMemo = new System.Windows.Forms.TextBox();
             this.statusStrip = new System.Windows.Forms.StatusStrip();
             this.statusLabel = new System.Windows.Forms.ToolStripStatusLabel();
             this.topBarPanel.SuspendLayout();
@@ -312,6 +314,7 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.leftPanel.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(241)))), ((int)(((byte)(244)))), ((int)(((byte)(248)))));
             this.leftPanel.Controls.Add(this.functionListBox);
+            this.leftPanel.Controls.Add(this.debugTimingMemo);
             this.leftPanel.Controls.Add(this.leftPanelTitleLabel);
             this.leftPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftPanel.Location = new System.Drawing.Point(0, 0);
@@ -349,6 +352,21 @@ namespace IntegratedImageProcessingApp.Forms
             this.functionListBox.MouseClick += new System.Windows.Forms.MouseEventHandler(this.FunctionListBox_MouseClick);
             this.functionListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.FunctionListBox_DrawItem);
             this.functionListBox.SelectedIndexChanged += new System.EventHandler(this.FunctionListBox_SelectedIndexChanged);
+            //
+            // debugTimingMemo
+            //
+            this.debugTimingMemo.BackColor = System.Drawing.Color.White;
+            this.debugTimingMemo.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            this.debugTimingMemo.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.debugTimingMemo.Font = new System.Drawing.Font("Consolas", 8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.debugTimingMemo.Location = new System.Drawing.Point(14, 518);
+            this.debugTimingMemo.Multiline = true;
+            this.debugTimingMemo.Name = "debugTimingMemo";
+            this.debugTimingMemo.ReadOnly = true;
+            this.debugTimingMemo.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
+            this.debugTimingMemo.Size = new System.Drawing.Size(228, 120);
+            this.debugTimingMemo.TabIndex = 2;
+            this.debugTimingMemo.WordWrap = false;
             // 
             // leftPanelTitleLabel
             // 

@@ -71,6 +71,11 @@ namespace IntegratedImageProcessingApp.Forms
             public long MaskMergeMilliseconds { get; set; }
 
             public long ObjectProcessingMilliseconds { get; set; }
+
+            public long InitialCloneMilliseconds { get; set; }
+
+            public List<string> ObjectProcessingDetails { get; private set; } =
+                new List<string>();
         }
 
         private void StartObjectDefinitionProcessing(string definitionId)
@@ -80,6 +85,9 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return;
             }
+
+            ResetDebugTimingMemo();
+            AppendDebugTimingMemo(definition.DisplayName + " 開始處理");
 
             if (string.IsNullOrWhiteSpace(definition.SourceId))
             {
@@ -165,6 +173,7 @@ namespace IntegratedImageProcessingApp.Forms
                     long sourceImageProcessingElapsedMilliseconds = 0;
                     long sourceMergeElapsedMilliseconds = 0;
                     long sourceObjectProcessingElapsedMilliseconds = 0;
+                    var sourceObjectProcessingDetails = new List<string>();
                     long cclElapsedMilliseconds = 0;
                     long retainedMaskElapsedMilliseconds = 0;
                     long mergeElapsedMilliseconds = 0;
@@ -200,6 +209,7 @@ namespace IntegratedImageProcessingApp.Forms
                             sourceImageProcessingElapsedMilliseconds += sourceTiming.ImageProcessingMilliseconds;
                             sourceMergeElapsedMilliseconds += sourceTiming.MaskMergeMilliseconds;
                             sourceObjectProcessingElapsedMilliseconds += sourceTiming.ObjectProcessingMilliseconds;
+                            sourceObjectProcessingDetails.AddRange(sourceTiming.ObjectProcessingDetails);
                             using (sourceMask)
                             {
                                 string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
@@ -280,6 +290,20 @@ namespace IntegratedImageProcessingApp.Forms
                                     objectDefinitionSourceCacheMissCount = sourceCacheMissCount;
                                     long displayElapsedMilliseconds =
                                         RefreshVisibleObjectDefinitionDisplays();
+                                    AppendObjectDefinitionTimingMemo(
+                                        definition.DisplayName,
+                                        elapsedMilliseconds,
+                                        displayElapsedMilliseconds,
+                                        sourceProcessingElapsedMilliseconds,
+                                        sourceImageProcessingElapsedMilliseconds,
+                                        sourceMergeElapsedMilliseconds,
+                                        sourceObjectProcessingElapsedMilliseconds,
+                                        sourceObjectProcessingDetails,
+                                        cclElapsedMilliseconds,
+                                        retainedMaskElapsedMilliseconds,
+                                        mergeElapsedMilliseconds,
+                                        sourceCacheHitCount,
+                                        sourceCacheMissCount);
                                     statusLabel.Text = definition.DisplayName +
                                         " 已完成：OpenCV CCL，找到 " +
                                         count.ToString(System.Globalization.CultureInfo.InvariantCulture) +
@@ -740,6 +764,62 @@ namespace IntegratedImageProcessingApp.Forms
                 " ms || 顯示時間：" + displayText + sourceDetailText + cacheText;
         }
 
+        private void ResetDebugTimingMemo()
+        {
+            if (debugTimingMemo != null && !debugTimingMemo.IsDisposed)
+            {
+                debugTimingMemo.Clear();
+            }
+        }
+
+        private void AppendDebugTimingMemo(string text)
+        {
+            if (debugTimingMemo == null || debugTimingMemo.IsDisposed)
+            {
+                return;
+            }
+
+            debugTimingMemo.AppendText((text ?? string.Empty) + Environment.NewLine);
+            debugTimingMemo.SelectionStart = debugTimingMemo.TextLength;
+            debugTimingMemo.ScrollToCaret();
+        }
+
+        private void AppendObjectDefinitionTimingMemo(
+            string name,
+            long processingElapsedMilliseconds,
+            long displayElapsedMilliseconds,
+            long sourceProcessingElapsedMilliseconds,
+            long sourceImageProcessingElapsedMilliseconds,
+            long sourceMergeElapsedMilliseconds,
+            long sourceObjectProcessingElapsedMilliseconds,
+            IEnumerable<string> sourceObjectProcessingDetails,
+            long cclElapsedMilliseconds,
+            long retainedMaskElapsedMilliseconds,
+            long mergeElapsedMilliseconds,
+            int sourceCacheHitCount,
+            int sourceCacheMissCount)
+        {
+            AppendDebugTimingMemo(name + " 完成");
+            AppendDebugTimingMemo("影像處理總時間：" + processingElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo("來源區塊處理：" + sourceProcessingElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo("  來源影像處理：" + sourceImageProcessingElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo("  遮罩合併：" + sourceMergeElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo("  區塊後處理：" + sourceObjectProcessingElapsedMilliseconds + " ms");
+            if (sourceObjectProcessingDetails != null)
+            {
+                foreach (string detail in sourceObjectProcessingDetails)
+                {
+                    AppendDebugTimingMemo("    " + detail);
+                }
+            }
+            AppendDebugTimingMemo("CCL：" + cclElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo("保留 MASK：" + retainedMaskElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo("Merge by Distance：" + mergeElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo("顯示時間：" + displayElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo(
+                "來源快取：命中 " + sourceCacheHitCount + "／未命中 " + sourceCacheMissCount);
+        }
+
         private void UpdateObjectDefinitionDisplayTimingIfNeeded()
         {
             if (!objectDefinitionDisplayTimePending ||
@@ -968,7 +1048,10 @@ namespace IntegratedImageProcessingApp.Forms
                     Stopwatch objectProcessingStopwatch = timing == null
                         ? null
                         : Stopwatch.StartNew();
-                    createdMask = ApplyObjectJudgementProcessingOpenCv(baseMask, processingSteps);
+                    createdMask = ApplyObjectJudgementProcessingOpenCv(
+                        baseMask,
+                        processingSteps,
+                        timing);
                     if (objectProcessingStopwatch != null)
                     {
                         objectProcessingStopwatch.Stop();
