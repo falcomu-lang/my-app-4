@@ -38,6 +38,19 @@ namespace IntegratedImageProcessingApp.Forms
             public double Area { get; set; }
         }
 
+        private sealed class ObjectDefinitionAcceptedComponent
+        {
+            public int Label { get; set; }
+
+            public int X { get; set; }
+
+            public int Y { get; set; }
+
+            public int Width { get; set; }
+
+            public int Height { get; set; }
+        }
+
         private void StartObjectDefinitionProcessing(string definitionId)
         {
             ObjectDefinitionSettings definition = FindObjectDefinition(definitionId);
@@ -778,6 +791,12 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDefinitionSettings definition,
             Rectangle roi)
         {
+            Cv.Mat cachedMask;
+            if (TryGetCachedObjectDefinitionSourceMask(definition, roi, out cachedMask))
+            {
+                return cachedMask;
+            }
+
             string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
                 ? "ObjectJudgement"
                 : definition.SourceType;
@@ -810,6 +829,75 @@ namespace IntegratedImageProcessingApp.Forms
             using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(source, objectJudgement, roi))
             {
                 return ApplyObjectJudgementProcessingOpenCv(baseMask, processingSteps);
+            }
+        }
+
+        private bool TryGetCachedObjectDefinitionSourceMask(
+            ObjectDefinitionSettings definition,
+            Rectangle roi,
+            out Cv.Mat cachedMask)
+        {
+            cachedMask = null;
+            if (definition == null || roi.Width <= 0 || roi.Height <= 0)
+            {
+                return false;
+            }
+
+            string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
+                ? "ObjectJudgement"
+                : definition.SourceType;
+            string maskKey;
+            Dictionary<string, Cv.Mat> cache;
+
+            if (string.Equals(sourceType, "Group", StringComparison.Ordinal))
+            {
+                ObjectJudgementGroupSettings group = FindObjectJudgementGroup(definition.SourceId);
+                if (group == null)
+                {
+                    return false;
+                }
+
+                List<ObjectJudgementSettings> objectJudgements = GetObjectJudgementsInGroup(group.Id);
+                if (objectJudgements.Count == 0)
+                {
+                    return false;
+                }
+
+                string processingSignature = CreateObjectJudgementGroupProcessingSignature(
+                    group.Id,
+                    objectJudgements);
+                maskKey = CreateObjectJudgementGroupMaskKey(processingSignature, roi);
+                cache = objectJudgementGroupLargeMasks;
+            }
+            else
+            {
+                ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements.Find(
+                    item => string.Equals(item.Id, definition.SourceId, StringComparison.Ordinal));
+                if (objectJudgement == null)
+                {
+                    return false;
+                }
+
+                List<ObjectJudgementProcessingSettings> processingSteps =
+                    GetObjectJudgementProcessingChain(objectJudgement, -1);
+                maskKey = CreateObjectJudgementMaskKey(objectJudgement, processingSteps, roi);
+                cache = objectJudgementLargeMasks;
+            }
+
+            lock (objectJudgementMaskLock)
+            {
+                Cv.Mat mask;
+                if (!cache.TryGetValue(maskKey, out mask) ||
+                    mask == null ||
+                    mask.Empty() ||
+                    mask.Rows != roi.Height ||
+                    mask.Cols != roi.Width)
+                {
+                    return false;
+                }
+
+                cachedMask = mask.Clone();
+                return true;
             }
         }
 
@@ -1001,32 +1089,72 @@ namespace IntegratedImageProcessingApp.Forms
                     sourceMask.Cols,
                     Cv.MatType.CV_8UC1,
                     Cv.Scalar.All(0));
-                int[] labelsRow = new int[sourceMask.Width];
-                byte[] retainedRow = new byte[sourceMask.Width];
-                long labelsStride = labels.Step();
-                long retainedStride = retainedMask.Step();
-                for (int y = 0; y < sourceMask.Height; y++)
+                if (result.Count > 0)
                 {
-                    Marshal.Copy(
-                        GetObjectDefinitionMatRowPointer(labels, y, labelsStride),
-                        labelsRow,
-                        0,
-                        labelsRow.Length);
-                    Array.Clear(retainedRow, 0, retainedRow.Length);
-                    for (int x = 0; x < labelsRow.Length; x++)
+                    var acceptedComponents = new List<ObjectDefinitionAcceptedComponent>();
+                    long acceptedBoundsArea = 0;
+                    for (int label = 1; label < labelCount; label++)
                     {
-                        int label = labelsRow[x];
-                        if (label > 0 && label < accepted.Length && accepted[label])
+                        if (!accepted[label])
                         {
-                            retainedRow[x] = 255;
+                            continue;
                         }
+
+                        int x = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
+                        int y = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Top);
+                        int width = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Width);
+                        int height = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Height);
+                        acceptedComponents.Add(new ObjectDefinitionAcceptedComponent
+                        {
+                            Label = label,
+                            X = x,
+                            Y = y,
+                            Width = width,
+                            Height = height
+                        });
+                        acceptedBoundsArea += (long)width * height;
                     }
 
-                    Marshal.Copy(
-                        retainedRow,
-                        0,
-                        GetObjectDefinitionMatRowPointer(retainedMask, y, retainedStride),
-                        retainedRow.Length);
+                    long imageArea = (long)sourceMask.Width * sourceMask.Height;
+                    if (acceptedBoundsArea * 4 < imageArea * 3)
+                    {
+                        foreach (ObjectDefinitionAcceptedComponent component in acceptedComponents)
+                        {
+                            using (var labelRoi = new Cv.Mat(
+                                labels,
+                                new Cv.Rect(
+                                    component.X,
+                                    component.Y,
+                                    component.Width,
+                                    component.Height)))
+                            using (var componentMask = new Cv.Mat())
+                            using (var retainedRoi = new Cv.Mat(
+                                retainedMask,
+                                new Cv.Rect(
+                                    component.X,
+                                    component.Y,
+                                    component.Width,
+                                    component.Height)))
+                            {
+                                Cv.Cv2.Compare(
+                                    labelRoi,
+                                    component.Label,
+                                    componentMask,
+                                    Cv.CmpType.EQ);
+                                Cv.Cv2.BitwiseOr(
+                                    retainedRoi,
+                                    componentMask,
+                                    retainedRoi);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        CreateObjectDefinitionRetainedMaskByRows(
+                            labels,
+                            retainedMask,
+                            accepted);
+                    }
                 }
                 retainedMaskStopwatch.Stop();
                 retainedMaskElapsedMilliseconds = retainedMaskStopwatch.ElapsedMilliseconds;
@@ -1043,6 +1171,40 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 return result;
+            }
+        }
+
+        private static void CreateObjectDefinitionRetainedMaskByRows(
+            Cv.Mat labels,
+            Cv.Mat retainedMask,
+            bool[] accepted)
+        {
+            int[] labelsRow = new int[labels.Width];
+            byte[] retainedRow = new byte[labels.Width];
+            long labelsStride = labels.Step();
+            long retainedStride = retainedMask.Step();
+            for (int y = 0; y < labels.Height; y++)
+            {
+                Marshal.Copy(
+                    GetObjectDefinitionMatRowPointer(labels, y, labelsStride),
+                    labelsRow,
+                    0,
+                    labelsRow.Length);
+                Array.Clear(retainedRow, 0, retainedRow.Length);
+                for (int x = 0; x < labelsRow.Length; x++)
+                {
+                    int label = labelsRow[x];
+                    if (label > 0 && label < accepted.Length && accepted[label])
+                    {
+                        retainedRow[x] = 255;
+                    }
+                }
+
+                Marshal.Copy(
+                    retainedRow,
+                    0,
+                    GetObjectDefinitionMatRowPointer(retainedMask, y, retainedStride),
+                    retainedRow.Length);
             }
         }
 
