@@ -153,16 +153,19 @@ namespace IntegratedImageProcessingApp.Forms
                             }
                             largePreprocessedImageSource = preprocessedSource;
                         }
-                        isSyncingImageView = true;
-                        try
+                        if (!SkipImageDisplayUpdate())
                         {
-                            Stopwatch previewStopwatch = Stopwatch.StartNew();
-                            leftPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource, true);
-                            rightPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource, true);
-                            lastDisplayProcessingElapsedMilliseconds = Math.Max(1, previewStopwatch.ElapsedMilliseconds);
+                            isSyncingImageView = true;
+                            try
+                            {
+                                Stopwatch previewStopwatch = Stopwatch.StartNew();
+                                leftPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource, true);
+                                rightPreprocessedDisplayControl.SetSharedLargeImageSource(preprocessedSource, true);
+                                lastDisplayProcessingElapsedMilliseconds = Math.Max(1, previewStopwatch.ElapsedMilliseconds);
+                            }
+                            finally { isSyncingImageView = false; }
+                            RestorePreprocessedImageViewState();
                         }
-                        finally { isSyncingImageView = false; }
-                        RestorePreprocessedImageViewState();
                     }
                     finally { originalSource.ReleaseReference(); }
                 }
@@ -179,7 +182,7 @@ namespace IntegratedImageProcessingApp.Forms
                     if (latestPreprocessedImage != null) latestPreprocessedImage.Dispose();
                     latestPreprocessedImage = preprocessed;
                     RecordImagePreprocessingStepElapsed(preprocessingResult.StepElapsedMilliseconds);
-                    if (preprocessed != null)
+                    if (preprocessed != null && !SkipImageDisplayUpdate())
                     {
                         isSyncingImageView = true;
                         try

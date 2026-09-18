@@ -14,6 +14,10 @@ namespace IntegratedImageProcessingApp.Controls
 {
     public partial class ImageDisplayControl : UserControl
     {
+        // The processing pipeline may continue to build cached images and
+        // masks while the main form temporarily suppresses all view work.
+        public static bool SuppressViewUpdates { get; set; }
+
         private const int TileSourceSize = 1024;
         private const float TileRenderZoomThreshold = 0.04f;
         private const float TilePreviewHandoffRatio = 0.95f;
@@ -233,6 +237,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         public void SetRoiOverlay(Rectangle roi)
         {
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
             lock (_imageLock)
             {
                 _roiOverlay = NormalizeImageRectangle(roi);
@@ -244,6 +253,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         public void SetRoiOverlays(IEnumerable<Rectangle> rois)
         {
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
             if (rois == null)
             {
                 ClearRoiOverlay();
@@ -271,6 +285,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         public void ClearRoiOverlay()
         {
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
             lock (_imageLock)
             {
                 _roiOverlay = null;
@@ -282,12 +301,17 @@ namespace IntegratedImageProcessingApp.Controls
 
         public void InvalidateImageView()
         {
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
             viewerPanel.Invalidate();
         }
 
         public void RefreshImageViewNow()
         {
-            if (IsDisposed || !IsHandleCreated)
+            if (SuppressViewUpdates || IsDisposed || !IsHandleCreated)
             {
                 return;
             }
@@ -301,7 +325,35 @@ namespace IntegratedImageProcessingApp.Controls
         // paint on the UI thread.
         public void ScheduleImageViewRefresh()
         {
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
             ScheduleTileRefresh();
+        }
+
+        public void ResumeImageViewPreparation()
+        {
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
+            LargeImageSource source = GetSharedLargeImageSource();
+            if (source != null)
+            {
+                try
+                {
+                    source.QueuePreviewBuilds(ScheduleTileRefresh);
+                }
+                finally
+                {
+                    source.ReleaseReference();
+                }
+            }
+
+            viewerPanel.Invalidate();
         }
 
         public async Task LoadImageFromFileAsync(string filePath, CancellationToken cancellationToken)
@@ -407,9 +459,14 @@ namespace IntegratedImageProcessingApp.Controls
                 _largeImageSource = largeImageSource;
             }
 
-            if (!canPreserveView)
+            if (!canPreserveView && !SuppressViewUpdates)
             {
                 FitImageToView();
+            }
+
+            if (SuppressViewUpdates)
+            {
+                return;
             }
 
             UpdateStatusLabel();
@@ -460,7 +517,15 @@ namespace IntegratedImageProcessingApp.Controls
                 _sourceBitmap = displayBitmap;
             }
 
-            FitImageToView();
+            if (!SuppressViewUpdates)
+            {
+                FitImageToView();
+            }
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
             UpdateStatusLabel();
             _lastZoomUtc = DateTime.UtcNow;
             viewerPanel.Invalidate();
@@ -507,9 +572,14 @@ namespace IntegratedImageProcessingApp.Controls
                 _sourceBitmap = bitmap;
             }
 
-            if (!canPreserveView)
+            if (!canPreserveView && !SuppressViewUpdates)
             {
                 FitImageToView();
+            }
+
+            if (SuppressViewUpdates)
+            {
+                return;
             }
 
             UpdateStatusLabel();
@@ -525,6 +595,11 @@ namespace IntegratedImageProcessingApp.Controls
                 DisposeCurrentImage();
                 _zoom = 1f;
                 _imageOffset = PointF.Empty;
+            }
+
+            if (SuppressViewUpdates)
+            {
+                return;
             }
 
             ResolutionText = string.Empty;

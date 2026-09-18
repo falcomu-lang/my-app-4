@@ -64,6 +64,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void InvalidateBlockProcessingDisplays()
         {
+            if (SkipImageDisplayUpdate())
+            {
+                return;
+            }
+
             if (leftBlockProcessingDisplayControl != null)
             {
                 leftBlockProcessingDisplayControl.InvalidateImageView();

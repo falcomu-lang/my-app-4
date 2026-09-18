@@ -1238,6 +1238,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private long RefreshVisibleObjectJudgementDisplays()
         {
+            if (SkipImageDisplayUpdate())
+            {
+                return 0;
+            }
+
             bool refreshed = false;
             Stopwatch previewStopwatch = Stopwatch.StartNew();
 

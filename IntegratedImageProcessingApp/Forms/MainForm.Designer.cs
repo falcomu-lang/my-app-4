@@ -12,6 +12,7 @@ namespace IntegratedImageProcessingApp.Forms
         private System.Windows.Forms.Panel rightPanel;
         private System.Windows.Forms.Label leftPanelTitleLabel;
         private System.Windows.Forms.ListBox functionListBox;
+        private System.Windows.Forms.CheckBox suppressImageDisplayCheckBox;
         private System.Windows.Forms.TextBox debugTimingMemo;
         private System.Windows.Forms.Label rightPanelTitleLabel;
         private System.Windows.Forms.Panel parameterPanel;
@@ -120,6 +121,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.mainLayoutPanel = new System.Windows.Forms.TableLayoutPanel();
             this.leftPanel = new System.Windows.Forms.Panel();
             this.functionListBox = new System.Windows.Forms.ListBox();
+            this.suppressImageDisplayCheckBox = new System.Windows.Forms.CheckBox();
             this.leftPanelTitleLabel = new System.Windows.Forms.Label();
             this.centerPanel = new System.Windows.Forms.Panel();
             this.imageLayoutPanel = new System.Windows.Forms.TableLayoutPanel();
@@ -314,6 +316,7 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.leftPanel.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(241)))), ((int)(((byte)(244)))), ((int)(((byte)(248)))));
             this.leftPanel.Controls.Add(this.functionListBox);
+            this.leftPanel.Controls.Add(this.suppressImageDisplayCheckBox);
             this.leftPanel.Controls.Add(this.debugTimingMemo);
             this.leftPanel.Controls.Add(this.leftPanelTitleLabel);
             this.leftPanel.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -352,6 +355,19 @@ namespace IntegratedImageProcessingApp.Forms
             this.functionListBox.MouseClick += new System.Windows.Forms.MouseEventHandler(this.FunctionListBox_MouseClick);
             this.functionListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.FunctionListBox_DrawItem);
             this.functionListBox.SelectedIndexChanged += new System.EventHandler(this.FunctionListBox_SelectedIndexChanged);
+            //
+            // suppressImageDisplayCheckBox
+            //
+            this.suppressImageDisplayCheckBox.AutoSize = true;
+            this.suppressImageDisplayCheckBox.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.suppressImageDisplayCheckBox.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(39)))), ((int)(((byte)(46)))), ((int)(((byte)(56)))));
+            this.suppressImageDisplayCheckBox.Location = new System.Drawing.Point(14, 497);
+            this.suppressImageDisplayCheckBox.Name = "suppressImageDisplayCheckBox";
+            this.suppressImageDisplayCheckBox.Size = new System.Drawing.Size(228, 21);
+            this.suppressImageDisplayCheckBox.TabIndex = 3;
+            this.suppressImageDisplayCheckBox.Text = "不顯示畫面";
+            this.suppressImageDisplayCheckBox.UseVisualStyleBackColor = true;
+            this.suppressImageDisplayCheckBox.CheckedChanged += new System.EventHandler(this.SuppressImageDisplayCheckBox_CheckedChanged);
             //
             // debugTimingMemo
             //

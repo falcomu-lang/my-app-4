@@ -909,6 +909,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private long RefreshVisibleObjectDefinitionDisplays()
         {
+            if (SkipImageDisplayUpdate())
+            {
+                return 0;
+            }
+
             Stopwatch displayStopwatch = Stopwatch.StartNew();
             bool refreshed = false;
 

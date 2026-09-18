@@ -104,6 +104,7 @@ namespace IntegratedImageProcessingApp.Forms
             new Dictionary<ImageProcessingStepSettings, long>();
         private bool processedImageDirty = true;
         private bool imageProcessingExecutionRequested;
+        private bool displayRefreshPendingWhileSuppressed;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
         private bool isImageViewerMaximized;
@@ -112,6 +113,145 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageViewState maximizedImageViewerViewState;
         private bool hasProcessedImageViewState;
         private ImageViewState processedImageViewState;
+
+        private bool IsImageDisplayUpdateSuppressed
+        {
+            get
+            {
+                return suppressImageDisplayCheckBox != null &&
+                    suppressImageDisplayCheckBox.Checked;
+            }
+        }
+
+        private bool SkipImageDisplayUpdate()
+        {
+            if (!IsImageDisplayUpdateSuppressed)
+            {
+                return false;
+            }
+
+            displayRefreshPendingWhileSuppressed = true;
+            return true;
+        }
+
+        private void SuppressImageDisplayCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            ImageDisplayControl.SuppressViewUpdates = IsImageDisplayUpdateSuppressed;
+            if (IsImageDisplayUpdateSuppressed)
+            {
+                displayRefreshPendingWhileSuppressed = true;
+                statusLabel.Text = "已暫停所有畫面準備與更新，影像仍會繼續處理";
+                return;
+            }
+
+            if (displayRefreshPendingWhileSuppressed)
+            {
+                displayRefreshPendingWhileSuppressed = false;
+                RestoreCachedImageDisplaysAfterSuppression();
+                RefreshAllImageDisplaysAfterSuppression();
+            }
+
+            statusLabel.Text = "已恢復畫面準備與更新";
+        }
+
+        private void RestoreCachedImageDisplaysAfterSuppression()
+        {
+            if (IsImageDisplayUpdateSuppressed)
+            {
+                return;
+            }
+
+            lock (largePreprocessedImageLock)
+            {
+                if (largePreprocessedImageSource != null && !preprocessedImageDirty)
+                {
+                    leftPreprocessedDisplayControl.SetSharedLargeImageSource(
+                        largePreprocessedImageSource,
+                        true);
+                    rightPreprocessedDisplayControl.SetSharedLargeImageSource(
+                        largePreprocessedImageSource,
+                        true);
+                }
+            }
+
+            if (latestPreprocessedImage != null && !preprocessedImageDirty)
+            {
+                leftPreprocessedDisplayControl.SetDisplayImage(
+                    new Bitmap(latestPreprocessedImage),
+                    true);
+                rightPreprocessedDisplayControl.SetDisplayImage(
+                    new Bitmap(latestPreprocessedImage),
+                    true);
+            }
+
+            ApplyLatestProcessedImageToVisibleTabs();
+            if (rightOriginalDisplayControl != null &&
+                rightOriginalDisplayControl.IsLargeImageMode &&
+                imageProcessingExecutionRequested &&
+                !processedImageDirty)
+            {
+                PrepareLargeProcessedPreview();
+            }
+        }
+
+        private void RefreshAllImageDisplaysAfterSuppression()
+        {
+            if (IsImageDisplayUpdateSuppressed)
+            {
+                return;
+            }
+
+            // Repaint existing cached overlays/results without starting a new
+            // image-processing request.  The next explicit command can still
+            // replace these images when its parameters have changed.
+            if (leftPreprocessedDisplayControl != null)
+            {
+                leftPreprocessedDisplayControl.InvalidateImageView();
+            }
+            if (rightPreprocessedDisplayControl != null)
+            {
+                rightPreprocessedDisplayControl.InvalidateImageView();
+            }
+            if (leftProcessedDisplayControl != null)
+            {
+                leftProcessedDisplayControl.InvalidateImageView();
+            }
+            if (rightProcessedDisplayControl != null)
+            {
+                rightProcessedDisplayControl.InvalidateImageView();
+            }
+            InvalidateBlockProcessingDisplays();
+            if (leftObjectsDisplayControl != null)
+            {
+                leftObjectsDisplayControl.InvalidateImageView();
+            }
+            if (rightObjectsDisplayControl != null)
+            {
+                rightObjectsDisplayControl.InvalidateImageView();
+            }
+
+            foreach (ImageDisplayControl displayControl in new[]
+            {
+                leftOriginalDisplayControl,
+                rightOriginalDisplayControl,
+                leftPreprocessedDisplayControl,
+                rightPreprocessedDisplayControl,
+                leftProcessedDisplayControl,
+                rightProcessedDisplayControl,
+                leftBlockProcessingDisplayControl,
+                rightBlockProcessingDisplayControl,
+                leftObjectsDisplayControl,
+                rightObjectsDisplayControl,
+                leftDebugDisplayControl,
+                rightDebugDisplayControl
+            })
+            {
+                if (displayControl != null)
+                {
+                    displayControl.ResumeImageViewPreparation();
+                }
+            }
+        }
 
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
@@ -157,6 +297,7 @@ namespace IntegratedImageProcessingApp.Forms
             systemParameters = systemParameterService.Load();
 
             InitializeComponent();
+            ImageDisplayControl.SuppressViewUpdates = false;
             NormalizeObjectJudgementDefaultNames();
             NormalizeObjectDefinitionDefaultNames();
             functionListBox.SelectionMode = SelectionMode.MultiExtended;
@@ -4966,7 +5107,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ApplyLatestProcessedImageToVisibleTabs()
         {
-            if (latestProcessedImage == null)
+            if (latestProcessedImage == null || SkipImageDisplayUpdate())
             {
                 return;
             }
@@ -5046,15 +5187,17 @@ namespace IntegratedImageProcessingApp.Forms
                         ? sharedSource
                         : processingSource;
 
-                leftProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource, true);
-
-                rightProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource, true);
-
-                Rectangle? selectedRoi = GetSelectedRoi();
-                if (selectedRoi.HasValue)
+                if (!IsImageDisplayUpdateSuppressed)
                 {
-                    leftProcessedDisplayControl.SetRoiOverlay(selectedRoi.Value);
-                    rightProcessedDisplayControl.SetRoiOverlay(selectedRoi.Value);
+                    leftProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource, true);
+                    rightProcessedDisplayControl.SetSharedLargeImageSource(processedDisplaySource, true);
+
+                    Rectangle? selectedRoi = GetSelectedRoi();
+                    if (selectedRoi.HasValue)
+                    {
+                        leftProcessedDisplayControl.SetRoiOverlay(selectedRoi.Value);
+                        rightProcessedDisplayControl.SetRoiOverlay(selectedRoi.Value);
+                    }
                 }
 
                 foreach (Rectangle roi in OrderRoiRectanglesForVisibleArea(
@@ -5084,11 +5227,14 @@ namespace IntegratedImageProcessingApp.Forms
             // A selected step may already have a completed mask in memory.
             // StartLargeProcessedMaskBuild then correctly returns immediately,
             // so explicitly refresh the processed viewers to display that cache.
-            leftProcessedDisplayControl.ScheduleImageViewRefresh();
-            rightProcessedDisplayControl.ScheduleImageViewRefresh();
-            ApplySharedImageViewStateToVisibleControls();
-            RestoreProcessedImageViewState();
-            RestorePreprocessedImageViewState();
+            if (!IsImageDisplayUpdateSuppressed)
+            {
+                leftProcessedDisplayControl.ScheduleImageViewRefresh();
+                rightProcessedDisplayControl.ScheduleImageViewRefresh();
+                ApplySharedImageViewStateToVisibleControls();
+                RestoreProcessedImageViewState();
+                RestorePreprocessedImageViewState();
+            }
         }
 
         private LargeImageSource GetLargeImageProcessingSource(LargeImageSource originalSource)
