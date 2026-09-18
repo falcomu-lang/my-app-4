@@ -35,6 +35,9 @@ namespace IntegratedImageProcessingApp.Forms
         private int objectDefinitionSourceCacheHitCount = -1;
         private int objectDefinitionSourceCacheMissCount = -1;
         private bool objectDefinitionDisplayTimePending;
+        private string activeObjectDefinitionProcessingSignature;
+        private string completedObjectDefinitionProcessingSignature;
+        private string pendingObjectDefinitionProcessingSignature;
 
         private sealed class ObjectDefinitionDetectedObject
         {
@@ -81,6 +84,51 @@ namespace IntegratedImageProcessingApp.Forms
         private void StartObjectDefinitionProcessing(string definitionId)
         {
             ObjectDefinitionSettings definition = FindObjectDefinition(definitionId);
+            if (definition == null || string.IsNullOrWhiteSpace(definition.SourceId))
+            {
+                return;
+            }
+
+            string processingSignature = CreateObjectDefinitionProcessingSignature(definition);
+            // An explicit object-definition command should make every upstream
+            // stage available to inspect.  This requests the matching views,
+            // while their own signatures prevent redundant processing.
+            RequestObjectDefinitionDependencyDisplays(definition);
+            if (HasCompletedObjectDefinitionResult(definition, processingSignature))
+            {
+                statusLabel.Text = definition.DisplayName + " 已處理";
+                return;
+            }
+
+            if (string.Equals(
+                    pendingObjectDefinitionProcessingSignature,
+                    processingSignature,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            pendingObjectDefinitionProcessingSignature = processingSignature;
+            BeginInvoke(new Action(delegate
+            {
+                if (!string.Equals(
+                        pendingObjectDefinitionProcessingSignature,
+                        processingSignature,
+                        StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                pendingObjectDefinitionProcessingSignature = null;
+                StartObjectDefinitionProcessingCore(definitionId, processingSignature);
+            }));
+        }
+
+        private void StartObjectDefinitionProcessingCore(
+            string definitionId,
+            string processingSignature)
+        {
+            ObjectDefinitionSettings definition = FindObjectDefinition(definitionId);
             if (definition == null)
             {
                 return;
@@ -121,7 +169,11 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
-                StartObjectDefinitionBitmapProcessing(definition, bitmap, bitmapRois);
+                StartObjectDefinitionBitmapProcessing(
+                    definition,
+                    bitmap,
+                    bitmapRois,
+                    processingSignature);
                 return;
             }
 
@@ -142,6 +194,8 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionResultGeneration++;
                 generation = objectDefinitionResultGeneration;
                 activeObjectDefinitionResultId = definition.Id;
+                activeObjectDefinitionProcessingSignature = processingSignature;
+                completedObjectDefinitionProcessingSignature = null;
                 objectDefinitionProcessingRequested = true;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceProcessingElapsedMilliseconds = 0;
@@ -289,6 +343,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     objectDefinitionMergeElapsedMilliseconds = mergeElapsedMilliseconds;
                                     objectDefinitionSourceCacheHitCount = sourceCacheHitCount;
                                     objectDefinitionSourceCacheMissCount = sourceCacheMissCount;
+                                    completedObjectDefinitionProcessingSignature = processingSignature;
                                     long displayElapsedMilliseconds =
                                         RefreshVisibleObjectDefinitionDisplays();
                                     AppendObjectDefinitionTimingMemo(
@@ -325,6 +380,7 @@ namespace IntegratedImageProcessingApp.Forms
                                             sourceCacheMissCount);
                                     leftObjectsDisplayControl.InvalidateImageView();
                                     rightObjectsDisplayControl.InvalidateImageView();
+                                    InvalidateBlockProcessingDisplays();
                                 }));
                         displaySourceMasksTransferred = true;
                     }
@@ -374,7 +430,8 @@ namespace IntegratedImageProcessingApp.Forms
         private void StartObjectDefinitionBitmapProcessing(
             ObjectDefinitionSettings definition,
             Bitmap original,
-            List<Rectangle> rois)
+            List<Rectangle> rois,
+            string processingSignature)
         {
             rois = OrderRoiRectanglesForVisibleArea(rois);
             int generation;
@@ -383,6 +440,8 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionResultGeneration++;
                 generation = objectDefinitionResultGeneration;
                 activeObjectDefinitionResultId = definition.Id;
+                activeObjectDefinitionProcessingSignature = processingSignature;
+                completedObjectDefinitionProcessingSignature = null;
                 objectDefinitionProcessingRequested = true;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceProcessingElapsedMilliseconds = 0;
@@ -524,8 +583,10 @@ namespace IntegratedImageProcessingApp.Forms
                                             objectDefinitionCclElapsedMilliseconds = cclElapsedMilliseconds;
                                             objectDefinitionRetainedMaskElapsedMilliseconds = retainedMaskElapsedMilliseconds;
                                             objectDefinitionMergeElapsedMilliseconds = mergeElapsedMilliseconds;
+                                            completedObjectDefinitionProcessingSignature = processingSignature;
                                             long displayElapsedMilliseconds =
                                                 RefreshVisibleObjectDefinitionDisplays();
+                                            InvalidateBlockProcessingDisplays();
                                             statusLabel.Text = definition.DisplayName +
                                                 " 已完成：OpenCV CCL，找到 " +
                                                 count.ToString(System.Globalization.CultureInfo.InvariantCulture) +
@@ -640,6 +701,163 @@ namespace IntegratedImageProcessingApp.Forms
                 : leftObjectsDisplayControl.GetSharedLargeImageSource();
         }
 
+        private void RequestObjectDefinitionDependencyDisplays(ObjectDefinitionSettings definition)
+        {
+            if (definition == null)
+            {
+                return;
+            }
+
+            string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
+                ? "ObjectJudgement"
+                : definition.SourceType;
+            if (string.Equals(sourceType, "Group", StringComparison.Ordinal))
+            {
+                ObjectJudgementGroupSettings group = FindObjectJudgementGroup(definition.SourceId);
+                List<ObjectJudgementSettings> objectJudgements = group == null
+                    ? new List<ObjectJudgementSettings>()
+                    : GetObjectJudgementsInGroup(group.Id);
+                if (group == null || objectJudgements.Count == 0)
+                {
+                    return;
+                }
+
+                // The first relation owns the foreground preview. All group
+                // members are still consumed by the source-mask pipeline.
+                RequestObjectJudgementRelatedImageDisplays(objectJudgements[0]);
+                lock (objectJudgementMaskLock)
+                {
+                    activeObjectJudgementId = null;
+                    activeObjectJudgementGroupId = group.Id;
+                    objectJudgementProcessingRequested = true;
+                    activeObjectJudgementGroupProcessingSignature =
+                        CreateObjectJudgementGroupProcessingSignature(group.Id, objectJudgements);
+                }
+            }
+            else
+            {
+                ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements.Find(
+                    item => string.Equals(item.Id, definition.SourceId, StringComparison.Ordinal));
+                if (objectJudgement == null)
+                {
+                    return;
+                }
+
+                List<ObjectJudgementProcessingSettings> processingSteps =
+                    GetObjectJudgementProcessingChain(objectJudgement, -1);
+                RequestObjectJudgementRelatedImageDisplays(objectJudgement);
+                lock (objectJudgementMaskLock)
+                {
+                    activeObjectJudgementId = objectJudgement.Id;
+                    activeObjectJudgementGroupId = null;
+                    objectJudgementProcessingRequested = true;
+                    activeObjectJudgementProcessingSignature =
+                        CreateObjectJudgementProcessingSignature(objectJudgement, processingSteps);
+                }
+            }
+
+            InvalidateBlockProcessingDisplays();
+        }
+
+        private string CreateObjectDefinitionProcessingSignature(ObjectDefinitionSettings definition)
+        {
+            var parts = new List<string>
+            {
+                "object-definition-result",
+                systemParameters.LastImagePath ?? string.Empty,
+                imageSourceGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                preprocessedImageGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                definition == null ? string.Empty : definition.Id ?? string.Empty,
+                definition == null ? string.Empty : definition.SourceType ?? string.Empty,
+                definition == null ? string.Empty : definition.SourceId ?? string.Empty
+            };
+
+            if (definition != null && string.Equals(definition.SourceType, "Group", StringComparison.Ordinal))
+            {
+                ObjectJudgementGroupSettings group = FindObjectJudgementGroup(definition.SourceId);
+                List<ObjectJudgementSettings> objectJudgements = group == null
+                    ? new List<ObjectJudgementSettings>()
+                    : GetObjectJudgementsInGroup(group.Id);
+                parts.Add(CreateObjectJudgementGroupProcessingSignature(
+                    definition.SourceId,
+                    objectJudgements));
+            }
+            else if (definition != null)
+            {
+                ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements.Find(
+                    item => string.Equals(item.Id, definition.SourceId, StringComparison.Ordinal));
+                parts.Add(CreateObjectJudgementProcessingSignature(
+                    objectJudgement,
+                    objectJudgement == null
+                        ? new List<ObjectJudgementProcessingSettings>()
+                        : GetObjectJudgementProcessingChain(objectJudgement, -1)));
+            }
+
+            if (definition != null)
+            {
+                parts.Add(definition.Connectivity.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(definition.MinArea.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(definition.MaxArea.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(definition.NumberingOrder ?? string.Empty);
+                parts.Add(definition.MergeMethod ?? string.Empty);
+                parts.Add(definition.MaxMergeDistance.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(definition.GroupMinArea.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(definition.GroupMaxArea.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(definition.ResultBoxLineWidth.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(definition.ResultNumberFontSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+            {
+                Rectangle roi = roiRegion.Bounds;
+                parts.Add(roi.X.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(roi.Y.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(roi.Width.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(roi.Height.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            return string.Join("|", parts.ToArray());
+        }
+
+        private bool HasCompletedObjectDefinitionResult(
+            ObjectDefinitionSettings definition,
+            string processingSignature)
+        {
+            if (definition == null || string.IsNullOrWhiteSpace(processingSignature))
+            {
+                return false;
+            }
+
+            lock (objectDefinitionResultLock)
+            {
+                if (!objectDefinitionProcessingRequested ||
+                    !string.Equals(activeObjectDefinitionResultId, definition.Id, StringComparison.Ordinal) ||
+                    !string.Equals(activeObjectDefinitionProcessingSignature, processingSignature, StringComparison.Ordinal) ||
+                    !string.Equals(completedObjectDefinitionProcessingSignature, processingSignature, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
+                {
+                    Rectangle roi = roiRegion.Bounds;
+                    if (roi.Width <= 0 || roi.Height <= 0)
+                    {
+                        continue;
+                    }
+
+                    string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
+                    if (!objectDefinitionResults.ContainsKey(resultKey) ||
+                        !objectDefinitionSourceMasks.ContainsKey(resultKey))
+                    {
+                        return false;
+                    }
+                }
+
+                return objectDefinitionResults.Count > 0;
+            }
+        }
+
         private void EnsureObjectDefinitionRequestIsCurrent(string definitionId, int generation)
         {
             lock (objectDefinitionResultLock)
@@ -659,6 +877,9 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDefinitionResultGeneration++;
                 activeObjectDefinitionResultId = null;
+                activeObjectDefinitionProcessingSignature = null;
+                completedObjectDefinitionProcessingSignature = null;
+                pendingObjectDefinitionProcessingSignature = null;
                 objectDefinitionProcessingRequested = false;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceProcessingElapsedMilliseconds = 0;

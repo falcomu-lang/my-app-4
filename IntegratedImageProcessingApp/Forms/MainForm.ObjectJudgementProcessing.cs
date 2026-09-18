@@ -2108,6 +2108,10 @@ namespace IntegratedImageProcessingApp.Forms
         private void PaintLargeObjectJudgementOverlay(object sender, LargeImageOverlayPaintEventArgs e)
         {
             string selectedGroupId = GetObjectJudgementGroupId(functionListBox.SelectedItem as string);
+            if (string.IsNullOrEmpty(selectedGroupId))
+            {
+                selectedGroupId = activeObjectJudgementGroupId;
+            }
             if (objectJudgementProcessingRequested &&
                 !string.IsNullOrEmpty(activeObjectJudgementGroupId) &&
                 string.Equals(activeObjectJudgementGroupId, selectedGroupId, StringComparison.Ordinal))
@@ -2165,6 +2169,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             int objectIndex = GetSelectedObjectJudgementIndex();
+            if (objectIndex < 0 && !string.IsNullOrEmpty(activeObjectJudgementId))
+            {
+                objectIndex = systemParameters.ObjectJudgements.FindIndex(
+                    item => string.Equals(item.Id, activeObjectJudgementId, StringComparison.Ordinal));
+            }
             if (objectIndex < 0 || objectIndex >= systemParameters.ObjectJudgements.Count)
             {
                 return;

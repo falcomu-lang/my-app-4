@@ -1092,8 +1092,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 activeImageRelationSourceType = "Original";
                 activeImageRelationSourceId = null;
-                RestorePreprocessedDisplaysToOriginalSource();
-                statusLabel.Text = "目前選擇：原始影像";
+                // Selecting a source only defines the input for a later explicit
+                // processing command.  Do not replace any currently displayed
+                // preprocessing, processed, block, or object result here.
+                statusLabel.Text = "目前選擇：原始影像（尚未執行）";
             }
             else if (GetImageRelationGroupId(selectedFunction) != null)
             {

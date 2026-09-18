@@ -36,7 +36,9 @@ namespace IntegratedImageProcessingApp.Forms
 
             string selectedFunction = functionListBox.SelectedItem as string;
             if (GetSelectedObjectJudgementIndex() < 0 &&
-                string.IsNullOrEmpty(GetObjectJudgementGroupId(selectedFunction)))
+                string.IsNullOrEmpty(GetObjectJudgementGroupId(selectedFunction)) &&
+                string.IsNullOrEmpty(activeObjectJudgementId) &&
+                string.IsNullOrEmpty(activeObjectJudgementGroupId))
             {
                 return;
             }
@@ -1183,7 +1185,6 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            ActivateObjectJudgementRelation(systemParameters.ObjectJudgements[objectIndex]);
             parameterPlaceholderLabel.Visible = false;
             HideImageRelationParameterPanel();
             HideImageProcessingParameterPanel();
@@ -1283,7 +1284,6 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements[objectIndex];
-            ActivateObjectJudgementRelation(objectJudgement);
             parameterPlaceholderLabel.Visible = false;
             HideImageRelationParameterPanel();
             HideImageProcessingParameterPanel();
