@@ -916,7 +916,7 @@ namespace IntegratedImageProcessingApp.Forms
                 for (int y = 0; y < sourceMask.Height; y++)
                 {
                     Marshal.Copy(
-                        labels.Data + checked((int)(y * labelsStride)),
+                        GetObjectDefinitionMatRowPointer(labels, y, labelsStride),
                         labelsRow,
                         0,
                         labelsRow.Length);
@@ -933,7 +933,7 @@ namespace IntegratedImageProcessingApp.Forms
                     Marshal.Copy(
                         retainedRow,
                         0,
-                        retainedMask.Data + checked((int)(y * retainedStride)),
+                        GetObjectDefinitionMatRowPointer(retainedMask, y, retainedStride),
                         retainedRow.Length);
                 }
 
@@ -947,6 +947,15 @@ namespace IntegratedImageProcessingApp.Forms
 
                 return result;
             }
+        }
+
+        private static IntPtr GetObjectDefinitionMatRowPointer(
+            Cv.Mat mat,
+            int row,
+            long stride)
+        {
+            long address = mat.Data.ToInt64() + ((long)row * stride);
+            return new IntPtr(address);
         }
 
         private static List<ObjectDefinitionDetectedObject> OrderObjectDefinitionDetectedObjects(
