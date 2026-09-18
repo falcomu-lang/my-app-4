@@ -23,6 +23,10 @@ namespace IntegratedImageProcessingApp.Forms
         private string activeObjectDefinitionResultId;
         private bool objectDefinitionProcessingRequested;
         private long objectDefinitionProcessingElapsedMilliseconds;
+        private long objectDefinitionSourceProcessingElapsedMilliseconds;
+        private long objectDefinitionCclElapsedMilliseconds;
+        private long objectDefinitionRetainedMaskElapsedMilliseconds;
+        private long objectDefinitionMergeElapsedMilliseconds;
         private bool objectDefinitionDisplayTimePending;
 
         private sealed class ObjectDefinitionDetectedObject
@@ -96,6 +100,10 @@ namespace IntegratedImageProcessingApp.Forms
                 activeObjectDefinitionResultId = definition.Id;
                 objectDefinitionProcessingRequested = true;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceProcessingElapsedMilliseconds = 0;
+                objectDefinitionCclElapsedMilliseconds = 0;
+                objectDefinitionRetainedMaskElapsedMilliseconds = 0;
+                objectDefinitionMergeElapsedMilliseconds = 0;
                 objectDefinitionDisplayTimePending = true;
                 objectDefinitionResults.Clear();
                 DisposeObjectDefinitionSourceMasksUnsafe();
@@ -109,23 +117,40 @@ namespace IntegratedImageProcessingApp.Forms
                     var completedSourceMasks = new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
                     Dictionary<string, Cv.Mat> displaySourceMasks = null;
                     bool displaySourceMasksTransferred = false;
+                    long sourceProcessingElapsedMilliseconds = 0;
+                    long cclElapsedMilliseconds = 0;
+                    long retainedMaskElapsedMilliseconds = 0;
+                    long mergeElapsedMilliseconds = 0;
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
                         foreach (Rectangle roi in rois)
                         {
                             EnsureObjectDefinitionRequestIsCurrent(definition.Id, generation);
-                            using (Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(source, definition, roi))
+                            Stopwatch sourceStopwatch = Stopwatch.StartNew();
+                            Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(source, definition, roi);
+                            sourceStopwatch.Stop();
+                            sourceProcessingElapsedMilliseconds += sourceStopwatch.ElapsedMilliseconds;
+                            using (sourceMask)
                             {
                                 string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
                                 Cv.Mat retainedMask;
+                                long roiCclElapsedMilliseconds;
+                                long roiRetainedMaskElapsedMilliseconds;
+                                long roiMergeElapsedMilliseconds;
                                 completedResults[resultKey] =
                                     CreateObjectDefinitionDetectedObjects(
                                         sourceMask,
                                         roi,
                                         definition,
-                                        out retainedMask);
+                                        out retainedMask,
+                                        out roiCclElapsedMilliseconds,
+                                        out roiRetainedMaskElapsedMilliseconds,
+                                        out roiMergeElapsedMilliseconds);
                                 completedSourceMasks[resultKey] = retainedMask;
+                                cclElapsedMilliseconds += roiCclElapsedMilliseconds;
+                                retainedMaskElapsedMilliseconds += roiRetainedMaskElapsedMilliseconds;
+                                mergeElapsedMilliseconds += roiMergeElapsedMilliseconds;
                             }
                         }
 
@@ -173,6 +198,10 @@ namespace IntegratedImageProcessingApp.Forms
 
                                     int count = completedResults.Values.Sum(items => items.Count);
                                     objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
+                                    objectDefinitionSourceProcessingElapsedMilliseconds = sourceProcessingElapsedMilliseconds;
+                                    objectDefinitionCclElapsedMilliseconds = cclElapsedMilliseconds;
+                                    objectDefinitionRetainedMaskElapsedMilliseconds = retainedMaskElapsedMilliseconds;
+                                    objectDefinitionMergeElapsedMilliseconds = mergeElapsedMilliseconds;
                                     long displayElapsedMilliseconds =
                                         RefreshVisibleObjectDefinitionDisplays();
                                     statusLabel.Text = definition.DisplayName +
@@ -181,7 +210,11 @@ namespace IntegratedImageProcessingApp.Forms
                                         " 個物件，" +
                                         BuildObjectDefinitionTimingText(
                                             elapsedMilliseconds,
-                                            displayElapsedMilliseconds);
+                                            displayElapsedMilliseconds,
+                                            sourceProcessingElapsedMilliseconds,
+                                            cclElapsedMilliseconds,
+                                            retainedMaskElapsedMilliseconds,
+                                            mergeElapsedMilliseconds);
                                     leftObjectsDisplayControl.InvalidateImageView();
                                     rightObjectsDisplayControl.InvalidateImageView();
                                 }));
@@ -243,6 +276,10 @@ namespace IntegratedImageProcessingApp.Forms
                 activeObjectDefinitionResultId = definition.Id;
                 objectDefinitionProcessingRequested = true;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceProcessingElapsedMilliseconds = 0;
+                objectDefinitionCclElapsedMilliseconds = 0;
+                objectDefinitionRetainedMaskElapsedMilliseconds = 0;
+                objectDefinitionMergeElapsedMilliseconds = 0;
                 objectDefinitionDisplayTimePending = true;
                 objectDefinitionResults.Clear();
                 DisposeObjectDefinitionSourceMasksUnsafe();
@@ -258,6 +295,10 @@ namespace IntegratedImageProcessingApp.Forms
                     bool displaySourceMasksTransferred = false;
                     Bitmap leftResult = null;
                     Bitmap rightResult = null;
+                    long sourceProcessingElapsedMilliseconds = 0;
+                    long cclElapsedMilliseconds = 0;
+                    long retainedMaskElapsedMilliseconds = 0;
+                    long mergeElapsedMilliseconds = 0;
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
@@ -266,21 +307,34 @@ namespace IntegratedImageProcessingApp.Forms
                             foreach (Rectangle roi in rois)
                             {
                                 EnsureObjectDefinitionRequestIsCurrent(definition.Id, generation);
-                                using (Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(
+                                Stopwatch sourceStopwatch = Stopwatch.StartNew();
+                                Cv.Mat sourceMask = CreateObjectDefinitionSourceMask(
                                     original,
                                     originalGray,
                                     definition,
-                                    roi))
+                                    roi);
+                                sourceStopwatch.Stop();
+                                sourceProcessingElapsedMilliseconds += sourceStopwatch.ElapsedMilliseconds;
+                                using (sourceMask)
                                 {
                                     string resultKey = CreateObjectDefinitionResultKey(definition.Id, roi);
                                     Cv.Mat retainedMask;
+                                    long roiCclElapsedMilliseconds;
+                                    long roiRetainedMaskElapsedMilliseconds;
+                                    long roiMergeElapsedMilliseconds;
                                     completedResults[resultKey] =
                                         CreateObjectDefinitionDetectedObjects(
                                             sourceMask,
                                             roi,
                                             definition,
-                                            out retainedMask);
+                                            out retainedMask,
+                                            out roiCclElapsedMilliseconds,
+                                            out roiRetainedMaskElapsedMilliseconds,
+                                            out roiMergeElapsedMilliseconds);
                                     completedSourceMasks[resultKey] = retainedMask;
+                                    cclElapsedMilliseconds += roiCclElapsedMilliseconds;
+                                    retainedMaskElapsedMilliseconds += roiRetainedMaskElapsedMilliseconds;
+                                    mergeElapsedMilliseconds += roiMergeElapsedMilliseconds;
                                 }
                             }
                         }
@@ -357,6 +411,10 @@ namespace IntegratedImageProcessingApp.Forms
                                             displayRightResult = null;
                                             int count = completedResults.Values.Sum(items => items.Count);
                                             objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
+                                            objectDefinitionSourceProcessingElapsedMilliseconds = sourceProcessingElapsedMilliseconds;
+                                            objectDefinitionCclElapsedMilliseconds = cclElapsedMilliseconds;
+                                            objectDefinitionRetainedMaskElapsedMilliseconds = retainedMaskElapsedMilliseconds;
+                                            objectDefinitionMergeElapsedMilliseconds = mergeElapsedMilliseconds;
                                             long displayElapsedMilliseconds =
                                                 RefreshVisibleObjectDefinitionDisplays();
                                             statusLabel.Text = definition.DisplayName +
@@ -365,7 +423,11 @@ namespace IntegratedImageProcessingApp.Forms
                                                 " 個物件，" +
                                                 BuildObjectDefinitionTimingText(
                                                     elapsedMilliseconds,
-                                                    displayElapsedMilliseconds);
+                                                    displayElapsedMilliseconds,
+                                                    sourceProcessingElapsedMilliseconds,
+                                                    cclElapsedMilliseconds,
+                                                    retainedMaskElapsedMilliseconds,
+                                                    mergeElapsedMilliseconds);
                                         }
                                         catch
                                         {
@@ -490,6 +552,10 @@ namespace IntegratedImageProcessingApp.Forms
                 activeObjectDefinitionResultId = null;
                 objectDefinitionProcessingRequested = false;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceProcessingElapsedMilliseconds = 0;
+                objectDefinitionCclElapsedMilliseconds = 0;
+                objectDefinitionRetainedMaskElapsedMilliseconds = 0;
+                objectDefinitionMergeElapsedMilliseconds = 0;
                 objectDefinitionDisplayTimePending = false;
                 objectDefinitionResults.Clear();
                 DisposeObjectDefinitionSourceMasksUnsafe();
@@ -542,12 +608,24 @@ namespace IntegratedImageProcessingApp.Forms
 
         private string BuildObjectDefinitionTimingText(
             long processingElapsedMilliseconds,
-            long displayElapsedMilliseconds)
+            long displayElapsedMilliseconds,
+            long sourceProcessingElapsedMilliseconds,
+            long cclElapsedMilliseconds,
+            long retainedMaskElapsedMilliseconds,
+            long mergeElapsedMilliseconds)
         {
             string displayText = displayElapsedMilliseconds > 0
                 ? displayElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms"
                 : "待顯示";
-            return "影像處理時間：" +
+            return "來源區塊處理時間：" +
+                Math.Max(0, sourceProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || CCL時間：" +
+                Math.Max(0, cclElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || 保留Mask時間：" +
+                Math.Max(0, retainedMaskElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || Merge by Distance時間：" +
+                Math.Max(0, mergeElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || 影像處理總時間：" +
                 Math.Max(0, processingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
                 " ms || 顯示時間：" + displayText;
         }
@@ -574,7 +652,11 @@ namespace IntegratedImageProcessingApp.Forms
                 : definition.DisplayName;
             statusLabel.Text = name + "：" + BuildObjectDefinitionTimingText(
                 objectDefinitionProcessingElapsedMilliseconds,
-                displayElapsedMilliseconds);
+                displayElapsedMilliseconds,
+                objectDefinitionSourceProcessingElapsedMilliseconds,
+                objectDefinitionCclElapsedMilliseconds,
+                objectDefinitionRetainedMaskElapsedMilliseconds,
+                objectDefinitionMergeElapsedMilliseconds);
         }
 
         private void InvalidateObjectDefinitionDisplayOnly(string definitionId)
@@ -854,8 +936,14 @@ namespace IntegratedImageProcessingApp.Forms
             Cv.Mat sourceMask,
             Rectangle roi,
             ObjectDefinitionSettings definition,
-            out Cv.Mat retainedMask)
+            out Cv.Mat retainedMask,
+            out long cclElapsedMilliseconds,
+            out long retainedMaskElapsedMilliseconds,
+            out long mergeElapsedMilliseconds)
         {
+            cclElapsedMilliseconds = 0;
+            retainedMaskElapsedMilliseconds = 0;
+            mergeElapsedMilliseconds = 0;
             if (sourceMask == null || sourceMask.Empty())
             {
                 retainedMask = new Cv.Mat();
@@ -870,6 +958,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Cv.PixelConnectivity connectivity = definition.Connectivity == 4
                     ? Cv.PixelConnectivity.Connectivity4
                     : Cv.PixelConnectivity.Connectivity8;
+                Stopwatch cclStopwatch = Stopwatch.StartNew();
                 int labelCount = Cv.Cv2.ConnectedComponentsWithStats(
                     sourceMask,
                     labels,
@@ -903,7 +992,10 @@ namespace IntegratedImageProcessingApp.Forms
                         Area = area
                     });
                 }
+                cclStopwatch.Stop();
+                cclElapsedMilliseconds = cclStopwatch.ElapsedMilliseconds;
 
+                Stopwatch retainedMaskStopwatch = Stopwatch.StartNew();
                 retainedMask = new Cv.Mat(
                     sourceMask.Rows,
                     sourceMask.Cols,
@@ -936,13 +1028,18 @@ namespace IntegratedImageProcessingApp.Forms
                         GetObjectDefinitionMatRowPointer(retainedMask, y, retainedStride),
                         retainedRow.Length);
                 }
+                retainedMaskStopwatch.Stop();
+                retainedMaskElapsedMilliseconds = retainedMaskStopwatch.ElapsedMilliseconds;
 
                 if (string.Equals(definition.MergeMethod, "Distance", StringComparison.Ordinal) &&
                     definition.MaxMergeDistance > 0)
                 {
+                    Stopwatch mergeStopwatch = Stopwatch.StartNew();
                     result = MergeObjectDefinitionDetectedObjects(
                         result,
                         definition.MaxMergeDistance);
+                    mergeStopwatch.Stop();
+                    mergeElapsedMilliseconds = mergeStopwatch.ElapsedMilliseconds;
                 }
 
                 return result;
