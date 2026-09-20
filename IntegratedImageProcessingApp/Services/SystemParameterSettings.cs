@@ -186,6 +186,8 @@ namespace IntegratedImageProcessingApp.Services
             ObjectJudgementIds = new List<string>();
             ProcessingSteps = new List<ObjectDefinitionProcessingSettings>();
             SourceType = "ObjectJudgement";
+            SourceRelationType = string.Empty;
+            SourceRelationId = string.Empty;
             Connectivity = 8;
             MinArea = 0;
             MaxArea = 0;
@@ -206,6 +208,12 @@ namespace IntegratedImageProcessingApp.Services
         public string SourceType { get; set; }
 
         public string SourceId { get; set; }
+
+        // Used only when SourceId is not configured. A configured block source
+        // always takes precedence over this fallback relation source.
+        public string SourceRelationType { get; set; }
+
+        public string SourceRelationId { get; set; }
 
         public int Connectivity { get; set; }
 

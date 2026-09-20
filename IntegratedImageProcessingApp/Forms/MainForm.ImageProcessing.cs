@@ -174,6 +174,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ProcessImageProcessingStep(string stepText)
         {
+            objectDefinitionDependencyPreviewRequested = false;
             int stepIndex = GetImageProcessingStepIndex(stepText);
             if (stepIndex < 0 || stepIndex >= systemParameters.ImageProcessingSteps.Count)
             {
@@ -184,6 +185,13 @@ namespace IntegratedImageProcessingApp.Forms
             selectedImageProcessingStepIndex = stepIndex;
             selectedImageProcessingGroupId = null;
             activeImageRelationGroupId = null;
+            displayedImageProcessingStepIndex = stepIndex;
+            displayedImageProcessingGroupId = null;
+            displayedImageRelationGroupId = null;
+            displayedImageRelationSourceType = string.IsNullOrWhiteSpace(activeImageRelationSourceType)
+                ? "Original"
+                : activeImageRelationSourceType;
+            displayedImageRelationSourceId = activeImageRelationSourceId;
             imageProcessingExecutionRequested = true;
             explicitProcessedImageUpdateRequested = true;
             BeginParameterApplyStatus(false);
@@ -195,6 +203,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ProcessImageProcessingGroup(string groupId)
         {
+            objectDefinitionDependencyPreviewRequested = false;
             ImageProcessingGroupSettings group = FindImageProcessingGroup(groupId);
             if (group == null)
             {
@@ -205,6 +214,13 @@ namespace IntegratedImageProcessingApp.Forms
             selectedImageProcessingStepIndex = -1;
             selectedImageProcessingGroupId = group.Id;
             activeImageRelationGroupId = null;
+            displayedImageProcessingStepIndex = -1;
+            displayedImageProcessingGroupId = group.Id;
+            displayedImageRelationGroupId = null;
+            displayedImageRelationSourceType = string.IsNullOrWhiteSpace(activeImageRelationSourceType)
+                ? "Original"
+                : activeImageRelationSourceType;
+            displayedImageRelationSourceId = activeImageRelationSourceId;
             imageProcessingExecutionRequested = true;
             explicitProcessedImageUpdateRequested = true;
             MarkProcessedPreviewDirty();

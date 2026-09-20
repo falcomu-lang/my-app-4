@@ -29,7 +29,8 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageDisplayControl rightDebugDisplayControl;
         private bool isLoadingImage;
         private bool isSyncingImageView;
-        private DateTime lastSynchronousImagePanRefreshUtc = DateTime.MinValue;
+        private System.Windows.Forms.Timer synchronizedImagePanTimer;
+        private ImageDisplayControl pendingSynchronizedImagePanTarget;
         private readonly SystemParameterIniService systemParameterService;
         private SystemParameterSettings systemParameters;
         private bool roiMenuExpanded;
@@ -47,6 +48,13 @@ namespace IntegratedImageProcessingApp.Forms
         private FlowLayoutPanel imageProcessingParameterPanel;
         private int selectedImageProcessingStepIndex = -1;
         private string selectedImageProcessingGroupId;
+        // Selection is only for editing/inspection. These fields identify the
+        // processed result that is currently painted in the viewers.
+        private int displayedImageProcessingStepIndex = -1;
+        private string displayedImageProcessingGroupId;
+        private string displayedImageRelationGroupId;
+        private string displayedImageRelationSourceType = "Original";
+        private string displayedImageRelationSourceId;
         private readonly Dictionary<string, string> visibleImageProcessingStepIds =
             new Dictionary<string, string>(StringComparer.Ordinal);
         private readonly Dictionary<string, string> visibleImageProcessingGroupIds =
@@ -137,6 +145,11 @@ namespace IntegratedImageProcessingApp.Forms
         private void SuppressImageDisplayCheckBox_CheckedChanged(object sender, EventArgs e)
         {
             ImageDisplayControl.SuppressViewUpdates = IsImageDisplayUpdateSuppressed;
+            if (centerPanel != null)
+            {
+                centerPanel.Visible = !IsImageDisplayUpdateSuppressed;
+            }
+
             if (IsImageDisplayUpdateSuppressed)
             {
                 displayRefreshPendingWhileSuppressed = true;
@@ -297,6 +310,13 @@ namespace IntegratedImageProcessingApp.Forms
             systemParameters = systemParameterService.Load();
 
             InitializeComponent();
+            synchronizedImagePanTimer = new System.Windows.Forms.Timer();
+            synchronizedImagePanTimer.Interval = 16;
+            synchronizedImagePanTimer.Tick += SynchronizedImagePanTimer_Tick;
+            if (components != null)
+            {
+                components.Add(synchronizedImagePanTimer);
+            }
             ImageDisplayControl.SuppressViewUpdates = false;
             NormalizeObjectJudgementDefaultNames();
             NormalizeObjectDefinitionDefaultNames();
@@ -500,17 +520,29 @@ namespace IntegratedImageProcessingApp.Forms
 
                 if (isPanning)
                 {
-                    DateTime now = DateTime.UtcNow;
-                    if ((now - lastSynchronousImagePanRefreshUtc).TotalMilliseconds >= 16)
+                    bool leftIsPriorityTarget = ReferenceEquals(target, leftVisible) &&
+                        ReferenceEquals(source, rightVisible);
+                    if (leftIsPriorityTarget)
                     {
-                        lastSynchronousImagePanRefreshUtc = now;
-                        source.RefreshImageViewNow();
+                        // Keep the left viewer as the visual priority even
+                        // when the mouse is dragging the right viewer. The
+                        // right viewer's own invalidation remains queued and
+                        // will paint after this bounded refresh.
+                        pendingSynchronizedImagePanTarget = null;
+                        synchronizedImagePanTimer.Stop();
                         target.RefreshImageViewNow();
+                    }
+                    else
+                    {
+                        // When dragging the left viewer, let it paint first
+                        // and refresh the right viewer one frame later.
+                        ScheduleSynchronizedImagePanRefresh(target);
                     }
                 }
                 else
                 {
-                    lastSynchronousImagePanRefreshUtc = DateTime.MinValue;
+                    pendingSynchronizedImagePanTarget = null;
+                    synchronizedImagePanTimer.Stop();
                 }
             }
             finally
@@ -564,6 +596,33 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 isSyncingImageView = false;
             }
+        }
+
+        private void ScheduleSynchronizedImagePanRefresh(ImageDisplayControl target)
+        {
+            if (target == null || synchronizedImagePanTimer == null)
+            {
+                return;
+            }
+
+            pendingSynchronizedImagePanTarget = target;
+            if (!synchronizedImagePanTimer.Enabled)
+            {
+                synchronizedImagePanTimer.Start();
+            }
+        }
+
+        private void SynchronizedImagePanTimer_Tick(object sender, EventArgs e)
+        {
+            synchronizedImagePanTimer.Stop();
+            ImageDisplayControl target = pendingSynchronizedImagePanTarget;
+            pendingSynchronizedImagePanTarget = null;
+            if (target == null || IsDisposed || !target.IsHandleCreated || !target.IsPanning)
+            {
+                return;
+            }
+
+            target.RefreshImageViewNow();
         }
 
         private void ImageTabControl_MouseDoubleClick(object sender, MouseEventArgs e)
@@ -1112,10 +1171,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else if (GetImageRelationIndex(selectedFunction) >= 0)
                 {
-                    activeImageRelationGroupId = null;
                     selectedImageRelationGroupId = null;
-                    activeImageRelationSourceType = "Original";
-                    activeImageRelationSourceId = null;
                     selectedImageRelationIndex = GetImageRelationIndex(selectedFunction);
                     ShowImageRelationParameterPanel(selectedImageRelationIndex);
                     if (IsAKeyDown())
@@ -1130,7 +1186,6 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else if (string.Equals(selectedFunction, OriginalPreprocessingSourceText, StringComparison.Ordinal))
                 {
-                    activeImageRelationGroupId = null;
                     activeImageRelationSourceType = "Original";
                     activeImageRelationSourceId = null;
                     parameterPlaceholderLabel.Text = "目前影像來源：原始影像。直接執行影像處理時會使用原圖。";
@@ -4265,6 +4320,24 @@ namespace IntegratedImageProcessingApp.Forms
             return steps;
         }
 
+        private List<ImageProcessingStepSettings> GetDisplayedImageProcessingSteps()
+        {
+            var steps = new List<ImageProcessingStepSettings>();
+            if (displayedImageProcessingStepIndex >= 0 &&
+                displayedImageProcessingStepIndex < systemParameters.ImageProcessingSteps.Count)
+            {
+                return GetImageProcessingExecutionChain(
+                    systemParameters.ImageProcessingSteps[displayedImageProcessingStepIndex]);
+            }
+
+            if (!string.IsNullOrWhiteSpace(displayedImageProcessingGroupId))
+            {
+                CollectImageProcessingGroupSteps(displayedImageProcessingGroupId, steps);
+            }
+
+            return steps;
+        }
+
         private List<ImageProcessingStepSettings> GetImageProcessingExecutionChain(
             ImageProcessingStepSettings selectedStep)
         {
@@ -4341,6 +4414,36 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return true;
+        }
+
+        private bool HasDisplayedPreviewableImageProcessingSteps()
+        {
+            if (!string.IsNullOrWhiteSpace(displayedImageRelationGroupId))
+            {
+                List<ImageRelationSettings> relations =
+                    GetImageRelationGroupRelations(displayedImageRelationGroupId);
+                if (relations.Count == 0)
+                {
+                    return false;
+                }
+
+                foreach (ImageRelationSettings relation in relations)
+                {
+                    List<ImageProcessingStepSettings> relationSteps =
+                        GetImageProcessingStepsForRelation(relation);
+                    if (relationSteps.Count == 0 ||
+                        relationSteps.Any(step => !IsBinaryMaskProcessingMethod(step.Method)))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            List<ImageProcessingStepSettings> steps = GetDisplayedImageProcessingSteps();
+            return steps.Count > 0 &&
+                steps.All(step => IsBinaryMaskProcessingMethod(step.Method));
         }
 
         private void MarkProcessedImageDirty()
@@ -5112,10 +5215,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            bool updateAllDependencyPreviews = objectDefinitionDependencyPreviewRequested;
             isSyncingImageView = true;
             try
             {
-                if (leftImageTabControl.SelectedTab == leftProcessedTabPage)
+                if (updateAllDependencyPreviews || leftImageTabControl.SelectedTab == leftProcessedTabPage)
                 {
                     leftProcessedDisplayControl.SetDisplayImage(new Bitmap(latestProcessedImage), true);
                     Rectangle? roi = GetSelectedRoi();
@@ -5125,7 +5229,7 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                 }
 
-                if (rightImageTabControl.SelectedTab == rightProcessedTabPage)
+                if (updateAllDependencyPreviews || rightImageTabControl.SelectedTab == rightProcessedTabPage)
                 {
                     rightProcessedDisplayControl.SetDisplayImage(new Bitmap(latestProcessedImage), true);
                     Rectangle? roi = GetSelectedRoi();
@@ -5141,6 +5245,10 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ApplySharedImageViewStateToVisibleControls();
+            if (updateAllDependencyPreviews)
+            {
+                objectDefinitionDependencyPreviewRequested = false;
+            }
         }
 
         private void PrepareLargeProcessedPreview()
@@ -5150,20 +5258,22 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            List<ImageProcessingStepSettings> selectedSteps = GetSelectedImageProcessingSteps();
-            if (systemParameters.RoiRegions.Count == 0 || !HasSelectedPreviewableImageProcessingSteps())
+            List<ImageProcessingStepSettings> selectedSteps = GetDisplayedImageProcessingSteps();
+            if (systemParameters.RoiRegions.Count == 0 || !HasDisplayedPreviewableImageProcessingSteps())
             {
                 ClearProcessedPreviewImages();
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(activeImageRelationGroupId))
+            if (!string.IsNullOrWhiteSpace(displayedImageRelationGroupId))
             {
                 PrepareLargeRelationGroupPreview();
                 return;
             }
 
-            if (ShouldUseRelationPreprocessedSource() && HasConfiguredImagePreprocessingSteps() && preprocessedImageDirty)
+            if (ShouldUseDisplayedRelationPreprocessedSource() &&
+                HasConfiguredImagePreprocessingSteps() &&
+                preprocessedImageDirty)
             {
                 RequestPreprocessedImageUpdate();
                 return;
@@ -5183,7 +5293,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                 processingSource = GetLargeImageProcessingSource(sharedSource);
                 LargeImageSource processedDisplaySource =
-                    string.Equals(activeImageRelationSourceType, "Original", StringComparison.Ordinal)
+                    string.Equals(displayedImageRelationSourceType, "Original", StringComparison.Ordinal)
                         ? sharedSource
                         : processingSource;
 
@@ -5239,8 +5349,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private LargeImageSource GetLargeImageProcessingSource(LargeImageSource originalSource)
         {
-            if (!string.Equals(activeImageRelationSourceType, "Step", StringComparison.Ordinal) &&
-                !string.Equals(activeImageRelationSourceType, "Group", StringComparison.Ordinal))
+            if (!string.Equals(displayedImageRelationSourceType, "Step", StringComparison.Ordinal) &&
+                !string.Equals(displayedImageRelationSourceType, "Group", StringComparison.Ordinal))
             {
                 return originalSource.AddReference();
             }
@@ -5649,7 +5759,7 @@ namespace IntegratedImageProcessingApp.Forms
             ImageDisplayControl display = sender as ImageDisplayControl;
             bool isPanning = display != null && display.IsPanning;
 
-            if (!string.IsNullOrWhiteSpace(activeImageRelationGroupId))
+            if (!string.IsNullOrWhiteSpace(displayedImageRelationGroupId))
             {
                 foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
                 {
@@ -5659,7 +5769,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            List<ImageProcessingStepSettings> selectedSteps = GetSelectedImageProcessingSteps();
+            List<ImageProcessingStepSettings> selectedSteps = GetDisplayedImageProcessingSteps();
             if (selectedSteps.Count == 0)
             {
                 return;
@@ -7483,6 +7593,12 @@ namespace IntegratedImageProcessingApp.Forms
         {
             return string.Equals(activeImageRelationSourceType, "Step", StringComparison.Ordinal) ||
                 string.Equals(activeImageRelationSourceType, "Group", StringComparison.Ordinal);
+        }
+
+        private bool ShouldUseDisplayedRelationPreprocessedSource()
+        {
+            return string.Equals(displayedImageRelationSourceType, "Step", StringComparison.Ordinal) ||
+                string.Equals(displayedImageRelationSourceType, "Group", StringComparison.Ordinal);
         }
 
         private static bool[,] CreateEdgeMask(Bitmap image, string method, Dictionary<string, string> parameters)

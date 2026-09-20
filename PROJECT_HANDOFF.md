@@ -8,7 +8,7 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C# WinForms、.NET Framework 4.7.2、OpenCvSharp
-- 本次文件整理日期：2026-09-17
+- 本次文件整理日期：2026-09-20
 
 目前工作樹的程式已加入區塊處理 OpenCV 流程，並已完成 Debug / Any CPU 建置驗證。這一版的重點是把「影像關聯輸出的二值 mask」交給「整合成區塊」的後處理鏈，再顯示到固定的 `區塊處理` 分頁。
 
@@ -32,6 +32,37 @@
 - `SystemParameters.ini` 已支援物件組來源區塊 ID，以及子處理的 ID、名稱、方法與參數保存/載入；舊 INI 沒有子處理欄位時會以空清單載入。
 - 統一處理時間的顯示規則：影像處理全部時間只加總演算法階段，不包含顯示時間；整合成區塊會另外列出區塊處理時間。
 - 本次程式與文件修改完成後，必須重新建置並確認執行中的 `IntegratedImageProcessingApp.exe` 已關閉，再提交到 GitHub。
+
+### 2026-09-18 最新進度
+
+- 物件組來源現在支援兩種明確模式：`來源區塊` 與 `來源影像關聯`。來源區塊具有優先權；只有來源區塊未指定時，才使用來源影像關聯或關聯群組。
+- `ObjectDefinitionSettings` 已保存 `SourceRelationType` 與 `SourceRelationId`；設定檔讀寫、來源驗證、處理簽名與來源 mask 建立均以唯一 ID 為準。
+- 物件組右側在來源區塊已設定時會將來源影像關聯選單反灰，避免兩個來源同時生效造成誤解。
+- 修正物件組右鍵「處理」入口仍只檢查 `SourceId` 的問題。現在使用影像關聯作為來源時，右鍵處理也會正常進入物件組流程。
+- 物件組執行會先啟動其依賴流程：前處理、處理後、整合區塊處理，最後才更新物件結果。這些中間結果會保留在各自分頁，方便逐段確認來源與 mask。
+- 物件組的明確執行會對未選取的處理後預覽控制項做一次全流程結果準備；一般單獨執行影像處理仍維持只更新可見分頁的效能策略。
+- 大圖路徑仍透過 `LargeImageSource` 與 OpenCV mask/overlay 準備所有依賴預覽，小圖路徑會同步更新左右兩側處理後 Bitmap；兩條路徑都使用 `preserveView` 保留目前 Zoom/Offset。
+- 最新驗證建置成功，輸出在 `IntegratedImageProcessingApp/bin/DebugVerify/IntegratedImageProcessingApp.exe`。若 Visual Studio 或舊版 EXE 尚未關閉，請勿以舊輸出判斷本次行為。
+
+### 2026-09-18 顯示效能與前景資源小結
+
+- 目前已將「影像演算法」與「畫面顯示」分開處理：OpenCV 前處理、影像處理、關聯、區塊與物件組流程可以在背景執行；平移、縮放、tile 預讀與 overlay 繪製則只服務目前前景分頁。
+- 左右畫面共用同一個 `Zoom / Offset`，但不在同一個滑鼠事件中強迫兩側同步 Paint。現在由左側作為視覺優先畫面，右側約錯開一個 `16 ms` 更新週期；從右側拖曳時，也會先把位置套用到左側，再讓右側完成後續繪製。
+- 平移期間使用 `Bilinear`，停止平移後再回到高品質插值；這是降低繪製成本，不是把影像縮成過低解析度。紅點、紅框、黃框等 overlay 不應改變座標，只在適當的畫面階段繪製。
+- 目前前景分頁停止拖曳或縮放約 `120 ms` 後，會依目前倍率向可見範圍的上下左右及四個角落延伸 `4` 個 Tile 做背景預讀；預讀最多排入 `256` 個外圍 Tile，且不會在拖曳過程中大量解碼。
+- `LargeImageSource` 的顯示快取上限仍維持 `384` 個 Tile。曾嘗試把快取擴大並在拖曳中預讀大量 Tile，但實測沒有改善且可能增加解碼與 UI 資源競爭，已撤回；不要把那個實驗版本誤當成目前設計。
+- 背景分頁不應因左右同步、平移、縮放或外圍 Tile 預讀而持續消耗 UI 資源。切換到其他分頁時，才將共用 `Zoom / Offset` 套用到新的前景控制項，再由新的前景控制項準備自己的預讀範圍。
+- `ImageDisplayControl` 會檢查控制項從自身到父層的有效可見性；不可見分頁即使收到處理結果，也不啟動 viewport 預讀。這不會阻止 OpenCV 背景分析，因為分析結果仍需保留給使用者切到前景時查看。
+- 目前建議用 `16384 x 50000` 圖片，在 `0.03x`、`0.05x`、`0.06x` 及斜向拖曳下測試：先觀察第一次離開快取範圍的反應，再觀察停止拖曳後 120 ms 是否能讓附近區域變順；同時留意記憶體峰值與是否出現 GDI+/WIC 例外。
+
+### 2026-09-20 上傳前整理小結
+
+- 本地工作樹目前包含物件組來源優先權、物件組依賴預覽、OpenCV 影像流程、顯示同步與大圖 Tile 預讀等尚未上傳的變更；上一個 `origin/main` 尚未包含這一批完整修改。
+- 本次要提交的顯示策略是保守版本：前景分頁才做 viewport 預讀，停止操作後延遲約 `120 ms`，外圍四個方向及四個角落延伸 `4` 個 Tile，最多排入 `256` 個預讀工作；整體 Tile 快取仍是 `384` 個。
+- 曾試過拖曳中大量預讀、擴大整體 Tile 快取與一次準備更廣區域，但實測沒有穩定改善且可能讓 WIC 解碼和 UI Paint 競爭資源；該方案已撤回，不能與目前的延遲外圍預讀混用。
+- 目前左右同步是「左側優先、右側錯開約 `16 ms`」，背景分頁不參與平移/縮放與預讀；切換分頁時才套用共用 `Zoom / Offset`。背景 OpenCV 分析仍可繼續，這兩件事不可混為一談。
+- 上傳前建置目標為 `Debug / Any CPU`，輸出使用 `IntegratedImageProcessingApp/bin/DebugVerify/IntegratedImageProcessingApp.exe`。測試時必須先關閉舊版 EXE，確認執行的是本次建置結果。
+- 上傳後若要追查平移效能，應分別比較前景原圖、前景帶 overlay 的處理結果，以及背景分頁切換後的第一次預讀；不要只用影像處理時間判斷畫面是否順暢。
 
 ## 2. 已完成的使用者功能
 
@@ -112,19 +143,41 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 
 ### 3.1 物件定義入口
 
-`整合成區塊` 下方已新增 `物件定義` 主項目，主項目前有物件圖示。右鍵可新增多個 `物件組`；物件組選取後，右側可選擇一個來源區塊並按 `確認` 保存。來源以區塊 GUID 放在 `ObjectJudgementIds` 清單中，目前 UI 先使用單一來源區塊，資料結構保留清單形式供未來擴充多來源。
+`整合成區塊` 下方已新增 `物件定義` 主項目，主項目前有物件圖示。右鍵可新增多個 `物件組`；物件組選取後，右側可選擇一個來源區塊，或在來源區塊未指定時選擇來源影像關聯/關聯群組，再按 `確認` 保存。來源區塊優先，來源關聯只在來源區塊為空時生效；所有引用都以唯一 GUID/ID 保存。
 
 物件組右鍵功能：
 
-- `處理`：目前先驗證是否已指定來源區塊；物件組實際影像判定演算法尚未定義。
+- `處理`：依來源區塊或來源影像關聯建立 OpenCV binary mask，接著執行 CCL、面積篩選、距離合併、排序與編號結果顯示。
 - `上移`、`下移`：只改變物件組在清單中的順序，不改變 ID。
 - `命名`：只改變 DisplayName，不改變 ID，也不會破壞來源。
 - `新增處理`：建立具獨立 GUID 的 `處理N` 子項目，並自動展開物件組。
 - `刪除`：刪除物件組及其所屬子處理。
 
-物件組處理子項目目前也有自己的唯一 ID、顯示名稱、方法與參數欄位，並可排序、命名及刪除。實際方法與參數面板要等物件組的判定規格確認後再接入，不應先把區塊形態學方法直接當成物件判定方法。
+物件組處理子項目目前也有自己的唯一 ID、顯示名稱、方法與參數欄位，並可排序、命名及刪除。子處理的實際方法與參數面板仍要等物件組判定規格確認後接入，不應先把區塊形態學方法直接當成物件判定方法。
+
+物件組目前已完成的影像流程：
+
+- OpenCV CCL 連通元件分析。
+- 最小/最大物件面積篩選。
+- `Merge by distance` 後的群組面積篩選。
+- 合併後的由上到下、由左到右編號排序。
+- 黃色框線與編號文字繪製到物件結果分頁。
 
 整合成區塊清單現在支援每個區塊獨立展開/收合處理步驟；多選兩個以上尚未分組的區塊後按右鍵可建立物件群組，也可多選兩個以上群組建立上層群組。群組與區塊均以 ID 保存，群組收合時隱藏子區塊與其處理步驟，避免清單佔用過多空間。群組刪除會保留區塊並解除群組歸屬。
+
+### 3.2 物件組執行時的依賴預覽
+
+使用者明確對物件組選擇「處理」時，預期流程如下：
+
+1. 解析物件組來源；有來源區塊時使用區塊，否則使用來源影像關聯或關聯群組。
+2. 啟動來源影像關聯的前處理與 `處理後` 預覽。
+3. 啟動來源區塊的完整區塊處理鏈，並更新 `區塊處理` 預覽。
+4. 物件組再以來源 binary mask 執行 CCL、合併、面積篩選與編號。
+5. 將黃色框線與編號寫入 `區塊結果`，並保留前面各階段的預覽供切換檢查。
+
+這是物件組的明確除錯執行，不代表程式啟動或單純切換項目就會自動跑完整流程。一般單獨執行影像處理仍以目前可見分頁優先；物件組執行時，小圖會額外準備未選取的 `處理後` 控制項，大圖則使用共享 `LargeImageSource` 與 ROI overlay。所有結果更新都要使用目前來源/請求版本，舊請求不可覆蓋新畫面。
+
+若測試時只有最後的 `區塊結果` 出現，而前處理、處理後或區塊處理為空，優先檢查：來源是否按下「套用」、關聯是否有影像處理項目、目前執行的 EXE 是否為最新建置，以及是否勾選了「不顯示畫面」。
 
 ## 4. 非同步、快取與資源生命週期
 
@@ -134,7 +187,7 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 - `LargeImageSource` 透過 reference count 管理共享來源；背景工作完成前不可釋放來源。
 - cache-owned Bitmap 不可直接拿去繪製或由另一執行緒 Clone；繪製前使用短期 clone，完成後立即釋放。
 - 不要在 Paint 中做 OpenCV 運算，不要每個 tile 重新建立 ROI mask。
-- 顯示只針對可見分頁更新；背景分頁等切到前景時再依目前 generation 補齊。
+- 一般處理只針對可見分頁更新；背景分頁等切到前景時再依目前 generation 補齊。例外是使用者明確執行物件組時，會一次準備該依賴鏈的前處理、處理後、區塊處理與物件結果預覽，方便除錯。
 - 狀態列不可每個 tile/ROI 都 `BeginInvoke`；只保留最新狀態並節流到約 200~300 ms。
 - 選取已完成項目應讀取快取並觸發必要 repaint，不得因缺少 completion callback 而顯示空白。
 
@@ -173,6 +226,7 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 - `[ImageProcessing]`：影像處理步驟、群組、ID、方法與參數
 - `[ImageRelations]`：關聯來源/目標 Type 與固定 ID
 - 區塊/區塊處理設定：由 `SystemParameterSettings` 對應的物件與步驟資料保存
+- 物件組來源關聯：`SourceRelationType`、`SourceRelationId`；來源區塊已指定時，這兩個欄位不參與實際來源解析。
 
 名稱與順序只是 UI 呈現；關聯、快取與結果鍵必須用 ID 加上有效參數組合。改名或排序不可破壞既有關聯。
 
@@ -185,7 +239,8 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 - `MainForm.Relation.cs`：關聯欄位、`RelationChoice` 與基礎資料。
 - `MainForm.ObjectJudgement.cs`：整合成區塊 UI、關聯選取、右鍵操作、區塊處理分頁接線。
 - `MainForm.ObjectJudgementProcessing.cs`：區塊處理參數、OpenCV 演算法、mask cache 與大圖 overlay。
-- `MainForm.ObjectDefinition.cs`：物件組清單、來源區塊選擇、唯一 ID 對應、右鍵選單與物件組處理子項目。
+- `MainForm.ObjectDefinition.cs`：物件組清單、來源區塊/來源影像關聯選擇、唯一 ID 對應、右鍵選單與物件組處理子項目。
+- `MainForm.ObjectDefinitionProcessing.cs`：物件組來源 mask、CCL、面積篩選、Merge by Distance、編號、黃色框線/文字結果，以及物件組依賴預覽啟動。
 
 仍集中在 `MainForm.cs` 或建議後續拆出：
 
@@ -194,7 +249,7 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 3. `MainForm.Parameters.cs`：共用參數控制、Apply/Cancel、pending 值與時間狀態。
 4. `MainForm.Roi.cs`：ROI 編輯、顯示全部、座標保存與 ROI 影像準備。
 5. `MainForm.Cache.cs`：各種 cache、generation、取消/淘汰與 Bitmap/Mat ownership。
-6. `MainForm.ObjectDefinitionProcessing.cs`：物件組實際判定、子處理參數與物件組結果顯示，等演算法規格確認後再拆。
+6. `MainForm.ObjectDefinitionProcessing.cs`：仍可再拆出物件組子處理參數與後續判定演算法；目前來源 mask、CCL、編號與結果顯示已在此檔案。
 7. `Services/OpenCvProcessingService.cs`：partial 拆分完成且行為穩定後，再抽離不依賴 UI 的純 OpenCV 函數。
 
 拆分守則：先用 partial 保持行為不變；每一批移動後建置；用 `rg` 確認參考；最後才刪除重複方法與 using。`MainForm.Designer.cs` 要保留可由 Visual Studio Designer 開啟的狀態。
@@ -274,9 +329,9 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 ## 8. 尚未完成/下一步
 
 - 完整驗證 Threshold 三種方法的 OpenCV mask、參數面板與大圖顯示。
-- 定義物件組處理子項目的實際演算法、參數與結果呈現；目前只完成資料、來源區塊與操作框架。
+- 定義物件組處理子項目的實際演算法、參數與結果呈現；目前物件組來源 mask、CCL、篩選、排序與結果繪製已完成，子處理仍是後續擴充邊界。
 - 定義物件組是否允許多個來源區塊，以及多來源時的合併規則；目前 UI 先指定單一來源，模型保留 ID 清單。
-- 決定物件組結果要顯示於 `區塊處理`、`區塊結果` 或新增的物件判定分頁，並補上紅點/輪廓顯示規則。
+- 確認物件組結果在 `區塊結果` 分頁的黃色框線/編號顯示規則，以及後續是否需要獨立的物件判定分頁。
 - 以實際 16384 x 50000 圖片測試多 ROI、多關聯與多區塊的記憶體峰值。
 - 補上區塊處理每一步結果的獨立快取顯示，確認重複點選不會重算；目前整個區塊鏈的處理與可見顯示計時已完成。
 - 以實際操作確認各分頁在執行單一步驟、群組、關聯與區塊處理時，Zoom/Offset 均維持不變。
@@ -284,6 +339,7 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 - 完成 E/D 等最終物件判定方法；目前區塊處理主要是二值 mask 結合與形態學後處理。
 - 完成剩餘 partial 拆分後，再評估純 OpenCV service 化。
 - 目前沒有完整自動化 UI/影像 golden-image 測試，正式交付前需要手動驗證縮放、平移、換圖、快速調參與取消流程。
+- 新增的物件組依賴預覽需要以小圖、一般圖及 `16384 x 50000` 大圖實測：確認執行物件組後前處理、處理後、區塊處理與物件結果都能切換查看，且不改變目前 Zoom/Offset。
 
 ## 9. 建置驗證
 

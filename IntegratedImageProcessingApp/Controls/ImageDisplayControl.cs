@@ -25,10 +25,12 @@ namespace IntegratedImageProcessingApp.Controls
         private const int MaxCachedTilesWhilePanning = 384;
         private const int TileRefreshIntervalMs = 33;
         private const int PanInvalidateIntervalMs = 16;
+        private const int StatusUpdateIntervalMs = 60;
         private const int ZoomSettleIntervalMs = 180;
         private const long MaxDisplayPixels = 50000000L;
         private readonly object _imageLock = new object();
         private readonly System.Windows.Forms.Timer _tileRefreshTimer;
+        private readonly System.Windows.Forms.Timer _viewportPrefetchTimer;
         private Bitmap _sourceBitmap;
         private LargeImageSource _largeImageSource;
         private int _imageVersion;
@@ -47,7 +49,9 @@ namespace IntegratedImageProcessingApp.Controls
         private bool _tileRefreshPending;
         private int _tileRefreshCallbackPending;
         private DateTime _lastPanInvalidateUtc = DateTime.MinValue;
+        private DateTime _lastStatusUpdateUtc = DateTime.MinValue;
         private DateTime _lastZoomUtc = DateTime.MinValue;
+        private const int ViewportPrefetchDelayMs = 120;
 
         public event EventHandler ViewChanged;
         public event EventHandler FitViewRequested;
@@ -65,6 +69,13 @@ namespace IntegratedImageProcessingApp.Controls
             _tileRefreshTimer = new System.Windows.Forms.Timer();
             _tileRefreshTimer.Interval = TileRefreshIntervalMs;
             _tileRefreshTimer.Tick += TileRefreshTimer_Tick;
+            _viewportPrefetchTimer = new System.Windows.Forms.Timer();
+            _viewportPrefetchTimer.Interval = ViewportPrefetchDelayMs;
+            _viewportPrefetchTimer.Tick += ViewportPrefetchTimer_Tick;
+            if (components != null)
+            {
+                components.Add(_viewportPrefetchTimer);
+            }
             StatusText = "尚未載入圖片";
             ResolutionText = string.Empty;
         }
@@ -170,12 +181,19 @@ namespace IntegratedImageProcessingApp.Controls
 
                 if (isPanning)
                 {
-                    InvalidateViewerWhilePanning();
+                    // A synchronized target must join the source control's
+                    // current frame. The source control already throttles its
+                    // own mouse invalidation; applying that throttle again here
+                    // can make the target visibly trail behind. Invalidate is
+                    // still asynchronous, so WinForms can coalesce repeated
+                    // requests without forcing a blocking paint.
+                    viewerPanel.Invalidate();
                 }
                 else
                 {
                     UpdateStatusLabel();
                     viewerPanel.Invalidate();
+                    ScheduleViewportPrefetch();
                 }
             }
             finally
@@ -585,6 +603,7 @@ namespace IntegratedImageProcessingApp.Controls
             UpdateStatusLabel();
             viewerPanel.Invalidate();
             OnViewChanged();
+            ScheduleViewportPrefetch();
         }
 
         public void ClearImage()
@@ -609,6 +628,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void viewerPanel_Paint(object sender, PaintEventArgs e)
         {
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
             e.Graphics.Clear(Color.White);
             e.Graphics.InterpolationMode = IsPanning ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBicubic;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
@@ -683,6 +707,62 @@ namespace IntegratedImageProcessingApp.Controls
             UpdateStatusLabel();
             viewerPanel.Invalidate();
             OnViewChanged();
+            ScheduleViewportPrefetch();
+        }
+
+        private void ScheduleViewportPrefetch()
+        {
+            if (SuppressViewUpdates || _viewportPrefetchTimer == null || !IsHandleCreated || !IsEffectivelyVisible())
+            {
+                return;
+            }
+
+            _viewportPrefetchTimer.Stop();
+            _viewportPrefetchTimer.Start();
+        }
+
+        private void ViewportPrefetchTimer_Tick(object sender, EventArgs e)
+        {
+            _viewportPrefetchTimer.Stop();
+            if (SuppressViewUpdates || IsDisposed || !IsEffectivelyVisible())
+            {
+                return;
+            }
+
+            LargeImageSource source = GetSharedLargeImageSource();
+            if (source == null)
+            {
+                return;
+            }
+
+            try
+            {
+                Rectangle visibleSourceRect;
+                if (TryGetVisibleSourceRectangle(out visibleSourceRect))
+                {
+                    source.PrefetchViewportRing(visibleSourceRect, 4, ScheduleTileRefresh);
+                }
+            }
+            finally
+            {
+                source.ReleaseReference();
+            }
+        }
+
+        private bool IsEffectivelyVisible()
+        {
+            Control current = this;
+            while (current != null)
+            {
+                if (!current.Visible)
+                {
+                    return false;
+                }
+
+                current = current.Parent;
+            }
+
+            return true;
         }
 
         private void viewerPanel_MouseDown(object sender, MouseEventArgs e)
@@ -734,7 +814,7 @@ namespace IntegratedImageProcessingApp.Controls
                 _imageOffset = new PointF(_imageOffset.X + deltaX, _imageOffset.Y + deltaY);
             }
 
-            UpdateStatusLabel();
+            UpdateStatusLabelThrottled();
             InvalidateViewerWhilePanning();
             OnViewChanged();
         }
@@ -755,8 +835,10 @@ namespace IntegratedImageProcessingApp.Controls
 
             _isPanning = false;
             viewerPanel.Cursor = Cursors.Default;
+            UpdateStatusLabel();
             viewerPanel.Invalidate();
             OnViewChanged();
+            ScheduleViewportPrefetch();
         }
 
         private void viewerPanel_MouseEnter(object sender, EventArgs e)
@@ -837,6 +919,18 @@ namespace IntegratedImageProcessingApp.Controls
                     imageX,
                     imageY);
             }
+        }
+
+        private void UpdateStatusLabelThrottled()
+        {
+            DateTime now = DateTime.UtcNow;
+            if ((now - _lastStatusUpdateUtc).TotalMilliseconds < StatusUpdateIntervalMs)
+            {
+                return;
+            }
+
+            _lastStatusUpdateUtc = now;
+            UpdateStatusLabel();
         }
 
         private bool TryGetSourceMetrics(out int width, out int height, out float zoom, out PointF offset)
@@ -1068,7 +1162,10 @@ namespace IntegratedImageProcessingApp.Controls
             Rectangle drawRect = Rectangle.Round(RectangleF.FromLTRB(drawLeft, drawTop, drawRight, drawBottom));
             InterpolationMode previousInterpolation = graphics.InterpolationMode;
             PixelOffsetMode previousPixelOffset = graphics.PixelOffsetMode;
-            graphics.InterpolationMode = lightweight ? InterpolationMode.Low : (zoom >= 1f ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBilinear);
+            // Keep the drag preview readable. Bilinear is considerably cheaper
+            // than the settled high-quality path while avoiding the visibly
+            // blocky result produced by InterpolationMode.Low.
+            graphics.InterpolationMode = lightweight ? InterpolationMode.Bilinear : (zoom >= 1f ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBilinear);
             graphics.PixelOffsetMode = PixelOffsetMode.Half;
             using (var attributes = new ImageAttributes())
             {
@@ -1109,6 +1206,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void InvalidateViewerWhilePanning()
         {
+            if (SuppressViewUpdates)
+            {
+                return;
+            }
+
             DateTime now = DateTime.UtcNow;
             if ((now - _lastPanInvalidateUtc).TotalMilliseconds < PanInvalidateIntervalMs)
             {
@@ -1121,7 +1223,7 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void ScheduleTileRefresh()
         {
-            if (IsDisposed || !IsHandleCreated)
+            if (SuppressViewUpdates || IsDisposed || !IsHandleCreated)
             {
                 return;
             }
@@ -1165,7 +1267,7 @@ namespace IntegratedImageProcessingApp.Controls
         private void TileRefreshTimer_Tick(object sender, EventArgs e)
         {
             _tileRefreshTimer.Stop();
-            if (!_tileRefreshPending || IsDisposed)
+            if (SuppressViewUpdates || !_tileRefreshPending || IsDisposed)
             {
                 return;
             }

@@ -358,7 +358,8 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(definition.SourceId) &&
+            if (!HasConfiguredObjectDefinitionRelationSource(definition) &&
+                string.IsNullOrWhiteSpace(definition.SourceId) &&
                 definition.ObjectJudgementIds.Count > 0)
             {
                 // Preserve compatibility with older settings that only stored the first source ID.
@@ -368,20 +369,13 @@ namespace IntegratedImageProcessingApp.Forms
                         objectJudgement => string.Equals(objectJudgement.Id, id, StringComparison.Ordinal)));
             }
 
-            bool hasSource = !string.IsNullOrWhiteSpace(definition.SourceId);
-            if (hasSource && string.Equals(definition.SourceType, "Group", StringComparison.Ordinal))
+            // SourceId is the preferred object/block source. When it is not
+            // configured, the definition may use an image relation instead.
+            // Keep this entry point in sync with the processing core so the
+            // context-menu command cannot reject a valid relation source.
+            if (!HasConfiguredObjectDefinitionSource(definition))
             {
-                hasSource = FindObjectJudgementGroup(definition.SourceId) != null;
-            }
-            else if (hasSource)
-            {
-                hasSource = systemParameters.ObjectJudgements.Any(
-                    objectJudgement => string.Equals(objectJudgement.Id, definition.SourceId, StringComparison.Ordinal));
-            }
-
-            if (!hasSource)
-            {
-                statusLabel.Text = definition.DisplayName + " 尚未設定來源區塊";
+                statusLabel.Text = definition.DisplayName + " 尚未設定來源區塊或影像關聯";
                 return;
             }
 
@@ -597,13 +591,14 @@ namespace IntegratedImageProcessingApp.Forms
             var panel = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
             objectDefinitionParameterPanel = panel;
 
-            panel.Controls.Add(new Label
+            var sourceLabel = new Label
             {
-                Text = "來源區塊",
+                Text = "來源區塊（優先使用）",
                 Left = 8,
                 Top = 12,
                 Width = 250
-            });
+            };
+            panel.Controls.Add(sourceLabel);
 
             var source = new ComboBox
             {
@@ -640,9 +635,11 @@ namespace IntegratedImageProcessingApp.Forms
                 });
             }
 
-            string currentSourceType = string.IsNullOrWhiteSpace(definition.SourceType)
-                ? "ObjectJudgement"
-                : definition.SourceType;
+            string currentSourceType = string.IsNullOrWhiteSpace(definition.SourceId)
+                ? string.Empty
+                : (string.IsNullOrWhiteSpace(definition.SourceType)
+                    ? "ObjectJudgement"
+                    : definition.SourceType);
             string currentSourceId = definition.SourceId;
             if (string.IsNullOrWhiteSpace(currentSourceId))
             {
@@ -662,6 +659,82 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
             panel.Controls.Add(source);
+
+            var relationSourceLabel = new Label
+            {
+                Text = "來源影像關聯（來源區塊未指定時使用）",
+                Left = 8,
+                Top = 78,
+                Width = parameterPanel.Width - 18
+            };
+            panel.Controls.Add(relationSourceLabel);
+            var relationSource = new ComboBox
+            {
+                Left = 8,
+                Top = 100,
+                Width = parameterPanel.Width - 18,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            relationSource.Items.Add(new RelationChoice
+            {
+                DisplayText = "未指定影像關聯",
+                Type = string.Empty,
+                Id = string.Empty
+            });
+            foreach (ImageRelationSettings relation in systemParameters.ImageRelations)
+            {
+                string displayName = string.IsNullOrWhiteSpace(relation.DisplayName)
+                    ? "未命名關聯"
+                    : relation.DisplayName.Trim();
+                relationSource.Items.Add(new RelationChoice
+                {
+                    DisplayText = displayName,
+                    Type = "Relation",
+                    Id = relation.Id
+                });
+            }
+            foreach (ImageRelationGroupSettings group in systemParameters.ImageRelationGroups)
+            {
+                string displayName = string.IsNullOrWhiteSpace(group.DisplayName)
+                    ? "未命名群組"
+                    : group.DisplayName.Trim();
+                relationSource.Items.Add(new RelationChoice
+                {
+                    DisplayText = "關聯群組：" + displayName,
+                    Type = "Group",
+                    Id = group.Id
+                });
+            }
+
+            relationSource.SelectedIndex = 0;
+            for (int index = 0; index < relationSource.Items.Count; index++)
+            {
+                RelationChoice choice = relationSource.Items[index] as RelationChoice;
+                if (choice != null &&
+                    string.Equals(choice.Type, definition.SourceRelationType, StringComparison.Ordinal) &&
+                    string.Equals(choice.Id, definition.SourceRelationId, StringComparison.Ordinal))
+                {
+                    relationSource.SelectedIndex = index;
+                    break;
+                }
+            }
+            panel.Controls.Add(relationSource);
+
+            var updateRelationSourceEnabledState = new Action(delegate
+            {
+                ObjectDefinitionSourceChoice selectedSource =
+                    source.SelectedItem as ObjectDefinitionSourceChoice;
+                bool hasBlockSource = selectedSource != null &&
+                    !string.IsNullOrWhiteSpace(selectedSource.Id) &&
+                    (string.Equals(selectedSource.SourceType, "ObjectJudgement", StringComparison.Ordinal) ||
+                     string.Equals(selectedSource.SourceType, "Group", StringComparison.Ordinal));
+                relationSource.Enabled = !hasBlockSource;
+                relationSourceLabel.ForeColor = hasBlockSource
+                    ? SystemColors.GrayText
+                    : SystemColors.ControlText;
+            });
+            source.SelectedIndexChanged += delegate { updateRelationSourceEnabledState(); };
+            updateRelationSourceEnabledState();
 
             panel.Controls.Add(new Label
             {
@@ -852,6 +925,9 @@ namespace IntegratedImageProcessingApp.Forms
 
                 definition.SourceType = choice == null ? string.Empty : choice.SourceType;
                 definition.SourceId = choice == null ? string.Empty : choice.Id;
+                RelationChoice relationChoice = relationSource.SelectedItem as RelationChoice;
+                definition.SourceRelationType = relationChoice == null ? string.Empty : relationChoice.Type;
+                definition.SourceRelationId = relationChoice == null ? string.Empty : relationChoice.Id;
                 definition.ObjectJudgementIds.Clear();
                 if (choice != null && string.Equals(choice.SourceType, "ObjectJudgement", StringComparison.Ordinal) &&
                     !string.IsNullOrEmpty(choice.Id))
@@ -903,6 +979,19 @@ namespace IntegratedImageProcessingApp.Forms
                 statusLabel.Text = "已取消" + definition.DisplayName + "的修改";
             };
             panel.Controls.Add(cancel);
+
+            // Keep the new fallback source below the block source without
+            // rewriting every existing parameter coordinate by hand.
+            foreach (Control control in panel.Controls)
+            {
+                if (control != sourceLabel &&
+                    control != source &&
+                    control != relationSourceLabel &&
+                    control != relationSource)
+                {
+                    control.Top += 80;
+                }
+            }
 
             parameterPanel.Controls.Add(panel);
             panel.BringToFront();

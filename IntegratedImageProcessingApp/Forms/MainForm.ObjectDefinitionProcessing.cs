@@ -35,6 +35,10 @@ namespace IntegratedImageProcessingApp.Forms
         private int objectDefinitionSourceCacheHitCount = -1;
         private int objectDefinitionSourceCacheMissCount = -1;
         private bool objectDefinitionDisplayTimePending;
+        // An explicit object-definition run should leave every upstream
+        // preview inspectable, even when its tab is not currently selected.
+        // The flag is consumed after the processed preview is applied.
+        private bool objectDefinitionDependencyPreviewRequested;
         private string activeObjectDefinitionProcessingSignature;
         private string completedObjectDefinitionProcessingSignature;
         private string pendingObjectDefinitionProcessingSignature;
@@ -81,10 +85,62 @@ namespace IntegratedImageProcessingApp.Forms
                 new List<string>();
         }
 
+        private bool HasConfiguredObjectDefinitionBlockSource(ObjectDefinitionSettings definition)
+        {
+            if (definition == null || string.IsNullOrWhiteSpace(definition.SourceId))
+            {
+                return false;
+            }
+
+            string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
+                ? "ObjectJudgement"
+                : definition.SourceType;
+            return string.Equals(sourceType, "ObjectJudgement", StringComparison.Ordinal) ||
+                string.Equals(sourceType, "Group", StringComparison.Ordinal);
+        }
+
+        private bool HasConfiguredObjectDefinitionRelationSource(ObjectDefinitionSettings definition)
+        {
+            return definition != null &&
+                !string.IsNullOrWhiteSpace(definition.SourceRelationId) &&
+                (string.Equals(definition.SourceRelationType, "Relation", StringComparison.Ordinal) ||
+                 string.Equals(definition.SourceRelationType, "Group", StringComparison.Ordinal));
+        }
+
+        private bool HasConfiguredObjectDefinitionSource(ObjectDefinitionSettings definition)
+        {
+            return HasConfiguredObjectDefinitionBlockSource(definition) ||
+                HasConfiguredObjectDefinitionRelationSource(definition);
+        }
+
+        private List<ImageRelationSettings> GetObjectDefinitionSourceRelations(
+            ObjectDefinitionSettings definition)
+        {
+            var relations = new List<ImageRelationSettings>();
+            if (!HasConfiguredObjectDefinitionRelationSource(definition))
+            {
+                return relations;
+            }
+
+            if (string.Equals(definition.SourceRelationType, "Relation", StringComparison.Ordinal))
+            {
+                ImageRelationSettings relation = systemParameters.ImageRelations.Find(
+                    item => string.Equals(item.Id, definition.SourceRelationId, StringComparison.Ordinal));
+                if (relation != null)
+                {
+                    relations.Add(relation);
+                }
+
+                return relations;
+            }
+
+            return GetImageRelationGroupRelations(definition.SourceRelationId);
+        }
+
         private void StartObjectDefinitionProcessing(string definitionId)
         {
             ObjectDefinitionSettings definition = FindObjectDefinition(definitionId);
-            if (definition == null || string.IsNullOrWhiteSpace(definition.SourceId))
+            if (definition == null || !HasConfiguredObjectDefinitionSource(definition))
             {
                 return;
             }
@@ -137,9 +193,9 @@ namespace IntegratedImageProcessingApp.Forms
             ResetDebugTimingMemo();
             AppendDebugTimingMemo(definition.DisplayName + " 開始處理");
 
-            if (string.IsNullOrWhiteSpace(definition.SourceId))
+            if (!HasConfiguredObjectDefinitionSource(definition))
             {
-                statusLabel.Text = definition.DisplayName + " 尚未設定來源區塊";
+                statusLabel.Text = definition.DisplayName + " 尚未設定來源區塊或影像關聯";
                 return;
             }
 
@@ -330,7 +386,6 @@ namespace IntegratedImageProcessingApp.Forms
                                         displaySourceMasks = null;
                                     }
 
-                                    int count = completedResults.Values.Sum(items => items.Count);
                                     objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
                                     objectDefinitionSourceProcessingElapsedMilliseconds = sourceProcessingElapsedMilliseconds;
                                     objectDefinitionSourceRelationElapsedMilliseconds = sourceRelationElapsedMilliseconds;
@@ -360,10 +415,7 @@ namespace IntegratedImageProcessingApp.Forms
                                         mergeElapsedMilliseconds,
                                         sourceCacheHitCount,
                                         sourceCacheMissCount);
-                                    statusLabel.Text = definition.DisplayName +
-                                        " 已完成：OpenCV CCL，找到 " +
-                                        count.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                                        " 個物件，" +
+                                    statusLabel.Text = definition.DisplayName + "：" +
                                         BuildObjectDefinitionTimingText(
                                             elapsedMilliseconds,
                                             displayElapsedMilliseconds,
@@ -445,9 +497,16 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDefinitionProcessingRequested = true;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceRelationElapsedMilliseconds = 0;
+                objectDefinitionSourceGrayElapsedMilliseconds = 0;
+                objectDefinitionSourceImageProcessingElapsedMilliseconds = 0;
+                objectDefinitionSourceMergeElapsedMilliseconds = 0;
+                objectDefinitionSourceObjectProcessingElapsedMilliseconds = 0;
                 objectDefinitionCclElapsedMilliseconds = 0;
                 objectDefinitionRetainedMaskElapsedMilliseconds = 0;
                 objectDefinitionMergeElapsedMilliseconds = 0;
+                objectDefinitionSourceCacheHitCount = 0;
+                objectDefinitionSourceCacheMissCount = 0;
                 objectDefinitionDisplayTimePending = true;
                 objectDefinitionResults.Clear();
                 DisposeObjectDefinitionSourceMasksUnsafe();
@@ -577,9 +636,15 @@ namespace IntegratedImageProcessingApp.Forms
                                             displayLeftResult = null;
                                             rightObjectsDisplayControl.SetDisplayImage(displayRightResult, true);
                                             displayRightResult = null;
-                                            int count = completedResults.Values.Sum(items => items.Count);
-                                    objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
+                                            objectDefinitionProcessingElapsedMilliseconds = elapsedMilliseconds;
                                             objectDefinitionSourceProcessingElapsedMilliseconds = sourceProcessingElapsedMilliseconds;
+                                            objectDefinitionSourceRelationElapsedMilliseconds = 0;
+                                            objectDefinitionSourceGrayElapsedMilliseconds = 0;
+                                            objectDefinitionSourceImageProcessingElapsedMilliseconds = 0;
+                                            objectDefinitionSourceMergeElapsedMilliseconds = 0;
+                                            objectDefinitionSourceObjectProcessingElapsedMilliseconds = 0;
+                                            objectDefinitionSourceCacheHitCount = 0;
+                                            objectDefinitionSourceCacheMissCount = 0;
                                             objectDefinitionCclElapsedMilliseconds = cclElapsedMilliseconds;
                                             objectDefinitionRetainedMaskElapsedMilliseconds = retainedMaskElapsedMilliseconds;
                                             objectDefinitionMergeElapsedMilliseconds = mergeElapsedMilliseconds;
@@ -587,10 +652,7 @@ namespace IntegratedImageProcessingApp.Forms
                                             long displayElapsedMilliseconds =
                                                 RefreshVisibleObjectDefinitionDisplays();
                                             InvalidateBlockProcessingDisplays();
-                                            statusLabel.Text = definition.DisplayName +
-                                                " 已完成：OpenCV CCL，找到 " +
-                                                count.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                                                " 個物件，" +
+                                            statusLabel.Text = definition.DisplayName + "：" +
                                                 BuildObjectDefinitionTimingText(
                                                     elapsedMilliseconds,
                                                     displayElapsedMilliseconds,
@@ -703,8 +765,20 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void RequestObjectDefinitionDependencyDisplays(ObjectDefinitionSettings definition)
         {
-            if (definition == null)
+            if (definition == null || !HasConfiguredObjectDefinitionSource(definition))
             {
+                return;
+            }
+
+            // An object definition can use an image relation directly. Start
+            // that relation's complete preview chain so preprocessing and the
+            // processed-image tab remain inspectable before the final CCL
+            // result is shown.
+            if (!HasConfiguredObjectDefinitionBlockSource(definition))
+            {
+                RequestObjectDefinitionRelationDependencyDisplays(definition);
+                objectDefinitionDependencyPreviewRequested = rightOriginalDisplayControl == null ||
+                    !rightOriginalDisplayControl.IsLargeImageMode;
                 return;
             }
 
@@ -722,17 +796,9 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
-                // The first relation owns the foreground preview. All group
-                // members are still consumed by the source-mask pipeline.
-                RequestObjectJudgementRelatedImageDisplays(objectJudgements[0]);
-                lock (objectJudgementMaskLock)
-                {
-                    activeObjectJudgementId = null;
-                    activeObjectJudgementGroupId = group.Id;
-                    objectJudgementProcessingRequested = true;
-                    activeObjectJudgementGroupProcessingSignature =
-                        CreateObjectJudgementGroupProcessingSignature(group.Id, objectJudgements);
-                }
+                // This starts the block result as well as its relation,
+                // preprocessing, and image-processing preview chain.
+                ProcessObjectJudgementGroup(group.Id);
             }
             else
             {
@@ -743,24 +809,42 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
-                List<ObjectJudgementProcessingSettings> processingSteps =
-                    GetObjectJudgementProcessingChain(objectJudgement, -1);
-                RequestObjectJudgementRelatedImageDisplays(objectJudgement);
-                lock (objectJudgementMaskLock)
-                {
-                    activeObjectJudgementId = objectJudgement.Id;
-                    activeObjectJudgementGroupId = null;
-                    objectJudgementProcessingRequested = true;
-                    activeObjectJudgementProcessingSignature =
-                        CreateObjectJudgementProcessingSignature(objectJudgement, processingSteps);
-                }
+                // This starts the block result as well as its relation,
+                // preprocessing, and image-processing preview chain.
+                ProcessObjectJudgement(systemParameters.ObjectJudgements.IndexOf(objectJudgement));
             }
 
+            objectDefinitionDependencyPreviewRequested = rightOriginalDisplayControl == null ||
+                !rightOriginalDisplayControl.IsLargeImageMode;
             InvalidateBlockProcessingDisplays();
+        }
+
+        private void RequestObjectDefinitionRelationDependencyDisplays(
+            ObjectDefinitionSettings definition)
+        {
+            List<ImageRelationSettings> relations = GetObjectDefinitionSourceRelations(definition);
+            if (relations.Count == 0)
+            {
+                return;
+            }
+
+            if (string.Equals(definition.SourceRelationType, "Group", StringComparison.Ordinal))
+            {
+                ProcessImageRelationGroup(definition.SourceRelationId);
+                return;
+            }
+
+            ImageRelationSettings relation = relations[0];
+            int relationIndex = systemParameters.ImageRelations.IndexOf(relation);
+            if (relationIndex >= 0)
+            {
+                ProcessImageRelation(relationIndex);
+            }
         }
 
         private string CreateObjectDefinitionProcessingSignature(ObjectDefinitionSettings definition)
         {
+            bool usesBlockSource = HasConfiguredObjectDefinitionBlockSource(definition);
             var parts = new List<string>
             {
                 "object-definition-result",
@@ -769,10 +853,14 @@ namespace IntegratedImageProcessingApp.Forms
                 preprocessedImageGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 definition == null ? string.Empty : definition.Id ?? string.Empty,
                 definition == null ? string.Empty : definition.SourceType ?? string.Empty,
-                definition == null ? string.Empty : definition.SourceId ?? string.Empty
+                definition == null ? string.Empty : definition.SourceId ?? string.Empty,
+                "source-relation-type",
+                usesBlockSource || definition == null ? string.Empty : definition.SourceRelationType ?? string.Empty,
+                "source-relation-id",
+                usesBlockSource || definition == null ? string.Empty : definition.SourceRelationId ?? string.Empty
             };
 
-            if (definition != null && string.Equals(definition.SourceType, "Group", StringComparison.Ordinal))
+            if (usesBlockSource && definition != null && string.Equals(definition.SourceType, "Group", StringComparison.Ordinal))
             {
                 ObjectJudgementGroupSettings group = FindObjectJudgementGroup(definition.SourceId);
                 List<ObjectJudgementSettings> objectJudgements = group == null
@@ -782,7 +870,7 @@ namespace IntegratedImageProcessingApp.Forms
                     definition.SourceId,
                     objectJudgements));
             }
-            else if (definition != null)
+            else if (usesBlockSource && definition != null)
             {
                 ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements.Find(
                     item => string.Equals(item.Id, definition.SourceId, StringComparison.Ordinal));
@@ -964,32 +1052,28 @@ namespace IntegratedImageProcessingApp.Forms
             string displayText = displayElapsedMilliseconds > 0
                 ? displayElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms"
                 : "待顯示";
-            string cacheText = sourceCacheHitCount >= 0 && sourceCacheMissCount >= 0
-                ? " || 來源快取：命中 " +
-                    sourceCacheHitCount.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                    "／未命中 " +
-                    sourceCacheMissCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                : string.Empty;
-            string sourceDetailText = sourceImageProcessingElapsedMilliseconds >= 0
-                ? " || 來源影像處理時間：" +
-                    Math.Max(0, sourceImageProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                    " ms || 來源遮罩合併時間：" +
-                    Math.Max(0, sourceMergeElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                    " ms || 區塊後處理時間：" +
-                    Math.Max(0, sourceObjectProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                    " ms"
-                : string.Empty;
-            return "來源區塊處理時間：" +
-                Math.Max(0, sourceProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                " ms || CCL時間：" +
-                Math.Max(0, cclElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                " ms || 保留Mask時間：" +
-                Math.Max(0, retainedMaskElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                " ms || Merge by Distance時間：" +
-                Math.Max(0, mergeElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                " ms || 影像處理總時間：" +
+            long preprocessingElapsedMilliseconds =
+                Math.Max(0, sourceRelationElapsedMilliseconds) +
+                Math.Max(0, sourceGrayElapsedMilliseconds);
+            long integrationBlockElapsedMilliseconds =
+                Math.Max(0, sourceMergeElapsedMilliseconds) +
+                Math.Max(0, sourceObjectProcessingElapsedMilliseconds);
+            long objectDefinitionElapsedMilliseconds =
+                Math.Max(0, cclElapsedMilliseconds) +
+                Math.Max(0, retainedMaskElapsedMilliseconds) +
+                Math.Max(0, mergeElapsedMilliseconds);
+
+            return "影像處理全部時間：" +
                 Math.Max(0, processingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
-                " ms || 顯示時間：" + displayText + sourceDetailText + cacheText;
+                " ms || 影像前處理：" +
+                preprocessingElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || 影像處理：" +
+                Math.Max(0, sourceImageProcessingElapsedMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || 整合區塊處理：" +
+                integrationBlockElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || 物件定義處理：" +
+                objectDefinitionElapsedMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                " ms || 顯示時間：" + displayText;
         }
 
         private void ResetDebugTimingMemo()
@@ -1214,6 +1298,11 @@ namespace IntegratedImageProcessingApp.Forms
 
             sourceCacheHit = false;
 
+            if (!HasConfiguredObjectDefinitionBlockSource(definition))
+            {
+                return CreateLargeObjectDefinitionRelationMask(source, definition, roi, timing);
+            }
+
             string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
                 ? "ObjectJudgement"
                 : definition.SourceType;
@@ -1309,7 +1398,9 @@ namespace IntegratedImageProcessingApp.Forms
             out Cv.Mat cachedMask)
         {
             cachedMask = null;
-            if (definition == null || roi.Width <= 0 || roi.Height <= 0)
+            if (!HasConfiguredObjectDefinitionBlockSource(definition) ||
+                roi.Width <= 0 ||
+                roi.Height <= 0)
             {
                 return false;
             }
@@ -1426,6 +1517,11 @@ namespace IntegratedImageProcessingApp.Forms
                 throw new ArgumentNullException("sourceMask");
             }
 
+            if (!HasConfiguredObjectDefinitionBlockSource(definition))
+            {
+                throw new InvalidOperationException("影像關聯來源不可寫入區塊來源快取");
+            }
+
             string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
                 ? "ObjectJudgement"
                 : definition.SourceType;
@@ -1492,6 +1588,15 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDefinitionSettings definition,
             Rectangle roi)
         {
+            if (!HasConfiguredObjectDefinitionBlockSource(definition))
+            {
+                return CreateObjectDefinitionRelationMaskFromBitmap(
+                    original,
+                    originalGray,
+                    definition,
+                    roi);
+            }
+
             string sourceType = string.IsNullOrWhiteSpace(definition.SourceType)
                 ? "ObjectJudgement"
                 : definition.SourceType;
@@ -1554,6 +1659,176 @@ namespace IntegratedImageProcessingApp.Forms
                 roi))
             {
                 return ApplyObjectJudgementProcessingOpenCv(baseMask, steps);
+            }
+        }
+
+        private Cv.Mat CreateLargeObjectDefinitionRelationMask(
+            LargeImageSource source,
+            ObjectDefinitionSettings definition,
+            Rectangle roi,
+            ObjectDefinitionSourceTiming timing)
+        {
+            List<ImageRelationSettings> relations = GetObjectDefinitionSourceRelations(definition);
+            if (relations.Count == 0)
+            {
+                throw new InvalidOperationException("物件定義的影像關聯來源不存在");
+            }
+
+            var combined = new Cv.Mat(
+                roi.Height,
+                roi.Width,
+                Cv.MatType.CV_8UC1,
+                Cv.Scalar.All(0));
+            try
+            {
+                foreach (ImageRelationSettings relation in relations)
+                {
+                    List<ImageProcessingStepSettings> steps =
+                        GetImageProcessingStepsForRelation(relation);
+                    if (steps.Count == 0)
+                    {
+                        throw new InvalidOperationException("影像關聯尚未設定影像處理");
+                    }
+
+                    Stopwatch relationSourceStopwatch = timing == null
+                        ? null
+                        : Stopwatch.StartNew();
+                    LargeImageSource relationSource = GetLargeRelationSource(source, relation);
+                    if (relationSourceStopwatch != null)
+                    {
+                        relationSourceStopwatch.Stop();
+                        timing.RelationSourceMilliseconds += relationSourceStopwatch.ElapsedMilliseconds;
+                    }
+
+                    try
+                    {
+                        Stopwatch grayStopwatch = timing == null
+                            ? null
+                            : Stopwatch.StartNew();
+                        using (Cv.Mat gray = GetOrCreateLargeRoiOpenCvGrayCache(relationSource, roi))
+                        {
+                            if (grayStopwatch != null)
+                            {
+                                grayStopwatch.Stop();
+                                timing.GrayPreparationMilliseconds += grayStopwatch.ElapsedMilliseconds;
+                            }
+
+                            Stopwatch processingStopwatch = timing == null
+                                ? null
+                                : Stopwatch.StartNew();
+                            using (Cv.Mat relationMask = CreateCombinedImageProcessingGroupMask(gray, steps))
+                            {
+                                if (processingStopwatch != null)
+                                {
+                                    processingStopwatch.Stop();
+                                    timing.ImageProcessingMilliseconds += processingStopwatch.ElapsedMilliseconds;
+                                }
+
+                                Stopwatch mergeStopwatch = timing == null
+                                    ? null
+                                    : Stopwatch.StartNew();
+                                Cv.Cv2.BitwiseOr(combined, relationMask, combined);
+                                if (mergeStopwatch != null)
+                                {
+                                    mergeStopwatch.Stop();
+                                    timing.MaskMergeMilliseconds += mergeStopwatch.ElapsedMilliseconds;
+                                }
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        if (relationSource != null)
+                        {
+                            relationSource.ReleaseReference();
+                        }
+                    }
+                }
+
+                return combined;
+            }
+            catch
+            {
+                combined.Dispose();
+                throw;
+            }
+        }
+
+        private Cv.Mat CreateObjectDefinitionRelationMaskFromBitmap(
+            Bitmap original,
+            Cv.Mat originalGray,
+            ObjectDefinitionSettings definition,
+            Rectangle roi)
+        {
+            List<ImageRelationSettings> relations = GetObjectDefinitionSourceRelations(definition);
+            if (relations.Count == 0)
+            {
+                throw new InvalidOperationException("物件定義的影像關聯來源不存在");
+            }
+
+            var combined = new Cv.Mat(
+                roi.Height,
+                roi.Width,
+                Cv.MatType.CV_8UC1,
+                Cv.Scalar.All(0));
+            try
+            {
+                foreach (ImageRelationSettings relation in relations)
+                {
+                    List<ImageProcessingStepSettings> steps =
+                        GetImageProcessingStepsForRelation(relation);
+                    if (steps.Count == 0)
+                    {
+                        throw new InvalidOperationException("影像關聯尚未設定影像處理");
+                    }
+
+                    Cv.Mat gray = null;
+                    Bitmap relationSource = null;
+                    try
+                    {
+                        if (string.Equals(relation.SourceType, "Original", StringComparison.Ordinal))
+                        {
+                            gray = new Cv.Mat(
+                                originalGray,
+                                new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height));
+                        }
+                        else
+                        {
+                            relationSource = CreateRelationSourceBitmap(original, relation);
+                            if (relationSource == null)
+                            {
+                                throw new InvalidOperationException("影像關聯來源影像不存在");
+                            }
+
+                            using (Cv.Mat relationGray = CreateOpenCvGrayMat(relationSource))
+                            {
+                                gray = new Cv.Mat(
+                                    relationGray,
+                                    new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height));
+                            }
+                        }
+
+                        using (gray)
+                        using (Cv.Mat relationMask = CreateCombinedImageProcessingGroupMask(gray, steps))
+                        {
+                            Cv.Cv2.BitwiseOr(combined, relationMask, combined);
+                        }
+                    }
+                    finally
+                    {
+                        if (relationSource != null)
+                        {
+                            relationSource.Dispose();
+                        }
+                    }
+                }
+
+                return combined;
+            }
+            catch
+            {
+                combined.Dispose();
+                throw;
             }
         }
 
@@ -2190,9 +2465,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            string definitionId = GetObjectDefinitionId(
-                functionListBox.SelectedIndex,
-                functionListBox.SelectedItem as string);
+            string definitionId;
+            lock (objectDefinitionResultLock)
+            {
+                definitionId = activeObjectDefinitionResultId;
+            }
             if (string.IsNullOrEmpty(definitionId))
             {
                 return;

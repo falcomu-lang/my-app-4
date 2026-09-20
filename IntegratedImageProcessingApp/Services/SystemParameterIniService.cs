@@ -202,6 +202,16 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDefinition,
                         prefix + ".SourceId",
                         string.Empty),
+                    SourceRelationType = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceRelationType",
+                        string.Empty),
+                    SourceRelationId = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceRelationId",
+                        string.Empty),
                     Connectivity = GetInt(
                         sections,
                         SectionObjectDefinition,
@@ -480,6 +490,8 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(definition.DisplayName));
                     writer.WriteLine("{0}.SourceType={1}", prefix, Escape(definition.SourceType));
                     writer.WriteLine("{0}.SourceId={1}", prefix, Escape(definition.SourceId));
+                    writer.WriteLine("{0}.SourceRelationType={1}", prefix, Escape(definition.SourceRelationType));
+                    writer.WriteLine("{0}.SourceRelationId={1}", prefix, Escape(definition.SourceRelationId));
                     writer.WriteLine("{0}.Connectivity={1}", prefix, definition.Connectivity.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.MinArea={1}", prefix, definition.MinArea.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.MaxArea={1}", prefix, definition.MaxArea.ToString(CultureInfo.InvariantCulture));
@@ -782,6 +794,25 @@ namespace IntegratedImageProcessingApp.Services
                     !objectJudgementGroupIds.Contains(definition.SourceId))
                 {
                     definition.SourceId = string.Empty;
+                }
+
+                if (!string.Equals(definition.SourceRelationType, "Relation", StringComparison.Ordinal) &&
+                    !string.Equals(definition.SourceRelationType, "Group", StringComparison.Ordinal))
+                {
+                    definition.SourceRelationType = string.Empty;
+                    definition.SourceRelationId = string.Empty;
+                }
+                else if (string.Equals(definition.SourceRelationType, "Relation", StringComparison.Ordinal) &&
+                    !relationIds.Contains(definition.SourceRelationId))
+                {
+                    definition.SourceRelationType = string.Empty;
+                    definition.SourceRelationId = string.Empty;
+                }
+                else if (string.Equals(definition.SourceRelationType, "Group", StringComparison.Ordinal) &&
+                    !relationGroupIds.Contains(definition.SourceRelationId))
+                {
+                    definition.SourceRelationType = string.Empty;
+                    definition.SourceRelationId = string.Empty;
                 }
 
                 if (definition.Connectivity != 4 && definition.Connectivity != 8)

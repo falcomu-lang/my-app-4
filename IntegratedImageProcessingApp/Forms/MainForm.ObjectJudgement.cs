@@ -34,9 +34,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            string selectedFunction = functionListBox.SelectedItem as string;
-            if (GetSelectedObjectJudgementIndex() < 0 &&
-                string.IsNullOrEmpty(GetObjectJudgementGroupId(selectedFunction)) &&
+            if (!objectJudgementProcessingRequested &&
                 string.IsNullOrEmpty(activeObjectJudgementId) &&
                 string.IsNullOrEmpty(activeObjectJudgementGroupId))
             {

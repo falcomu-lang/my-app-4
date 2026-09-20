@@ -17,6 +17,7 @@ namespace IntegratedImageProcessingApp.Controls
     {
         private const int TileSourceSize = 1024;
         private const int MaxDisplayTileCacheCount = 384;
+        private const int MaxViewportPrefetchTileCount = 256;
         private const int MaxPreviewDimension = 2048;
         private readonly object _sync = new object();
         private readonly string _filePath;
@@ -662,6 +663,53 @@ namespace IntegratedImageProcessingApp.Controls
                     }
 
                     QueueTile(neighbor, onReady);
+                }
+            }
+        }
+
+        // Prepare only the outer ring around the current viewport. Visible
+        // tiles are requested by the normal paint path first, so this remains
+        // a low-priority look-ahead rather than a second full viewport load.
+        public void PrefetchViewportRing(Rectangle visibleSourceRect, int marginTiles, Action onReady)
+        {
+            if (marginTiles < 1)
+            {
+                return;
+            }
+
+            Rectangle normalized = NormalizeRect(visibleSourceRect);
+            int visibleFirstTileX = normalized.Left / TileSourceSize;
+            int visibleFirstTileY = normalized.Top / TileSourceSize;
+            int visibleLastTileX = (normalized.Right - 1) / TileSourceSize;
+            int visibleLastTileY = (normalized.Bottom - 1) / TileSourceSize;
+            int firstTileX = Math.Max(0, visibleFirstTileX - marginTiles);
+            int firstTileY = Math.Max(0, visibleFirstTileY - marginTiles);
+            int lastTileX = Math.Min((Width - 1) / TileSourceSize, visibleLastTileX + marginTiles);
+            int lastTileY = Math.Min((Height - 1) / TileSourceSize, visibleLastTileY + marginTiles);
+
+            int queued = 0;
+            for (int tileY = firstTileY; tileY <= lastTileY; tileY++)
+            {
+                for (int tileX = firstTileX; tileX <= lastTileX; tileX++)
+                {
+                    if (tileX >= visibleFirstTileX && tileX <= visibleLastTileX &&
+                        tileY >= visibleFirstTileY && tileY <= visibleLastTileY)
+                    {
+                        continue;
+                    }
+
+                    if (queued >= MaxViewportPrefetchTileCount)
+                    {
+                        return;
+                    }
+
+                    Rectangle tileRect = new Rectangle(
+                        tileX * TileSourceSize,
+                        tileY * TileSourceSize,
+                        Math.Min(TileSourceSize, Width - (tileX * TileSourceSize)),
+                        Math.Min(TileSourceSize, Height - (tileY * TileSourceSize)));
+                    QueueTile(tileRect, onReady);
+                    queued++;
                 }
             }
         }

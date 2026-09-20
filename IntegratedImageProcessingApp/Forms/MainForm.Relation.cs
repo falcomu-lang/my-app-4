@@ -252,6 +252,11 @@ namespace IntegratedImageProcessingApp.Forms
             activeImageRelationGroupId = group.Id;
             activeImageRelationSourceType = "Original";
             activeImageRelationSourceId = null;
+            displayedImageRelationGroupId = group.Id;
+            displayedImageProcessingStepIndex = -1;
+            displayedImageProcessingGroupId = null;
+            displayedImageRelationSourceType = "Original";
+            displayedImageRelationSourceId = null;
             selectedImageRelationGroupId = group.Id;
             selectedImageRelationIndex = -1;
             selectedImageProcessingStepIndex = -1;

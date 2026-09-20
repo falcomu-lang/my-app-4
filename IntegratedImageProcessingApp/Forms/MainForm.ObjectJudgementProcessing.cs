@@ -2112,11 +2112,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void PaintLargeObjectJudgementOverlay(object sender, LargeImageOverlayPaintEventArgs e)
         {
-            string selectedGroupId = GetObjectJudgementGroupId(functionListBox.SelectedItem as string);
-            if (string.IsNullOrEmpty(selectedGroupId))
-            {
-                selectedGroupId = activeObjectJudgementGroupId;
-            }
+            string selectedGroupId = activeObjectJudgementGroupId;
             if (objectJudgementProcessingRequested &&
                 !string.IsNullOrEmpty(activeObjectJudgementGroupId) &&
                 string.Equals(activeObjectJudgementGroupId, selectedGroupId, StringComparison.Ordinal))
@@ -2173,12 +2169,8 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            int objectIndex = GetSelectedObjectJudgementIndex();
-            if (objectIndex < 0 && !string.IsNullOrEmpty(activeObjectJudgementId))
-            {
-                objectIndex = systemParameters.ObjectJudgements.FindIndex(
-                    item => string.Equals(item.Id, activeObjectJudgementId, StringComparison.Ordinal));
-            }
+            int objectIndex = systemParameters.ObjectJudgements.FindIndex(
+                item => string.Equals(item.Id, activeObjectJudgementId, StringComparison.Ordinal));
             if (objectIndex < 0 || objectIndex >= systemParameters.ObjectJudgements.Count)
             {
                 return;
@@ -2199,14 +2191,7 @@ namespace IntegratedImageProcessingApp.Forms
                     continue;
                 }
 
-                int processingIndex;
-                if (!TryGetObjectJudgementProcessingLocation(
-                        functionListBox.SelectedItem as string,
-                        out int selectedObjectIndex,
-                        out processingIndex) || selectedObjectIndex != objectIndex)
-                {
-                    processingIndex = -1;
-                }
+                int processingIndex = activeObjectJudgementProcessingIndex;
 
                 List<ObjectJudgementProcessingSettings> processingSteps =
                     GetObjectJudgementProcessingChain(objectJudgement, processingIndex);

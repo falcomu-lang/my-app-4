@@ -122,6 +122,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftPanel = new System.Windows.Forms.Panel();
             this.functionListBox = new System.Windows.Forms.ListBox();
             this.suppressImageDisplayCheckBox = new System.Windows.Forms.CheckBox();
+            this.debugTimingMemo = new System.Windows.Forms.TextBox();
             this.leftPanelTitleLabel = new System.Windows.Forms.Label();
             this.centerPanel = new System.Windows.Forms.Panel();
             this.imageLayoutPanel = new System.Windows.Forms.TableLayoutPanel();
@@ -211,7 +212,6 @@ namespace IntegratedImageProcessingApp.Forms
             this.parameterPanel = new System.Windows.Forms.Panel();
             this.parameterPlaceholderLabel = new System.Windows.Forms.Label();
             this.rightPanelTitleLabel = new System.Windows.Forms.Label();
-            this.debugTimingMemo = new System.Windows.Forms.TextBox();
             this.statusStrip = new System.Windows.Forms.StatusStrip();
             this.statusLabel = new System.Windows.Forms.ToolStripStatusLabel();
             this.topBarPanel.SuspendLayout();
@@ -350,27 +350,27 @@ namespace IntegratedImageProcessingApp.Forms
             "輸出設定"});
             this.functionListBox.Location = new System.Drawing.Point(14, 46);
             this.functionListBox.Name = "functionListBox";
-            this.functionListBox.Size = new System.Drawing.Size(228, 592);
+            this.functionListBox.Size = new System.Drawing.Size(228, 453);
             this.functionListBox.TabIndex = 1;
             this.functionListBox.MouseClick += new System.Windows.Forms.MouseEventHandler(this.FunctionListBox_MouseClick);
             this.functionListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.FunctionListBox_DrawItem);
             this.functionListBox.SelectedIndexChanged += new System.EventHandler(this.FunctionListBox_SelectedIndexChanged);
-            //
+            // 
             // suppressImageDisplayCheckBox
-            //
+            // 
             this.suppressImageDisplayCheckBox.AutoSize = true;
             this.suppressImageDisplayCheckBox.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.suppressImageDisplayCheckBox.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(39)))), ((int)(((byte)(46)))), ((int)(((byte)(56)))));
-            this.suppressImageDisplayCheckBox.Location = new System.Drawing.Point(14, 497);
+            this.suppressImageDisplayCheckBox.Location = new System.Drawing.Point(14, 499);
             this.suppressImageDisplayCheckBox.Name = "suppressImageDisplayCheckBox";
-            this.suppressImageDisplayCheckBox.Size = new System.Drawing.Size(228, 21);
+            this.suppressImageDisplayCheckBox.Size = new System.Drawing.Size(228, 19);
             this.suppressImageDisplayCheckBox.TabIndex = 3;
             this.suppressImageDisplayCheckBox.Text = "不顯示畫面";
             this.suppressImageDisplayCheckBox.UseVisualStyleBackColor = true;
             this.suppressImageDisplayCheckBox.CheckedChanged += new System.EventHandler(this.SuppressImageDisplayCheckBox_CheckedChanged);
-            //
+            // 
             // debugTimingMemo
-            //
+            // 
             this.debugTimingMemo.BackColor = System.Drawing.Color.White;
             this.debugTimingMemo.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.debugTimingMemo.Dock = System.Windows.Forms.DockStyle.Bottom;
@@ -1453,6 +1453,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.topBarPanel.PerformLayout();
             this.mainLayoutPanel.ResumeLayout(false);
             this.leftPanel.ResumeLayout(false);
+            this.leftPanel.PerformLayout();
             this.centerPanel.ResumeLayout(false);
             this.imageLayoutPanel.ResumeLayout(false);
             this.leftImageTabControl.ResumeLayout(false);
