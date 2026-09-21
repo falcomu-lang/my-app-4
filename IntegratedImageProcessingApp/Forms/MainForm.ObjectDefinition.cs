@@ -900,7 +900,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             var measurementNote = new Label
             {
-                Text = "量測來源固定使用原始二值影像；連結設定只影響物件編號，不修改量測邊界。",
+                Text = "物件定義只負責來源與物件編號；量測時使用的 MASK 與運算方式，請到檢測參數設定的尺寸量測設定中指定。",
                 Left = 8,
                 Top = 638,
                 Width = parameterPanel.Width - 18,
@@ -980,7 +980,7 @@ namespace IntegratedImageProcessingApp.Forms
             };
             panel.Controls.Add(cancel);
 
-            // Keep the new fallback source below the block source without
+            // Keep the fallback source below the block source without
             // rewriting every existing parameter coordinate by hand.
             foreach (Control control in panel.Controls)
             {

@@ -486,7 +486,9 @@ namespace IntegratedImageProcessingApp.Forms
                                 new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height)))
                             using (Cv.Mat combined = CreateCombinedImageProcessingGroupMask(
                                 roiGray,
-                                GetImageProcessingStepsForRelation(relation)))
+                                roi,
+                                GetImageProcessingStepsForRelation(relation),
+                                CreateImageRelationSourceNamespace(relation)))
                             {
                                 PaintRedOverlayImage(
                                     result,
@@ -632,7 +634,9 @@ namespace IntegratedImageProcessingApp.Forms
                                 {
                                     using (Cv.Mat relationMask = CreateCombinedImageProcessingGroupMask(
                                         gray,
-                                        GetImageProcessingStepsForRelation(relation)))
+                                        roi,
+                                        GetImageProcessingStepsForRelation(relation),
+                                        CreateImageRelationSourceNamespace(relation)))
                                     {
                                         Cv.Cv2.BitwiseOr(combined, relationMask, combined);
                                     }

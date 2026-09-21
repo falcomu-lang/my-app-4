@@ -27,6 +27,10 @@ namespace IntegratedImageProcessingApp.Forms
         private ImageDisplayControl rightProcessedDisplayControl;
         private ImageDisplayControl rightObjectsDisplayControl;
         private ImageDisplayControl rightDebugDisplayControl;
+        private ToolTip objectAreaToolTip;
+        private ImageDisplayControl objectAreaTooltipDisplay;
+        private ImagePointerMovedEventArgs objectAreaTooltipPointer;
+        private bool isControlKeyDown;
         private bool isLoadingImage;
         private bool isSyncingImageView;
         private System.Windows.Forms.Timer synchronizedImagePanTimer;
@@ -111,6 +115,7 @@ namespace IntegratedImageProcessingApp.Forms
         private readonly Dictionary<ImageProcessingStepSettings, long> imageProcessingStepElapsedMilliseconds =
             new Dictionary<ImageProcessingStepSettings, long>();
         private bool processedImageDirty = true;
+        private string latestProcessedImageCacheKey;
         private bool imageProcessingExecutionRequested;
         private bool displayRefreshPendingWhileSuppressed;
         private bool hasSharedImageViewState;
@@ -271,6 +276,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string ImageProcessingMenuText = "影像處理";
         private const string ObjectJudgementMenuText = "整合成區塊";
         private const string ObjectDefinitionMenuText = "物件定義";
+        private const string ObjectDetectionParameterMenuText = "檢測參數設定";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
@@ -310,6 +316,18 @@ namespace IntegratedImageProcessingApp.Forms
             systemParameters = systemParameterService.Load();
 
             InitializeComponent();
+            KeyPreview = true;
+            KeyDown += MainForm_KeyDown;
+            KeyUp += MainForm_KeyUp;
+            objectAreaToolTip = new ToolTip();
+            objectAreaToolTip.AutoPopDelay = 30000;
+            objectAreaToolTip.InitialDelay = 0;
+            objectAreaToolTip.ReshowDelay = 0;
+            objectAreaToolTip.ShowAlways = true;
+            if (components != null)
+            {
+                components.Add(objectAreaToolTip);
+            }
             synchronizedImagePanTimer = new System.Windows.Forms.Timer();
             synchronizedImagePanTimer.Interval = 16;
             synchronizedImagePanTimer.Tick += SynchronizedImagePanTimer_Tick;
@@ -339,9 +357,17 @@ namespace IntegratedImageProcessingApp.Forms
                     objectJudgementIndex < 0 ? functionListBox.Items.Count : objectJudgementIndex + 1,
                     ObjectDefinitionMenuText);
             }
+            if (!functionListBox.Items.Contains(ObjectDetectionParameterMenuText))
+            {
+                int objectDefinitionIndex = functionListBox.Items.IndexOf(ObjectDefinitionMenuText);
+                functionListBox.Items.Insert(
+                    objectDefinitionIndex < 0 ? functionListBox.Items.Count : objectDefinitionIndex + 1,
+                    ObjectDetectionParameterMenuText);
+            }
             RebuildVisibleImageRelations();
             RebuildVisibleObjectJudgements();
             RebuildVisibleObjectDefinitions();
+            RebuildVisibleObjectDetectionParameters();
 
             if (!IsRunningInDesigner())
             {
@@ -377,6 +403,7 @@ namespace IntegratedImageProcessingApp.Forms
             rightBlockProcessingDisplayControl = CreateImageDisplayControl(rightBlockProcessingDisplayHostPanel, "右側 區塊處理");
             rightObjectsDisplayControl = CreateImageDisplayControl(rightObjectsDisplayHostPanel, "右側 區塊結果");
             rightDebugDisplayControl = CreateImageDisplayControl(rightDebugDisplayHostPanel, "右側 debug");
+            EnsureObjectDetectionMeasurementDisplay();
 
             WireImageDisplaySynchronization();
         }
@@ -426,6 +453,7 @@ namespace IntegratedImageProcessingApp.Forms
             leftBlockProcessingDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftObjectsDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             leftDebugDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
+            objectDetectionMeasurementDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightOriginalDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightPreprocessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
             rightProcessedDisplayControl.ViewChanged += ImageDisplayControl_ViewChanged;
@@ -439,6 +467,7 @@ namespace IntegratedImageProcessingApp.Forms
             leftBlockProcessingDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftObjectsDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             leftDebugDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
+            objectDetectionMeasurementDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightOriginalDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightPreprocessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
             rightProcessedDisplayControl.FitViewRequested += ImageDisplayControl_FitViewRequested;
@@ -456,12 +485,100 @@ namespace IntegratedImageProcessingApp.Forms
             leftProcessedDisplayControl.LargeImageOverlayPaint += ProcessedDisplayControl_LargeImageOverlayPaint;
             leftBlockProcessingDisplayControl.LargeImageOverlayPaint += BlockProcessingDisplayControl_LargeImageOverlayPaint;
             leftObjectsDisplayControl.LargeImageOverlayPaint += ObjectDefinitionDisplayControl_LargeImageOverlayPaint;
+            leftObjectsDisplayControl.ImagePointerMoved += ObjectDefinitionDisplayControl_ImagePointerMoved;
+            objectDetectionMeasurementDisplayControl.LargeImageOverlayPaint +=
+                ObjectDetectionMeasurementDisplayControl_LargeImageOverlayPaint;
             rightProcessedDisplayControl.LargeImageOverlayPaint += ProcessedDisplayControl_LargeImageOverlayPaint;
             rightBlockProcessingDisplayControl.LargeImageOverlayPaint += BlockProcessingDisplayControl_LargeImageOverlayPaint;
             rightObjectsDisplayControl.LargeImageOverlayPaint += ObjectDefinitionDisplayControl_LargeImageOverlayPaint;
+            rightObjectsDisplayControl.ImagePointerMoved += ObjectDefinitionDisplayControl_ImagePointerMoved;
             imageProcessingDebounceTimer = new System.Windows.Forms.Timer();
             imageProcessingDebounceTimer.Interval = 200;
             imageProcessingDebounceTimer.Tick += ImageProcessingDebounceTimer_Tick;
+        }
+
+        private void MainForm_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode != Keys.Control)
+            {
+                return;
+            }
+
+            isControlKeyDown = true;
+            RefreshObjectAreaToolTip();
+        }
+
+        private void MainForm_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode != Keys.Control)
+            {
+                return;
+            }
+
+            isControlKeyDown = false;
+            HideObjectAreaToolTip();
+        }
+
+        private void ObjectDefinitionDisplayControl_ImagePointerMoved(
+            object sender,
+            ImagePointerMovedEventArgs e)
+        {
+            ImageDisplayControl display = sender as ImageDisplayControl;
+            if (display == null)
+            {
+                return;
+            }
+
+            if (objectAreaTooltipDisplay != null && !ReferenceEquals(objectAreaTooltipDisplay, display))
+            {
+                objectAreaToolTip.Hide(objectAreaTooltipDisplay);
+            }
+
+            objectAreaTooltipDisplay = display;
+            objectAreaTooltipPointer = e;
+            RefreshObjectAreaToolTip();
+        }
+
+        private void RefreshObjectAreaToolTip()
+        {
+            ImageDisplayControl display = objectAreaTooltipDisplay;
+            ImagePointerMovedEventArgs pointer = objectAreaTooltipPointer;
+            bool controlHeld = isControlKeyDown ||
+                (Control.ModifierKeys & Keys.Control) == Keys.Control;
+            if (display == null || pointer == null || !controlHeld ||
+                !pointer.IsInsideViewer || !pointer.IsInsideImage || pointer.IsPanning)
+            {
+                HideObjectAreaToolTip();
+                return;
+            }
+
+            ObjectDefinitionDetectedObject hit = FindObjectDefinitionObjectAtPoint(pointer.ImageLocation);
+            if (hit == null)
+            {
+                HideObjectAreaToolTip();
+                return;
+            }
+
+            string text = "面積：" + hit.Area.ToString("0.##", CultureInfo.InvariantCulture) + " px^2";
+            Point location = new Point(pointer.ControlLocation.X + 12, pointer.ControlLocation.Y + 12);
+            objectAreaToolTip.Show(text, display, location, 30000);
+        }
+
+        private void HideObjectAreaToolTip()
+        {
+            if (objectAreaToolTip == null)
+            {
+                return;
+            }
+
+            if (objectAreaTooltipDisplay != null)
+            {
+                objectAreaToolTip.Hide(objectAreaTooltipDisplay);
+            }
+            else
+            {
+                objectAreaToolTip.Hide(this);
+            }
         }
 
         private void ImageDisplayControl_ViewChanged(object sender, EventArgs e)
@@ -912,6 +1029,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return leftObjectsDisplayControl;
             }
 
+            if (leftImageTabControl.SelectedTab == objectDetectionMeasurementTabPage)
+            {
+                return objectDetectionMeasurementDisplayControl;
+            }
+
             if (leftImageTabControl.SelectedTab == leftDebugTabPage)
             {
                 return leftDebugDisplayControl;
@@ -1039,7 +1161,8 @@ namespace IntegratedImageProcessingApp.Forms
             if (isUpdatingFunctionListText ||
                 isRebuildingImagePreprocessingMenu ||
                 isRebuildingObjectJudgementMenu ||
-                isRebuildingObjectDefinitionMenu)
+                isRebuildingObjectDefinitionMenu ||
+                isRebuildingObjectDetectionParameterMenu)
             {
                 return;
             }
@@ -1085,6 +1208,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 parameterPlaceholderLabel.Text = "右鍵選擇「新增物件組」，建立物件組項目。";
             }
+            else if (selectedFunction == ObjectDetectionParameterMenuText)
+            {
+                parameterPlaceholderLabel.Text = "右鍵選擇「新增檢測參數」，建立檢測參數設定。";
+            }
             else if (GetObjectJudgementGroupId(selectedFunction) != null)
             {
                 parameterPlaceholderLabel.Text = "目前選擇物件群組，可展開或收合其中的區塊。";
@@ -1096,6 +1223,16 @@ namespace IntegratedImageProcessingApp.Forms
             }
             else
             {
+                string objectDetectionParameterId;
+                if (TryGetObjectDetectionParameterLocation(
+                        functionListBox.SelectedIndex,
+                        selectedFunction,
+                        out objectDetectionParameterId))
+                {
+                    ShowObjectDetectionParameterPanel(objectDetectionParameterId);
+                    return;
+                }
+
                 string objectDefinitionId;
                 int objectDefinitionProcessingIndex;
                 if (TryGetObjectDefinitionProcessingLocation(
@@ -1226,7 +1363,9 @@ namespace IntegratedImageProcessingApp.Forms
             HideImageRelationParameterPanel();
             HideObjectJudgementParameterPanel();
             HideObjectDefinitionParameterPanel();
+            HideObjectDetectionParameterPanel();
             HideImageProcessingFlowTree();
+            SetObjectDetectionParameterDisplayMode(false);
             parameterPlaceholderLabel.Visible = true;
             parameterPlaceholderLabel.BringToFront();
         }
@@ -1284,6 +1423,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ToggleObjectDefinitionMenu();
             }
+            else if (selectedFunction == ObjectDetectionParameterMenuText)
+            {
+                ToggleObjectDetectionParameterMenu();
+            }
             else if (string.Equals(selectedFunction, OriginalPreprocessingSourceText, StringComparison.Ordinal))
             {
                 activeImageRelationSourceType = "Original";
@@ -1303,6 +1446,16 @@ namespace IntegratedImageProcessingApp.Forms
                     ToggleImageRelationGroup(selectedFunction);
                 }
             }
+            string objectDetectionParameterId;
+            if (TryGetObjectDetectionParameterLocation(
+                    clickedIndex,
+                    selectedFunction,
+                    out objectDetectionParameterId))
+            {
+                ShowObjectDetectionParameterPanel(objectDetectionParameterId);
+                return;
+            }
+
             string objectDefinitionId;
             int objectDefinitionProcessingIndex;
             if (TryGetObjectDefinitionProcessingLocation(
@@ -1532,6 +1685,28 @@ namespace IntegratedImageProcessingApp.Forms
             if (stepText == ObjectDefinitionMenuText)
             {
                 ShowObjectDefinitionMenuContextMenu(e.Location);
+                return;
+            }
+
+            if (stepText == ObjectDetectionParameterMenuText)
+            {
+                ShowObjectDetectionParameterMenuContextMenu(e.Location);
+                return;
+            }
+
+            string objectDetectionParameterId;
+            if (TryGetObjectDetectionParameterLocation(
+                    clickedIndex,
+                    stepText,
+                    out objectDetectionParameterId))
+            {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                ShowObjectDetectionParameterItemContextMenu(objectDetectionParameterId, e.Location);
                 return;
             }
 
@@ -4446,7 +4621,7 @@ namespace IntegratedImageProcessingApp.Forms
                 steps.All(step => IsBinaryMaskProcessingMethod(step.Method));
         }
 
-        private void MarkProcessedImageDirty()
+        private void MarkProcessedImageDirty(bool clearCachedResults = true)
         {
             // Capture the view that is actually on screen before processing
             // invalidates sources or replaces preview images. This keeps the
@@ -4455,14 +4630,75 @@ namespace IntegratedImageProcessingApp.Forms
             CaptureSharedImageViewStateFromVisibleControls();
             CaptureProcessedImageViewState();
             processedImageDirty = true;
+            if (!clearCachedResults)
+            {
+                return;
+            }
+
             imageProcessingStepElapsedMilliseconds.Clear();
             ClearLargeProcessedOverlayCache();
+            ClearProcessedBinaryMaskCache();
             ClearProcessedImageCache();
+            latestProcessedImageCacheKey = null;
             if (latestProcessedImage != null)
             {
                 latestProcessedImage.Dispose();
                 latestProcessedImage = null;
             }
+        }
+
+        private bool HasCachedProcessedImageForCurrentSelection()
+        {
+            if (rightOriginalDisplayControl == null || !rightOriginalDisplayControl.HasImage)
+            {
+                return false;
+            }
+
+            if (!rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                string cacheKey = CreateProcessedImageCacheKey();
+                if (string.IsNullOrWhiteSpace(cacheKey))
+                {
+                    return false;
+                }
+
+                return (string.Equals(
+                            latestProcessedImageCacheKey,
+                            cacheKey,
+                            StringComparison.Ordinal) &&
+                        latestProcessedImage != null) ||
+                    processedImageCache.ContainsKey(cacheKey);
+            }
+
+            List<ImageProcessingStepSettings> steps = GetDisplayedImageProcessingSteps();
+            if (systemParameters.RoiRegions.Count == 0 || steps.Count == 0 ||
+                steps.Any(step => step == null || !IsBinaryMaskProcessingMethod(step.Method)))
+            {
+                return false;
+            }
+
+            foreach (Rectangle roi in systemParameters.RoiRegions.Select(region => region.Bounds))
+            {
+                if (roi.Width <= 0 || roi.Height <= 0)
+                {
+                    return false;
+                }
+
+                foreach (ImageProcessingStepSettings step in steps)
+                {
+                    string maskKey = CreateLargeProcessedMaskKey(roi, step);
+                    lock (largeProcessedMaskLock)
+                    {
+                        if (!largeProcessedMasks.ContainsKey(maskKey) &&
+                            !largeProcessedBinaryMasks.ContainsKey(maskKey))
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            return true;
         }
 
         private void MarkProcessedPreviewDirty()
@@ -5079,7 +5315,6 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (processedImageDirty || latestProcessedImage == null)
             {
-                statusLabel.Text = "影像處理運算中...";
                 string cacheKey = CreateProcessedImageCacheKey();
                 Bitmap cachedImage;
                 Bitmap processedImage;
@@ -5089,6 +5324,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else
                 {
+                    statusLabel.Text = "影像處理運算中...";
                     processedImage = await Task.Run(() => CreateCurrentProcessedImage());
                     if (processedImage != null)
                     {
@@ -5108,6 +5344,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 latestProcessedImage = processedImage;
+                latestProcessedImageCacheKey = cacheKey;
                 processedImageDirty = false;
             }
 
@@ -5441,7 +5678,9 @@ namespace IntegratedImageProcessingApp.Forms
                                         GetImageProcessingExecutionChain(step);
                                     binaryMask = CreateCombinedImageProcessingGroupMask(
                                         nativeGray,
-                                        executionChain);
+                                        roi,
+                                        executionChain,
+                                        CreateImageProcessingSourceNamespace());
                                     PublishCompletedLargeProcessedBinaryMask(
                                         binaryMask,
                                         roi,
@@ -7568,18 +7807,16 @@ namespace IntegratedImageProcessingApp.Forms
                             sourceGray,
                             new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height)))
                         {
-                            foreach (ImageProcessingStepSettings step in selectedSteps)
+                            using (Cv.Mat combinedMask = CreateCombinedImageProcessingGroupMask(
+                                roiInput,
+                                roi,
+                                selectedSteps,
+                                CreateImageProcessingSourceNamespace()))
                             {
-                                using (Cv.Mat binaryMask = CreateNativeLargeEdgeBinaryMask(
-                                    roiInput,
-                                    step.Method,
-                                    ParseImageProcessingParameters(step.Parameters)))
-                                {
-                                    PaintRedOverlayImage(
-                                        result,
-                                        roi,
-                                        ConvertOpenCvBinaryMask(binaryMask));
-                                }
+                                PaintRedOverlayImage(
+                                    result,
+                                    roi,
+                                    ConvertOpenCvBinaryMask(combinedMask));
                             }
                         }
                     }
@@ -8060,6 +8297,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             latestProcessedImage = processedImage;
+            latestProcessedImageCacheKey = CreateProcessedImageCacheKey();
             processedImageDirty = false;
             isSyncingImageView = true;
             try
@@ -8323,6 +8561,8 @@ namespace IntegratedImageProcessingApp.Forms
                     return FunctionMenuIcon.Object;
                 case ObjectDefinitionMenuText:
                     return FunctionMenuIcon.Object;
+                case ObjectDetectionParameterMenuText:
+                    return FunctionMenuIcon.Measure;
                 case "亮度 / 對比":
                     return FunctionMenuIcon.Brightness;
                 case "濾波與銳化":

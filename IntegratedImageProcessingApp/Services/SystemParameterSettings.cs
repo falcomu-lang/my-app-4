@@ -18,6 +18,7 @@ namespace IntegratedImageProcessingApp.Services
             ObjectJudgements = new List<ObjectJudgementSettings>();
             ObjectJudgementGroups = new List<ObjectJudgementGroupSettings>();
             ObjectDefinitions = new List<ObjectDefinitionSettings>();
+            ObjectDetectionParameters = new List<ObjectDetectionParameterSettings>();
         }
 
         public string LastImagePath { get; set; }
@@ -45,6 +46,8 @@ namespace IntegratedImageProcessingApp.Services
         public List<ObjectJudgementGroupSettings> ObjectJudgementGroups { get; private set; }
 
         public List<ObjectDefinitionSettings> ObjectDefinitions { get; private set; }
+
+        public List<ObjectDetectionParameterSettings> ObjectDetectionParameters { get; private set; }
     }
 
     public class RoiRegionSettings
@@ -75,6 +78,7 @@ namespace IntegratedImageProcessingApp.Services
         public string Method { get; set; }
 
         public string Parameters { get; set; }
+
     }
 
     public class ImageProcessingGroupSettings
@@ -188,6 +192,12 @@ namespace IntegratedImageProcessingApp.Services
             SourceType = "ObjectJudgement";
             SourceRelationType = string.Empty;
             SourceRelationId = string.Empty;
+            SourceMaskMode = "Legacy";
+            SourceMaskPrimaryType = string.Empty;
+            SourceMaskPrimaryId = string.Empty;
+            SourceMaskOperation = "None";
+            SourceMaskSecondaryType = string.Empty;
+            SourceMaskSecondaryId = string.Empty;
             Connectivity = 8;
             MinArea = 0;
             MaxArea = 0;
@@ -214,6 +224,20 @@ namespace IntegratedImageProcessingApp.Services
         public string SourceRelationType { get; set; }
 
         public string SourceRelationId { get; set; }
+
+        // New source-mask configuration. Legacy SourceType/SourceId and
+        // SourceRelation* remain intact so existing profiles keep working.
+        public string SourceMaskMode { get; set; }
+
+        public string SourceMaskPrimaryType { get; set; }
+
+        public string SourceMaskPrimaryId { get; set; }
+
+        public string SourceMaskOperation { get; set; }
+
+        public string SourceMaskSecondaryType { get; set; }
+
+        public string SourceMaskSecondaryId { get; set; }
 
         public int Connectivity { get; set; }
 
@@ -254,5 +278,54 @@ namespace IntegratedImageProcessingApp.Services
         public string Method { get; set; }
 
         public string Parameters { get; set; }
+    }
+
+    public class ObjectDetectionParameterSettings
+    {
+        public ObjectDetectionParameterSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+            ObjectDefinitionId = string.Empty;
+            ColumnCount = 0;
+            RowCount = 0;
+            SourceMaskMode = "ObjectDefinition";
+            SourceMaskPrimaryType = "ObjectDefinition";
+            SourceMaskPrimaryId = string.Empty;
+            SourceMaskPrimaryNamespace = string.Empty;
+            SourceMaskOperation = "None";
+            SourceMaskSecondaryType = string.Empty;
+            SourceMaskSecondaryId = string.Empty;
+            SourceMaskSecondaryNamespace = string.Empty;
+        }
+
+        public string Id { get; set; }
+
+        public string DisplayName { get; set; }
+
+        public string Parameters { get; set; }
+
+        public string ObjectDefinitionId { get; set; }
+
+        public int ColumnCount { get; set; }
+
+        public int RowCount { get; set; }
+
+        // One shared source-MASK definition is applied to every numbered
+        // object in this detection parameter.
+        public string SourceMaskMode { get; set; }
+
+        public string SourceMaskPrimaryType { get; set; }
+
+        public string SourceMaskPrimaryId { get; set; }
+
+        public string SourceMaskPrimaryNamespace { get; set; }
+
+        public string SourceMaskOperation { get; set; }
+
+        public string SourceMaskSecondaryType { get; set; }
+
+        public string SourceMaskSecondaryId { get; set; }
+
+        public string SourceMaskSecondaryNamespace { get; set; }
     }
 }

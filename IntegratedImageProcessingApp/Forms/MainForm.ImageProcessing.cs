@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Drawing;
 using IntegratedImageProcessingApp.Services;
 using Cv = OpenCvSharp;
 
@@ -6,13 +8,33 @@ namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm
     {
-        private static Cv.Mat CreateCombinedImageProcessingGroupMask(
+        // Keep each processing node's raw OpenCV mask so later stages can
+        // reuse it instead of running the detector again. The cache is
+        // invalidated with the processed-image cache when the source or
+        // parameters change.
+        private readonly object processedBinaryMaskCacheLock = new object();
+        private readonly Dictionary<string, Cv.Mat> processedBinaryMaskCache =
+            new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
+
+        private Cv.Mat CreateCombinedImageProcessingGroupMask(
             Cv.Mat source,
-            System.Collections.Generic.IEnumerable<ImageProcessingStepSettings> steps)
+            Rectangle roi,
+            IEnumerable<ImageProcessingStepSettings> steps,
+            string sourceNamespace)
         {
             if (source == null)
             {
                 throw new ArgumentNullException("source");
+            }
+
+            var orderedSteps = new List<ImageProcessingStepSettings>();
+            foreach (ImageProcessingStepSettings step in steps ??
+                new ImageProcessingStepSettings[0])
+            {
+                if (step != null && IsBinaryMaskProcessingMethod(step.Method))
+                {
+                    orderedSteps.Add(step);
+                }
             }
 
             var combined = new Cv.Mat(
@@ -22,21 +44,15 @@ namespace IntegratedImageProcessingApp.Forms
                 Cv.Scalar.All(0));
             try
             {
-                foreach (ImageProcessingStepSettings step in steps ??
-                    System.Linq.Enumerable.Empty<ImageProcessingStepSettings>())
+                foreach (ImageProcessingStepSettings step in orderedSteps)
                 {
-                    if (step == null || !IsBinaryMaskProcessingMethod(step.Method))
-                    {
-                        continue;
-                    }
-
-                    // Each detector analyzes the same source image.  A group
-                    // combines their binary results instead of feeding one
-                    // detector's mask into the next detector.
-                    using (Cv.Mat next = CreateNativeLargeEdgeBinaryMask(
+                    // The cache owns its Mat. The helper returns a clone so
+                    // the cache can be cleared safely while this task runs.
+                    using (Cv.Mat next = GetOrCreateProcessedBinaryMask(
                         source,
-                        step.Method,
-                        ParseImageProcessingParameters(step.Parameters)))
+                        roi,
+                        step,
+                        sourceNamespace))
                     {
                         Cv.Cv2.BitwiseOr(combined, next, combined);
                     }
@@ -49,6 +65,157 @@ namespace IntegratedImageProcessingApp.Forms
                 combined.Dispose();
                 throw;
             }
+        }
+
+        private Cv.Mat GetOrCreateProcessedBinaryMask(
+            Cv.Mat source,
+            Rectangle roi,
+            ImageProcessingStepSettings step,
+            string sourceNamespace)
+        {
+            if (source == null || step == null)
+            {
+                throw new ArgumentNullException(source == null ? "source" : "step");
+            }
+
+            string cacheKey = CreateProcessedBinaryMaskCacheKey(
+                "step",
+                roi,
+                sourceNamespace,
+                new[] { step });
+            lock (processedBinaryMaskCacheLock)
+            {
+                Cv.Mat cached;
+                if (processedBinaryMaskCache.TryGetValue(cacheKey, out cached) &&
+                    cached != null && !cached.Empty())
+                {
+                    return cached.Clone();
+                }
+            }
+
+            Cv.Mat created = CreateNativeLargeEdgeBinaryMask(
+                source,
+                step.Method,
+                ParseImageProcessingParameters(step.Parameters));
+            lock (processedBinaryMaskCacheLock)
+            {
+                Cv.Mat existing;
+                if (processedBinaryMaskCache.TryGetValue(cacheKey, out existing) &&
+                    existing != null && !existing.Empty())
+                {
+                    created.Dispose();
+                    return existing.Clone();
+                }
+
+                processedBinaryMaskCache[cacheKey] = created;
+                return created.Clone();
+            }
+        }
+
+        private bool TryGetCachedProcessedBinaryMask(
+            Rectangle roi,
+            ImageProcessingStepSettings step,
+            string sourceNamespace,
+            out Cv.Mat mask)
+        {
+            mask = null;
+            if (step == null || roi.Width <= 0 || roi.Height <= 0)
+            {
+                return false;
+            }
+
+            string cacheKey = CreateProcessedBinaryMaskCacheKey(
+                "step",
+                roi,
+                sourceNamespace,
+                new[] { step });
+            lock (processedBinaryMaskCacheLock)
+            {
+                Cv.Mat cached;
+                if (!processedBinaryMaskCache.TryGetValue(cacheKey, out cached) ||
+                    cached == null || cached.Empty() ||
+                    cached.Rows != roi.Height || cached.Cols != roi.Width)
+                {
+                    return false;
+                }
+
+                mask = cached.Clone();
+                return true;
+            }
+        }
+
+        private string CreateProcessedBinaryMaskCacheKey(
+            string maskKind,
+            Rectangle roi,
+            string sourceNamespace,
+            IEnumerable<ImageProcessingStepSettings> steps)
+        {
+            var parts = new List<string>
+            {
+                maskKind ?? string.Empty,
+                imageSourceGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                systemParameters == null ? string.Empty : systemParameters.LastImagePath ?? string.Empty,
+                sourceNamespace ?? string.Empty,
+                roi.X.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                roi.Y.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                roi.Width.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                roi.Height.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            };
+
+            foreach (ImageProcessingStepSettings step in steps ??
+                new ImageProcessingStepSettings[0])
+            {
+                if (step == null)
+                {
+                    continue;
+                }
+
+                parts.Add(step.Id ?? string.Empty);
+                parts.Add(step.Method ?? string.Empty);
+                parts.Add(step.Parameters ?? string.Empty);
+            }
+
+            return string.Join("|", parts.ToArray());
+        }
+
+        private void ClearProcessedBinaryMaskCache()
+        {
+            lock (processedBinaryMaskCacheLock)
+            {
+                foreach (Cv.Mat mask in processedBinaryMaskCache.Values)
+                {
+                    if (mask != null)
+                    {
+                        mask.Dispose();
+                    }
+                }
+
+                processedBinaryMaskCache.Clear();
+            }
+        }
+
+        private string CreateImageProcessingSourceNamespace()
+        {
+            return string.Join(
+                "|",
+                "image-processing",
+                displayedImageRelationSourceType ?? activeImageRelationSourceType ?? "Original",
+                displayedImageRelationSourceId ?? activeImageRelationSourceId ?? string.Empty);
+        }
+
+        private static string CreateImageRelationSourceNamespace(ImageRelationSettings relation)
+        {
+            if (relation == null)
+            {
+                return "relation|unknown";
+            }
+
+            return string.Join(
+                "|",
+                "relation",
+                relation.Id ?? string.Empty,
+                relation.SourceType ?? "Original",
+                relation.SourceId ?? string.Empty);
         }
 
         private static bool[,] CreateOpenCvCannyMask(byte[,] gray, int lowThreshold, int highThreshold, int kernelSize, bool l2Gradient, int gaussianBlurSize, double gaussianSigma, string edgeSelection, int minEdgeLength, int maxGap)
@@ -194,11 +361,24 @@ namespace IntegratedImageProcessingApp.Forms
             displayedImageRelationSourceId = activeImageRelationSourceId;
             imageProcessingExecutionRequested = true;
             explicitProcessedImageUpdateRequested = true;
-            BeginParameterApplyStatus(false);
+            bool hasCachedResult = HasCachedProcessedImageForCurrentSelection();
+            if (hasCachedResult)
+            {
+                SetParameterApplyStatus("已處理，使用快取結果");
+            }
+            else
+            {
+                BeginParameterApplyStatus(false);
+            }
             MarkProcessedPreviewDirty();
-            MarkProcessedImageDirty();
+            // Selecting "處理" again must reuse the matching result.  A
+            // parameter/image/ROI change still performs the full invalidation
+            // through the default MarkProcessedImageDirty() path elsewhere.
+            MarkProcessedImageDirty(false);
             RequestExplicitProcessedImageUpdate();
-            statusLabel.Text = "已開始處理" + stepText.Trim();
+            statusLabel.Text = hasCachedResult
+                ? "已處理" + stepText.Trim() + "，使用快取結果"
+                : "已開始處理" + stepText.Trim();
         }
 
         private void ProcessImageProcessingGroup(string groupId)
@@ -223,12 +403,23 @@ namespace IntegratedImageProcessingApp.Forms
             displayedImageRelationSourceId = activeImageRelationSourceId;
             imageProcessingExecutionRequested = true;
             explicitProcessedImageUpdateRequested = true;
+            bool hasCachedResult = HasCachedProcessedImageForCurrentSelection();
+            if (hasCachedResult)
+            {
+                SetParameterApplyStatus("已處理，使用快取結果");
+            }
+            else
+            {
+                BeginParameterApplyStatus(false);
+            }
             MarkProcessedPreviewDirty();
-            // A group has its own combined-mask cache key. Invalidate the
-            // previous single-step/group result before rebuilding the OR mask.
-            MarkProcessedImageDirty();
+            // A group has its own cache key. Keep existing step/group masks so
+            // returning to an unchanged group can reuse them immediately.
+            MarkProcessedImageDirty(false);
             RequestExplicitProcessedImageUpdate();
-            statusLabel.Text = "已開始處理" + group.DisplayName;
+            statusLabel.Text = hasCachedResult
+                ? "已處理" + group.DisplayName + "，使用快取結果"
+                : "已開始處理" + group.DisplayName;
         }
     }
 }

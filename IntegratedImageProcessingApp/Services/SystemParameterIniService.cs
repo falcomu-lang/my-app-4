@@ -17,6 +17,7 @@ namespace IntegratedImageProcessingApp.Services
         private const string SectionObjectJudgement = "ObjectJudgement";
         private const string SectionObjectJudgementGroups = "ObjectJudgementGroups";
         private const string SectionObjectDefinition = "ObjectDefinition";
+        private const string SectionObjectDetection = "ObjectDetection";
         private readonly string filePath;
 
         public SystemParameterIniService(string filePath)
@@ -212,6 +213,36 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDefinition,
                         prefix + ".SourceRelationId",
                         string.Empty),
+                    SourceMaskMode = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceMaskMode",
+                        "Legacy"),
+                    SourceMaskPrimaryType = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceMaskPrimaryType",
+                        string.Empty),
+                    SourceMaskPrimaryId = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceMaskPrimaryId",
+                        string.Empty),
+                    SourceMaskOperation = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceMaskOperation",
+                        "None"),
+                    SourceMaskSecondaryType = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceMaskSecondaryType",
+                        string.Empty),
+                    SourceMaskSecondaryId = GetValue(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".SourceMaskSecondaryId",
+                        string.Empty),
                     Connectivity = GetInt(
                         sections,
                         SectionObjectDefinition,
@@ -307,6 +338,77 @@ namespace IntegratedImageProcessingApp.Services
                 }
 
                 settings.ObjectDefinitions.Add(definition);
+            }
+
+            int objectDetectionParameterCount = GetInt(
+                sections,
+                SectionObjectDetection,
+                "Count",
+                0);
+            for (int index = 1; index <= objectDetectionParameterCount; index++)
+            {
+                string prefix = "Parameter" + index.ToString(CultureInfo.InvariantCulture);
+                settings.ObjectDetectionParameters.Add(new ObjectDetectionParameterSettings
+                {
+                    Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", string.Empty),
+                    DisplayName = GetValue(sections, SectionObjectDetection, prefix + ".DisplayName", string.Empty),
+                    Parameters = GetValue(sections, SectionObjectDetection, prefix + ".Parameters", string.Empty),
+                    ObjectDefinitionId = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".ObjectDefinitionId",
+                        string.Empty),
+                    ColumnCount = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".ColumnCount",
+                        0),
+                    RowCount = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".RowCount",
+                        0),
+                    SourceMaskMode = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SourceMaskMode",
+                        "ObjectDefinition"),
+                    SourceMaskPrimaryType = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SourceMaskPrimaryType",
+                        "ObjectDefinition"),
+                    SourceMaskPrimaryId = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SourceMaskPrimaryId",
+                        string.Empty),
+                    SourceMaskPrimaryNamespace = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SourceMaskPrimaryNamespace",
+                        string.Empty),
+                    SourceMaskOperation = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SourceMaskOperation",
+                        "None"),
+                    SourceMaskSecondaryType = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SourceMaskSecondaryType",
+                        string.Empty),
+                    SourceMaskSecondaryId = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SourceMaskSecondaryId",
+                        string.Empty),
+                    SourceMaskSecondaryNamespace = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SourceMaskSecondaryNamespace",
+                        string.Empty)
+                });
             }
 
             int imagePreprocessingGroupCount = GetInt(sections, SectionImagePreprocessing, "GroupCount", 0);
@@ -492,6 +594,12 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.SourceId={1}", prefix, Escape(definition.SourceId));
                     writer.WriteLine("{0}.SourceRelationType={1}", prefix, Escape(definition.SourceRelationType));
                     writer.WriteLine("{0}.SourceRelationId={1}", prefix, Escape(definition.SourceRelationId));
+                    writer.WriteLine("{0}.SourceMaskMode={1}", prefix, Escape(definition.SourceMaskMode));
+                    writer.WriteLine("{0}.SourceMaskPrimaryType={1}", prefix, Escape(definition.SourceMaskPrimaryType));
+                    writer.WriteLine("{0}.SourceMaskPrimaryId={1}", prefix, Escape(definition.SourceMaskPrimaryId));
+                    writer.WriteLine("{0}.SourceMaskOperation={1}", prefix, Escape(definition.SourceMaskOperation));
+                    writer.WriteLine("{0}.SourceMaskSecondaryType={1}", prefix, Escape(definition.SourceMaskSecondaryType));
+                    writer.WriteLine("{0}.SourceMaskSecondaryId={1}", prefix, Escape(definition.SourceMaskSecondaryId));
                     writer.WriteLine("{0}.Connectivity={1}", prefix, definition.Connectivity.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.MinArea={1}", prefix, definition.MinArea.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.MaxArea={1}", prefix, definition.MaxArea.ToString(CultureInfo.InvariantCulture));
@@ -521,6 +629,40 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.Parameters={1}", processingPrefix, Escape(processing.Parameters));
                     }
                 }
+
+                writer.WriteLine();
+                writer.WriteLine("[ObjectDetection]");
+                writer.WriteLine(
+                    "Count={0}",
+                    settings.ObjectDetectionParameters.Count.ToString(CultureInfo.InvariantCulture));
+                for (int index = 0; index < settings.ObjectDetectionParameters.Count; index++)
+                {
+                    ObjectDetectionParameterSettings parameter = settings.ObjectDetectionParameters[index];
+                    string prefix = "Parameter" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                    writer.WriteLine("{0}.Id={1}", prefix, Escape(parameter.Id));
+                    writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(parameter.DisplayName));
+                    writer.WriteLine("{0}.Parameters={1}", prefix, Escape(parameter.Parameters));
+                    writer.WriteLine(
+                        "{0}.ObjectDefinitionId={1}",
+                        prefix,
+                        Escape(parameter.ObjectDefinitionId));
+                    writer.WriteLine(
+                        "{0}.ColumnCount={1}",
+                        prefix,
+                        parameter.ColumnCount.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.RowCount={1}",
+                        prefix,
+                        parameter.RowCount.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.SourceMaskMode={1}", prefix, Escape(parameter.SourceMaskMode));
+                    writer.WriteLine("{0}.SourceMaskPrimaryType={1}", prefix, Escape(parameter.SourceMaskPrimaryType));
+                    writer.WriteLine("{0}.SourceMaskPrimaryId={1}", prefix, Escape(parameter.SourceMaskPrimaryId));
+                    writer.WriteLine("{0}.SourceMaskPrimaryNamespace={1}", prefix, Escape(parameter.SourceMaskPrimaryNamespace));
+                    writer.WriteLine("{0}.SourceMaskOperation={1}", prefix, Escape(parameter.SourceMaskOperation));
+                    writer.WriteLine("{0}.SourceMaskSecondaryType={1}", prefix, Escape(parameter.SourceMaskSecondaryType));
+                    writer.WriteLine("{0}.SourceMaskSecondaryId={1}", prefix, Escape(parameter.SourceMaskSecondaryId));
+                    writer.WriteLine("{0}.SourceMaskSecondaryNamespace={1}", prefix, Escape(parameter.SourceMaskSecondaryNamespace));
+                }
             }
         }
 
@@ -547,6 +689,12 @@ namespace IntegratedImageProcessingApp.Services
             {
                 definition.Id = EnsureUniqueId(definition.Id, definitionIds);
                 EnsureObjectDefinitionProcessingIds(definition.ProcessingSteps);
+            }
+
+            var objectDetectionParameterIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ObjectDetectionParameterSettings parameter in settings.ObjectDetectionParameters)
+            {
+                parameter.Id = EnsureUniqueId(parameter.Id, objectDetectionParameterIds);
             }
 
             RepairReferences(settings);

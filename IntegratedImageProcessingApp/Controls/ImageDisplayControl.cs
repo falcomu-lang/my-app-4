@@ -57,6 +57,7 @@ namespace IntegratedImageProcessingApp.Controls
         public event EventHandler FitViewRequested;
         public event EventHandler<LargeImageOverlayPaintEventArgs> LargeImageOverlayPaint;
         public event EventHandler<RoiSelectedEventArgs> RoiSelected;
+        public event EventHandler<ImagePointerMovedEventArgs> ImagePointerMoved;
 
         public bool IsPanning
         {
@@ -200,6 +201,66 @@ namespace IntegratedImageProcessingApp.Controls
             {
                 _suppressViewChanged = false;
             }
+        }
+
+        public void FocusOnSourceRectangle(Rectangle sourceRectangle)
+        {
+            if (!HasImage || sourceRectangle.Width <= 0 || sourceRectangle.Height <= 0)
+            {
+                return;
+            }
+
+            _suppressViewChanged = true;
+            try
+            {
+                lock (_imageLock)
+                {
+                    int imageWidth;
+                    int imageHeight;
+                    if (!TryGetImageSizeUnsafe(out imageWidth, out imageHeight))
+                    {
+                        return;
+                    }
+
+                    Rectangle imageBounds = new Rectangle(0, 0, imageWidth, imageHeight);
+                    Rectangle target = Rectangle.Intersect(sourceRectangle, imageBounds);
+                    if (target.Width <= 0 || target.Height <= 0)
+                    {
+                        return;
+                    }
+
+                    Rectangle viewBounds = viewerPanel.ClientRectangle;
+                    viewBounds.Inflate(-8, -8);
+                    if (viewBounds.Width <= 0 || viewBounds.Height <= 0)
+                    {
+                        return;
+                    }
+
+                    float paddedWidth = Math.Max(1f, target.Width * 1.2f);
+                    float paddedHeight = Math.Max(1f, target.Height * 1.2f);
+                    _zoom = ClampZoom(Math.Min(
+                        viewBounds.Width / paddedWidth,
+                        viewBounds.Height / paddedHeight));
+
+                    float targetCenterX = target.Left + (target.Width / 2f);
+                    float targetCenterY = target.Top + (target.Height / 2f);
+                    float viewCenterX = viewBounds.Left + (viewBounds.Width / 2f);
+                    float viewCenterY = viewBounds.Top + (viewBounds.Height / 2f);
+                    _imageOffset = new PointF(
+                        viewCenterX - (targetCenterX * _zoom),
+                        viewCenterY - (targetCenterY * _zoom));
+                }
+
+                UpdateStatusLabel();
+                viewerPanel.Invalidate();
+                ScheduleViewportPrefetch();
+            }
+            finally
+            {
+                _suppressViewChanged = false;
+            }
+
+            OnViewChanged();
         }
 
         public void ResetViewToFit(bool notify)
@@ -793,6 +854,8 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void viewerPanel_MouseMove(object sender, MouseEventArgs e)
         {
+            OnImagePointerMoved(e.Location, true);
+
             if (_isDrawingRoi)
             {
                 _roiCurrentPoint = e.Location;
@@ -839,11 +902,53 @@ namespace IntegratedImageProcessingApp.Controls
             viewerPanel.Invalidate();
             OnViewChanged();
             ScheduleViewportPrefetch();
+            OnImagePointerMoved(e.Location, true);
         }
 
         private void viewerPanel_MouseEnter(object sender, EventArgs e)
         {
             viewerPanel.Focus();
+        }
+
+        private void viewerPanel_MouseLeave(object sender, EventArgs e)
+        {
+            OnImagePointerMoved(Point.Empty, false);
+        }
+
+        private void OnImagePointerMoved(Point viewerPoint, bool isInsideViewer)
+        {
+            EventHandler<ImagePointerMovedEventArgs> handler = ImagePointerMoved;
+            if (handler == null)
+            {
+                return;
+            }
+
+            int imageWidth;
+            int imageHeight;
+            float zoom;
+            PointF offset;
+            Point imagePoint = Point.Empty;
+            bool isInsideImage = false;
+            if (isInsideViewer && TryGetSourceMetrics(out imageWidth, out imageHeight, out zoom, out offset) && zoom > 0f)
+            {
+                int imageX = (int)Math.Floor((viewerPoint.X - offset.X) / zoom);
+                int imageY = (int)Math.Floor((viewerPoint.Y - offset.Y) / zoom);
+                imagePoint = new Point(imageX, imageY);
+                isInsideImage = imageX >= 0 && imageX < imageWidth && imageY >= 0 && imageY < imageHeight;
+            }
+
+            Point controlPoint = Point.Empty;
+            if (isInsideViewer && viewerPanel.IsHandleCreated)
+            {
+                controlPoint = PointToClient(viewerPanel.PointToScreen(viewerPoint));
+            }
+
+            handler(this, new ImagePointerMovedEventArgs(
+                controlPoint,
+                imagePoint,
+                isInsideViewer,
+                isInsideImage,
+                _isPanning || _isSynchronizedPanning));
         }
 
         private void ImageDisplayControl_SizeChanged(object sender, EventArgs e)
@@ -1665,6 +1770,33 @@ namespace IntegratedImageProcessingApp.Controls
         }
 
         public Rectangle Roi { get; private set; }
+    }
+
+    public class ImagePointerMovedEventArgs : EventArgs
+    {
+        public ImagePointerMovedEventArgs(
+            Point controlLocation,
+            Point imageLocation,
+            bool isInsideViewer,
+            bool isInsideImage,
+            bool isPanning)
+        {
+            ControlLocation = controlLocation;
+            ImageLocation = imageLocation;
+            IsInsideViewer = isInsideViewer;
+            IsInsideImage = isInsideImage;
+            IsPanning = isPanning;
+        }
+
+        public Point ControlLocation { get; private set; }
+
+        public Point ImageLocation { get; private set; }
+
+        public bool IsInsideViewer { get; private set; }
+
+        public bool IsInsideImage { get; private set; }
+
+        public bool IsPanning { get; private set; }
     }
 
     public class LargeImageOverlayPaintEventArgs : EventArgs

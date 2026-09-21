@@ -88,6 +88,7 @@ namespace IntegratedImageProcessingApp.Controls
             this.viewerPanel.MouseMove += new System.Windows.Forms.MouseEventHandler(this.viewerPanel_MouseMove);
             this.viewerPanel.MouseUp += new System.Windows.Forms.MouseEventHandler(this.viewerPanel_MouseUp);
             this.viewerPanel.MouseWheel += new System.Windows.Forms.MouseEventHandler(this.viewerPanel_MouseWheel);
+            this.viewerPanel.MouseLeave += new System.EventHandler(this.viewerPanel_MouseLeave);
             // 
             // bottomPanel
             // 
