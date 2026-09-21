@@ -2024,14 +2024,6 @@ namespace IntegratedImageProcessingApp.Forms
                             objectJudgement.Id,
                             string.Empty);
 
-                        foreach (ImageRelationSettings relation in GetObjectJudgementRelations(objectJudgement))
-                        {
-                            AddObjectDetectionRelationMaskSourceChoices(
-                                choices,
-                                keys,
-                                relation);
-                        }
-
                         for (int processingIndex = 0;
                             processingIndex < objectJudgement.ProcessingSteps.Count;
                             processingIndex++)
@@ -2048,6 +2040,14 @@ namespace IntegratedImageProcessingApp.Forms
                                 "ObjectJudgementProcessing",
                                 processing.Id,
                                 objectJudgement.Id);
+                        }
+
+                        foreach (ImageRelationSettings relation in GetObjectJudgementRelations(objectJudgement))
+                        {
+                            AddObjectDetectionRelationMaskSourceChoices(
+                                choices,
+                                keys,
+                                relation);
                         }
                     }
 
@@ -2135,14 +2135,6 @@ namespace IntegratedImageProcessingApp.Forms
                     objectJudgement.Id,
                     string.Empty);
 
-                foreach (ImageRelationSettings relation in GetObjectJudgementRelations(objectJudgement))
-                {
-                    AddObjectDetectionRelationMaskSourceChoices(
-                        choices,
-                        keys,
-                        relation);
-                }
-
                 for (int processingIndex = 0;
                     processingIndex < objectJudgement.ProcessingSteps.Count;
                     processingIndex++)
@@ -2157,6 +2149,14 @@ namespace IntegratedImageProcessingApp.Forms
                         "ObjectJudgementProcessing",
                         processing.Id,
                         objectJudgement.Id);
+                }
+
+                foreach (ImageRelationSettings relation in GetObjectJudgementRelations(objectJudgement))
+                {
+                    AddObjectDetectionRelationMaskSourceChoices(
+                        choices,
+                        keys,
+                        relation);
                 }
             }
 
