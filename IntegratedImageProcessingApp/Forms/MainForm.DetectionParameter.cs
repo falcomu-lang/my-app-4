@@ -881,6 +881,79 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDefinitionDetectedObject selectedObject)
         {
             if (selectedObject != null && selectedObject.HasRotationGeometry &&
+                selectedObject.RotationCorners != null &&
+                selectedObject.RotationCorners.Length == 4)
+            {
+                PointF horizontalStart = selectedObject.RotationCorners[0];
+                PointF horizontalEnd = selectedObject.RotationCorners[1];
+                double bestHorizontalScore = double.MaxValue;
+                float horizontalWidth = 0;
+                int horizontalEdgeIndex = 0;
+
+                for (int index = 0; index < selectedObject.RotationCorners.Length; index++)
+                {
+                    PointF start = selectedObject.RotationCorners[index];
+                    PointF end = selectedObject.RotationCorners[(index + 1) % selectedObject.RotationCorners.Length];
+                    float deltaX = end.X - start.X;
+                    float deltaY = end.Y - start.Y;
+                    float length = (float)Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+                    if (length <= 0)
+                    {
+                        continue;
+                    }
+
+                    double horizontalScore = Math.Abs(deltaY) / length;
+                    if (horizontalScore < bestHorizontalScore)
+                    {
+                        bestHorizontalScore = horizontalScore;
+                        horizontalStart = start;
+                        horizontalEnd = end;
+                        horizontalWidth = length;
+                        horizontalEdgeIndex = index;
+                    }
+                }
+
+                if (horizontalWidth > 0)
+                {
+                    PointF verticalEnd = selectedObject.RotationCorners[
+                        (horizontalEdgeIndex + 2) % selectedObject.RotationCorners.Length];
+                    float verticalDeltaX = verticalEnd.X - horizontalEnd.X;
+                    float verticalDeltaY = verticalEnd.Y - horizontalEnd.Y;
+                    float verticalHeight = (float)Math.Sqrt(
+                        (verticalDeltaX * verticalDeltaX) +
+                        (verticalDeltaY * verticalDeltaY));
+                    if (verticalHeight > 0)
+                    {
+                        float angleDeltaX = horizontalEnd.X - horizontalStart.X;
+                        float angleDeltaY = horizontalEnd.Y - horizontalStart.Y;
+                        if (angleDeltaX < 0 ||
+                            (Math.Abs(angleDeltaX) < 0.0001f && angleDeltaY < 0))
+                        {
+                            angleDeltaX = -angleDeltaX;
+                            angleDeltaY = -angleDeltaY;
+                        }
+
+                        double angle = Math.Atan2(angleDeltaY, angleDeltaX) * 180.0 / Math.PI;
+                        while (angle <= -90.0)
+                        {
+                            angle += 180.0;
+                        }
+
+                        while (angle > 90.0)
+                        {
+                            angle -= 180.0;
+                        }
+
+                        return new ObjectDetectionMeasurementFrame(
+                            selectedObject.RotationCenter,
+                            horizontalWidth,
+                            verticalHeight,
+                            angle);
+                    }
+                }
+            }
+
+            if (selectedObject != null && selectedObject.HasRotationGeometry &&
                 selectedObject.RotationSize.Width > 0 &&
                 selectedObject.RotationSize.Height > 0)
             {
