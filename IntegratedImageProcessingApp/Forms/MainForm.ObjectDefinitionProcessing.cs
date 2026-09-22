@@ -328,6 +328,7 @@ namespace IntegratedImageProcessingApp.Forms
                     long cclElapsedMilliseconds = 0;
                     long retainedMaskElapsedMilliseconds = 0;
                     long mergeElapsedMilliseconds = 0;
+                    long contourElapsedMilliseconds = 0;
                     long rotationGeometryElapsedMilliseconds = 0;
                     int sourceCacheHitCount = 0;
                     int sourceCacheMissCount = 0;
@@ -369,6 +370,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 long roiCclElapsedMilliseconds;
                                 long roiRetainedMaskElapsedMilliseconds;
                                 long roiMergeElapsedMilliseconds;
+                                long roiContourElapsedMilliseconds;
                                 long roiRotationGeometryElapsedMilliseconds;
                                 completedResults[resultKey] =
                                     CreateObjectDefinitionDetectedObjects(
@@ -379,11 +381,13 @@ namespace IntegratedImageProcessingApp.Forms
                                         out roiCclElapsedMilliseconds,
                                         out roiRetainedMaskElapsedMilliseconds,
                                         out roiMergeElapsedMilliseconds,
+                                        out roiContourElapsedMilliseconds,
                                         out roiRotationGeometryElapsedMilliseconds);
                                 completedSourceMasks[resultKey] = retainedMask;
                                 cclElapsedMilliseconds += roiCclElapsedMilliseconds;
                                 retainedMaskElapsedMilliseconds += roiRetainedMaskElapsedMilliseconds;
                                 mergeElapsedMilliseconds += roiMergeElapsedMilliseconds;
+                                contourElapsedMilliseconds += roiContourElapsedMilliseconds;
                                 rotationGeometryElapsedMilliseconds += roiRotationGeometryElapsedMilliseconds;
                             }
                         }
@@ -454,10 +458,11 @@ namespace IntegratedImageProcessingApp.Forms
                                         sourceMergeElapsedMilliseconds,
                                         sourceObjectProcessingElapsedMilliseconds,
                                         sourceObjectProcessingDetails,
-                                                cclElapsedMilliseconds,
-                                                retainedMaskElapsedMilliseconds,
-                                                mergeElapsedMilliseconds,
-                                                definition.EnableRotationAnalysis,
+                                        cclElapsedMilliseconds,
+                                        retainedMaskElapsedMilliseconds,
+                                        mergeElapsedMilliseconds,
+                                        contourElapsedMilliseconds,
+                                        definition.EnableRotationAnalysis,
                                                 rotationGeometryElapsedMilliseconds,
                                                 sourceCacheHitCount,
                                         sourceCacheMissCount);
@@ -580,6 +585,7 @@ namespace IntegratedImageProcessingApp.Forms
                     long cclElapsedMilliseconds = 0;
                     long retainedMaskElapsedMilliseconds = 0;
                     long mergeElapsedMilliseconds = 0;
+                    long contourElapsedMilliseconds = 0;
                     long rotationGeometryElapsedMilliseconds = 0;
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     try
@@ -604,6 +610,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     long roiCclElapsedMilliseconds;
                                     long roiRetainedMaskElapsedMilliseconds;
                                     long roiMergeElapsedMilliseconds;
+                                    long roiContourElapsedMilliseconds;
                                     long roiRotationGeometryElapsedMilliseconds;
                                     completedResults[resultKey] =
                                         CreateObjectDefinitionDetectedObjects(
@@ -614,11 +621,13 @@ namespace IntegratedImageProcessingApp.Forms
                                             out roiCclElapsedMilliseconds,
                                             out roiRetainedMaskElapsedMilliseconds,
                                             out roiMergeElapsedMilliseconds,
+                                            out roiContourElapsedMilliseconds,
                                             out roiRotationGeometryElapsedMilliseconds);
                                     completedSourceMasks[resultKey] = retainedMask;
                                     cclElapsedMilliseconds += roiCclElapsedMilliseconds;
                                     retainedMaskElapsedMilliseconds += roiRetainedMaskElapsedMilliseconds;
                                     mergeElapsedMilliseconds += roiMergeElapsedMilliseconds;
+                                    contourElapsedMilliseconds += roiContourElapsedMilliseconds;
                                     rotationGeometryElapsedMilliseconds += roiRotationGeometryElapsedMilliseconds;
                                 }
                             }
@@ -722,6 +731,7 @@ namespace IntegratedImageProcessingApp.Forms
                                                 cclElapsedMilliseconds,
                                                 retainedMaskElapsedMilliseconds,
                                                 mergeElapsedMilliseconds,
+                                                contourElapsedMilliseconds,
                                                 definition.EnableRotationAnalysis,
                                                 rotationGeometryElapsedMilliseconds,
                                                 0,
@@ -1210,6 +1220,7 @@ namespace IntegratedImageProcessingApp.Forms
             long cclElapsedMilliseconds,
             long retainedMaskElapsedMilliseconds,
             long mergeElapsedMilliseconds,
+            long contourElapsedMilliseconds,
             bool rotationAnalysisEnabled,
             long rotationGeometryElapsedMilliseconds,
             int sourceCacheHitCount,
@@ -1229,10 +1240,14 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
             AppendDebugTimingMemo("CCL：" + cclElapsedMilliseconds + " ms");
+            if (rotationAnalysisEnabled)
+            {
+                AppendDebugTimingMemo("輪廓：" + contourElapsedMilliseconds + " ms");
+            }
             AppendDebugTimingMemo("保留 MASK：" + retainedMaskElapsedMilliseconds + " ms");
             AppendDebugTimingMemo("Merge by Distance：" + mergeElapsedMilliseconds + " ms");
             AppendDebugTimingMemo(rotationAnalysisEnabled
-                ? "旋轉資訊：" + rotationGeometryElapsedMilliseconds + " ms"
+                ? "旋轉框：" + rotationGeometryElapsedMilliseconds + " ms"
                 : "旋轉資訊：未啟用");
             AppendDebugTimingMemo("顯示時間：" + displayElapsedMilliseconds + " ms");
             AppendDebugTimingMemo(
@@ -2788,11 +2803,13 @@ namespace IntegratedImageProcessingApp.Forms
             out long cclElapsedMilliseconds,
             out long retainedMaskElapsedMilliseconds,
             out long mergeElapsedMilliseconds,
+            out long contourElapsedMilliseconds,
             out long rotationGeometryElapsedMilliseconds)
         {
             cclElapsedMilliseconds = 0;
             retainedMaskElapsedMilliseconds = 0;
             mergeElapsedMilliseconds = 0;
+            contourElapsedMilliseconds = 0;
             rotationGeometryElapsedMilliseconds = 0;
             if (sourceMask == null || sourceMask.Empty())
             {
@@ -2886,8 +2903,17 @@ namespace IntegratedImageProcessingApp.Forms
 
                 if (definition.EnableRotationAnalysis && result.Count > 0)
                 {
+                    Stopwatch contourStopwatch = Stopwatch.StartNew();
+                    Dictionary<int, Cv.Point[]> labelContours =
+                        CreateObjectDefinitionLabelContours(
+                            labels,
+                            acceptedComponents,
+                            retainedLabels);
+                    contourStopwatch.Stop();
+                    contourElapsedMilliseconds = contourStopwatch.ElapsedMilliseconds;
+
                     Stopwatch rotationStopwatch = Stopwatch.StartNew();
-                    CalculateObjectDefinitionRotationGeometry(result, labels, roi);
+                    CalculateObjectDefinitionRotationGeometry(result, labelContours, roi);
                     rotationStopwatch.Stop();
                     rotationGeometryElapsedMilliseconds = rotationStopwatch.ElapsedMilliseconds;
                 }
@@ -2963,32 +2989,21 @@ namespace IntegratedImageProcessingApp.Forms
             return filtered.ToList();
         }
 
-        private static void CalculateObjectDefinitionRotationGeometry(
-            IEnumerable<ObjectDefinitionDetectedObject> objects,
+        private static Dictionary<int, Cv.Point[]> CreateObjectDefinitionLabelContours(
             Cv.Mat labels,
-            Rectangle roi)
+            IEnumerable<ObjectDefinitionComponentRegion> components,
+            ISet<int> retainedLabels)
         {
-            if (objects == null || labels == null || labels.Empty())
+            var contoursByLabel = new Dictionary<int, Cv.Point[]>();
+            if (labels == null || labels.Empty() || components == null || retainedLabels == null)
             {
-                return;
+                return contoursByLabel;
             }
 
-            Rectangle labelBounds = new Rectangle(0, 0, labels.Width, labels.Height);
-            foreach (ObjectDefinitionDetectedObject item in objects)
+            foreach (ObjectDefinitionComponentRegion component in components)
             {
-                if (item == null || item.SourceLabels == null || item.SourceLabels.Count == 0)
-                {
-                    continue;
-                }
-
-                Rectangle localBounds = Rectangle.Intersect(
-                    new Rectangle(
-                        item.Bounds.X - roi.X,
-                        item.Bounds.Y - roi.Y,
-                        item.Bounds.Width,
-                        item.Bounds.Height),
-                    labelBounds);
-                if (localBounds.Width <= 0 || localBounds.Height <= 0)
+                if (component == null || !retainedLabels.Contains(component.Label) ||
+                    component.Width <= 0 || component.Height <= 0)
                 {
                     continue;
                 }
@@ -2996,33 +3011,22 @@ namespace IntegratedImageProcessingApp.Forms
                 using (var labelRoi = new Cv.Mat(
                     labels,
                     new Cv.Rect(
-                        localBounds.X,
-                        localBounds.Y,
-                        localBounds.Width,
-                        localBounds.Height)))
-                using (var objectMask = new Cv.Mat(
-                    localBounds.Height,
-                    localBounds.Width,
-                    Cv.MatType.CV_8UC1,
-                    Cv.Scalar.All(0)))
+                        component.X,
+                        component.Y,
+                        component.Width,
+                        component.Height)))
+                using (var componentMask = new Cv.Mat())
                 {
-                    foreach (int sourceLabel in item.SourceLabels.Distinct())
-                    {
-                        using (var labelMask = new Cv.Mat())
-                        {
-                            Cv.Cv2.Compare(
-                                labelRoi,
-                                sourceLabel,
-                                labelMask,
-                                Cv.CmpType.EQ);
-                            Cv.Cv2.BitwiseOr(objectMask, labelMask, objectMask);
-                        }
-                    }
+                    Cv.Cv2.Compare(
+                        labelRoi,
+                        component.Label,
+                        componentMask,
+                        Cv.CmpType.EQ);
 
                     Cv.Point[][] contours;
                     Cv.HierarchyIndex[] hierarchy;
                     Cv.Cv2.FindContours(
-                        objectMask,
+                        componentMask,
                         out contours,
                         out hierarchy,
                         Cv.RetrievalModes.External,
@@ -3032,51 +3036,85 @@ namespace IntegratedImageProcessingApp.Forms
                         continue;
                     }
 
-                    Cv.Point2f[] points = contours
+                    Cv.Point[] points = contours
                         .Where(contour => contour != null && contour.Length > 0)
                         .SelectMany(contour => contour)
-                        .Select(point => new Cv.Point2f(point.X, point.Y))
+                        .Select(point => new Cv.Point(
+                            point.X + component.X,
+                            point.Y + component.Y))
                         .ToArray();
-                    if (points.Length < 3)
+                    if (points.Length > 0)
                     {
-                        continue;
+                        contoursByLabel[component.Label] = points;
                     }
-
-                    Cv.RotatedRect rotatedRect = Cv.Cv2.MinAreaRect(points);
-                    float width = rotatedRect.Size.Width;
-                    float height = rotatedRect.Size.Height;
-                    double angle = rotatedRect.Angle;
-                    if (width < height)
-                    {
-                        float swap = width;
-                        width = height;
-                        height = swap;
-                        angle += 90.0;
-                    }
-
-                    while (angle <= -90.0)
-                    {
-                        angle += 180.0;
-                    }
-
-                    while (angle > 90.0)
-                    {
-                        angle -= 180.0;
-                    }
-
-                    Cv.Point2f[] corners = rotatedRect.Points();
-                    item.HasRotationGeometry = corners != null && corners.Length == 4;
-                    item.RotationAngleDegrees = angle;
-                    item.RotationCenter = new PointF(
-                        roi.X + localBounds.X + rotatedRect.Center.X,
-                        roi.Y + localBounds.Y + rotatedRect.Center.Y);
-                    item.RotationSize = new SizeF(width, height);
-                    item.RotationCorners = item.HasRotationGeometry
-                        ? corners.Select(point => new PointF(
-                            roi.X + localBounds.X + point.X,
-                            roi.Y + localBounds.Y + point.Y)).ToArray()
-                        : null;
                 }
+            }
+
+            return contoursByLabel;
+        }
+
+        private static void CalculateObjectDefinitionRotationGeometry(
+            IEnumerable<ObjectDefinitionDetectedObject> objects,
+            IDictionary<int, Cv.Point[]> labelContours,
+            Rectangle roi)
+        {
+            if (objects == null || labelContours == null || labelContours.Count == 0)
+            {
+                return;
+            }
+
+            foreach (ObjectDefinitionDetectedObject item in objects)
+            {
+                if (item == null || item.SourceLabels == null || item.SourceLabels.Count == 0)
+                {
+                    continue;
+                }
+
+                Cv.Point2f[] points = item.SourceLabels
+                    .Distinct()
+                    .Where(label => labelContours.ContainsKey(label))
+                    .SelectMany(label => labelContours[label])
+                    .Select(point => new Cv.Point2f(point.X, point.Y))
+                    .ToArray();
+                if (points.Length < 3)
+                {
+                    continue;
+                }
+
+                Cv.RotatedRect rotatedRect = Cv.Cv2.MinAreaRect(points);
+                float width = rotatedRect.Size.Width;
+                float height = rotatedRect.Size.Height;
+                double angle = rotatedRect.Angle;
+                if (width < height)
+                {
+                    float swap = width;
+                    width = height;
+                    height = swap;
+                    angle += 90.0;
+                }
+
+                while (angle <= -90.0)
+                {
+                    angle += 180.0;
+                }
+
+                while (angle > 90.0)
+                {
+                    angle -= 180.0;
+                }
+
+                Cv.Point2f[] corners = rotatedRect.Points();
+                item.HasRotationGeometry = corners != null && corners.Length == 4;
+                item.RotationAngleDegrees = angle;
+                item.RotationCenter = new PointF(
+                    roi.X + rotatedRect.Center.X,
+                    roi.Y + rotatedRect.Center.Y);
+                item.RotationSize = new SizeF(width, height);
+                item.RotationCorners = item.HasRotationGeometry
+                    ? corners.Select(point => new PointF(
+                        roi.X + point.X,
+                        roi.Y + point.Y)).ToArray()
+                    : null;
             }
         }
 

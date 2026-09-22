@@ -52,9 +52,9 @@ namespace IntegratedImageProcessingApp.Forms
                 "左側 待量測");
         }
 
-        private bool TryGetSelectedObjectDetectionBounds(out Rectangle objectBounds)
+        private bool TryGetSelectedObjectDetectionObject(out ObjectDefinitionDetectedObject detectedObject)
         {
-            objectBounds = Rectangle.Empty;
+            detectedObject = null;
             if (selectedObjectDetectionNumber <= 0 ||
                 string.IsNullOrWhiteSpace(activeObjectDetectionParameterId))
             {
@@ -67,7 +67,6 @@ namespace IntegratedImageProcessingApp.Forms
                 string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId)
                 ? null
                 : FindObjectDefinition(parameter.ObjectDefinitionId);
-            ObjectDefinitionDetectedObject detectedObject;
             if (definition == null ||
                 !TryGetCompletedObjectDefinitionObject(
                     definition,
@@ -76,11 +75,58 @@ namespace IntegratedImageProcessingApp.Forms
                 detectedObject.Bounds.Width <= 0 ||
                 detectedObject.Bounds.Height <= 0)
             {
+                detectedObject = null;
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryGetSelectedObjectDetectionBounds(out Rectangle objectBounds)
+        {
+            objectBounds = Rectangle.Empty;
+            ObjectDefinitionDetectedObject detectedObject;
+            if (!TryGetSelectedObjectDetectionObject(out detectedObject))
+            {
                 return false;
             }
 
             objectBounds = detectedObject.Bounds;
             return true;
+        }
+
+        private static void DrawObjectDetectionObjectOutline(
+            Graphics graphics,
+            ObjectDefinitionDetectedObject detectedObject,
+            Pen outline,
+            float zoom,
+            PointF offset)
+        {
+            if (graphics == null || detectedObject == null || outline == null)
+            {
+                return;
+            }
+
+            if (detectedObject.HasRotationGeometry &&
+                detectedObject.RotationCorners != null &&
+                detectedObject.RotationCorners.Length == 4)
+            {
+                PointF[] screenCorners = detectedObject.RotationCorners
+                    .Select(point => new PointF(
+                        offset.X + point.X * zoom,
+                        offset.Y + point.Y * zoom))
+                    .ToArray();
+                graphics.DrawPolygon(outline, screenCorners);
+                return;
+            }
+
+            Rectangle bounds = detectedObject.Bounds;
+            graphics.DrawRectangle(
+                outline,
+                offset.X + bounds.X * zoom,
+                offset.Y + bounds.Y * zoom,
+                Math.Max(1f, bounds.Width * zoom),
+                Math.Max(1f, bounds.Height * zoom));
         }
 
         private void RefreshObjectDetectionMeasurementDisplay()
@@ -93,8 +139,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            Rectangle objectBounds;
-            bool hasSelectedObject = TryGetSelectedObjectDetectionBounds(out objectBounds);
+            ObjectDefinitionDetectedObject selectedObject;
+            bool hasSelectedObject = TryGetSelectedObjectDetectionObject(out selectedObject);
+            Rectangle objectBounds = hasSelectedObject
+                ? selectedObject.Bounds
+                : Rectangle.Empty;
             if (rightOriginalDisplayControl.IsLargeImageMode)
             {
                 LargeImageSource source =
@@ -170,7 +219,12 @@ namespace IntegratedImageProcessingApp.Forms
                         using (Graphics graphics = Graphics.FromImage(measurementImage))
                         using (var outline = new Pen(Color.LimeGreen, 3f))
                         {
-                            graphics.DrawRectangle(outline, visibleBounds);
+                            DrawObjectDetectionObjectOutline(
+                                graphics,
+                                selectedObject,
+                                outline,
+                                1f,
+                                PointF.Empty);
                         }
                     }
                 }
@@ -884,17 +938,15 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            Rectangle objectBounds;
-            if (!TryGetSelectedObjectDetectionBounds(out objectBounds) ||
-                !e.VisibleSourceRect.IntersectsWith(objectBounds))
+            ObjectDefinitionDetectedObject selectedObject;
+            if (!TryGetSelectedObjectDetectionObject(out selectedObject) ||
+                selectedObject == null ||
+                !e.VisibleSourceRect.IntersectsWith(selectedObject.Bounds))
             {
                 return;
             }
 
-            float x = e.Offset.X + objectBounds.X * e.Zoom;
-            float y = e.Offset.Y + objectBounds.Y * e.Zoom;
-            float width = Math.Max(1f, objectBounds.Width * e.Zoom);
-            float height = Math.Max(1f, objectBounds.Height * e.Zoom);
+            Rectangle objectBounds = selectedObject.Bounds;
 
             ObjectDetectionParameterSettings parameter =
                 FindObjectDetectionParameter(activeObjectDetectionParameterId);
@@ -971,7 +1023,12 @@ namespace IntegratedImageProcessingApp.Forms
 
             using (var outline = new Pen(Color.LimeGreen, 2f))
             {
-                e.Graphics.DrawRectangle(outline, x, y, width, height);
+                DrawObjectDetectionObjectOutline(
+                    e.Graphics,
+                    selectedObject,
+                    outline,
+                    e.Zoom,
+                    e.Offset);
             }
         }
 
