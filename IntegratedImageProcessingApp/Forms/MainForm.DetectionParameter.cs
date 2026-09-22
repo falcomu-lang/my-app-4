@@ -39,10 +39,13 @@ namespace IntegratedImageProcessingApp.Forms
         private Button objectDetectionMeasurementDrawButton;
         private DataGridView objectDetectionMeasurementRecordsGrid;
         private string objectDetectionMeasurementAppliedRecordId;
+        private bool objectDetectionMeasurementCreateNewRecord;
         private bool objectDetectionMeasurementIsDrawing;
         private int objectDetectionMeasurementDrawingStage;
         private Point objectDetectionMeasurementDrawStart;
         private Point objectDetectionMeasurementDrawCurrent;
+        private Timer objectDetectionMeasurementHighlightTimer;
+        private bool objectDetectionMeasurementHighlightVisible;
         private readonly ObjectDetectionMeasurementGeometry pendingObjectDetectionMeasurementGeometry =
             new ObjectDetectionMeasurementGeometry();
 
@@ -72,6 +75,23 @@ namespace IntegratedImageProcessingApp.Forms
                 ObjectDetectionMeasurementDisplayControl_ImageMouseUp;
             objectDetectionMeasurementDisplayControl.ImageOverlayPaint +=
                 ObjectDetectionMeasurementDisplayControl_ImageOverlayPaint;
+            objectDetectionMeasurementHighlightTimer = new Timer
+            {
+                Interval = 180
+            };
+            objectDetectionMeasurementHighlightTimer.Tick += delegate
+            {
+                objectDetectionMeasurementHighlightVisible = false;
+                objectDetectionMeasurementHighlightTimer.Stop();
+                if (objectDetectionMeasurementDisplayControl != null)
+                {
+                    objectDetectionMeasurementDisplayControl.InvalidateImageView();
+                }
+            };
+            if (components != null)
+            {
+                components.Add(objectDetectionMeasurementHighlightTimer);
+            }
         }
 
         private void LoadPendingObjectDetectionMeasurementGeometry(
@@ -237,7 +257,8 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionMeasurementRecordSettings updated =
                 CreateObjectDetectionMeasurementRecord(parameter, name, mode, direction, lineCount);
             ObjectDetectionMeasurementRecordSettings target = null;
-            if (!string.IsNullOrWhiteSpace(objectDetectionMeasurementAppliedRecordId))
+            if (!objectDetectionMeasurementCreateNewRecord &&
+                !string.IsNullOrWhiteSpace(objectDetectionMeasurementAppliedRecordId))
             {
                 target = parameter.MeasurementRecords.FirstOrDefault(
                     item => item != null && string.Equals(
@@ -256,6 +277,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 CopyObjectDetectionMeasurementRecord(updated, target);
             }
+
+            objectDetectionMeasurementCreateNewRecord = false;
         }
 
         private static void CopyObjectDetectionMeasurementRecord(
@@ -467,6 +490,7 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.SourceMaskSecondaryId = record.SourceMaskSecondaryId;
             parameter.SourceMaskSecondaryNamespace = record.SourceMaskSecondaryNamespace;
             objectDetectionMeasurementAppliedRecordId = record.Id;
+            objectDetectionMeasurementCreateNewRecord = false;
             LoadPendingObjectDetectionMeasurementGeometry(parameter);
             if (objectDetectionMeasurementNameTextBox != null)
             {
@@ -546,21 +570,361 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            parameter.MeasurementRecords.Remove(record);
-            if (string.Equals(
+            bool clearDisplayedMeasurement =
+                string.Equals(
                     objectDetectionMeasurementAppliedRecordId,
                     recordId,
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal) ||
+                IsObjectDetectionMeasurementRecordDisplayed(parameter, record);
+            parameter.MeasurementRecords.Remove(record);
+            if (clearDisplayedMeasurement)
             {
                 objectDetectionMeasurementAppliedRecordId = null;
+                ClearObjectDetectionMeasurementGeometry(parameter);
+                pendingObjectDetectionMeasurementGeometry.Reset();
+                objectDetectionMeasurementIsDrawing = false;
+                objectDetectionMeasurementDrawingStage = 0;
+                if (objectDetectionMeasurementDrawButton != null)
+                {
+                    objectDetectionMeasurementDrawButton.Text = "開始畫線";
+                }
             }
 
             SaveSystemParameters();
             RefreshObjectDetectionMeasurementRecordsGrid(parameter);
+            if (clearDisplayedMeasurement && objectDetectionMeasurementDisplayControl != null)
+            {
+                objectDetectionMeasurementDisplayControl.InvalidateImageView();
+            }
             objectDetectionMeasurementToolStatusLabel.Text =
                 "已刪除量測紀錄：" + record.Name;
             statusLabel.Text = parameter.DisplayName +
                 " 已刪除量測紀錄：" + record.Name;
+        }
+
+        private static bool IsObjectDetectionMeasurementRecordDisplayed(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDetectionMeasurementRecordSettings record)
+        {
+            if (parameter == null || record == null || !parameter.MeasurementLineConfigured)
+            {
+                return false;
+            }
+
+            const double tolerance = 0.000001;
+            return string.Equals(parameter.MeasurementMode, record.Mode, StringComparison.Ordinal) &&
+                Math.Abs(parameter.MeasurementStartX - record.StartX) <= tolerance &&
+                Math.Abs(parameter.MeasurementStartY - record.StartY) <= tolerance &&
+                Math.Abs(parameter.MeasurementEndX - record.EndX) <= tolerance &&
+                Math.Abs(parameter.MeasurementEndY - record.EndY) <= tolerance &&
+                Math.Abs(parameter.MeasurementSecondStartX - record.SecondStartX) <= tolerance &&
+                Math.Abs(parameter.MeasurementSecondStartY - record.SecondStartY) <= tolerance &&
+                Math.Abs(parameter.MeasurementSecondEndX - record.SecondEndX) <= tolerance &&
+                Math.Abs(parameter.MeasurementSecondEndY - record.SecondEndY) <= tolerance;
+        }
+
+        private static void ClearObjectDetectionMeasurementGeometry(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (parameter == null)
+            {
+                return;
+            }
+
+            parameter.MeasurementLineConfigured = false;
+            parameter.MeasurementMode = "Single";
+            parameter.MeasurementDirection = "Horizontal";
+            parameter.MeasurementLineCount = 1;
+            parameter.MeasurementStartX = 0;
+            parameter.MeasurementStartY = 0;
+            parameter.MeasurementEndX = 1;
+            parameter.MeasurementEndY = 0;
+            parameter.MeasurementSecondStartX = 0;
+            parameter.MeasurementSecondStartY = 0;
+            parameter.MeasurementSecondEndX = 1;
+            parameter.MeasurementSecondEndY = 0;
+            parameter.MeasurementLineOrder = "LeftToRight";
+            parameter.MeasurementSecondLineOrder = "LeftToRight";
+            parameter.MeasurementStartOutsideRoi = false;
+            parameter.MeasurementEndOutsideRoi = false;
+            parameter.MeasurementSecondStartOutsideRoi = false;
+            parameter.MeasurementSecondEndOutsideRoi = false;
+        }
+
+        private void FlashObjectDetectionMeasurementRecord()
+        {
+            if (objectDetectionMeasurementHighlightTimer == null ||
+                objectDetectionMeasurementDisplayControl == null)
+            {
+                return;
+            }
+
+            objectDetectionMeasurementHighlightVisible = true;
+            objectDetectionMeasurementHighlightTimer.Stop();
+            objectDetectionMeasurementHighlightTimer.Start();
+            objectDetectionMeasurementDisplayControl.InvalidateImageView();
+        }
+
+        private void CalculateObjectDetectionMeasurementRecord(
+            ObjectDetectionParameterSettings parameter,
+            string recordId)
+        {
+            if (parameter == null || parameter.MeasurementRecords == null)
+            {
+                return;
+            }
+
+            ObjectDetectionMeasurementRecordSettings record =
+                parameter.MeasurementRecords.FirstOrDefault(
+                    item => item != null && string.Equals(
+                        item.Id,
+                        recordId,
+                        StringComparison.Ordinal));
+            if (record == null)
+            {
+                return;
+            }
+
+            ObjectDetectionMeasurementStatistics statistics;
+            string errorMessage;
+            if (!TryCalculateObjectDetectionMeasurementRecord(
+                    parameter,
+                    record,
+                    out statistics,
+                    out errorMessage))
+            {
+                statusLabel.Text = "量測運算失敗：" + errorMessage;
+                return;
+            }
+
+            string text =
+                "最小：" + statistics.Minimum.ToString("0.##", CultureInfo.InvariantCulture) + " px\r\n" +
+                "平均：" + statistics.Average.ToString("0.##", CultureInfo.InvariantCulture) + " px\r\n" +
+                "最大：" + statistics.Maximum.ToString("0.##", CultureInfo.InvariantCulture) + " px";
+            if (objectAreaToolTip != null)
+            {
+                Point cursor = Cursor.Position;
+                Point tooltipLocation = PointToClient(
+                    new Point(cursor.X + 14, cursor.Y + 14));
+                objectAreaToolTip.Show(text, this, tooltipLocation, 10000);
+            }
+
+            statusLabel.Text = parameter.DisplayName +
+                " 已完成量測運算：最小 " +
+                statistics.Minimum.ToString("0.##", CultureInfo.InvariantCulture) +
+                " px，平均 " +
+                statistics.Average.ToString("0.##", CultureInfo.InvariantCulture) +
+                " px，最大 " +
+                statistics.Maximum.ToString("0.##", CultureInfo.InvariantCulture) + " px";
+        }
+
+        private bool TryCalculateObjectDetectionMeasurementRecord(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDetectionMeasurementRecordSettings record,
+            out ObjectDetectionMeasurementStatistics statistics,
+            out string errorMessage)
+        {
+            statistics = null;
+            errorMessage = string.Empty;
+            ObjectDefinitionDetectedObject selectedObject;
+            if (!TryGetSelectedObjectDetectionObject(out selectedObject))
+            {
+                errorMessage = "請先選擇已找到的物件序號";
+                return false;
+            }
+
+            Rectangle objectBounds = selectedObject.Bounds;
+            if (objectBounds.Width <= 0 || objectBounds.Height <= 0)
+            {
+                errorMessage = "目前物件沒有有效 ROI";
+                return false;
+            }
+
+            Cv.Mat mask = null;
+            LargeImageSource largeSource = null;
+            Bitmap original = null;
+            try
+            {
+                if (rightOriginalDisplayControl == null ||
+                    !rightOriginalDisplayControl.HasImage)
+                {
+                    errorMessage = "尚未載入原始影像";
+                    return false;
+                }
+
+                if (rightOriginalDisplayControl.IsLargeImageMode)
+                {
+                    largeSource = rightOriginalDisplayControl.GetSharedLargeImageSource();
+                    if (largeSource == null ||
+                        !TryGetObjectDetectionMeasurementMask(
+                            parameter,
+                            objectBounds,
+                            largeSource,
+                            null,
+                            out mask))
+                    {
+                        errorMessage = "無法取得量測來源 MASK";
+                        return false;
+                    }
+                }
+                else
+                {
+                    original = rightOriginalDisplayControl.CloneImage();
+                    if (original == null ||
+                        !TryGetObjectDetectionMeasurementMask(
+                            parameter,
+                            objectBounds,
+                            null,
+                            original,
+                            out mask))
+                    {
+                        errorMessage = "無法取得量測來源 MASK";
+                        return false;
+                    }
+                }
+
+                if (mask == null || mask.Empty())
+                {
+                    errorMessage = "量測來源 MASK 為空";
+                    return false;
+                }
+
+                Cv.Mat normalizedMask = null;
+                Cv.Mat sampleMask = mask;
+                try
+                {
+                    if (mask.Type() != Cv.MatType.CV_8UC1)
+                    {
+                        normalizedMask = new Cv.Mat();
+                        mask.ConvertTo(normalizedMask, Cv.MatType.CV_8UC1);
+                        sampleMask = normalizedMask;
+                    }
+
+                    ObjectDetectionImageLine first =
+                        CreateObjectDetectionImageLine(selectedObject, record, false);
+                    ObjectDetectionImageLine second =
+                        CreateObjectDetectionImageLine(selectedObject, record, true);
+                    bool parallel = string.Equals(record.Mode, "Parallel", StringComparison.Ordinal);
+                    if (parallel &&
+                        (Math.Abs(second.X2 - second.X1) + Math.Abs(second.Y2 - second.Y1) < 1))
+                    {
+                        errorMessage = "平行量測紀錄缺少第二條線";
+                        return false;
+                    }
+
+                    int lineCount = parallel ? Math.Max(2, record.LineCount) : 1;
+                    var lengths = new List<double>(lineCount);
+                    for (int index = 0; index < lineCount; index++)
+                    {
+                        double ratio = lineCount == 1
+                            ? 0
+                            : index / (double)(lineCount - 1);
+                        ObjectDetectionImageLine line = parallel
+                            ? InterpolateObjectDetectionImageLine(first, second, ratio)
+                            : first;
+                        lengths.Add(
+                            MeasureFirstContinuousObjectLength(
+                                sampleMask,
+                                objectBounds,
+                                line));
+                    }
+
+                    if (lengths.Count == 0)
+                    {
+                        errorMessage = "沒有可量測的線段";
+                        return false;
+                    }
+
+                    statistics = new ObjectDetectionMeasurementStatistics
+                    {
+                        Minimum = lengths.Min(),
+                        Average = lengths.Average(),
+                        Maximum = lengths.Max()
+                    };
+                    return true;
+                }
+                finally
+                {
+                    if (normalizedMask != null)
+                    {
+                        normalizedMask.Dispose();
+                    }
+                }
+            }
+            finally
+            {
+                if (mask != null)
+                {
+                    mask.Dispose();
+                }
+
+                if (original != null)
+                {
+                    original.Dispose();
+                }
+
+                if (largeSource != null)
+                {
+                    largeSource.ReleaseReference();
+                }
+            }
+        }
+
+        private static double MeasureFirstContinuousObjectLength(
+            Cv.Mat mask,
+            Rectangle objectBounds,
+            ObjectDetectionImageLine line)
+        {
+            if (mask == null || mask.Empty())
+            {
+                return 0;
+            }
+
+            double startX = line.X1 - objectBounds.X;
+            double startY = line.Y1 - objectBounds.Y;
+            double endX = line.X2 - objectBounds.X;
+            double endY = line.Y2 - objectBounds.Y;
+            double deltaX = endX - startX;
+            double deltaY = endY - startY;
+            double distance = Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+            int sampleCount = Math.Max(1, (int)Math.Ceiling(distance));
+            double sampleSpacing = distance / sampleCount;
+            bool started = false;
+            int runStart = 0;
+            int runEnd = 0;
+
+            for (int index = 0; index <= sampleCount; index++)
+            {
+                double ratio = index / (double)sampleCount;
+                int x = (int)Math.Round(startX + (deltaX * ratio));
+                int y = (int)Math.Round(startY + (deltaY * ratio));
+                bool foreground = x >= 0 && y >= 0 &&
+                    x < mask.Cols && y < mask.Rows &&
+                    mask.At<byte>(y, x) != 0;
+
+                if (!started)
+                {
+                    if (foreground)
+                    {
+                        started = true;
+                        runStart = index;
+                        runEnd = index;
+                    }
+
+                    continue;
+                }
+
+                if (!foreground)
+                {
+                    break;
+                }
+
+                runEnd = index;
+            }
+
+            return started
+                ? (runEnd - runStart + 1) * sampleSpacing
+                : 0;
         }
 
         private void BeginObjectDetectionMeasurementDrawing()
@@ -573,6 +937,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             pendingObjectDetectionMeasurementGeometry.Reset();
+            objectDetectionMeasurementCreateNewRecord = true;
             objectDetectionMeasurementIsDrawing = true;
             objectDetectionMeasurementDrawingStage = 0;
             objectDetectionMeasurementDrawStart = Point.Empty;
@@ -992,6 +1357,27 @@ namespace IntegratedImageProcessingApp.Forms
                 frame.ToImage(endX, endY));
         }
 
+        private static ObjectDetectionImageLine CreateObjectDetectionImageLine(
+            ObjectDefinitionDetectedObject selectedObject,
+            ObjectDetectionMeasurementRecordSettings record,
+            bool secondLine)
+        {
+            if (record == null)
+            {
+                return new ObjectDetectionImageLine(0, 0, 0, 0);
+            }
+
+            double startX = secondLine ? record.SecondStartX : record.StartX;
+            double startY = secondLine ? record.SecondStartY : record.StartY;
+            double endX = secondLine ? record.SecondEndX : record.EndX;
+            double endY = secondLine ? record.SecondEndY : record.EndY;
+            ObjectDetectionMeasurementFrame frame =
+                CreateObjectDetectionMeasurementFrame(selectedObject);
+            return new ObjectDetectionImageLine(
+                frame.ToImage(startX, startY),
+                frame.ToImage(endX, endY));
+        }
+
         private static ObjectDetectionImageLine InterpolateObjectDetectionImageLine(
             ObjectDetectionImageLine first,
             ObjectDetectionImageLine second,
@@ -1064,6 +1450,47 @@ namespace IntegratedImageProcessingApp.Forms
                 ? 1
                 : Decimal.ToInt32(objectDetectionMeasurementLineCountBox.Value);
             lineCount = Math.Max(1, Math.Min(1000, lineCount));
+            if (objectDetectionMeasurementHighlightVisible)
+            {
+                using (var highlightPen = new Pen(Color.Yellow, 4f))
+                using (var highlightBrush = new SolidBrush(Color.FromArgb(55, Color.Gold)))
+                {
+                    if (string.Equals(mode, "Parallel", StringComparison.Ordinal) && hasSecond)
+                    {
+                        e.Graphics.FillPolygon(
+                            highlightBrush,
+                            new[]
+                            {
+                                new PointF(e.Offset.X + (first.X1 * e.Zoom), e.Offset.Y + (first.Y1 * e.Zoom)),
+                                new PointF(e.Offset.X + (first.X2 * e.Zoom), e.Offset.Y + (first.Y2 * e.Zoom)),
+                                new PointF(e.Offset.X + (second.X2 * e.Zoom), e.Offset.Y + (second.Y2 * e.Zoom)),
+                                new PointF(e.Offset.X + (second.X1 * e.Zoom), e.Offset.Y + (second.Y1 * e.Zoom))
+                            });
+                        DrawObjectDetectionImageLine(
+                            e.Graphics,
+                            first,
+                            highlightPen,
+                            e.Zoom,
+                            e.Offset);
+                        DrawObjectDetectionImageLine(
+                            e.Graphics,
+                            second,
+                            highlightPen,
+                            e.Zoom,
+                            e.Offset);
+                    }
+                    else
+                    {
+                        DrawObjectDetectionImageLine(
+                            e.Graphics,
+                            first,
+                            highlightPen,
+                            e.Zoom,
+                            e.Offset);
+                    }
+                }
+            }
+
             // Keep measurement lines at a stable screen width. Scaling the
             // pen by 1 / zoom makes a 0.05x view render a huge 40px line.
             using (var primaryPen = new Pen(Color.Red, 1.5f))
@@ -3217,6 +3644,8 @@ namespace IntegratedImageProcessingApp.Forms
                 clearMeasurementButton.Click += delegate
                 {
                     pendingObjectDetectionMeasurementGeometry.Reset();
+                    objectDetectionMeasurementAppliedRecordId = null;
+                    objectDetectionMeasurementCreateNewRecord = true;
                     objectDetectionMeasurementIsDrawing = false;
                     objectDetectionMeasurementDrawingStage = 0;
                     objectDetectionMeasurementDrawButton.Text = "開始畫線";
@@ -3421,23 +3850,46 @@ namespace IntegratedImageProcessingApp.Forms
                         .Cells["MeasurementId"]
                         .Value;
                     string recordId = Convert.ToString(idValue, CultureInfo.InvariantCulture);
-                    if (string.IsNullOrWhiteSpace(recordId))
-                    {
-                        return;
-                    }
+                     if (string.IsNullOrWhiteSpace(recordId))
+                     {
+                         return;
+                     }
 
-                    var menu = new ContextMenuStrip();
-                    menu.Items.Add(
-                        "刪除",
-                        null,
-                        delegate
-                        {
-                            DeleteObjectDetectionMeasurementRecord(parameter, recordId);
-                        });
-                    menu.Show(objectDetectionMeasurementRecordsGrid, e.Location);
-                };
-                objectDetectionMeasurementRecordsGrid.CellDoubleClick += delegate(object sender, DataGridViewCellEventArgs e)
-                {
+                     var menu = new ContextMenuStrip();
+                     menu.Items.Add(
+                         "運算",
+                         null,
+                         delegate
+                         {
+                             CalculateObjectDetectionMeasurementRecord(parameter, recordId);
+                         });
+                     menu.Items.Add(new ToolStripSeparator());
+                     menu.Items.Add(
+                         "刪除",
+                         null,
+                         delegate
+                         {
+                             DeleteObjectDetectionMeasurementRecord(parameter, recordId);
+                         });
+                     Point menuLocation = Cursor.Position;
+                     menuLocation.X += 8;
+                     menuLocation.Y += 8;
+                     menu.Show(menuLocation);
+                 };
+                 objectDetectionMeasurementRecordsGrid.CellClick += delegate(
+                     object sender,
+                     DataGridViewCellEventArgs e)
+                 {
+                     if (e.RowIndex < 0)
+                     {
+                         return;
+                     }
+
+                     LoadObjectDetectionMeasurementRecord(parameter, e.RowIndex);
+                     FlashObjectDetectionMeasurementRecord();
+                 };
+                 objectDetectionMeasurementRecordsGrid.CellDoubleClick += delegate(object sender, DataGridViewCellEventArgs e)
+                 {
                     if (e.RowIndex < 0)
                     {
                         return;
@@ -4369,6 +4821,15 @@ namespace IntegratedImageProcessingApp.Forms
             public bool SecondStartOutsideRoi { get; set; }
 
             public bool SecondEndOutsideRoi { get; set; }
+        }
+
+        private sealed class ObjectDetectionMeasurementStatistics
+        {
+            public double Minimum { get; set; }
+
+            public double Average { get; set; }
+
+            public double Maximum { get; set; }
         }
 
         private struct ObjectDetectionMeasurementFrame

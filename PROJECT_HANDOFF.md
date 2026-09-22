@@ -8,7 +8,7 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C# WinForms、.NET Framework 4.7.2、OpenCvSharp
-- 本次文件整理日期：2026-09-21
+- 本次文件整理日期：2026-09-22
 
 目前工作樹的程式已加入區塊處理 OpenCV 流程，並已完成 Debug / Any CPU 建置驗證。這一版的重點是把「影像關聯輸出的二值 mask」交給「整合成區塊」的後處理鏈，再顯示到固定的 `區塊處理` 分頁。
 
@@ -126,6 +126,29 @@ base mask -> 處理1 -> 處理1 + 處理2 -> ... -> 最終區塊 mask
 7. 切換物件序號1至6，確認 MASK 依物件 ROI 移動，沒有殘留上一個序號。
 8. 修改處理參數後重新執行，確認舊 MASK 不會覆蓋新結果，且記憶體不會無限制增加。
 9. 在 `0.03x`、`0.05x`、`0.06x` 及不同平移位置檢查，確認粉紅 overlay、綠色框與目前 Zoom/Offset 都維持正確。
+
+### 2026-09-22 最新進度：尺寸量測紀錄與像素運算
+
+- `檢測參數設定 -> 尺寸量測設定` 的量測資料表現在支援多筆紀錄；每筆量測資料都有獨立 GUID，不再因第二次套用而覆蓋第一筆。
+- 按「開始畫線」會進入新增紀錄模式。完成線段並按「套用量測設定」後，會將新資料追加到 `MeasurementRecords`。
+- 點選表格中的既有紀錄會載入該筆資料並進入編輯該筆的狀態；之後重新套用會更新該筆，而不是另開一筆。再次按「開始畫線」會回到新增模式。
+- 表格右鍵選單使用滑鼠的螢幕座標顯示，選單位置在游標右下方約 `8 px`，避免選單出現在表格內固定位置而遮住目前操作位置。
+- 右鍵選單目前包含：
+  - `運算`：使用該筆紀錄保存的物件、ROI 座標、方向、線段模式、線數與來源 MASK ID 執行計算。
+  - `刪除`：刪除指定 GUID 的紀錄；若該筆就是目前畫面使用的線段，會同時清除參數中的線段設定、畫面線段與待量測 overlay，其他紀錄不受影響。
+- 左鍵點擊量測紀錄會載入該筆線段，並讓目前量測位置以黃色線/黃色區域閃爍約 `180 ms`，方便在多筆紀錄中辨識位置。
+- `運算`目前先以像素為單位：從每條量測線的起點開始取樣，先略過起點前的背景，遇到第一個前景後計算第一段連續前景長度；不會把後續中斷後的其他物件長度接在一起。
+- 單線模式會得到一個像素長度，並以相同數值顯示最小、平均、最大；平行線模式會依保存的線數在兩條基準線之間插值，逐條計算第一段連續物件長度，再顯示：
+
+```text
+最小：xx px
+平均：xx px
+最大：xx px
+```
+
+- 運算結果目前以游標右下方的提示框顯示，並同步寫入狀態列；目前尚未轉換成毫米等實體單位，也尚未把這次統計值另存回參數檔。
+- 量測線仍保存物件 ROI 內的正規化座標、方向、繪製順序、ROI 外端點、平行線數量、旋轉座標框架與來源 MASK 的 `SourceType/Id/Namespace/Operation`。改名或排序不會改變量測紀錄引用的來源。
+- 本次程式修改集中於 `IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.cs`，已完成 `Debug / Any CPU` 建置驗證；輸出使用 `IntegratedImageProcessingApp/bin/DebugVerify/IntegratedImageProcessingApp.exe`。
 
 ## 2. 已完成的使用者功能
 
@@ -398,7 +421,7 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 - 確認物件組結果在 `區塊結果` 分頁的黃色框線/編號顯示規則，以及後續是否需要獨立的物件判定分頁。
 - 以實際 16384 x 50000 圖片測試多 ROI、多關聯與多區塊的記憶體峰值。
 - 大圖路徑已補上區塊處理每一步的累積 MASK 快取與檢測預覽；後續仍要補 Bitmap 小圖路徑的每一步快取，並確認重複點選不會重算。
-- 補上檢測參數選取區塊處理子步驟後的實際量測線與尺寸結果；目前先完成來源 MASK 選擇與粉紅色 overlay 示意。
+- 尺寸量測的實際量測線、平行線紀錄、來源 MASK 紀錄與像素統計已完成；後續仍需補上實體單位校正、統計結果持久化與更完整的量測報表輸出。
 - 以實際操作確認各分頁在執行單一步驟、群組、關聯與區塊處理時，Zoom/Offset 均維持不變。
 - 補上關聯被刪除、來源失效、區塊引用失效時的使用者警告。
 - 完成 E/D 等最終物件判定方法；目前區塊處理主要是二值 mask 結合與形態學後處理。
@@ -412,4 +435,4 @@ Threshold 的 `Global Threshold`、`Adaptive Threshold`、`Otsu Threshold` 已�
 & 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\MSBuild.exe' .\MyApp4.sln /p:Configuration=Debug /p:Platform="Any CPU" /v:minimal
 ```
 
-本次文件整理前已成功建置。不要提交臨時 `codex-build`、`bin` 或 `obj` 輸出；提交前確認執行中的 `IntegratedImageProcessingApp.exe` 已關閉。
+本次文件整理前已成功建置，並以獨立輸出目錄 `IntegratedImageProcessingApp/bin/DebugVerify/` 驗證，避免覆蓋使用中的 Debug 輸出。不要提交臨時 `codex-build`、`bin` 或 `obj` 輸出；提交前確認執行中的 `IntegratedImageProcessingApp.exe` 已關閉。
