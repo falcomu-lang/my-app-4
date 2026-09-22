@@ -328,6 +328,7 @@ namespace IntegratedImageProcessingApp.Forms
                     long cclElapsedMilliseconds = 0;
                     long retainedMaskElapsedMilliseconds = 0;
                     long mergeElapsedMilliseconds = 0;
+                    long rotationGeometryElapsedMilliseconds = 0;
                     int sourceCacheHitCount = 0;
                     int sourceCacheMissCount = 0;
                     Stopwatch stopwatch = Stopwatch.StartNew();
@@ -368,6 +369,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 long roiCclElapsedMilliseconds;
                                 long roiRetainedMaskElapsedMilliseconds;
                                 long roiMergeElapsedMilliseconds;
+                                long roiRotationGeometryElapsedMilliseconds;
                                 completedResults[resultKey] =
                                     CreateObjectDefinitionDetectedObjects(
                                         sourceMask,
@@ -376,11 +378,13 @@ namespace IntegratedImageProcessingApp.Forms
                                         out retainedMask,
                                         out roiCclElapsedMilliseconds,
                                         out roiRetainedMaskElapsedMilliseconds,
-                                        out roiMergeElapsedMilliseconds);
+                                        out roiMergeElapsedMilliseconds,
+                                        out roiRotationGeometryElapsedMilliseconds);
                                 completedSourceMasks[resultKey] = retainedMask;
                                 cclElapsedMilliseconds += roiCclElapsedMilliseconds;
                                 retainedMaskElapsedMilliseconds += roiRetainedMaskElapsedMilliseconds;
                                 mergeElapsedMilliseconds += roiMergeElapsedMilliseconds;
+                                rotationGeometryElapsedMilliseconds += roiRotationGeometryElapsedMilliseconds;
                             }
                         }
 
@@ -450,10 +454,12 @@ namespace IntegratedImageProcessingApp.Forms
                                         sourceMergeElapsedMilliseconds,
                                         sourceObjectProcessingElapsedMilliseconds,
                                         sourceObjectProcessingDetails,
-                                        cclElapsedMilliseconds,
-                                        retainedMaskElapsedMilliseconds,
-                                        mergeElapsedMilliseconds,
-                                        sourceCacheHitCount,
+                                                cclElapsedMilliseconds,
+                                                retainedMaskElapsedMilliseconds,
+                                                mergeElapsedMilliseconds,
+                                                definition.EnableRotationAnalysis,
+                                                rotationGeometryElapsedMilliseconds,
+                                                sourceCacheHitCount,
                                         sourceCacheMissCount);
                                     statusLabel.Text = definition.DisplayName + "：" +
                                         BuildObjectDefinitionTimingText(
@@ -574,6 +580,7 @@ namespace IntegratedImageProcessingApp.Forms
                     long cclElapsedMilliseconds = 0;
                     long retainedMaskElapsedMilliseconds = 0;
                     long mergeElapsedMilliseconds = 0;
+                    long rotationGeometryElapsedMilliseconds = 0;
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     try
                     {
@@ -597,6 +604,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     long roiCclElapsedMilliseconds;
                                     long roiRetainedMaskElapsedMilliseconds;
                                     long roiMergeElapsedMilliseconds;
+                                    long roiRotationGeometryElapsedMilliseconds;
                                     completedResults[resultKey] =
                                         CreateObjectDefinitionDetectedObjects(
                                             sourceMask,
@@ -605,11 +613,13 @@ namespace IntegratedImageProcessingApp.Forms
                                             out retainedMask,
                                             out roiCclElapsedMilliseconds,
                                             out roiRetainedMaskElapsedMilliseconds,
-                                            out roiMergeElapsedMilliseconds);
+                                            out roiMergeElapsedMilliseconds,
+                                            out roiRotationGeometryElapsedMilliseconds);
                                     completedSourceMasks[resultKey] = retainedMask;
                                     cclElapsedMilliseconds += roiCclElapsedMilliseconds;
                                     retainedMaskElapsedMilliseconds += roiRetainedMaskElapsedMilliseconds;
                                     mergeElapsedMilliseconds += roiMergeElapsedMilliseconds;
+                                    rotationGeometryElapsedMilliseconds += roiRotationGeometryElapsedMilliseconds;
                                 }
                             }
                         }
@@ -700,6 +710,22 @@ namespace IntegratedImageProcessingApp.Forms
                                             long displayElapsedMilliseconds =
                                                 RefreshVisibleObjectDefinitionDisplays();
                                             InvalidateBlockProcessingDisplays();
+                                            AppendObjectDefinitionTimingMemo(
+                                                definition.DisplayName,
+                                                elapsedMilliseconds,
+                                                displayElapsedMilliseconds,
+                                                sourceProcessingElapsedMilliseconds,
+                                                0,
+                                                0,
+                                                0,
+                                                null,
+                                                cclElapsedMilliseconds,
+                                                retainedMaskElapsedMilliseconds,
+                                                mergeElapsedMilliseconds,
+                                                definition.EnableRotationAnalysis,
+                                                rotationGeometryElapsedMilliseconds,
+                                                0,
+                                                0);
                                             statusLabel.Text = definition.DisplayName + "：" +
                                                 BuildObjectDefinitionTimingText(
                                                     elapsedMilliseconds,
@@ -1184,6 +1210,8 @@ namespace IntegratedImageProcessingApp.Forms
             long cclElapsedMilliseconds,
             long retainedMaskElapsedMilliseconds,
             long mergeElapsedMilliseconds,
+            bool rotationAnalysisEnabled,
+            long rotationGeometryElapsedMilliseconds,
             int sourceCacheHitCount,
             int sourceCacheMissCount)
         {
@@ -1203,6 +1231,9 @@ namespace IntegratedImageProcessingApp.Forms
             AppendDebugTimingMemo("CCL：" + cclElapsedMilliseconds + " ms");
             AppendDebugTimingMemo("保留 MASK：" + retainedMaskElapsedMilliseconds + " ms");
             AppendDebugTimingMemo("Merge by Distance：" + mergeElapsedMilliseconds + " ms");
+            AppendDebugTimingMemo(rotationAnalysisEnabled
+                ? "旋轉資訊：" + rotationGeometryElapsedMilliseconds + " ms"
+                : "旋轉資訊：未啟用");
             AppendDebugTimingMemo("顯示時間：" + displayElapsedMilliseconds + " ms");
             AppendDebugTimingMemo(
                 "來源快取：命中 " + sourceCacheHitCount + "／未命中 " + sourceCacheMissCount);
@@ -2756,11 +2787,13 @@ namespace IntegratedImageProcessingApp.Forms
             out Cv.Mat retainedMask,
             out long cclElapsedMilliseconds,
             out long retainedMaskElapsedMilliseconds,
-            out long mergeElapsedMilliseconds)
+            out long mergeElapsedMilliseconds,
+            out long rotationGeometryElapsedMilliseconds)
         {
             cclElapsedMilliseconds = 0;
             retainedMaskElapsedMilliseconds = 0;
             mergeElapsedMilliseconds = 0;
+            rotationGeometryElapsedMilliseconds = 0;
             if (sourceMask == null || sourceMask.Empty())
             {
                 retainedMask = new Cv.Mat();
@@ -2853,7 +2886,10 @@ namespace IntegratedImageProcessingApp.Forms
 
                 if (definition.EnableRotationAnalysis && result.Count > 0)
                 {
+                    Stopwatch rotationStopwatch = Stopwatch.StartNew();
                     CalculateObjectDefinitionRotationGeometry(result, labels, roi);
+                    rotationStopwatch.Stop();
+                    rotationGeometryElapsedMilliseconds = rotationStopwatch.ElapsedMilliseconds;
                 }
 
                 Stopwatch retainedMaskStopwatch = Stopwatch.StartNew();
