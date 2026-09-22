@@ -515,6 +515,54 @@ namespace IntegratedImageProcessingApp.Forms
                 " 已保存量測資料，共 " + parameter.MeasurementRecords.Count + " 筆";
         }
 
+        private void DeleteObjectDetectionMeasurementRecord(
+            ObjectDetectionParameterSettings parameter,
+            string recordId)
+        {
+            if (parameter == null || parameter.MeasurementRecords == null ||
+                string.IsNullOrWhiteSpace(recordId))
+            {
+                return;
+            }
+
+            ObjectDetectionMeasurementRecordSettings record =
+                parameter.MeasurementRecords.FirstOrDefault(
+                    item => item != null && string.Equals(
+                        item.Id,
+                        recordId,
+                        StringComparison.Ordinal));
+            if (record == null)
+            {
+                return;
+            }
+
+            if (MessageBox.Show(
+                    this,
+                    "確定要刪除量測紀錄「" + record.Name + "」嗎？\r\n\r\n使用的 MASK 來源資訊也會一併刪除。",
+                    "刪除量測紀錄",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            parameter.MeasurementRecords.Remove(record);
+            if (string.Equals(
+                    objectDetectionMeasurementAppliedRecordId,
+                    recordId,
+                    StringComparison.Ordinal))
+            {
+                objectDetectionMeasurementAppliedRecordId = null;
+            }
+
+            SaveSystemParameters();
+            RefreshObjectDetectionMeasurementRecordsGrid(parameter);
+            objectDetectionMeasurementToolStatusLabel.Text =
+                "已刪除量測紀錄：" + record.Name;
+            statusLabel.Text = parameter.DisplayName +
+                " 已刪除量測紀錄：" + record.Name;
+        }
+
         private void BeginObjectDetectionMeasurementDrawing()
         {
             ObjectDefinitionDetectedObject selectedObject;
@@ -3284,6 +3332,37 @@ namespace IntegratedImageProcessingApp.Forms
                         HeaderText = "ID",
                         FillWeight = 27
                     });
+                objectDetectionMeasurementRecordsGrid.CellMouseDown += delegate(
+                    object sender,
+                    DataGridViewCellMouseEventArgs e)
+                {
+                    if (e.Button != MouseButtons.Right || e.RowIndex < 0 ||
+                        parameter.MeasurementRecords == null)
+                    {
+                        return;
+                    }
+
+                    objectDetectionMeasurementRecordsGrid.ClearSelection();
+                    objectDetectionMeasurementRecordsGrid.Rows[e.RowIndex].Selected = true;
+                    object idValue = objectDetectionMeasurementRecordsGrid.Rows[e.RowIndex]
+                        .Cells["MeasurementId"]
+                        .Value;
+                    string recordId = Convert.ToString(idValue, CultureInfo.InvariantCulture);
+                    if (string.IsNullOrWhiteSpace(recordId))
+                    {
+                        return;
+                    }
+
+                    var menu = new ContextMenuStrip();
+                    menu.Items.Add(
+                        "刪除",
+                        null,
+                        delegate
+                        {
+                            DeleteObjectDetectionMeasurementRecord(parameter, recordId);
+                        });
+                    menu.Show(objectDetectionMeasurementRecordsGrid, e.Location);
+                };
                 objectDetectionMeasurementRecordsGrid.CellDoubleClick += delegate(object sender, DataGridViewCellEventArgs e)
                 {
                     if (e.RowIndex < 0)
