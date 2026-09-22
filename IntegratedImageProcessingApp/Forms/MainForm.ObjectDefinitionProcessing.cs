@@ -52,6 +52,16 @@ namespace IntegratedImageProcessingApp.Forms
             public double Area { get; set; }
 
             public List<int> SourceLabels { get; set; }
+
+            public bool HasRotationGeometry { get; set; }
+
+            public double RotationAngleDegrees { get; set; }
+
+            public PointF RotationCenter { get; set; }
+
+            public SizeF RotationSize { get; set; }
+
+            public PointF[] RotationCorners { get; set; }
         }
 
         private sealed class ObjectDefinitionComponentRegion
@@ -958,6 +968,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parts.Add(definition.GroupMaxArea.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 parts.Add(definition.ResultBoxLineWidth.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 parts.Add(definition.ResultNumberFontSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                parts.Add(definition.EnableRotationAnalysis ? "rotation-on" : "rotation-off");
             }
 
             foreach (RoiRegionSettings roiRegion in systemParameters.RoiRegions)
@@ -2717,7 +2728,14 @@ namespace IntegratedImageProcessingApp.Forms
 
                     foreach (ObjectDefinitionDetectedObject item in objects)
                     {
-                        graphics.DrawRectangle(pen, item.Bounds);
+                        if (item.HasRotationGeometry && item.RotationCorners != null && item.RotationCorners.Length == 4)
+                        {
+                            graphics.DrawPolygon(pen, item.RotationCorners);
+                        }
+                        else
+                        {
+                            graphics.DrawRectangle(pen, item.Bounds);
+                        }
                         graphics.DrawString(
                             item.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
                             font,
@@ -2833,6 +2851,11 @@ namespace IntegratedImageProcessingApp.Forms
                     accepted[label] = retainedLabels.Contains(label);
                 }
 
+                if (definition.EnableRotationAnalysis && result.Count > 0)
+                {
+                    CalculateObjectDefinitionRotationGeometry(result, labels, roi);
+                }
+
                 Stopwatch retainedMaskStopwatch = Stopwatch.StartNew();
                 long imageArea = (long)sourceMask.Width * sourceMask.Height;
                 if (rejectedComponents.Count == 0 && retainedLabels.Count == acceptedComponents.Count)
@@ -2902,6 +2925,123 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return filtered.ToList();
+        }
+
+        private static void CalculateObjectDefinitionRotationGeometry(
+            IEnumerable<ObjectDefinitionDetectedObject> objects,
+            Cv.Mat labels,
+            Rectangle roi)
+        {
+            if (objects == null || labels == null || labels.Empty())
+            {
+                return;
+            }
+
+            Rectangle labelBounds = new Rectangle(0, 0, labels.Width, labels.Height);
+            foreach (ObjectDefinitionDetectedObject item in objects)
+            {
+                if (item == null || item.SourceLabels == null || item.SourceLabels.Count == 0)
+                {
+                    continue;
+                }
+
+                Rectangle localBounds = Rectangle.Intersect(
+                    new Rectangle(
+                        item.Bounds.X - roi.X,
+                        item.Bounds.Y - roi.Y,
+                        item.Bounds.Width,
+                        item.Bounds.Height),
+                    labelBounds);
+                if (localBounds.Width <= 0 || localBounds.Height <= 0)
+                {
+                    continue;
+                }
+
+                using (var labelRoi = new Cv.Mat(
+                    labels,
+                    new Cv.Rect(
+                        localBounds.X,
+                        localBounds.Y,
+                        localBounds.Width,
+                        localBounds.Height)))
+                using (var objectMask = new Cv.Mat(
+                    localBounds.Height,
+                    localBounds.Width,
+                    Cv.MatType.CV_8UC1,
+                    Cv.Scalar.All(0)))
+                {
+                    foreach (int sourceLabel in item.SourceLabels.Distinct())
+                    {
+                        using (var labelMask = new Cv.Mat())
+                        {
+                            Cv.Cv2.Compare(
+                                labelRoi,
+                                sourceLabel,
+                                labelMask,
+                                Cv.CmpType.EQ);
+                            Cv.Cv2.BitwiseOr(objectMask, labelMask, objectMask);
+                        }
+                    }
+
+                    Cv.Point[][] contours;
+                    Cv.HierarchyIndex[] hierarchy;
+                    Cv.Cv2.FindContours(
+                        objectMask,
+                        out contours,
+                        out hierarchy,
+                        Cv.RetrievalModes.External,
+                        Cv.ContourApproximationModes.ApproxSimple);
+                    if (contours == null || contours.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    Cv.Point2f[] points = contours
+                        .Where(contour => contour != null && contour.Length > 0)
+                        .SelectMany(contour => contour)
+                        .Select(point => new Cv.Point2f(point.X, point.Y))
+                        .ToArray();
+                    if (points.Length < 3)
+                    {
+                        continue;
+                    }
+
+                    Cv.RotatedRect rotatedRect = Cv.Cv2.MinAreaRect(points);
+                    float width = rotatedRect.Size.Width;
+                    float height = rotatedRect.Size.Height;
+                    double angle = rotatedRect.Angle;
+                    if (width < height)
+                    {
+                        float swap = width;
+                        width = height;
+                        height = swap;
+                        angle += 90.0;
+                    }
+
+                    while (angle <= -90.0)
+                    {
+                        angle += 180.0;
+                    }
+
+                    while (angle > 90.0)
+                    {
+                        angle -= 180.0;
+                    }
+
+                    Cv.Point2f[] corners = rotatedRect.Points();
+                    item.HasRotationGeometry = corners != null && corners.Length == 4;
+                    item.RotationAngleDegrees = angle;
+                    item.RotationCenter = new PointF(
+                        roi.X + localBounds.X + rotatedRect.Center.X,
+                        roi.Y + localBounds.Y + rotatedRect.Center.Y);
+                    item.RotationSize = new SizeF(width, height);
+                    item.RotationCorners = item.HasRotationGeometry
+                        ? corners.Select(point => new PointF(
+                            roi.X + localBounds.X + point.X,
+                            roi.Y + localBounds.Y + point.Y)).ToArray()
+                        : null;
+                }
+            }
         }
 
         private static Cv.Mat CreateObjectDefinitionRetainedMaskByCloneAndRemove(
@@ -3389,9 +3529,21 @@ namespace IntegratedImageProcessingApp.Forms
 
                     float x = e.Offset.X + item.Bounds.X * e.Zoom;
                     float y = e.Offset.Y + item.Bounds.Y * e.Zoom;
-                    float width = Math.Max(1f, item.Bounds.Width * e.Zoom);
-                    float height = Math.Max(1f, item.Bounds.Height * e.Zoom);
-                    e.Graphics.DrawRectangle(pen, x, y, width, height);
+                    if (item.HasRotationGeometry && item.RotationCorners != null && item.RotationCorners.Length == 4)
+                    {
+                        PointF[] screenCorners = item.RotationCorners
+                            .Select(point => new PointF(
+                                e.Offset.X + point.X * e.Zoom,
+                                e.Offset.Y + point.Y * e.Zoom))
+                            .ToArray();
+                        e.Graphics.DrawPolygon(pen, screenCorners);
+                    }
+                    else
+                    {
+                        float width = Math.Max(1f, item.Bounds.Width * e.Zoom);
+                        float height = Math.Max(1f, item.Bounds.Height * e.Zoom);
+                        e.Graphics.DrawRectangle(pen, x, y, width, height);
+                    }
                     e.Graphics.DrawString(
                         item.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
                         font,

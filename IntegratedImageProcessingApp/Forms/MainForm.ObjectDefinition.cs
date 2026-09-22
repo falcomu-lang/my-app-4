@@ -898,13 +898,25 @@ namespace IntegratedImageProcessingApp.Forms
             resultNumberFontSize.Value = Math.Max(6, Math.Min(resultNumberFontSize.Maximum, definition.ResultNumberFontSize));
             panel.Controls.Add(resultNumberFontSize);
 
-            var measurementNote = new Label
+            var enableRotationAnalysis = new CheckBox
             {
-                Text = "物件定義只負責來源與物件編號；量測時使用的 MASK 與運算方式，請到檢測參數設定的尺寸量測設定中指定。",
+                Text = "啟用物件旋轉資訊（角度、旋轉框）",
                 Left = 8,
                 Top = 638,
                 Width = parameterPanel.Width - 18,
-                Height = 42,
+                Height = 28,
+                AutoSize = false,
+                Checked = definition.EnableRotationAnalysis
+            };
+            panel.Controls.Add(enableRotationAnalysis);
+
+            var measurementNote = new Label
+            {
+                Text = "勾選後會在物件定義完成時保存每個物件的旋轉角度、中心、旋轉尺寸與四個角點；原始 MASK 不會被修改。",
+                Left = 8,
+                Top = 672,
+                Width = parameterPanel.Width - 18,
+                Height = 38,
                 AutoEllipsis = false
             };
             panel.Controls.Add(measurementNote);
@@ -913,7 +925,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Text = "套用",
                 Left = 8,
-                Top = 690,
+                Top = 724,
                 Width = parameterPanel.Width - 18
             };
             apply.Click += delegate
@@ -949,6 +961,7 @@ namespace IntegratedImageProcessingApp.Forms
                 definition.GroupMaxArea = (double)groupMaxArea.Value;
                 definition.ResultBoxLineWidth = Math.Max(1, Math.Min(20, (int)resultBoxLineWidth.Value));
                 definition.ResultNumberFontSize = Math.Max(6, Math.Min(72, (int)resultNumberFontSize.Value));
+                definition.EnableRotationAnalysis = enableRotationAnalysis.Checked;
 
                 if (definition.MaxArea > 0 && definition.MaxArea < definition.MinArea)
                 {

@@ -292,7 +292,12 @@ namespace IntegratedImageProcessingApp.Services
                         sections,
                         SectionObjectDefinition,
                         prefix + ".ResultNumberFontSize",
-                        10)
+                        10),
+                    EnableRotationAnalysis = GetBool(
+                        sections,
+                        SectionObjectDefinition,
+                        prefix + ".EnableRotationAnalysis",
+                        false)
                 };
                 string memberIds = GetValue(
                     sections,
@@ -610,6 +615,7 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.GroupMaxArea={1}", prefix, definition.GroupMaxArea.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.ResultBoxLineWidth={1}", prefix, definition.ResultBoxLineWidth.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.ResultNumberFontSize={1}", prefix, definition.ResultNumberFontSize.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.EnableRotationAnalysis={1}", prefix, definition.EnableRotationAnalysis ? "true" : "false");
                     writer.WriteLine(
                         "{0}.ObjectJudgementIds={1}",
                         prefix,

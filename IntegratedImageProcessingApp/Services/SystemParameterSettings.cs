@@ -208,6 +208,7 @@ namespace IntegratedImageProcessingApp.Services
             GroupMaxArea = 0;
             ResultBoxLineWidth = 2;
             ResultNumberFontSize = 10;
+            EnableRotationAnalysis = false;
         }
 
         public string Id { get; set; }
@@ -258,6 +259,10 @@ namespace IntegratedImageProcessingApp.Services
         public int ResultBoxLineWidth { get; set; }
 
         public int ResultNumberFontSize { get; set; }
+
+        // When enabled, object-definition results also keep per-object
+        // rotation geometry calculated from the final retained MASK.
+        public bool EnableRotationAnalysis { get; set; }
 
         public List<string> ObjectJudgementIds { get; private set; }
 
