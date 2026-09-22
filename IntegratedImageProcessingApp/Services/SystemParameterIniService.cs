@@ -412,7 +412,110 @@ namespace IntegratedImageProcessingApp.Services
                         sections,
                         SectionObjectDetection,
                         prefix + ".SourceMaskSecondaryNamespace",
-                        string.Empty)
+                        string.Empty),
+                    MeasurementMode = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementMode",
+                        "Single"),
+                    MeasurementDirection = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementDirection",
+                        "Horizontal"),
+                    MeasurementLineCount = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementLineCount",
+                        1),
+                    MeasurementLineConfigured = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementLineConfigured",
+                        false),
+                    MeasurementStartX = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementStartX",
+                        0),
+                    MeasurementStartY = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementStartY",
+                        0),
+                    MeasurementEndX = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementEndX",
+                        1),
+                    MeasurementEndY = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementEndY",
+                        0),
+                    MeasurementSecondStartX = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementSecondStartX",
+                        0),
+                    MeasurementSecondStartY = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementSecondStartY",
+                        0),
+                    MeasurementSecondEndX = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementSecondEndX",
+                        1),
+                    MeasurementSecondEndY = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementSecondEndY",
+                        0),
+                    MeasurementName = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementName",
+                        "量測線1"),
+                    MeasurementLineOrder = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementLineOrder",
+                        "LeftToRight"),
+                    MeasurementSecondLineOrder = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementSecondLineOrder",
+                        "LeftToRight"),
+                    MeasurementStartOutsideRoi = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementStartOutsideRoi",
+                        false),
+                    MeasurementEndOutsideRoi = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementEndOutsideRoi",
+                        false),
+                    MeasurementSecondStartOutsideRoi = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementSecondStartOutsideRoi",
+                        false),
+                    MeasurementSecondEndOutsideRoi = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementSecondEndOutsideRoi",
+                        false),
+                    MeasurementSourceMaskDisplayName = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementSourceMaskDisplayName",
+                        "未指定來源 MASK"),
+                    MeasurementRecords = ReadObjectDetectionMeasurementRecords(
+                        sections,
+                        prefix)
                 });
             }
 
@@ -668,6 +771,72 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.SourceMaskSecondaryType={1}", prefix, Escape(parameter.SourceMaskSecondaryType));
                     writer.WriteLine("{0}.SourceMaskSecondaryId={1}", prefix, Escape(parameter.SourceMaskSecondaryId));
                     writer.WriteLine("{0}.SourceMaskSecondaryNamespace={1}", prefix, Escape(parameter.SourceMaskSecondaryNamespace));
+                    writer.WriteLine("{0}.MeasurementMode={1}", prefix, Escape(parameter.MeasurementMode));
+                    writer.WriteLine("{0}.MeasurementDirection={1}", prefix, Escape(parameter.MeasurementDirection));
+                    writer.WriteLine(
+                        "{0}.MeasurementLineCount={1}",
+                        prefix,
+                        parameter.MeasurementLineCount.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.MeasurementLineConfigured={1}",
+                        prefix,
+                        parameter.MeasurementLineConfigured ? "1" : "0");
+                    writer.WriteLine("{0}.MeasurementStartX={1}", prefix, parameter.MeasurementStartX.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MeasurementStartY={1}", prefix, parameter.MeasurementStartY.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MeasurementEndX={1}", prefix, parameter.MeasurementEndX.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MeasurementEndY={1}", prefix, parameter.MeasurementEndY.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MeasurementSecondStartX={1}", prefix, parameter.MeasurementSecondStartX.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MeasurementSecondStartY={1}", prefix, parameter.MeasurementSecondStartY.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MeasurementSecondEndX={1}", prefix, parameter.MeasurementSecondEndX.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.MeasurementSecondEndY={1}", prefix, parameter.MeasurementSecondEndY.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.MeasurementName={1}", prefix, Escape(parameter.MeasurementName));
+                    writer.WriteLine("{0}.MeasurementLineOrder={1}", prefix, Escape(parameter.MeasurementLineOrder));
+                    writer.WriteLine("{0}.MeasurementSecondLineOrder={1}", prefix, Escape(parameter.MeasurementSecondLineOrder));
+                    writer.WriteLine("{0}.MeasurementStartOutsideRoi={1}", prefix, parameter.MeasurementStartOutsideRoi ? "1" : "0");
+                    writer.WriteLine("{0}.MeasurementEndOutsideRoi={1}", prefix, parameter.MeasurementEndOutsideRoi ? "1" : "0");
+                    writer.WriteLine("{0}.MeasurementSecondStartOutsideRoi={1}", prefix, parameter.MeasurementSecondStartOutsideRoi ? "1" : "0");
+                    writer.WriteLine("{0}.MeasurementSecondEndOutsideRoi={1}", prefix, parameter.MeasurementSecondEndOutsideRoi ? "1" : "0");
+                    writer.WriteLine("{0}.MeasurementSourceMaskDisplayName={1}", prefix, Escape(parameter.MeasurementSourceMaskDisplayName));
+                    List<ObjectDetectionMeasurementRecordSettings> measurementRecords =
+                        parameter.MeasurementRecords ?? new List<ObjectDetectionMeasurementRecordSettings>();
+                    writer.WriteLine(
+                        "{0}.MeasurementRecordCount={1}",
+                        prefix,
+                        measurementRecords.Count.ToString(CultureInfo.InvariantCulture));
+                    for (int recordIndex = 0; recordIndex < measurementRecords.Count; recordIndex++)
+                    {
+                        ObjectDetectionMeasurementRecordSettings record = measurementRecords[recordIndex];
+                        string recordPrefix = prefix + ".MeasurementRecord" +
+                            (recordIndex + 1).ToString(CultureInfo.InvariantCulture);
+                        writer.WriteLine("{0}.Id={1}", recordPrefix, Escape(record.Id));
+                        writer.WriteLine("{0}.Name={1}", recordPrefix, Escape(record.Name));
+                        writer.WriteLine("{0}.Mode={1}", recordPrefix, Escape(record.Mode));
+                        writer.WriteLine("{0}.Direction={1}", recordPrefix, Escape(record.Direction));
+                        writer.WriteLine("{0}.LineCount={1}", recordPrefix, record.LineCount.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.LineOrder={1}", recordPrefix, Escape(record.LineOrder));
+                        writer.WriteLine("{0}.SecondLineOrder={1}", recordPrefix, Escape(record.SecondLineOrder));
+                        writer.WriteLine("{0}.StartOutsideRoi={1}", recordPrefix, record.StartOutsideRoi ? "1" : "0");
+                        writer.WriteLine("{0}.EndOutsideRoi={1}", recordPrefix, record.EndOutsideRoi ? "1" : "0");
+                        writer.WriteLine("{0}.SecondStartOutsideRoi={1}", recordPrefix, record.SecondStartOutsideRoi ? "1" : "0");
+                        writer.WriteLine("{0}.SecondEndOutsideRoi={1}", recordPrefix, record.SecondEndOutsideRoi ? "1" : "0");
+                        writer.WriteLine("{0}.SourceMaskDisplayName={1}", recordPrefix, Escape(record.SourceMaskDisplayName));
+                        writer.WriteLine("{0}.SourceMaskMode={1}", recordPrefix, Escape(record.SourceMaskMode));
+                        writer.WriteLine("{0}.SourceMaskPrimaryType={1}", recordPrefix, Escape(record.SourceMaskPrimaryType));
+                        writer.WriteLine("{0}.SourceMaskPrimaryId={1}", recordPrefix, Escape(record.SourceMaskPrimaryId));
+                        writer.WriteLine("{0}.SourceMaskPrimaryNamespace={1}", recordPrefix, Escape(record.SourceMaskPrimaryNamespace));
+                        writer.WriteLine("{0}.SourceMaskOperation={1}", recordPrefix, Escape(record.SourceMaskOperation));
+                        writer.WriteLine("{0}.SourceMaskSecondaryType={1}", recordPrefix, Escape(record.SourceMaskSecondaryType));
+                        writer.WriteLine("{0}.SourceMaskSecondaryId={1}", recordPrefix, Escape(record.SourceMaskSecondaryId));
+                        writer.WriteLine("{0}.SourceMaskSecondaryNamespace={1}", recordPrefix, Escape(record.SourceMaskSecondaryNamespace));
+                        writer.WriteLine("{0}.StartX={1}", recordPrefix, record.StartX.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.StartY={1}", recordPrefix, record.StartY.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.EndX={1}", recordPrefix, record.EndX.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.EndY={1}", recordPrefix, record.EndY.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.SecondStartX={1}", recordPrefix, record.SecondStartX.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.SecondStartY={1}", recordPrefix, record.SecondStartY.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.SecondEndX={1}", recordPrefix, record.SecondEndX.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.SecondEndY={1}", recordPrefix, record.SecondEndY.ToString(CultureInfo.InvariantCulture));
+                    }
                 }
             }
         }
@@ -701,9 +870,52 @@ namespace IntegratedImageProcessingApp.Services
             foreach (ObjectDetectionParameterSettings parameter in settings.ObjectDetectionParameters)
             {
                 parameter.Id = EnsureUniqueId(parameter.Id, objectDetectionParameterIds);
+                NormalizeObjectDetectionMeasurementRecordMaskSources(parameter);
+                EnsureObjectDetectionMeasurementRecordIds(parameter.MeasurementRecords);
             }
 
             RepairReferences(settings);
+        }
+
+        private static void NormalizeObjectDetectionMeasurementRecordMaskSources(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (parameter == null || parameter.MeasurementRecords == null)
+            {
+                return;
+            }
+
+            foreach (ObjectDetectionMeasurementRecordSettings record in parameter.MeasurementRecords)
+            {
+                if (record == null)
+                {
+                    continue;
+                }
+
+                // Measurement records were introduced after the parameter-level
+                // MASK settings. Backfill old records once when they are loaded.
+                if (string.IsNullOrWhiteSpace(record.SourceMaskPrimaryId) &&
+                    !string.IsNullOrWhiteSpace(parameter.SourceMaskPrimaryId))
+                {
+                    record.SourceMaskMode = parameter.SourceMaskMode;
+                    record.SourceMaskPrimaryType = parameter.SourceMaskPrimaryType;
+                    record.SourceMaskPrimaryId = parameter.SourceMaskPrimaryId;
+                    record.SourceMaskPrimaryNamespace = parameter.SourceMaskPrimaryNamespace;
+                    record.SourceMaskOperation = parameter.SourceMaskOperation;
+                    record.SourceMaskSecondaryType = parameter.SourceMaskSecondaryType;
+                    record.SourceMaskSecondaryId = parameter.SourceMaskSecondaryId;
+                    record.SourceMaskSecondaryNamespace = parameter.SourceMaskSecondaryNamespace;
+                }
+
+                if (string.IsNullOrWhiteSpace(record.SourceMaskDisplayName) ||
+                    string.Equals(record.SourceMaskDisplayName, "未指定來源 MASK", StringComparison.Ordinal))
+                {
+                    record.SourceMaskDisplayName = string.IsNullOrWhiteSpace(
+                        parameter.MeasurementSourceMaskDisplayName)
+                        ? "未指定來源 MASK"
+                        : parameter.MeasurementSourceMaskDisplayName;
+                }
+            }
         }
 
         private static void EnsureObjectDefinitionProcessingIds(
@@ -713,6 +925,24 @@ namespace IntegratedImageProcessingApp.Services
             foreach (ObjectDefinitionProcessingSettings processing in processingSteps)
             {
                 processing.Id = EnsureUniqueId(processing.Id, ids);
+            }
+        }
+
+        private static void EnsureObjectDetectionMeasurementRecordIds(
+            List<ObjectDetectionMeasurementRecordSettings> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ObjectDetectionMeasurementRecordSettings record in records)
+            {
+                if (record != null)
+                {
+                    record.Id = EnsureUniqueId(record.Id, ids);
+                }
             }
         }
 
@@ -1066,6 +1296,56 @@ namespace IntegratedImageProcessingApp.Services
             return int.TryParse(GetValue(sections, section, key, string.Empty), NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
                 ? value
                 : defaultValue;
+        }
+
+        private static List<ObjectDetectionMeasurementRecordSettings> ReadObjectDetectionMeasurementRecords(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string parameterPrefix)
+        {
+            var records = new List<ObjectDetectionMeasurementRecordSettings>();
+            int count = GetInt(
+                sections,
+                SectionObjectDetection,
+                parameterPrefix + ".MeasurementRecordCount",
+                0);
+            for (int index = 1; index <= count; index++)
+            {
+                string prefix = parameterPrefix + ".MeasurementRecord" +
+                    index.ToString(CultureInfo.InvariantCulture);
+                records.Add(new ObjectDetectionMeasurementRecordSettings
+                {
+                    Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", string.Empty),
+                    Name = GetValue(sections, SectionObjectDetection, prefix + ".Name", "量測線" + index.ToString(CultureInfo.InvariantCulture)),
+                    Mode = GetValue(sections, SectionObjectDetection, prefix + ".Mode", "Single"),
+                    Direction = GetValue(sections, SectionObjectDetection, prefix + ".Direction", "Horizontal"),
+                    LineCount = GetInt(sections, SectionObjectDetection, prefix + ".LineCount", 1),
+                    LineOrder = GetValue(sections, SectionObjectDetection, prefix + ".LineOrder", "LeftToRight"),
+                    SecondLineOrder = GetValue(sections, SectionObjectDetection, prefix + ".SecondLineOrder", "LeftToRight"),
+                    StartOutsideRoi = GetBool(sections, SectionObjectDetection, prefix + ".StartOutsideRoi", false),
+                    EndOutsideRoi = GetBool(sections, SectionObjectDetection, prefix + ".EndOutsideRoi", false),
+                    SecondStartOutsideRoi = GetBool(sections, SectionObjectDetection, prefix + ".SecondStartOutsideRoi", false),
+                    SecondEndOutsideRoi = GetBool(sections, SectionObjectDetection, prefix + ".SecondEndOutsideRoi", false),
+                    SourceMaskDisplayName = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskDisplayName", "未指定來源 MASK"),
+                    SourceMaskMode = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskMode", "Direct"),
+                    SourceMaskPrimaryType = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskPrimaryType", string.Empty),
+                    SourceMaskPrimaryId = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskPrimaryId", string.Empty),
+                    SourceMaskPrimaryNamespace = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskPrimaryNamespace", string.Empty),
+                    SourceMaskOperation = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskOperation", "None"),
+                    SourceMaskSecondaryType = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskSecondaryType", string.Empty),
+                    SourceMaskSecondaryId = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskSecondaryId", string.Empty),
+                    SourceMaskSecondaryNamespace = GetValue(sections, SectionObjectDetection, prefix + ".SourceMaskSecondaryNamespace", string.Empty),
+                    StartX = GetDouble(sections, SectionObjectDetection, prefix + ".StartX", 0),
+                    StartY = GetDouble(sections, SectionObjectDetection, prefix + ".StartY", 0),
+                    EndX = GetDouble(sections, SectionObjectDetection, prefix + ".EndX", 1),
+                    EndY = GetDouble(sections, SectionObjectDetection, prefix + ".EndY", 0),
+                    SecondStartX = GetDouble(sections, SectionObjectDetection, prefix + ".SecondStartX", 0),
+                    SecondStartY = GetDouble(sections, SectionObjectDetection, prefix + ".SecondStartY", 0),
+                    SecondEndX = GetDouble(sections, SectionObjectDetection, prefix + ".SecondEndX", 1),
+                    SecondEndY = GetDouble(sections, SectionObjectDetection, prefix + ".SecondEndY", 0)
+                });
+            }
+
+            return records;
         }
 
         private static double GetDouble(Dictionary<string, Dictionary<string, string>> sections, string section, string key, double defaultValue)

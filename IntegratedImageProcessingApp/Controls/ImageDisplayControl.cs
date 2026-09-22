@@ -55,7 +55,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         public event EventHandler ViewChanged;
         public event EventHandler FitViewRequested;
+        public event EventHandler<ImageOverlayPaintEventArgs> ImageOverlayPaint;
         public event EventHandler<LargeImageOverlayPaintEventArgs> LargeImageOverlayPaint;
+        public event EventHandler<ImageMouseEventArgs> ImageMouseDown;
+        public event EventHandler<ImageMouseEventArgs> ImageMouseMove;
+        public event EventHandler<ImageMouseEventArgs> ImageMouseUp;
         public event EventHandler<RoiSelectedEventArgs> RoiSelected;
         public event EventHandler<ImagePointerMovedEventArgs> ImagePointerMoved;
 
@@ -731,6 +735,18 @@ namespace IntegratedImageProcessingApp.Controls
                 OnLargeImageOverlayPaint(e.Graphics, largeImageSource, visibleSourceRect, zoom, offset);
             }
 
+            Rectangle overlaySourceRect = GetVisibleSourceRectangle(
+                bitmap != null ? bitmap.Width : largeImageSource.Width,
+                bitmap != null ? bitmap.Height : largeImageSource.Height,
+                viewerPanel.ClientRectangle,
+                zoom,
+                offset);
+            OnImageOverlayPaint(
+                e.Graphics,
+                overlaySourceRect,
+                zoom,
+                offset);
+
             DrawRoiOverlay(e.Graphics, roiOverlay, zoom, offset);
             DrawRoiOverlays(e.Graphics, roiOverlays, zoom, offset);
             DrawActiveRoiSelection(e.Graphics);
@@ -828,6 +844,13 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void viewerPanel_MouseDown(object sender, MouseEventArgs e)
         {
+            ImageMouseEventArgs imageEvent = CreateImageMouseEventArgs(e);
+            OnImageMouseDown(imageEvent);
+            if (imageEvent.Handled)
+            {
+                return;
+            }
+
             if (_isSelectingRoi && e.Button == MouseButtons.Left && HasImage)
             {
                 _isDrawingRoi = true;
@@ -855,6 +878,13 @@ namespace IntegratedImageProcessingApp.Controls
         private void viewerPanel_MouseMove(object sender, MouseEventArgs e)
         {
             OnImagePointerMoved(e.Location, true);
+
+            ImageMouseEventArgs imageEvent = CreateImageMouseEventArgs(e);
+            OnImageMouseMove(imageEvent);
+            if (imageEvent.Handled)
+            {
+                return;
+            }
 
             if (_isDrawingRoi)
             {
@@ -884,6 +914,13 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void viewerPanel_MouseUp(object sender, MouseEventArgs e)
         {
+            ImageMouseEventArgs imageEvent = CreateImageMouseEventArgs(e);
+            OnImageMouseUp(imageEvent);
+            if (imageEvent.Handled)
+            {
+                return;
+            }
+
             if (_isDrawingRoi)
             {
                 _roiCurrentPoint = e.Location;
@@ -949,6 +986,76 @@ namespace IntegratedImageProcessingApp.Controls
                 isInsideViewer,
                 isInsideImage,
                 _isPanning || _isSynchronizedPanning));
+        }
+
+        private ImageMouseEventArgs CreateImageMouseEventArgs(MouseEventArgs mouseEvent)
+        {
+            int imageWidth;
+            int imageHeight;
+            float zoom;
+            PointF offset;
+            Point imagePoint = Point.Empty;
+            bool isInsideImage = false;
+            if (TryGetSourceMetrics(out imageWidth, out imageHeight, out zoom, out offset) &&
+                zoom > 0f)
+            {
+                int imageX = (int)Math.Floor((mouseEvent.X - offset.X) / zoom);
+                int imageY = (int)Math.Floor((mouseEvent.Y - offset.Y) / zoom);
+                imagePoint = new Point(imageX, imageY);
+                isInsideImage = imageX >= 0 && imageX < imageWidth &&
+                    imageY >= 0 && imageY < imageHeight;
+            }
+
+            return new ImageMouseEventArgs(
+                mouseEvent.Button,
+                mouseEvent.Location,
+                imagePoint,
+                isInsideImage,
+                ModifierKeys);
+        }
+
+        private void OnImageMouseDown(ImageMouseEventArgs imageEvent)
+        {
+            EventHandler<ImageMouseEventArgs> handler = ImageMouseDown;
+            if (handler != null)
+            {
+                handler(this, imageEvent);
+            }
+        }
+
+        private void OnImageMouseMove(ImageMouseEventArgs imageEvent)
+        {
+            EventHandler<ImageMouseEventArgs> handler = ImageMouseMove;
+            if (handler != null)
+            {
+                handler(this, imageEvent);
+            }
+        }
+
+        private void OnImageMouseUp(ImageMouseEventArgs imageEvent)
+        {
+            EventHandler<ImageMouseEventArgs> handler = ImageMouseUp;
+            if (handler != null)
+            {
+                handler(this, imageEvent);
+            }
+        }
+
+        private void OnImageOverlayPaint(
+            Graphics graphics,
+            Rectangle visibleSourceRect,
+            float zoom,
+            PointF offset)
+        {
+            EventHandler<ImageOverlayPaintEventArgs> handler = ImageOverlayPaint;
+            if (handler != null)
+            {
+                handler(this, new ImageOverlayPaintEventArgs(
+                    graphics,
+                    visibleSourceRect,
+                    zoom,
+                    offset));
+            }
         }
 
         private void ImageDisplayControl_SizeChanged(object sender, EventArgs e)
@@ -1797,6 +1904,58 @@ namespace IntegratedImageProcessingApp.Controls
         public bool IsInsideImage { get; private set; }
 
         public bool IsPanning { get; private set; }
+    }
+
+    public class ImageMouseEventArgs : EventArgs
+    {
+        public ImageMouseEventArgs(
+            MouseButtons button,
+            Point controlLocation,
+            Point imageLocation,
+            bool isInsideImage,
+            Keys modifiers)
+        {
+            Button = button;
+            ControlLocation = controlLocation;
+            ImageLocation = imageLocation;
+            IsInsideImage = isInsideImage;
+            Modifiers = modifiers;
+        }
+
+        public MouseButtons Button { get; private set; }
+
+        public Point ControlLocation { get; private set; }
+
+        public Point ImageLocation { get; private set; }
+
+        public bool IsInsideImage { get; private set; }
+
+        public Keys Modifiers { get; private set; }
+
+        public bool Handled { get; set; }
+    }
+
+    public class ImageOverlayPaintEventArgs : EventArgs
+    {
+        public ImageOverlayPaintEventArgs(
+            Graphics graphics,
+            Rectangle visibleSourceRect,
+            float zoom,
+            PointF offset)
+        {
+            Graphics = graphics;
+            VisibleSourceRect = visibleSourceRect;
+            Zoom = zoom;
+            Offset = offset;
+        }
+
+        public Graphics Graphics { get; private set; }
+
+        public Rectangle VisibleSourceRect { get; private set; }
+
+        public float Zoom { get; private set; }
+
+        public PointF Offset { get; private set; }
     }
 
     public class LargeImageOverlayPaintEventArgs : EventArgs

@@ -301,6 +301,15 @@ namespace IntegratedImageProcessingApp.Services
             SourceMaskSecondaryType = string.Empty;
             SourceMaskSecondaryId = string.Empty;
             SourceMaskSecondaryNamespace = string.Empty;
+            MeasurementMode = "Single";
+            MeasurementDirection = "Horizontal";
+            MeasurementLineCount = 1;
+            MeasurementLineConfigured = false;
+            MeasurementName = "量測線1";
+            MeasurementLineOrder = "LeftToRight";
+            MeasurementSecondLineOrder = "LeftToRight";
+            MeasurementSourceMaskDisplayName = "未指定來源 MASK";
+            MeasurementRecords = new List<ObjectDetectionMeasurementRecordSettings>();
         }
 
         public string Id { get; set; }
@@ -332,5 +341,121 @@ namespace IntegratedImageProcessingApp.Services
         public string SourceMaskSecondaryId { get; set; }
 
         public string SourceMaskSecondaryNamespace { get; set; }
+
+        // Size-measurement geometry is stored as normalized coordinates inside
+        // the selected object's ROI, so it can be reused for every object.
+        public string MeasurementMode { get; set; }
+
+        public string MeasurementDirection { get; set; }
+
+        public int MeasurementLineCount { get; set; }
+
+        public bool MeasurementLineConfigured { get; set; }
+
+        public string MeasurementName { get; set; }
+
+        public string MeasurementLineOrder { get; set; }
+
+        public string MeasurementSecondLineOrder { get; set; }
+
+        public bool MeasurementStartOutsideRoi { get; set; }
+
+        public bool MeasurementEndOutsideRoi { get; set; }
+
+        public bool MeasurementSecondStartOutsideRoi { get; set; }
+
+        public bool MeasurementSecondEndOutsideRoi { get; set; }
+
+        public string MeasurementSourceMaskDisplayName { get; set; }
+
+        public double MeasurementStartX { get; set; }
+
+        public double MeasurementStartY { get; set; }
+
+        public double MeasurementEndX { get; set; }
+
+        public double MeasurementEndY { get; set; }
+
+        public double MeasurementSecondStartX { get; set; }
+
+        public double MeasurementSecondStartY { get; set; }
+
+        public double MeasurementSecondEndX { get; set; }
+
+        public double MeasurementSecondEndY { get; set; }
+
+        public List<ObjectDetectionMeasurementRecordSettings> MeasurementRecords { get; set; }
+    }
+
+    public class ObjectDetectionMeasurementRecordSettings
+    {
+        public ObjectDetectionMeasurementRecordSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+            Name = "量測線";
+            Mode = "Single";
+            Direction = "Horizontal";
+            LineCount = 1;
+            LineOrder = "LeftToRight";
+            SecondLineOrder = "LeftToRight";
+            SourceMaskMode = "Direct";
+            SourceMaskOperation = "None";
+        }
+
+        public string Id { get; set; }
+
+        public string Name { get; set; }
+
+        public string Mode { get; set; }
+
+        public string Direction { get; set; }
+
+        public int LineCount { get; set; }
+
+        public string LineOrder { get; set; }
+
+        public string SecondLineOrder { get; set; }
+
+        public bool StartOutsideRoi { get; set; }
+
+        public bool EndOutsideRoi { get; set; }
+
+        public bool SecondStartOutsideRoi { get; set; }
+
+        public bool SecondEndOutsideRoi { get; set; }
+
+        public string SourceMaskDisplayName { get; set; }
+
+        public string SourceMaskMode { get; set; }
+
+        public string SourceMaskPrimaryType { get; set; }
+
+        public string SourceMaskPrimaryId { get; set; }
+
+        public string SourceMaskPrimaryNamespace { get; set; }
+
+        public string SourceMaskOperation { get; set; }
+
+        public string SourceMaskSecondaryType { get; set; }
+
+        public string SourceMaskSecondaryId { get; set; }
+
+        public string SourceMaskSecondaryNamespace { get; set; }
+
+        public double StartX { get; set; }
+
+        public double StartY { get; set; }
+
+        public double EndX { get; set; }
+
+        public double EndY { get; set; }
+
+        public double SecondStartX { get; set; }
+
+        public double SecondStartY { get; set; }
+
+        public double SecondEndX { get; set; }
+
+        public double SecondEndY { get; set; }
     }
 }
