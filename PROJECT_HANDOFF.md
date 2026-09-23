@@ -12,6 +12,57 @@
 
 目前工作樹的程式已加入區塊處理 OpenCV 流程，並已完成 Debug / Any CPU 建置驗證。這一版的重點是把「影像關聯輸出的二值 mask」交給「整合成區塊」的後處理鏈，再顯示到固定的 `區塊處理` 分頁。
 
+## 1.1 本次進度摘要（2026-09-22）
+
+### 已完成：尺寸良品判斷條件的設定層
+
+檢測參數現在有獨立的 `尺寸良品判斷條件` 分頁。規則是掛在單一檢測參數底下，不是所有檢測參數共用同一份清單。這個分頁目前屬於「規則編輯與保存層」，尚未宣稱已完成最終良品判定。
+
+已完成的 UI 行為：
+
+- 可新增、修改、清除、上移、下移、刪除及保存判斷規則。
+- 可設定規則名稱、啟用狀態，以及 `A 規`、`B 規` 各自的計算式與規格式。
+- 表格顯示規則編號、名稱、啟用狀態與 A/B 規內容。
+- 規則右鍵選單可修改、上移、下移、刪除；清單排序不會改變規則 ID。
+- 計算式會先做基本格式驗證；支援量測紀錄編號參照，例如 `(1)`、`(2)`，以及基本四則運算、`min`、`max`。
+- 規格式可表達單值、上下限與比較條件；計算式與規格式必須成對，錯誤內容不會直接保存。
+
+已完成的資料模型與保存：
+
+- `ObjectDetectionGoodJudgementRuleSettings` 保存 `Id`、`Number`、`Name`、`Enabled`、`CalculationExpression`、`SpecificationExpression`、`AlternativeCalculationExpression`、`AlternativeSpecificationExpression`。
+- `ObjectDetectionParameterSettings.GoodJudgementRules` 保存每個檢測參數自己的規則集合。
+- `SystemParameters.ini` 使用 `[ObjectDetection]` 下的 `ParameterN.GoodJudgementRuleCount` 與 `ParameterN.GoodJudgementRuleK.*` 欄位保存規則。
+- 載入舊設定時會補齊缺少或重複的 GUID 與編號，避免舊檔因新增欄位而無法使用。
+- 顯示名稱與編號只是使用者介面資訊；規則、量測紀錄與流程引用仍必須以唯一 ID 為準。
+
+主要程式位置：
+
+- `IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.cs`：規則分頁、表格、右鍵選單、輸入驗證與套用保存流程。
+- `IntegratedImageProcessingApp/Forms/MainForm.cs`：檢測參數分頁切換與畫面生命週期接線。
+- `IntegratedImageProcessingApp/Services/SystemParameterSettings.cs`：規則資料模型與檢測參數設定。
+- `IntegratedImageProcessingApp/Services/SystemParameterIniService.cs`：規則 ID、編號與內容的 INI 讀寫及舊資料補齊。
+
+### 尚未完成的邊界
+
+目前還沒有把規則編輯器直接接到實際量測數值的評估引擎。因此目前可以「建立、驗證、保存、重新載入」規則，但尚不能把規則自動轉成最終 `A規`、`B規`、`C規` 或 `不可判斷` 結果。後續應另做評估服務，不要把評估邏輯塞回影像處理或量測線繪製事件。
+
+建議的後續資料流：
+
+```text
+已完成物件定義
+  -> 已完成尺寸量測結果快照（量測紀錄 ID/編號 -> 數值）
+  -> 解析啟用的尺寸良品判斷條件
+  -> 產生每條規則的通過、未通過或不可判斷
+  -> 寫入參數結果確認
+```
+
+評估時必須遵守以下規則：
+
+- 只讀取已完成且版本相符的量測快取，不因切換分頁、選取規則或改變顯示視圖重新執行影像流程。
+- 量測紀錄引用應以穩定 ID 保存；編號只作為使用者可讀的參照。刪除或失效時要顯示警告，不可靜默改綁另一筆量測資料。
+- 評估結果要保存使用的規則 ID、量測紀錄 ID、來源 MASK ID/處理 ID 與評估時間，方便追溯。
+- 若資料不足、規格式無法解析或引用的量測紀錄不存在，結果應是 `不可判斷`，不能當成良品或不良品。
+
 ### 2026-09-16 最新整理
 
 - Global Threshold 已接入 OpenCV，支援單一門檻與雙邊範圍門檻；Range 模式使用 `Cv2.InRange`。

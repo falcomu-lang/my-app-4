@@ -428,6 +428,11 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".MeasurementLineCount",
                         1),
+                    MeasurementLengthMode = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementLengthMode",
+                        "FirstContinuous"),
                     MeasurementLineConfigured = GetBool(
                         sections,
                         SectionObjectDetection,
@@ -514,6 +519,9 @@ namespace IntegratedImageProcessingApp.Services
                         prefix + ".MeasurementSourceMaskDisplayName",
                         "未指定來源 MASK"),
                     MeasurementRecords = ReadObjectDetectionMeasurementRecords(
+                        sections,
+                        prefix),
+                    GoodJudgementRules = ReadObjectDetectionGoodJudgementRules(
                         sections,
                         prefix)
                 });
@@ -778,6 +786,10 @@ namespace IntegratedImageProcessingApp.Services
                         prefix,
                         parameter.MeasurementLineCount.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine(
+                        "{0}.MeasurementLengthMode={1}",
+                        prefix,
+                        Escape(parameter.MeasurementLengthMode));
+                    writer.WriteLine(
                         "{0}.MeasurementLineConfigured={1}",
                         prefix,
                         parameter.MeasurementLineConfigured ? "1" : "0");
@@ -809,10 +821,12 @@ namespace IntegratedImageProcessingApp.Services
                         string recordPrefix = prefix + ".MeasurementRecord" +
                             (recordIndex + 1).ToString(CultureInfo.InvariantCulture);
                         writer.WriteLine("{0}.Id={1}", recordPrefix, Escape(record.Id));
+                        writer.WriteLine("{0}.Number={1}", recordPrefix, record.Number.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.Name={1}", recordPrefix, Escape(record.Name));
                         writer.WriteLine("{0}.Mode={1}", recordPrefix, Escape(record.Mode));
                         writer.WriteLine("{0}.Direction={1}", recordPrefix, Escape(record.Direction));
                         writer.WriteLine("{0}.LineCount={1}", recordPrefix, record.LineCount.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.LengthMode={1}", recordPrefix, Escape(record.LengthMode));
                         writer.WriteLine("{0}.LineOrder={1}", recordPrefix, Escape(record.LineOrder));
                         writer.WriteLine("{0}.SecondLineOrder={1}", recordPrefix, Escape(record.SecondLineOrder));
                         writer.WriteLine("{0}.StartOutsideRoi={1}", recordPrefix, record.StartOutsideRoi ? "1" : "0");
@@ -836,6 +850,27 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.SecondStartY={1}", recordPrefix, record.SecondStartY.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.SecondEndX={1}", recordPrefix, record.SecondEndX.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.SecondEndY={1}", recordPrefix, record.SecondEndY.ToString(CultureInfo.InvariantCulture));
+                    }
+
+                    List<ObjectDetectionGoodJudgementRuleSettings> goodJudgementRules =
+                        parameter.GoodJudgementRules ?? new List<ObjectDetectionGoodJudgementRuleSettings>();
+                    writer.WriteLine(
+                        "{0}.GoodJudgementRuleCount={1}",
+                        prefix,
+                        goodJudgementRules.Count.ToString(CultureInfo.InvariantCulture));
+                    for (int ruleIndex = 0; ruleIndex < goodJudgementRules.Count; ruleIndex++)
+                    {
+                        ObjectDetectionGoodJudgementRuleSettings rule = goodJudgementRules[ruleIndex];
+                        string rulePrefix = prefix + ".GoodJudgementRule" +
+                            (ruleIndex + 1).ToString(CultureInfo.InvariantCulture);
+                        writer.WriteLine("{0}.Id={1}", rulePrefix, Escape(rule.Id));
+                        writer.WriteLine("{0}.Number={1}", rulePrefix, rule.Number.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.Name={1}", rulePrefix, Escape(rule.Name));
+                        writer.WriteLine("{0}.Enabled={1}", rulePrefix, rule.Enabled ? "1" : "0");
+                        writer.WriteLine("{0}.CalculationExpression={1}", rulePrefix, Escape(rule.CalculationExpression));
+                        writer.WriteLine("{0}.SpecificationExpression={1}", rulePrefix, Escape(rule.SpecificationExpression));
+                        writer.WriteLine("{0}.AlternativeCalculationExpression={1}", rulePrefix, Escape(rule.AlternativeCalculationExpression));
+                        writer.WriteLine("{0}.AlternativeSpecificationExpression={1}", rulePrefix, Escape(rule.AlternativeSpecificationExpression));
                     }
                 }
             }
@@ -872,6 +907,9 @@ namespace IntegratedImageProcessingApp.Services
                 parameter.Id = EnsureUniqueId(parameter.Id, objectDetectionParameterIds);
                 NormalizeObjectDetectionMeasurementRecordMaskSources(parameter);
                 EnsureObjectDetectionMeasurementRecordIds(parameter.MeasurementRecords);
+                EnsureObjectDetectionMeasurementRecordNumbers(parameter.MeasurementRecords);
+                EnsureObjectDetectionGoodJudgementRuleIds(parameter.GoodJudgementRules);
+                EnsureObjectDetectionGoodJudgementRuleNumbers(parameter.GoodJudgementRules);
             }
 
             RepairReferences(settings);
@@ -942,6 +980,106 @@ namespace IntegratedImageProcessingApp.Services
                 if (record != null)
                 {
                     record.Id = EnsureUniqueId(record.Id, ids);
+                }
+            }
+        }
+
+        private static void EnsureObjectDetectionMeasurementRecordNumbers(
+            List<ObjectDetectionMeasurementRecordSettings> records)
+        {
+            if (records == null)
+            {
+                return;
+            }
+
+            var usedNumbers = new HashSet<int>();
+            int nextNumber = 1;
+            foreach (ObjectDetectionMeasurementRecordSettings record in records)
+            {
+                if (record == null)
+                {
+                    continue;
+                }
+
+                if (record.Number > 0 && usedNumbers.Add(record.Number))
+                {
+                    if (record.Number < int.MaxValue)
+                    {
+                        nextNumber = Math.Max(nextNumber, record.Number + 1);
+                    }
+
+                    continue;
+                }
+
+                while (usedNumbers.Contains(nextNumber))
+                {
+                    nextNumber++;
+                }
+
+                record.Number = nextNumber;
+                usedNumbers.Add(nextNumber);
+                if (nextNumber < int.MaxValue)
+                {
+                    nextNumber++;
+                }
+            }
+        }
+
+        private static void EnsureObjectDetectionGoodJudgementRuleIds(
+            List<ObjectDetectionGoodJudgementRuleSettings> rules)
+        {
+            if (rules == null)
+            {
+                return;
+            }
+
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ObjectDetectionGoodJudgementRuleSettings rule in rules)
+            {
+                if (rule != null)
+                {
+                    rule.Id = EnsureUniqueId(rule.Id, ids);
+                }
+            }
+        }
+
+        private static void EnsureObjectDetectionGoodJudgementRuleNumbers(
+            List<ObjectDetectionGoodJudgementRuleSettings> rules)
+        {
+            if (rules == null)
+            {
+                return;
+            }
+
+            var usedNumbers = new HashSet<int>();
+            int nextNumber = 1;
+            foreach (ObjectDetectionGoodJudgementRuleSettings rule in rules)
+            {
+                if (rule == null)
+                {
+                    continue;
+                }
+
+                if (rule.Number > 0 && usedNumbers.Add(rule.Number))
+                {
+                    if (rule.Number < int.MaxValue)
+                    {
+                        nextNumber = Math.Max(nextNumber, rule.Number + 1);
+                    }
+
+                    continue;
+                }
+
+                while (usedNumbers.Contains(nextNumber))
+                {
+                    nextNumber++;
+                }
+
+                rule.Number = nextNumber;
+                usedNumbers.Add(nextNumber);
+                if (nextNumber < int.MaxValue)
+                {
+                    nextNumber++;
                 }
             }
         }
@@ -1315,10 +1453,12 @@ namespace IntegratedImageProcessingApp.Services
                 records.Add(new ObjectDetectionMeasurementRecordSettings
                 {
                     Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", string.Empty),
+                    Number = GetInt(sections, SectionObjectDetection, prefix + ".Number", 0),
                     Name = GetValue(sections, SectionObjectDetection, prefix + ".Name", "量測線" + index.ToString(CultureInfo.InvariantCulture)),
                     Mode = GetValue(sections, SectionObjectDetection, prefix + ".Mode", "Single"),
                     Direction = GetValue(sections, SectionObjectDetection, prefix + ".Direction", "Horizontal"),
                     LineCount = GetInt(sections, SectionObjectDetection, prefix + ".LineCount", 1),
+                    LengthMode = GetValue(sections, SectionObjectDetection, prefix + ".LengthMode", "FirstContinuous"),
                     LineOrder = GetValue(sections, SectionObjectDetection, prefix + ".LineOrder", "LeftToRight"),
                     SecondLineOrder = GetValue(sections, SectionObjectDetection, prefix + ".SecondLineOrder", "LeftToRight"),
                     StartOutsideRoi = GetBool(sections, SectionObjectDetection, prefix + ".StartOutsideRoi", false),
@@ -1346,6 +1486,36 @@ namespace IntegratedImageProcessingApp.Services
             }
 
             return records;
+        }
+
+        private static List<ObjectDetectionGoodJudgementRuleSettings> ReadObjectDetectionGoodJudgementRules(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string parameterPrefix)
+        {
+            var rules = new List<ObjectDetectionGoodJudgementRuleSettings>();
+            int count = GetInt(
+                sections,
+                SectionObjectDetection,
+                parameterPrefix + ".GoodJudgementRuleCount",
+                0);
+            for (int index = 1; index <= count; index++)
+            {
+                string prefix = parameterPrefix + ".GoodJudgementRule" +
+                    index.ToString(CultureInfo.InvariantCulture);
+                rules.Add(new ObjectDetectionGoodJudgementRuleSettings
+                {
+                    Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", string.Empty),
+                    Number = GetInt(sections, SectionObjectDetection, prefix + ".Number", 0),
+                    Name = GetValue(sections, SectionObjectDetection, prefix + ".Name", "判定條件" + index.ToString(CultureInfo.InvariantCulture)),
+                    Enabled = GetBool(sections, SectionObjectDetection, prefix + ".Enabled", true),
+                    CalculationExpression = GetValue(sections, SectionObjectDetection, prefix + ".CalculationExpression", string.Empty),
+                    SpecificationExpression = GetValue(sections, SectionObjectDetection, prefix + ".SpecificationExpression", string.Empty),
+                    AlternativeCalculationExpression = GetValue(sections, SectionObjectDetection, prefix + ".AlternativeCalculationExpression", string.Empty),
+                    AlternativeSpecificationExpression = GetValue(sections, SectionObjectDetection, prefix + ".AlternativeSpecificationExpression", string.Empty)
+                });
+            }
+
+            return rules;
         }
 
         private static double GetDouble(Dictionary<string, Dictionary<string, string>> sections, string section, string key, double defaultValue)

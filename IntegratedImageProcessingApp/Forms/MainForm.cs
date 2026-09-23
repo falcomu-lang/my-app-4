@@ -277,6 +277,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string ObjectJudgementMenuText = "整合成區塊";
         private const string ObjectDefinitionMenuText = "物件定義";
         private const string ObjectDetectionParameterMenuText = "檢測參數設定";
+        private const string ObjectDetectionResultReviewMenuText = "參數結果確認";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
@@ -363,6 +364,13 @@ namespace IntegratedImageProcessingApp.Forms
                 functionListBox.Items.Insert(
                     objectDefinitionIndex < 0 ? functionListBox.Items.Count : objectDefinitionIndex + 1,
                     ObjectDetectionParameterMenuText);
+            }
+            if (!functionListBox.Items.Contains(ObjectDetectionResultReviewMenuText))
+            {
+                int objectDetectionParameterIndex = functionListBox.Items.IndexOf(ObjectDetectionParameterMenuText);
+                functionListBox.Items.Insert(
+                    objectDetectionParameterIndex < 0 ? functionListBox.Items.Count : objectDetectionParameterIndex + 1,
+                    ObjectDetectionResultReviewMenuText);
             }
             RebuildVisibleImageRelations();
             RebuildVisibleObjectJudgements();
@@ -1211,6 +1219,12 @@ namespace IntegratedImageProcessingApp.Forms
             else if (selectedFunction == ObjectDetectionParameterMenuText)
             {
                 parameterPlaceholderLabel.Text = "右鍵選擇「新增檢測參數」，建立檢測參數設定。";
+            }
+            else if (selectedFunction == ObjectDetectionResultReviewMenuText)
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text =
+                    "這裡會顯示檢測參數的結果確認內容；目前尚未開始結果確認流程。";
             }
             else if (GetObjectJudgementGroupId(selectedFunction) != null)
             {
@@ -8562,6 +8576,8 @@ namespace IntegratedImageProcessingApp.Forms
                 case ObjectDefinitionMenuText:
                     return FunctionMenuIcon.Object;
                 case ObjectDetectionParameterMenuText:
+                    return FunctionMenuIcon.Measure;
+                case ObjectDetectionResultReviewMenuText:
                     return FunctionMenuIcon.Measure;
                 case "亮度 / 對比":
                     return FunctionMenuIcon.Brightness;

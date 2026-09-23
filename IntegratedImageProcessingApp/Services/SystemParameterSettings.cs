@@ -304,12 +304,14 @@ namespace IntegratedImageProcessingApp.Services
             MeasurementMode = "Single";
             MeasurementDirection = "Horizontal";
             MeasurementLineCount = 1;
+            MeasurementLengthMode = "FirstContinuous";
             MeasurementLineConfigured = false;
             MeasurementName = "量測線1";
             MeasurementLineOrder = "LeftToRight";
             MeasurementSecondLineOrder = "LeftToRight";
             MeasurementSourceMaskDisplayName = "未指定來源 MASK";
             MeasurementRecords = new List<ObjectDetectionMeasurementRecordSettings>();
+            GoodJudgementRules = new List<ObjectDetectionGoodJudgementRuleSettings>();
         }
 
         public string Id { get; set; }
@@ -350,6 +352,8 @@ namespace IntegratedImageProcessingApp.Services
 
         public int MeasurementLineCount { get; set; }
 
+        public string MeasurementLengthMode { get; set; }
+
         public bool MeasurementLineConfigured { get; set; }
 
         public string MeasurementName { get; set; }
@@ -385,6 +389,39 @@ namespace IntegratedImageProcessingApp.Services
         public double MeasurementSecondEndY { get; set; }
 
         public List<ObjectDetectionMeasurementRecordSettings> MeasurementRecords { get; set; }
+
+        public List<ObjectDetectionGoodJudgementRuleSettings> GoodJudgementRules { get; set; }
+    }
+
+    public class ObjectDetectionGoodJudgementRuleSettings
+    {
+        public ObjectDetectionGoodJudgementRuleSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+            Number = 0;
+            Name = "判定條件";
+            Enabled = true;
+            CalculationExpression = string.Empty;
+            SpecificationExpression = string.Empty;
+            AlternativeCalculationExpression = string.Empty;
+            AlternativeSpecificationExpression = string.Empty;
+        }
+
+        public string Id { get; set; }
+
+        public int Number { get; set; }
+
+        public string Name { get; set; }
+
+        public bool Enabled { get; set; }
+
+        public string CalculationExpression { get; set; }
+
+        public string SpecificationExpression { get; set; }
+
+        public string AlternativeCalculationExpression { get; set; }
+
+        public string AlternativeSpecificationExpression { get; set; }
     }
 
     public class ObjectDetectionMeasurementRecordSettings
@@ -392,10 +429,12 @@ namespace IntegratedImageProcessingApp.Services
         public ObjectDetectionMeasurementRecordSettings()
         {
             Id = Guid.NewGuid().ToString("N");
+            Number = 0;
             Name = "量測線";
             Mode = "Single";
             Direction = "Horizontal";
             LineCount = 1;
+            LengthMode = "FirstContinuous";
             LineOrder = "LeftToRight";
             SecondLineOrder = "LeftToRight";
             SourceMaskMode = "Direct";
@@ -404,6 +443,8 @@ namespace IntegratedImageProcessingApp.Services
 
         public string Id { get; set; }
 
+        public int Number { get; set; }
+
         public string Name { get; set; }
 
         public string Mode { get; set; }
@@ -411,6 +452,8 @@ namespace IntegratedImageProcessingApp.Services
         public string Direction { get; set; }
 
         public int LineCount { get; set; }
+
+        public string LengthMode { get; set; }
 
         public string LineOrder { get; set; }
 
