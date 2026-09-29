@@ -35,6 +35,13 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private enum DefectCoreDisplayOption
+        {
+            Mask,
+            DarkDefectBoxes,
+            BrightDefectBoxes
+        }
+
         private TabControl BuildObjectDetectionDefectCoreTabs(
             ObjectDetectionParameterSettings parameter)
         {
@@ -136,13 +143,33 @@ namespace IntegratedImageProcessingApp.Forms
             var bar = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 42,
-                Padding = new Padding(2, 4, 2, 4)
+                Height = 118,
+                Padding = new Padding(2, 2, 2, 2)
+            };
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32f));
+
+            var displayOptions = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false,
+                Padding = Padding.Empty,
+                Margin = Padding.Empty,
+                AutoScroll = false
             };
             var buttons = new FlowLayoutPanel
             {
-                Dock = DockStyle.Right,
-                Width = 176,
+                Dock = DockStyle.Fill,
                 FlowDirection = FlowDirection.RightToLeft,
                 WrapContents = false,
                 Padding = Padding.Empty,
@@ -154,59 +181,66 @@ namespace IntegratedImageProcessingApp.Forms
             apply.Click += async delegate { await ApplyObjectDetectionDefectCoreDraftAsync(parameter, coreIndex); };
 
             ObjectDetectionDefectCoreSettings core = objectDetectionDefectCoreDrafts[coreIndex];
-            var displayOptions = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Left,
-                Width = 206,
-                Height = 30,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                Padding = Padding.Empty,
-                Margin = Padding.Empty
-            };
             var showMask = new CheckBox
             {
                 Text = "顯示 MASK",
                 AutoSize = true,
                 Checked = core.ShowMask,
-                Margin = new Padding(2, 5, 8, 0)
+                Margin = new Padding(2, 2, 0, 0)
             };
-            var showRedBoxes = new CheckBox
+            var showDarkDefectBoxes = new CheckBox
             {
-                Text = "顯示紅框",
+                Text = "顯示紅框(暗檢出)",
                 AutoSize = true,
                 Checked = core.ShowRedBoxes,
-                Margin = new Padding(2, 5, 0, 0)
+                Margin = new Padding(2, 2, 0, 0)
+            };
+            var showBrightDefectBoxes = new CheckBox
+            {
+                Text = "顯示橘框(亮檢出)",
+                AutoSize = true,
+                Checked = core.ShowOrangeBoxes,
+                Margin = new Padding(2, 2, 0, 0)
             };
             showMask.CheckedChanged += delegate
             {
                 UpdateObjectDetectionDefectCoreDisplayOption(
                     parameter,
                     coreIndex,
-                    true,
+                    DefectCoreDisplayOption.Mask,
                     showMask.Checked);
             };
-            showRedBoxes.CheckedChanged += delegate
+            showDarkDefectBoxes.CheckedChanged += delegate
             {
                 UpdateObjectDetectionDefectCoreDisplayOption(
                     parameter,
                     coreIndex,
-                    false,
-                    showRedBoxes.Checked);
+                    DefectCoreDisplayOption.DarkDefectBoxes,
+                    showDarkDefectBoxes.Checked);
+            };
+            showBrightDefectBoxes.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionDefectCoreDisplayOption(
+                    parameter,
+                    coreIndex,
+                    DefectCoreDisplayOption.BrightDefectBoxes,
+                    showBrightDefectBoxes.Checked);
             };
             displayOptions.Controls.Add(showMask);
-            displayOptions.Controls.Add(showRedBoxes);
-            bar.Controls.Add(displayOptions);
+            displayOptions.Controls.Add(showDarkDefectBoxes);
+            displayOptions.Controls.Add(showBrightDefectBoxes);
             buttons.Controls.Add(cancel);
             buttons.Controls.Add(apply);
-            bar.Controls.Add(buttons);
+            layout.Controls.Add(displayOptions, 0, 0);
+            layout.Controls.Add(buttons, 0, 1);
+            bar.Controls.Add(layout);
             return bar;
         }
 
         private void UpdateObjectDetectionDefectCoreDisplayOption(
             ObjectDetectionParameterSettings parameter,
             int coreIndex,
-            bool showMask,
+            DefectCoreDisplayOption option,
             bool enabled)
         {
             if (parameter == null || coreIndex < 0 || coreIndex >= 4)
@@ -217,15 +251,20 @@ namespace IntegratedImageProcessingApp.Forms
             EnsureObjectDetectionDefectCores(parameter);
             ObjectDetectionDefectCoreSettings persistedCore =
                 parameter.DefectDetectionCores[coreIndex];
-            if (showMask)
+            switch (option)
             {
-                objectDetectionDefectCoreDrafts[coreIndex].ShowMask = enabled;
-                persistedCore.ShowMask = enabled;
-            }
-            else
-            {
-                objectDetectionDefectCoreDrafts[coreIndex].ShowRedBoxes = enabled;
-                persistedCore.ShowRedBoxes = enabled;
+                case DefectCoreDisplayOption.Mask:
+                    objectDetectionDefectCoreDrafts[coreIndex].ShowMask = enabled;
+                    persistedCore.ShowMask = enabled;
+                    break;
+                case DefectCoreDisplayOption.DarkDefectBoxes:
+                    objectDetectionDefectCoreDrafts[coreIndex].ShowRedBoxes = enabled;
+                    persistedCore.ShowRedBoxes = enabled;
+                    break;
+                case DefectCoreDisplayOption.BrightDefectBoxes:
+                    objectDetectionDefectCoreDrafts[coreIndex].ShowOrangeBoxes = enabled;
+                    persistedCore.ShowOrangeBoxes = enabled;
+                    break;
             }
 
             SaveSystemParameters();

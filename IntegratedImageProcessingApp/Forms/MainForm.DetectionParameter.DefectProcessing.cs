@@ -704,7 +704,8 @@ namespace IntegratedImageProcessingApp.Forms
                 MinimumHeightMillimeters = source.MinimumHeightMillimeters,
                 MaximumHeightMillimeters = source.MaximumHeightMillimeters,
                 ShowMask = source.ShowMask,
-                ShowRedBoxes = source.ShowRedBoxes
+                ShowRedBoxes = source.ShowRedBoxes,
+                ShowOrangeBoxes = source.ShowOrangeBoxes
             };
         }
 
@@ -811,10 +812,9 @@ namespace IntegratedImageProcessingApp.Forms
             try
             {
                 progress?.Report("ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
-                    objectCount.ToString(CultureInfo.CurrentCulture) + "：正在擷取影像並轉換灰階...");
+                    objectCount.ToString(CultureInfo.CurrentCulture) + "：正在準備 ROI 影像區塊...");
                 Stopwatch roiPreparationStopwatch = Stopwatch.StartNew();
-                using (Bitmap bitmap = source.CreateRegionBitmapFromTiles(crop))
-                using (Cv.Mat gray = CreateOpenCvGrayMat(bitmap))
+                using (Cv.Mat gray = CreateObjectDetectionDefectGrayRegionMat(source, crop))
                 using (var polygonMask = new Cv.Mat(
                     crop.Height,
                     crop.Width,
@@ -949,6 +949,21 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return result;
+        }
+
+        private static Cv.Mat CreateObjectDetectionDefectGrayRegionMat(
+            LargeImageSource source,
+            Rectangle sourceRect)
+        {
+            if (source.IsMemoryBacked)
+            {
+                return source.CreateGrayscaleMatView(sourceRect);
+            }
+
+            using (Bitmap bitmap = source.CreateRegionBitmapFromTiles(sourceRect))
+            {
+                return CreateOpenCvGrayMat(bitmap);
+            }
         }
 
         private static Cv.Mat ApplyObjectDetectionDefectPreprocessing(
@@ -1477,20 +1492,22 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            if (core.ShowRedBoxes)
+            if (core.ShowRedBoxes || core.ShowOrangeBoxes)
             {
-                using (var defectPen = new Pen(Color.Red, Math.Max(1f, 2f * zoom)))
+                using (var darkDefectPen = new Pen(Color.Red, Math.Max(1f, 2f * zoom)))
+                using (var brightDefectPen = new Pen(Color.DarkOrange, Math.Max(1f, 2f * zoom)))
                 {
                     foreach (ObjectDetectionDefectContour contour in result.Contours)
                     {
-                        if (!contour.Bounds.IntersectsWith(visibleBounds))
+                        if (!(contour.IsBright ? core.ShowOrangeBoxes : core.ShowRedBoxes) ||
+                            !contour.Bounds.IntersectsWith(visibleBounds))
                         {
                             continue;
                         }
 
                         RectangleF bounds = contour.Bounds;
                         graphics.DrawRectangle(
-                            defectPen,
+                            contour.IsBright ? brightDefectPen : darkDefectPen,
                             offset.X + bounds.X * zoom,
                             offset.Y + bounds.Y * zoom,
                             Math.Max(1f, bounds.Width * zoom),

@@ -1113,6 +1113,7 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.MaximumHeightMillimeters={1}", corePrefix, core.MaximumHeightMillimeters.ToString("R", CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.ShowMask={1}", corePrefix, core.ShowMask ? "1" : "0");
                         writer.WriteLine("{0}.ShowRedBoxes={1}", corePrefix, core.ShowRedBoxes ? "1" : "0");
+                        writer.WriteLine("{0}.ShowOrangeBoxes={1}", corePrefix, core.ShowOrangeBoxes ? "1" : "0");
                     }
                     List<ObjectDetectionMeasurementRecordSettings> measurementRecords =
                         parameter.MeasurementRecords ?? new List<ObjectDetectionMeasurementRecordSettings>();
@@ -1991,11 +1992,17 @@ namespace IntegratedImageProcessingApp.Services
                     SectionObjectDetection,
                     prefix + ".ShowMask",
                     defaults.ShowMask);
-                defaults.ShowRedBoxes = GetBool(
+                bool showLegacyDefectBoxes = GetBool(
                     sections,
                     SectionObjectDetection,
                     prefix + ".ShowRedBoxes",
                     defaults.ShowRedBoxes);
+                defaults.ShowRedBoxes = showLegacyDefectBoxes;
+                defaults.ShowOrangeBoxes = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ShowOrangeBoxes",
+                    showLegacyDefectBoxes);
                 cores.Add(defaults);
             }
 

@@ -313,6 +313,7 @@ namespace IntegratedImageProcessingApp.Services
             MaximumHeightMillimeters = 0;
             ShowMask = true;
             ShowRedBoxes = true;
+            ShowOrangeBoxes = true;
         }
 
         public string Id { get; set; }
@@ -362,6 +363,8 @@ namespace IntegratedImageProcessingApp.Services
         public bool ShowMask { get; set; }
 
         public bool ShowRedBoxes { get; set; }
+
+        public bool ShowOrangeBoxes { get; set; }
     }
 
     public class ObjectDetectionParameterSettings
