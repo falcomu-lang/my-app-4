@@ -694,19 +694,33 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             int number = (int)button.Tag;
-            selectedObjectDetectionNumber = number;
-            UpdateObjectDetectionNumberButtonState(
-                FindObjectDetectionParameter(activeObjectDetectionParameterId));
-
             ObjectDetectionParameterSettings parameter =
                 FindObjectDetectionParameter(activeObjectDetectionParameterId);
             bool defectSettingsSelected = objectDetectionParameterTabControl != null &&
                 objectDetectionParameterTabControl.SelectedIndex == 4;
+            bool clearDefectObjectSelection = defectSettingsSelected &&
+                selectedObjectDetectionNumber == number;
+            selectedObjectDetectionNumber = clearDefectObjectSelection ? -1 : number;
+            UpdateObjectDetectionNumberButtonState(
+                parameter);
+
             if (defectSettingsSelected)
             {
                 CancelObjectDetectionDefectInspectionRegionDraftForObjectChange(number);
             }
             UpdateObjectDetectionDefectInspectionRegionControls(parameter);
+            if (clearDefectObjectSelection)
+            {
+                if (objectDetectionDefectDisplayControl != null)
+                {
+                    objectDetectionDefectDisplayControl.InvalidateImageView();
+                }
+                statusLabel.Text = parameter == null
+                    ? "目前未選取物件"
+                    : parameter.DisplayName + "：目前未選取物件";
+                return;
+            }
+
             ObjectDefinitionSettings definition = parameter == null ||
                 string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId)
                 ? null
