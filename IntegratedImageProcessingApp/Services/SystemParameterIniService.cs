@@ -702,6 +702,28 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectParallelExecutionEnabled",
                         false),
+                    DefectIntegrationMergeDark = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectIntegrationMergeDark",
+                        false),
+                    DefectIntegrationMergeBright = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectIntegrationMergeBright",
+                        false),
+                    DefectIntegrationMergeDarkBright = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectIntegrationMergeDarkBright",
+                        false),
+                    DefectIntegrationMergeDistancePixels = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectIntegrationMergeDistancePixels",
+                        0,
+                        0,
+                        1000000),
                     DefectDetectionCores = ReadObjectDetectionDefectCores(
                         sections,
                         prefix)
@@ -1073,6 +1095,10 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectInspectionRegionRight={1}", prefix, parameter.DefectInspectionRegionRight.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectInspectionRegionBottom={1}", prefix, parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectParallelExecutionEnabled={1}", prefix, parameter.DefectParallelExecutionEnabled ? "1" : "0");
+                    writer.WriteLine("{0}.DefectIntegrationMergeDark={1}", prefix, parameter.DefectIntegrationMergeDark ? "1" : "0");
+                    writer.WriteLine("{0}.DefectIntegrationMergeBright={1}", prefix, parameter.DefectIntegrationMergeBright ? "1" : "0");
+                    writer.WriteLine("{0}.DefectIntegrationMergeDarkBright={1}", prefix, parameter.DefectIntegrationMergeDarkBright ? "1" : "0");
+                    writer.WriteLine("{0}.DefectIntegrationMergeDistancePixels={1}", prefix, parameter.DefectIntegrationMergeDistancePixels.ToString("R", CultureInfo.InvariantCulture));
                     List<ObjectDetectionDefectCoreSettings> defectCores =
                         parameter.DefectDetectionCores ?? new List<ObjectDetectionDefectCoreSettings>();
                     writer.WriteLine(

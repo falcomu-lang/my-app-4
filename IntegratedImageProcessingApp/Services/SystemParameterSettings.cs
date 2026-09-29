@@ -436,6 +436,10 @@ namespace IntegratedImageProcessingApp.Services
             DefectInspectionRegionRight = 1;
             DefectInspectionRegionBottom = 1;
             DefectParallelExecutionEnabled = false;
+            DefectIntegrationMergeDark = false;
+            DefectIntegrationMergeBright = false;
+            DefectIntegrationMergeDarkBright = false;
+            DefectIntegrationMergeDistancePixels = 0;
             DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
             {
                 new ObjectDetectionDefectCoreSettings { CoreKey = "FlatField" },
@@ -604,6 +608,14 @@ namespace IntegratedImageProcessingApp.Services
         public double DefectInspectionRegionBottom { get; set; }
 
         public bool DefectParallelExecutionEnabled { get; set; }
+
+        public bool DefectIntegrationMergeDark { get; set; }
+
+        public bool DefectIntegrationMergeBright { get; set; }
+
+        public bool DefectIntegrationMergeDarkBright { get; set; }
+
+        public double DefectIntegrationMergeDistancePixels { get; set; }
 
         public List<ObjectDetectionDefectCoreSettings> DefectDetectionCores { get; set; }
     }

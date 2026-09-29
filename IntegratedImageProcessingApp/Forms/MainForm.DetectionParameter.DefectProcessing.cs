@@ -561,6 +561,7 @@ namespace IntegratedImageProcessingApp.Forms
                     currentResults[item.Key] = item.Value;
                 }
                 resultsStored = true;
+                InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
                 objectDetectionDefectLastRunCompleted = true;
                 foreach (string updatedCoreKey in results.Keys)
                 {
@@ -576,6 +577,8 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     combinedDisplay.InvalidateImageView();
                 }
+                RefreshObjectDetectionDefectIntegrationRoiSelector(parameter);
+                RefreshObjectDetectionDefectIntegrationResults(parameter);
             }
             catch (OutOfMemoryException)
             {
@@ -1134,6 +1137,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void RemoveObjectDetectionDefectCoreResult(string parameterId, string coreKey)
         {
+            InvalidateObjectDetectionDefectIntegrationCache(parameterId);
             Dictionary<string, ObjectDetectionDefectCoreResult> byCore;
             if (string.IsNullOrWhiteSpace(parameterId) ||
                 !objectDetectionDefectCoreResults.TryGetValue(parameterId, out byCore))
@@ -1155,6 +1159,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void RemoveObjectDetectionDefectCoreResults(string parameterId)
         {
+            InvalidateObjectDetectionDefectIntegrationCache(parameterId);
             Dictionary<string, ObjectDetectionDefectCoreResult> byCore;
             if (string.IsNullOrWhiteSpace(parameterId) ||
                 !objectDetectionDefectCoreResults.TryGetValue(parameterId, out byCore))
@@ -1168,6 +1173,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ClearObjectDetectionDefectCoreResults()
         {
+            InvalidateObjectDetectionDefectIntegrationCache(null);
             foreach (Dictionary<string, ObjectDetectionDefectCoreResult> byCore in
                 objectDetectionDefectCoreResults.Values)
             {
@@ -1545,26 +1551,12 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            EnsureObjectDetectionDefectCores(parameter);
-            RectangleF visibleBounds = visibleSourceRect;
-            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
-                .Take(ObjectDetectionDefectCoreKeys.Length)
-                .Where(item => item != null &&
-                    (string.Equals(item.CoreKey, "FlatField", StringComparison.Ordinal) || item.Enabled)))
-            {
-                ObjectDetectionDefectCoreResult result;
-                if (TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out result) &&
-                    result.Contours != null)
-                {
-                    DrawObjectDetectionDefectCoreBoxes(
-                        graphics,
-                        zoom,
-                        offset,
-                        visibleBounds,
-                        core,
-                        result.Contours);
-                }
-            }
+            DrawObjectDetectionDefectIntegrationGroups(
+                graphics,
+                zoom,
+                offset,
+                visibleSourceRect,
+                parameter);
         }
 
         private static void DrawObjectDetectionDefectCoreBoxes(

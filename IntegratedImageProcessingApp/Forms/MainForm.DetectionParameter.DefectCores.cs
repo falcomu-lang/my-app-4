@@ -60,8 +60,17 @@ namespace IntegratedImageProcessingApp.Forms
                 tabs.TabPages.Count - 1));
             tabs.SelectedIndexChanged += delegate
             {
-                selectedObjectDetectionDefectCoreIndex = tabs.SelectedIndex;
+                if (tabs.SelectedIndex < ObjectDetectionDefectCoreKeys.Length)
+                {
+                    selectedObjectDetectionDefectCoreIndex = tabs.SelectedIndex;
+                }
                 SelectObjectDetectionDefectDisplayForCore(tabs.SelectedIndex);
+                ObjectDetectionParameterSettings activeParameter =
+                    FindObjectDetectionParameter(activeObjectDetectionParameterId);
+                if (activeParameter != null)
+                {
+                    RefreshObjectDetectionDefectIntegrationResults(activeParameter);
+                }
                 if (objectDetectionDefectDisplayControl != null)
                 {
                     objectDetectionDefectDisplayControl.InvalidateImageView();
@@ -115,6 +124,7 @@ namespace IntegratedImageProcessingApp.Forms
                 page.Controls.Add(scrollPanel);
                 tabs.TabPages.Add(page);
             }
+            tabs.TabPages.Add(BuildObjectDetectionDefectIntegrationTab(parameter));
             ResizeObjectDetectionDefectCoreTabsToContent();
         }
 
@@ -468,6 +478,12 @@ namespace IntegratedImageProcessingApp.Forms
             int index = objectDetectionDefectCoreTabs == null
                 ? selectedObjectDetectionDefectCoreIndex
                 : objectDetectionDefectCoreTabs.SelectedIndex;
+            if (index >= ObjectDetectionDefectCoreKeys.Length)
+            {
+                index = Math.Max(0, Math.Min(
+                    selectedObjectDetectionDefectCoreIndex,
+                    ObjectDetectionDefectCoreKeys.Length - 1));
+            }
             switch (index)
             {
                 case 1: return "Contrast1";

@@ -775,13 +775,16 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter)
         {
             if (objectDetectionObjectNumberPanel == null &&
-                objectDetectionDefectObjectNumberPanel == null)
+                objectDetectionDefectObjectNumberPanel == null &&
+                objectDetectionDefectIntegrationRoiSelector == null)
             {
                 return;
             }
 
             UpdateObjectDetectionNumberButtonState(objectDetectionObjectNumberPanel);
             UpdateObjectDetectionNumberButtonState(objectDetectionDefectObjectNumberPanel);
+            UpdateObjectDetectionDefectIntegrationRoiButtonState();
+            RefreshObjectDetectionDefectIntegrationResults(parameter);
         }
 
         private void UpdateObjectDetectionNumberButtonState(TableLayoutPanel numberPanel)
