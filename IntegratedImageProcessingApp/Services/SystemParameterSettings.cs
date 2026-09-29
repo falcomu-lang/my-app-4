@@ -302,8 +302,10 @@ namespace IntegratedImageProcessingApp.Services
             DarkThreshold = 0;
             BrightThresholdEnabled = false;
             BrightThreshold = 255;
+            ErodeEnabled = false;
             ErodeKernelSize = 3;
             ErodeIterations = 0;
+            DilateEnabled = false;
             DilateKernelSize = 3;
             DilateIterations = 0;
             MinimumArea = 0;
@@ -343,9 +345,13 @@ namespace IntegratedImageProcessingApp.Services
 
         public int BrightThreshold { get; set; }
 
+        public bool ErodeEnabled { get; set; }
+
         public int ErodeKernelSize { get; set; }
 
         public int ErodeIterations { get; set; }
+
+        public bool DilateEnabled { get; set; }
 
         public int DilateKernelSize { get; set; }
 

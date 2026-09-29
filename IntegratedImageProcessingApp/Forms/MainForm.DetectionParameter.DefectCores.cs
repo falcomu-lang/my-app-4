@@ -724,26 +724,56 @@ namespace IntegratedImageProcessingApp.Forms
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 29));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 29));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            var erodeEnabled = new CheckBox
+            {
+                AutoSize = true,
+                Text = "侵蝕 (E)",
+                Checked = core.ErodeEnabled,
+                Anchor = AnchorStyles.Left
+            };
             NumericUpDown erodeKernel = CreateOddDefectCoreNumber(core.ErodeKernelSize, 1);
             NumericUpDown erodeIterations = CreateDefectCoreNumber(0m, 20m, 1m, 0,
                 Math.Max(0, Math.Min(20, core.ErodeIterations)));
+            var dilateEnabled = new CheckBox
+            {
+                AutoSize = true,
+                Text = "膨脹 (D)",
+                Checked = core.DilateEnabled,
+                Anchor = AnchorStyles.Left
+            };
             NumericUpDown dilateKernel = CreateOddDefectCoreNumber(core.DilateKernelSize, 1);
             NumericUpDown dilateIterations = CreateDefectCoreNumber(0m, 20m, 1m, 0,
                 Math.Max(0, Math.Min(20, core.DilateIterations)));
-            layout.Controls.Add(CreateDefectCoreLabel("侵蝕 E 核心"), 0, 0);
+            layout.Controls.Add(erodeEnabled, 0, 0);
             layout.Controls.Add(erodeKernel, 1, 0);
             layout.Controls.Add(CreateDefectCoreLabel("迭代"), 2, 0);
             layout.Controls.Add(erodeIterations, 3, 0);
-            layout.Controls.Add(CreateDefectCoreLabel("膨脹 D 核心"), 0, 1);
+            layout.Controls.Add(dilateEnabled, 0, 1);
             layout.Controls.Add(dilateKernel, 1, 1);
             layout.Controls.Add(CreateDefectCoreLabel("迭代"), 2, 1);
             layout.Controls.Add(dilateIterations, 3, 1);
             var orderHint = CreateDefectCoreLabel(
-                "暗、亮 MASK 分別處理；順序為 E 後 D，迭代 0 表示略過。");
+                "勾選才執行；暗、亮 MASK 分別處理，順序 E 後 D；迭代 0 仍略過。");
             layout.Controls.Add(orderHint, 0, 2);
             layout.SetColumnSpan(orderHint, 4);
             group.Controls.Add(layout);
 
+            erodeEnabled.CheckedChanged += delegate
+            {
+                core.ErodeEnabled = erodeEnabled.Checked;
+                erodeKernel.Enabled = erodeEnabled.Checked;
+                erodeIterations.Enabled = erodeEnabled.Checked;
+            };
+            dilateEnabled.CheckedChanged += delegate
+            {
+                core.DilateEnabled = dilateEnabled.Checked;
+                dilateKernel.Enabled = dilateEnabled.Checked;
+                dilateIterations.Enabled = dilateEnabled.Checked;
+            };
+            erodeKernel.Enabled = core.ErodeEnabled;
+            erodeIterations.Enabled = core.ErodeEnabled;
+            dilateKernel.Enabled = core.DilateEnabled;
+            dilateIterations.Enabled = core.DilateEnabled;
             BindDefectCoreNumber(erodeKernel, delegate(int value) { core.ErodeKernelSize = value; });
             BindDefectCoreNumber(erodeIterations, delegate(int value) { core.ErodeIterations = value; });
             BindDefectCoreNumber(dilateKernel, delegate(int value) { core.DilateKernelSize = value; });

@@ -720,8 +720,10 @@ namespace IntegratedImageProcessingApp.Forms
                 DarkThreshold = source.DarkThreshold,
                 BrightThresholdEnabled = source.BrightThresholdEnabled,
                 BrightThreshold = source.BrightThreshold,
+                ErodeEnabled = source.ErodeEnabled,
                 ErodeKernelSize = source.ErodeKernelSize,
                 ErodeIterations = source.ErodeIterations,
+                DilateEnabled = source.DilateEnabled,
                 DilateKernelSize = source.DilateKernelSize,
                 DilateIterations = source.DilateIterations,
                 MinimumArea = source.MinimumArea,
@@ -771,8 +773,10 @@ namespace IntegratedImageProcessingApp.Forms
                 core.DarkThreshold.ToString(CultureInfo.InvariantCulture),
                 core.BrightThresholdEnabled ? "1" : "0",
                 core.BrightThreshold.ToString(CultureInfo.InvariantCulture),
+                core.ErodeEnabled ? "1" : "0",
                 core.ErodeKernelSize.ToString(CultureInfo.InvariantCulture),
                 core.ErodeIterations.ToString(CultureInfo.InvariantCulture),
+                core.DilateEnabled ? "1" : "0",
                 core.DilateKernelSize.ToString(CultureInfo.InvariantCulture),
                 core.DilateIterations.ToString(CultureInfo.InvariantCulture),
                 core.MinimumArea.ToString("R", CultureInfo.InvariantCulture),
@@ -1307,7 +1311,7 @@ namespace IntegratedImageProcessingApp.Forms
             Cv.Mat current = source.Clone();
             try
             {
-                if (core.ErodeIterations > 0)
+                if (core.ErodeEnabled && core.ErodeIterations > 0)
                 {
                     using (Cv.Mat kernel = Cv.Cv2.GetStructuringElement(
                         Cv.MorphShapes.Rect,
@@ -1329,7 +1333,7 @@ namespace IntegratedImageProcessingApp.Forms
                         }
                     }
                 }
-                if (core.DilateIterations > 0)
+                if (core.DilateEnabled && core.DilateIterations > 0)
                 {
                     using (Cv.Mat kernel = Cv.Cv2.GetStructuringElement(
                         Cv.MorphShapes.Rect,

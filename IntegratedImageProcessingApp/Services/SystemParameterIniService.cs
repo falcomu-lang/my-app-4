@@ -1102,8 +1102,10 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.DarkThreshold={1}", corePrefix, core.DarkThreshold.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.BrightThresholdEnabled={1}", corePrefix, core.BrightThresholdEnabled ? "1" : "0");
                         writer.WriteLine("{0}.BrightThreshold={1}", corePrefix, core.BrightThreshold.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.ErodeEnabled={1}", corePrefix, core.ErodeEnabled ? "1" : "0");
                         writer.WriteLine("{0}.ErodeKernelSize={1}", corePrefix, core.ErodeKernelSize.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.ErodeIterations={1}", corePrefix, core.ErodeIterations.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.DilateEnabled={1}", corePrefix, core.DilateEnabled ? "1" : "0");
                         writer.WriteLine("{0}.DilateKernelSize={1}", corePrefix, core.DilateKernelSize.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.DilateIterations={1}", corePrefix, core.DilateIterations.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.MinimumArea={1}", corePrefix, core.MinimumArea.ToString("R", CultureInfo.InvariantCulture));
@@ -1943,6 +1945,11 @@ namespace IntegratedImageProcessingApp.Services
                     SectionObjectDetection,
                     prefix + ".ErodeIterations",
                     defaults.ErodeIterations));
+                defaults.ErodeEnabled = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ErodeEnabled",
+                    defaults.ErodeIterations > 0);
                 defaults.DilateKernelSize = NormalizeOddKernelSize(GetInt(
                     sections,
                     SectionObjectDetection,
@@ -1953,6 +1960,11 @@ namespace IntegratedImageProcessingApp.Services
                     SectionObjectDetection,
                     prefix + ".DilateIterations",
                     defaults.DilateIterations));
+                defaults.DilateEnabled = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".DilateEnabled",
+                    defaults.DilateIterations > 0);
                 defaults.MinimumArea = GetClampedFiniteDouble(
                     sections,
                     SectionObjectDetection,
