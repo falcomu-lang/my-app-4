@@ -1559,13 +1559,16 @@ namespace IntegratedImageProcessingApp.Forms
                     " 個；缺陷檢測完成；" + executionMode + "實際耗時 " +
                     result.TotalElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms（不含畫面顯示）";
                 SetObjectDetectionDefectRegionStatus(
-                    "缺陷檢測完成；各 ROI 累計時間（平行時不等於實際經過時間）：\r\n" +
-                    "ROI 影像準備 " + result.RoiPreparationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    " ms；對比調整 " + result.ContrastAdjustmentElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    " ms；前處理 " + result.PreprocessingElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms\r\n" +
-                    "缺陷分析 " + result.DefectAnalysisElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    " ms；預覽圖產生 " + result.PreviewGenerationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    " ms；此核心累計 " + result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms");
+                    executionMode + "運算實際經過時間 " +
+                    result.TotalElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    " ms（不含畫面顯示）\r\n" +
+                    "以下是工作時間加總；平行時不代表實際等待時間：\r\n" +
+                    "ROI 準備 " + result.RoiPreparationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    "；對比 " + result.ContrastAdjustmentElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    "；前處理 " + result.PreprocessingElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms\r\n" +
+                    "分析 " + result.DefectAnalysisElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    "；預覽 " + result.PreviewGenerationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    "；此核心各 ROI 耗時加總 " + result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms");
             }
             else
             {
