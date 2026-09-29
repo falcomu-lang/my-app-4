@@ -582,7 +582,8 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (displayIndex == ObjectDetectionDefectCoreKeys.Length)
+            if (!display.IsViewInteractionInProgress &&
+                displayIndex == ObjectDetectionDefectCoreKeys.Length)
             {
                 DrawObjectDetectionDefectCompositeCoreFrames(
                     e.Graphics,
@@ -590,7 +591,7 @@ namespace IntegratedImageProcessingApp.Forms
                     e.Offset,
                     e.VisibleSourceRect);
             }
-            else
+            else if (!display.IsViewInteractionInProgress)
             {
                 DrawObjectDetectionDefectCoreResult(
                     e.Graphics,

@@ -83,6 +83,11 @@ namespace IntegratedImageProcessingApp.Controls
             get { return _isPanning || _isSynchronizedPanning || _isResizingRoi; }
         }
 
+        public bool IsViewInteractionInProgress
+        {
+            get { return IsPanning || IsZoomSettling(); }
+        }
+
         public ImageDisplayControl()
         {
             InitializeComponent();
@@ -320,6 +325,7 @@ namespace IntegratedImageProcessingApp.Controls
             {
                 FitImageToView();
                 UpdateStatusLabel();
+                MarkViewZoomChanged();
                 viewerPanel.Invalidate();
                 if (notify)
                 {
@@ -684,28 +690,9 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             UpdateStatusLabel();
-            _lastZoomUtc = DateTime.UtcNow;
+            MarkViewZoomChanged();
             viewerPanel.Invalidate();
             OnViewChanged();
-            Task.Delay(ZoomSettleIntervalMs).ContinueWith(
-                delegate
-                {
-                    if (IsDisposed || (DateTime.UtcNow - _lastZoomUtc).TotalMilliseconds < ZoomSettleIntervalMs)
-                    {
-                        return;
-                    }
-
-                    try
-                    {
-                        BeginInvoke(new Action(delegate { viewerPanel.Invalidate(); }));
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                    }
-                    catch (InvalidOperationException)
-                    {
-                    }
-                });
         }
 
         public void SetDisplayImage(Bitmap bitmap, bool preserveView)
@@ -739,6 +726,7 @@ namespace IntegratedImageProcessingApp.Controls
                 return;
             }
 
+            MarkViewZoomChanged();
             UpdateStatusLabel();
             viewerPanel.Invalidate();
             OnViewChanged();
@@ -856,6 +844,7 @@ namespace IntegratedImageProcessingApp.Controls
                     e.Y - (imageY * newZoom));
             }
 
+            MarkViewZoomChanged();
             UpdateStatusLabel();
             viewerPanel.Invalidate();
             OnViewChanged();
@@ -1531,6 +1520,31 @@ namespace IntegratedImageProcessingApp.Controls
         private bool IsZoomSettling()
         {
             return (DateTime.UtcNow - _lastZoomUtc).TotalMilliseconds < ZoomSettleIntervalMs;
+        }
+
+        private void MarkViewZoomChanged()
+        {
+            _lastZoomUtc = DateTime.UtcNow;
+            Task.Delay(ZoomSettleIntervalMs).ContinueWith(
+                delegate
+                {
+                    if (IsDisposed ||
+                        (DateTime.UtcNow - _lastZoomUtc).TotalMilliseconds < ZoomSettleIntervalMs)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        BeginInvoke(new Action(delegate { viewerPanel.Invalidate(); }));
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+                });
         }
 
         private static bool ShouldDrawCachedTilesWhilePanning(float zoom, Rectangle visibleSourceRect)
