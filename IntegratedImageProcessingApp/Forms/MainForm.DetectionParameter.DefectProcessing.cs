@@ -38,6 +38,18 @@ namespace IntegratedImageProcessingApp.Forms
 
             public long TotalElapsedMilliseconds { get; set; }
 
+            public long RoiPreparationElapsedMilliseconds { get; set; }
+
+            public long ContrastAdjustmentElapsedMilliseconds { get; set; }
+
+            public long PreprocessingElapsedMilliseconds { get; set; }
+
+            public long DefectAnalysisElapsedMilliseconds { get; set; }
+
+            public long PreviewGenerationElapsedMilliseconds { get; set; }
+
+            public bool ParallelExecutionEnabled { get; set; }
+
             public int DetectedComponentCount { get; set; }
 
             public List<ObjectDetectionDefectContour> Contours { get; set; }
@@ -59,6 +71,16 @@ namespace IntegratedImageProcessingApp.Forms
             public List<ObjectDetectionDefectContour>[] ContoursByCore { get; set; }
 
             public long[] ElapsedTicksByCore { get; set; }
+
+            public long RoiPreparationElapsedTicks { get; set; }
+
+            public long[] ContrastAdjustmentElapsedTicksByCore { get; set; }
+
+            public long[] PreprocessingElapsedTicksByCore { get; set; }
+
+            public long[] DefectAnalysisElapsedTicksByCore { get; set; }
+
+            public long[] PreviewGenerationElapsedTicksByCore { get; set; }
 
             public ObjectDetectionDefectProcessedPatch[] ProcessedPatchesByCore { get; set; }
         }
@@ -334,6 +356,11 @@ namespace IntegratedImageProcessingApp.Forms
                         var roiCoreContours = new List<ObjectDetectionDefectContour>[coreSettings.Count, objects.Count];
                         var roiCorePatches = new ObjectDetectionDefectProcessedPatch[coreSettings.Count, objects.Count];
                         var coreElapsedTicks = new long[coreSettings.Count];
+                        var contrastAdjustmentElapsedTicks = new long[coreSettings.Count];
+                        var preprocessingElapsedTicks = new long[coreSettings.Count];
+                        var defectAnalysisElapsedTicks = new long[coreSettings.Count];
+                        var previewGenerationElapsedTicks = new long[coreSettings.Count];
+                        long roiPreparationElapsedTicks = 0;
                         int completedRois = 0;
                         Action<int> processRoi = delegate(int objectIndex)
                         {
@@ -355,9 +382,24 @@ namespace IntegratedImageProcessingApp.Forms
                                 roiCorePatches[coreIndex, objectIndex] =
                                     objectResult.ProcessedPatchesByCore[coreIndex];
                                 System.Threading.Interlocked.Add(
+                                    ref contrastAdjustmentElapsedTicks[coreIndex],
+                                    objectResult.ContrastAdjustmentElapsedTicksByCore[coreIndex]);
+                                System.Threading.Interlocked.Add(
+                                    ref preprocessingElapsedTicks[coreIndex],
+                                    objectResult.PreprocessingElapsedTicksByCore[coreIndex]);
+                                System.Threading.Interlocked.Add(
+                                    ref defectAnalysisElapsedTicks[coreIndex],
+                                    objectResult.DefectAnalysisElapsedTicksByCore[coreIndex]);
+                                System.Threading.Interlocked.Add(
+                                    ref previewGenerationElapsedTicks[coreIndex],
+                                    objectResult.PreviewGenerationElapsedTicksByCore[coreIndex]);
+                                System.Threading.Interlocked.Add(
                                     ref coreElapsedTicks[coreIndex],
                                     objectResult.ElapsedTicksByCore[coreIndex]);
                             }
+                            System.Threading.Interlocked.Add(
+                                ref roiPreparationElapsedTicks,
+                                objectResult.RoiPreparationElapsedTicks);
 
                             int completed = System.Threading.Interlocked.Increment(ref completedRois);
                             string coreProgress = runAllCores
@@ -405,8 +447,23 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             ObjectDetectionDefectCoreSettings core = coreSettings[coreIndex];
                             ObjectDetectionDefectCoreResult coreResult = output[core.CoreKey];
-                            coreResult.ElapsedMilliseconds = (long)Math.Round(
-                                coreElapsedTicks[coreIndex] * 1000.0 / Stopwatch.Frequency);
+                            coreResult.ElapsedMilliseconds = ConvertObjectDetectionDefectTicksToMilliseconds(
+                                coreElapsedTicks[coreIndex]);
+                            coreResult.RoiPreparationElapsedMilliseconds =
+                                ConvertObjectDetectionDefectTicksToMilliseconds(roiPreparationElapsedTicks);
+                            coreResult.ContrastAdjustmentElapsedMilliseconds =
+                                ConvertObjectDetectionDefectTicksToMilliseconds(
+                                    contrastAdjustmentElapsedTicks[coreIndex]);
+                            coreResult.PreprocessingElapsedMilliseconds =
+                                ConvertObjectDetectionDefectTicksToMilliseconds(
+                                    preprocessingElapsedTicks[coreIndex]);
+                            coreResult.DefectAnalysisElapsedMilliseconds =
+                                ConvertObjectDetectionDefectTicksToMilliseconds(
+                                    defectAnalysisElapsedTicks[coreIndex]);
+                            coreResult.PreviewGenerationElapsedMilliseconds =
+                                ConvertObjectDetectionDefectTicksToMilliseconds(
+                                    previewGenerationElapsedTicks[coreIndex]);
+                            coreResult.ParallelExecutionEnabled = runParallel;
                             for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
                             {
                                 if (roiCoreContours[coreIndex, objectIndex] != null)
@@ -705,6 +762,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ContoursByCore = new List<ObjectDetectionDefectContour>[cores.Count],
                 ElapsedTicksByCore = new long[cores.Count],
+                ContrastAdjustmentElapsedTicksByCore = new long[cores.Count],
+                PreprocessingElapsedTicksByCore = new long[cores.Count],
+                DefectAnalysisElapsedTicksByCore = new long[cores.Count],
+                PreviewGenerationElapsedTicksByCore = new long[cores.Count],
                 ProcessedPatchesByCore = new ObjectDetectionDefectProcessedPatch[cores.Count]
             };
             for (int coreIndex = 0; coreIndex < cores.Count; coreIndex++)
@@ -734,6 +795,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             try
             {
+                Stopwatch roiPreparationStopwatch = Stopwatch.StartNew();
                 using (Bitmap bitmap = source.CreateRegionBitmapFromTiles(crop))
                 using (Cv.Mat gray = CreateOpenCvGrayMat(bitmap))
                 using (var polygonMask = new Cv.Mat(
@@ -746,25 +808,40 @@ namespace IntegratedImageProcessingApp.Forms
                         (int)Math.Round(point.X - crop.X),
                         (int)Math.Round(point.Y - crop.Y))).ToArray();
                     Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
+                    roiPreparationStopwatch.Stop();
+                    result.RoiPreparationElapsedTicks = roiPreparationStopwatch.ElapsedTicks;
 
                 Action<int> processCore = delegate(int coreIndex)
                 {
                     ObjectDetectionDefectCoreSettings core = cores[coreIndex];
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     Bitmap processedBitmap = null;
-                    try
-                    {
+                     try
+                     {
                         using (var adjusted = new Cv.Mat())
                         {
                             double gain = double.IsNaN(core.ContrastGain) || double.IsInfinity(core.ContrastGain)
                                 ? 1.0
                                 : Math.Max(0.1, Math.Min(5.0, core.ContrastGain));
                             double beta = Math.Max(1, Math.Min(255, pivotGray)) * (1.0 - gain);
+                            Stopwatch contrastStopwatch = Stopwatch.StartNew();
                             gray.ConvertTo(adjusted, Cv.MatType.CV_8UC1, gain, beta);
+                            contrastStopwatch.Stop();
+                            result.ContrastAdjustmentElapsedTicksByCore[coreIndex] =
+                                contrastStopwatch.ElapsedTicks;
 
+                            Stopwatch preprocessingStopwatch = Stopwatch.StartNew();
                             using (Cv.Mat preprocessed = ApplyObjectDetectionDefectPreprocessing(adjusted, core))
                             {
+                                preprocessingStopwatch.Stop();
+                                result.PreprocessingElapsedTicksByCore[coreIndex] =
+                                    preprocessingStopwatch.ElapsedTicks;
+                                Stopwatch previewStopwatch = Stopwatch.StartNew();
                                 processedBitmap = CreateObjectDetectionDefectPreviewBitmap(preprocessed);
+                                previewStopwatch.Stop();
+                                result.PreviewGenerationElapsedTicksByCore[coreIndex] =
+                                    previewStopwatch.ElapsedTicks;
+                                Stopwatch analysisStopwatch = Stopwatch.StartNew();
                                 if (core.DarkThresholdEnabled)
                                 {
                                     AddObjectDetectionDefectMaskContours(
@@ -793,6 +870,9 @@ namespace IntegratedImageProcessingApp.Forms
                                         yMillimetersPerPixel,
                                         result.ContoursByCore[coreIndex]);
                                 }
+                                analysisStopwatch.Stop();
+                                result.DefectAnalysisElapsedTicksByCore[coreIndex] =
+                                    analysisStopwatch.ElapsedTicks;
                             }
                         }
 
@@ -1408,6 +1488,11 @@ namespace IntegratedImageProcessingApp.Forms
             return transformed;
         }
 
+        private static long ConvertObjectDetectionDefectTicksToMilliseconds(long elapsedTicks)
+        {
+            return (long)Math.Round(elapsedTicks * 1000.0 / Stopwatch.Frequency);
+        }
+
         private void UpdateObjectDetectionDefectProcessingStatus()
         {
             if (statusLabel == null || objectDetectionDefectProcessingRequested)
@@ -1423,12 +1508,20 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionDefectCoreResult result;
             if (TryGetCurrentObjectDetectionDefectCoreResult(parameter, out result))
             {
+                string executionMode = result.ParallelExecutionEnabled ? "平行" : "依序";
                 statusLabel.Text = parameter.DisplayName + "：" +
                     GetSelectedObjectDetectionDefectCoreKey() + " 檢出 " +
                     result.DetectedComponentCount.ToString("N0", CultureInfo.CurrentCulture) +
-                    " 個；此核心累計運算 " + result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    " ms；檢測總耗時 " + result.TotalElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    " ms（不含顯示）";
+                    " 個；" + executionMode + "檢測實際耗時 " +
+                    result.TotalElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms（不含畫面顯示）";
+                SetObjectDetectionDefectRegionStatus(
+                    "各 ROI 累計時間（平行時不等於實際經過時間）：\r\n" +
+                    "ROI 影像準備 " + result.RoiPreparationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    " ms；對比調整 " + result.ContrastAdjustmentElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    " ms；前處理 " + result.PreprocessingElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms\r\n" +
+                    "缺陷分析 " + result.DefectAnalysisElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    " ms；預覽圖產生 " + result.PreviewGenerationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    " ms；此核心累計 " + result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms");
             }
             else
             {

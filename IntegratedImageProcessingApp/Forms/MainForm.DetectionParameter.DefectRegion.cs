@@ -52,7 +52,7 @@ namespace IntegratedImageProcessingApp.Forms
             var group = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 132,
+                Height = 158,
                 Text = "檢測範圍",
                 Padding = new Padding(8, 18, 8, 6)
             };
