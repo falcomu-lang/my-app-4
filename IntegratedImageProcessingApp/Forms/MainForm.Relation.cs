@@ -603,16 +603,9 @@ namespace IntegratedImageProcessingApp.Forms
 
             string maskKey = CreateLargeProcessedRelationGroupMaskKey(roi);
             int generation;
-            lock (largeProcessedMaskLock)
+            if (!largeImageMaskCache.TryBeginBuild(maskKey, out generation))
             {
-                if (largeProcessedBinaryMasks.ContainsKey(maskKey) ||
-                    largeProcessedMaskBuildKeys.Contains(maskKey))
-                {
-                    return;
-                }
-
-                generation = largeProcessedMaskGeneration;
-                largeProcessedMaskBuildKeys.Add(maskKey);
+                return;
             }
 
             LargeImageSource sourceReference = originalSource.AddReference();
@@ -660,24 +653,28 @@ namespace IntegratedImageProcessingApp.Forms
                     combined = null;
                     BeginInvoke(new Action(delegate
                     {
-                        lock (largeProcessedMaskLock)
+                        if (!largeImageMaskCache.TryPublishBinaryMask(maskKey, generation, completed))
                         {
-                            if (generation != largeProcessedMaskGeneration ||
-                                !largeProcessedMaskBuildKeys.Contains(maskKey))
-                            {
-                                completed.Dispose();
-                                return;
-                            }
-
-                            largeProcessedBinaryMasks[maskKey] = completed;
-                            largeProcessedMaskBuildKeys.Remove(maskKey);
+                            completed.Dispose();
+                            return;
                         }
 
-                        QueueLargeProcessedBinaryOverview(
-                            completed,
-                            roi,
+                        Cv.Mat maskView;
+                        if (largeImageMaskCache.TryGetBinaryMaskView(
                             maskKey,
-                            generation);
+                            roi.Height,
+                            roi.Width,
+                            out maskView))
+                        {
+                            using (maskView)
+                            {
+                                QueueLargeProcessedBinaryOverview(
+                                    maskView,
+                                    roi,
+                                    maskKey,
+                                    generation);
+                            }
+                        }
                         statusLabel.Text = "大圖關聯群組 MASK 建立完成";
                         leftProcessedDisplayControl.InvalidateImageView();
                         rightProcessedDisplayControl.InvalidateImageView();
@@ -694,10 +691,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                     BeginInvoke(new Action(delegate
                     {
-                        lock (largeProcessedMaskLock)
-                        {
-                            largeProcessedMaskBuildKeys.Remove(maskKey);
-                        }
+                        largeImageMaskCache.FailBuild(maskKey, generation);
 
                         statusLabel.Text = "大圖關聯群組 MASK 建立失敗：" + ex.Message;
                     }));
@@ -818,12 +812,12 @@ namespace IntegratedImageProcessingApp.Forms
 
             string maskKey = CreateLargeProcessedRelationGroupMaskKey(roi);
             Cv.Mat binaryMask;
-            bool isBuilding;
-            lock (largeProcessedMaskLock)
-            {
-                largeProcessedBinaryMasks.TryGetValue(maskKey, out binaryMask);
-                isBuilding = largeProcessedMaskBuildKeys.Contains(maskKey);
-            }
+            largeImageMaskCache.TryGetBinaryMaskView(
+                maskKey,
+                roi.Height,
+                roi.Width,
+                out binaryMask);
+            bool isBuilding = largeImageMaskCache.IsBuilding(maskKey);
 
             if (binaryMask == null)
             {
@@ -835,24 +829,31 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (isPanning)
+            try
             {
-                Bitmap overview;
-                if (TryGetLargeProcessedOverlayFromCache("overview|" + maskKey, out overview))
+                if (isPanning)
                 {
-                    DrawLargeProcessedOverlayRegion(e.Graphics, overview, roi, visibleRoi, e.Zoom, e.Offset);
+                    Bitmap overview;
+                    if (TryGetLargeProcessedOverlayFromCache("overview|" + maskKey, out overview))
+                    {
+                        DrawLargeProcessedOverlayRegion(e.Graphics, overview, roi, visibleRoi, e.Zoom, e.Offset);
+                    }
+
+                    return;
                 }
 
-                return;
+                var syntheticStep = new ImageProcessingStepSettings
+                {
+                    Id = maskKey,
+                    Method = "Relation Group",
+                    Parameters = string.Empty
+                };
+                PaintLargeProcessedBinaryViewportOverlay(e, roi, visibleRoi, syntheticStep, maskKey, binaryMask);
             }
-
-            var syntheticStep = new ImageProcessingStepSettings
+            finally
             {
-                Id = maskKey,
-                Method = "Relation Group",
-                Parameters = string.Empty
-            };
-            PaintLargeProcessedBinaryViewportOverlay(e, roi, visibleRoi, syntheticStep, maskKey, binaryMask);
+                binaryMask.Dispose();
+            }
         }
     }
 }

@@ -14,6 +14,16 @@ namespace IntegratedImageProcessingApp.Controls
 {
     public partial class ImageDisplayControl : UserControl
     {
+        [System.Flags]
+        private enum RoiResizeEdges
+        {
+            None = 0,
+            Left = 1,
+            Top = 2,
+            Right = 4,
+            Bottom = 8
+        }
+
         // The processing pipeline may continue to build cached images and
         // masks while the main form temporarily suppresses all view work.
         public static bool SuppressViewUpdates { get; set; }
@@ -22,7 +32,7 @@ namespace IntegratedImageProcessingApp.Controls
         private const float TileRenderZoomThreshold = 0.04f;
         private const float TilePreviewHandoffRatio = 0.95f;
         private const float CachedTilePanZoomThreshold = 0.04f;
-        private const int MaxCachedTilesWhilePanning = 384;
+        private const int MaxCachedTilesWhilePanning = 64;
         private const int TileRefreshIntervalMs = 33;
         private const int PanInvalidateIntervalMs = 16;
         private const int StatusUpdateIntervalMs = 60;
@@ -42,8 +52,12 @@ namespace IntegratedImageProcessingApp.Controls
         private bool _suppressViewChanged;
         private bool _isSelectingRoi;
         private bool _isDrawingRoi;
+        private bool _isEditingRoi;
+        private bool _isResizingRoi;
         private Point _roiStartPoint;
         private Point _roiCurrentPoint;
+        private Rectangle _roiEditBounds;
+        private RoiResizeEdges _roiResizeEdges;
         private Rectangle? _roiOverlay;
         private Rectangle[] _roiOverlays = new Rectangle[0];
         private bool _tileRefreshPending;
@@ -61,11 +75,12 @@ namespace IntegratedImageProcessingApp.Controls
         public event EventHandler<ImageMouseEventArgs> ImageMouseMove;
         public event EventHandler<ImageMouseEventArgs> ImageMouseUp;
         public event EventHandler<RoiSelectedEventArgs> RoiSelected;
+        public event EventHandler<RoiSelectedEventArgs> RoiEdited;
         public event EventHandler<ImagePointerMovedEventArgs> ImagePointerMoved;
 
         public bool IsPanning
         {
-            get { return _isPanning || _isSynchronizedPanning; }
+            get { return _isPanning || _isSynchronizedPanning || _isResizingRoi; }
         }
 
         public ImageDisplayControl()
@@ -133,6 +148,31 @@ namespace IntegratedImageProcessingApp.Controls
                 {
                     return _largeImageSource != null;
                 }
+            }
+        }
+
+        public void CaptureViewerPointer()
+        {
+            if (viewerPanel != null && !viewerPanel.IsDisposed)
+            {
+                viewerPanel.Capture = true;
+            }
+        }
+
+        public void ReleaseViewerPointer()
+        {
+            if (viewerPanel != null && !viewerPanel.IsDisposed)
+            {
+                viewerPanel.Capture = false;
+                viewerPanel.Cursor = Cursors.Default;
+            }
+        }
+
+        public void SetViewerCursor(Cursor cursor)
+        {
+            if (viewerPanel != null && !viewerPanel.IsDisposed)
+            {
+                viewerPanel.Cursor = cursor ?? Cursors.Default;
             }
         }
 
@@ -302,8 +342,39 @@ namespace IntegratedImageProcessingApp.Controls
 
             _isSelectingRoi = true;
             _isDrawingRoi = false;
+            _isEditingRoi = false;
+            _isResizingRoi = false;
+            _roiResizeEdges = RoiResizeEdges.None;
             viewerPanel.Cursor = Cursors.Cross;
             StatusText = "拖曳滑鼠指定 ROI";
+            viewerPanel.Focus();
+            viewerPanel.Invalidate();
+            return true;
+        }
+
+        public bool BeginRoiEditSelection(Rectangle roi)
+        {
+            if (!HasImage)
+            {
+                StatusText = "請先載入圖片";
+                return false;
+            }
+
+            Rectangle bounds = ClampRoiToImage(roi);
+            if (bounds.Width < 3 || bounds.Height < 3)
+            {
+                StatusText = "ROI 範圍太小或不在圖片內";
+                return false;
+            }
+
+            _isSelectingRoi = false;
+            _isDrawingRoi = false;
+            _isEditingRoi = true;
+            _isResizingRoi = false;
+            _roiEditBounds = bounds;
+            _roiResizeEdges = RoiResizeEdges.None;
+            viewerPanel.Cursor = Cursors.Default;
+            StatusText = "Ctrl 拖曳邊線或角落調整；其他拖曳可平移，放開即保存";
             viewerPanel.Focus();
             viewerPanel.Invalidate();
             return true;
@@ -313,6 +384,9 @@ namespace IntegratedImageProcessingApp.Controls
         {
             _isSelectingRoi = false;
             _isDrawingRoi = false;
+            _isEditingRoi = false;
+            _isResizingRoi = false;
+            _roiResizeEdges = RoiResizeEdges.None;
             viewerPanel.Capture = false;
             viewerPanel.Cursor = Cursors.Default;
             viewerPanel.Invalidate();
@@ -749,6 +823,7 @@ namespace IntegratedImageProcessingApp.Controls
 
             DrawRoiOverlay(e.Graphics, roiOverlay, zoom, offset);
             DrawRoiOverlays(e.Graphics, roiOverlays, zoom, offset);
+            DrawRoiEditOverlay(e.Graphics, zoom, offset);
             DrawActiveRoiSelection(e.Graphics);
         }
 
@@ -851,6 +926,20 @@ namespace IntegratedImageProcessingApp.Controls
                 return;
             }
 
+            if (_isEditingRoi && e.Button == MouseButtons.Left &&
+                (ModifierKeys & Keys.Control) != 0)
+            {
+                RoiResizeEdges edges = FindRoiResizeEdges(e.Location);
+                if (edges != RoiResizeEdges.None)
+                {
+                    _roiResizeEdges = edges;
+                    _isResizingRoi = true;
+                    viewerPanel.Capture = true;
+                    viewerPanel.Cursor = GetRoiResizeCursor(edges);
+                    return;
+                }
+            }
+
             if (_isSelectingRoi && e.Button == MouseButtons.Left && HasImage)
             {
                 _isDrawingRoi = true;
@@ -886,6 +975,26 @@ namespace IntegratedImageProcessingApp.Controls
                 return;
             }
 
+            if (_isResizingRoi)
+            {
+                Rectangle previousBounds = _roiEditBounds;
+                UpdateRoiEditBounds(imageEvent.ImageLocation);
+                if (_roiEditBounds != previousBounds)
+                {
+                    InvalidateViewerWhilePanning();
+                }
+
+                return;
+            }
+
+            if (_isEditingRoi && !_isPanning)
+            {
+                viewerPanel.Cursor = (ModifierKeys & Keys.Control) != 0
+                    ? GetRoiResizeCursor(FindRoiResizeEdges(e.Location))
+                    : Cursors.Default;
+                return;
+            }
+
             if (_isDrawingRoi)
             {
                 _roiCurrentPoint = e.Location;
@@ -918,6 +1027,26 @@ namespace IntegratedImageProcessingApp.Controls
             OnImageMouseUp(imageEvent);
             if (imageEvent.Handled)
             {
+                return;
+            }
+
+            if (_isResizingRoi)
+            {
+                UpdateRoiEditBounds(imageEvent.ImageLocation);
+                Rectangle editedBounds = _roiEditBounds;
+                _isResizingRoi = false;
+                _isEditingRoi = false;
+                _roiResizeEdges = RoiResizeEdges.None;
+                viewerPanel.Capture = false;
+                viewerPanel.Cursor = Cursors.Default;
+                viewerPanel.Invalidate();
+                StatusText = "ROI 已更新";
+                EventHandler<RoiSelectedEventArgs> editedHandler = RoiEdited;
+                if (editedHandler != null)
+                {
+                    editedHandler(this, new RoiSelectedEventArgs(editedBounds));
+                }
+
                 return;
             }
 
@@ -1540,6 +1669,199 @@ namespace IntegratedImageProcessingApp.Controls
             using (var pen = new Pen(Color.LimeGreen, 2f))
             {
                 graphics.DrawRectangle(pen, viewRectangle);
+            }
+        }
+
+        private void DrawRoiEditOverlay(Graphics graphics, float zoom, PointF offset)
+        {
+            if (!_isEditingRoi)
+            {
+                return;
+            }
+
+            RectangleF viewRectangle = ImageRectangleToViewRectangle(
+                _roiEditBounds,
+                zoom,
+                offset);
+            using (var outline = new Pen(Color.DarkOrange, 2f))
+            using (var handleFill = new SolidBrush(Color.White))
+            using (var handleOutline = new Pen(Color.DarkOrange, 1.5f))
+            {
+                graphics.DrawRectangle(
+                    outline,
+                    viewRectangle.X,
+                    viewRectangle.Y,
+                    viewRectangle.Width,
+                    viewRectangle.Height);
+
+                const float handleSize = 7f;
+                PointF[] handleCenters =
+                {
+                    new PointF(viewRectangle.Left, viewRectangle.Top),
+                    new PointF(viewRectangle.Left + (viewRectangle.Width / 2f), viewRectangle.Top),
+                    new PointF(viewRectangle.Right, viewRectangle.Top),
+                    new PointF(viewRectangle.Right, viewRectangle.Top + (viewRectangle.Height / 2f)),
+                    new PointF(viewRectangle.Right, viewRectangle.Bottom),
+                    new PointF(viewRectangle.Left + (viewRectangle.Width / 2f), viewRectangle.Bottom),
+                    new PointF(viewRectangle.Left, viewRectangle.Bottom),
+                    new PointF(viewRectangle.Left, viewRectangle.Top + (viewRectangle.Height / 2f))
+                };
+                foreach (PointF center in handleCenters)
+                {
+                    var handle = new RectangleF(
+                        center.X - (handleSize / 2f),
+                        center.Y - (handleSize / 2f),
+                        handleSize,
+                        handleSize);
+                    graphics.FillRectangle(handleFill, handle);
+                    graphics.DrawRectangle(handleOutline, handle.X, handle.Y, handle.Width, handle.Height);
+                }
+            }
+        }
+
+        private RoiResizeEdges FindRoiResizeEdges(Point viewPoint)
+        {
+            RectangleF viewRectangle = ImageRectangleToViewRectangle(
+                _roiEditBounds,
+                _zoom,
+                _imageOffset);
+            const float tolerance = 8f;
+            bool withinVerticalEdge = viewPoint.Y >= viewRectangle.Top - tolerance &&
+                viewPoint.Y <= viewRectangle.Bottom + tolerance;
+            bool withinHorizontalEdge = viewPoint.X >= viewRectangle.Left - tolerance &&
+                viewPoint.X <= viewRectangle.Right + tolerance;
+            bool nearLeft = withinVerticalEdge && Math.Abs(viewPoint.X - viewRectangle.Left) <= tolerance;
+            bool nearRight = withinVerticalEdge && Math.Abs(viewPoint.X - viewRectangle.Right) <= tolerance;
+            bool nearTop = withinHorizontalEdge && Math.Abs(viewPoint.Y - viewRectangle.Top) <= tolerance;
+            bool nearBottom = withinHorizontalEdge && Math.Abs(viewPoint.Y - viewRectangle.Bottom) <= tolerance;
+
+            if (nearLeft && nearRight)
+            {
+                if (Math.Abs(viewPoint.X - viewRectangle.Left) <= Math.Abs(viewPoint.X - viewRectangle.Right))
+                {
+                    nearRight = false;
+                }
+                else
+                {
+                    nearLeft = false;
+                }
+            }
+
+            if (nearTop && nearBottom)
+            {
+                if (Math.Abs(viewPoint.Y - viewRectangle.Top) <= Math.Abs(viewPoint.Y - viewRectangle.Bottom))
+                {
+                    nearBottom = false;
+                }
+                else
+                {
+                    nearTop = false;
+                }
+            }
+
+            RoiResizeEdges edges = RoiResizeEdges.None;
+            if (nearLeft)
+            {
+                edges |= RoiResizeEdges.Left;
+            }
+
+            if (nearTop)
+            {
+                edges |= RoiResizeEdges.Top;
+            }
+
+            if (nearRight)
+            {
+                edges |= RoiResizeEdges.Right;
+            }
+
+            if (nearBottom)
+            {
+                edges |= RoiResizeEdges.Bottom;
+            }
+
+            return edges;
+        }
+
+        private static Cursor GetRoiResizeCursor(RoiResizeEdges edges)
+        {
+            if (edges == RoiResizeEdges.None)
+            {
+                return Cursors.Default;
+            }
+
+            bool horizontal = (edges & (RoiResizeEdges.Left | RoiResizeEdges.Right)) != 0;
+            bool vertical = (edges & (RoiResizeEdges.Top | RoiResizeEdges.Bottom)) != 0;
+            if (horizontal && vertical)
+            {
+                bool sameDiagonal =
+                    ((edges & RoiResizeEdges.Left) != 0) ==
+                    ((edges & RoiResizeEdges.Top) != 0);
+                return sameDiagonal ? Cursors.SizeNWSE : Cursors.SizeNESW;
+            }
+
+            return horizontal ? Cursors.SizeWE : Cursors.SizeNS;
+        }
+
+        private void UpdateRoiEditBounds(Point imagePoint)
+        {
+            lock (_imageLock)
+            {
+                int imageWidth;
+                int imageHeight;
+                if (!TryGetImageSizeUnsafe(out imageWidth, out imageHeight))
+                {
+                    return;
+                }
+
+                int left = _roiEditBounds.Left;
+                int top = _roiEditBounds.Top;
+                int right = _roiEditBounds.Right;
+                int bottom = _roiEditBounds.Bottom;
+                const int minimumSize = 3;
+                int x = Math.Max(0, Math.Min(imageWidth, imagePoint.X));
+                int y = Math.Max(0, Math.Min(imageHeight, imagePoint.Y));
+
+                if ((_roiResizeEdges & RoiResizeEdges.Left) != 0)
+                {
+                    left = Math.Min(x, right - minimumSize);
+                }
+                else if ((_roiResizeEdges & RoiResizeEdges.Right) != 0)
+                {
+                    right = Math.Max(left + minimumSize, x);
+                    right = Math.Min(imageWidth, right);
+                }
+
+                if ((_roiResizeEdges & RoiResizeEdges.Top) != 0)
+                {
+                    top = Math.Min(y, bottom - minimumSize);
+                }
+                else if ((_roiResizeEdges & RoiResizeEdges.Bottom) != 0)
+                {
+                    bottom = Math.Max(top + minimumSize, y);
+                    bottom = Math.Min(imageHeight, bottom);
+                }
+
+                _roiEditBounds = Rectangle.FromLTRB(left, top, right, bottom);
+            }
+        }
+
+        private Rectangle ClampRoiToImage(Rectangle roi)
+        {
+            lock (_imageLock)
+            {
+                int imageWidth;
+                int imageHeight;
+                if (!TryGetImageSizeUnsafe(out imageWidth, out imageHeight))
+                {
+                    return Rectangle.Empty;
+                }
+
+                int left = Math.Max(0, Math.Min(imageWidth, roi.Left));
+                int top = Math.Max(0, Math.Min(imageHeight, roi.Top));
+                int right = Math.Max(left, Math.Min(imageWidth, roi.Right));
+                int bottom = Math.Max(top, Math.Min(imageHeight, roi.Bottom));
+                return Rectangle.FromLTRB(left, top, right, bottom);
             }
         }
 

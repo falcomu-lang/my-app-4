@@ -285,6 +285,85 @@ namespace IntegratedImageProcessingApp.Services
         public string Parameters { get; set; }
     }
 
+    public class ObjectDetectionDefectCoreSettings
+    {
+        public ObjectDetectionDefectCoreSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+            CoreKey = string.Empty;
+            ContrastGain = 1.0;
+            PreprocessMethod = "None";
+            GaussianKernelWidth = 3;
+            GaussianKernelHeight = 3;
+            GaussianSigmaX = 0;
+            GaussianSigmaY = 0;
+            MedianKernelSize = 3;
+            DarkThresholdEnabled = false;
+            DarkThreshold = 0;
+            BrightThresholdEnabled = false;
+            BrightThreshold = 255;
+            ErodeKernelSize = 3;
+            ErodeIterations = 0;
+            DilateKernelSize = 3;
+            DilateIterations = 0;
+            MinimumArea = 0;
+            MinimumWidthMillimeters = 0;
+            MaximumWidthMillimeters = 0;
+            MinimumHeightMillimeters = 0;
+            MaximumHeightMillimeters = 0;
+            ShowMask = true;
+            ShowRedBoxes = true;
+        }
+
+        public string Id { get; set; }
+
+        public string CoreKey { get; set; }
+
+        public double ContrastGain { get; set; }
+
+        public string PreprocessMethod { get; set; }
+
+        public int GaussianKernelWidth { get; set; }
+
+        public int GaussianKernelHeight { get; set; }
+
+        public double GaussianSigmaX { get; set; }
+
+        public double GaussianSigmaY { get; set; }
+
+        public int MedianKernelSize { get; set; }
+
+        public bool DarkThresholdEnabled { get; set; }
+
+        public int DarkThreshold { get; set; }
+
+        public bool BrightThresholdEnabled { get; set; }
+
+        public int BrightThreshold { get; set; }
+
+        public int ErodeKernelSize { get; set; }
+
+        public int ErodeIterations { get; set; }
+
+        public int DilateKernelSize { get; set; }
+
+        public int DilateIterations { get; set; }
+
+        public double MinimumArea { get; set; }
+
+        public double MinimumWidthMillimeters { get; set; }
+
+        public double MaximumWidthMillimeters { get; set; }
+
+        public double MinimumHeightMillimeters { get; set; }
+
+        public double MaximumHeightMillimeters { get; set; }
+
+        public bool ShowMask { get; set; }
+
+        public bool ShowRedBoxes { get; set; }
+    }
+
     public class ObjectDetectionParameterSettings
     {
         public ObjectDetectionParameterSettings()
@@ -293,6 +372,9 @@ namespace IntegratedImageProcessingApp.Services
             ObjectDefinitionId = string.Empty;
             ColumnCount = 0;
             RowCount = 0;
+            CameraXMillimetersPerPixel = 1.0;
+            CameraYMillimetersPerPixel = 1.0;
+            CameraPrecisionConfigured = false;
             SourceMaskMode = "ObjectDefinition";
             SourceMaskPrimaryType = "ObjectDefinition";
             SourceMaskPrimaryId = string.Empty;
@@ -301,6 +383,26 @@ namespace IntegratedImageProcessingApp.Services
             SourceMaskSecondaryType = string.Empty;
             SourceMaskSecondaryId = string.Empty;
             SourceMaskSecondaryNamespace = string.Empty;
+            FlatFieldMaskMode = "Direct";
+            FlatFieldMaskPrimaryType = string.Empty;
+            FlatFieldMaskPrimaryId = string.Empty;
+            FlatFieldMaskPrimaryNamespace = string.Empty;
+            FlatFieldMaskOperation = "None";
+            FlatFieldMaskSecondaryType = string.Empty;
+            FlatFieldMaskSecondaryId = string.Empty;
+            FlatFieldMaskSecondaryNamespace = string.Empty;
+            FlatFieldMaskDisplayName = "未指定來源 MASK";
+            FlatFieldUseMaskMode = "Direct";
+            FlatFieldUseMaskOperation = "None";
+            FlatFieldUseMaskDisplayName = "沿用平場校正來源 MASK";
+            FlatFieldSamplePositionConfigured = false;
+            FlatFieldSampleYRatio = 0.5;
+            FlatFieldSamplingHeight = 100;
+            FlatFieldTargetGray = 128;
+            FlatFieldSmoothingMode = "MovingAverage";
+            FlatFieldSmoothingWindow = 51;
+            FlatFieldSavedProfileData = string.Empty;
+            FlatFieldSavedSettingsSignature = string.Empty;
             MeasurementMode = "Single";
             MeasurementDirection = "Horizontal";
             MeasurementLineCount = 1;
@@ -313,6 +415,22 @@ namespace IntegratedImageProcessingApp.Services
             MeasurementSourceMaskDisplayName = "未指定來源 MASK";
             MeasurementRecords = new List<ObjectDetectionMeasurementRecordSettings>();
             GoodJudgementRules = new List<ObjectDetectionGoodJudgementRuleSettings>();
+            DefectInspectionRegionId = Guid.NewGuid().ToString("N");
+            DefectInspectionRegionObjectDefinitionId = string.Empty;
+            DefectInspectionRegionReferenceObjectNumber = 0;
+            DefectInspectionRegionConfigured = false;
+            DefectInspectionRegionLeft = 0;
+            DefectInspectionRegionTop = 0;
+            DefectInspectionRegionRight = 1;
+            DefectInspectionRegionBottom = 1;
+            DefectParallelExecutionEnabled = false;
+            DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
+            {
+                new ObjectDetectionDefectCoreSettings { CoreKey = "FlatField" },
+                new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast1", ContrastGain = 1.25 },
+                new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast2", ContrastGain = 1.5 },
+                new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast3", ContrastGain = 2.0 }
+            };
         }
 
         public string Id { get; set; }
@@ -326,6 +444,12 @@ namespace IntegratedImageProcessingApp.Services
         public int ColumnCount { get; set; }
 
         public int RowCount { get; set; }
+
+        public double CameraXMillimetersPerPixel { get; set; }
+
+        public double CameraYMillimetersPerPixel { get; set; }
+
+        public bool CameraPrecisionConfigured { get; set; }
 
         // One shared source-MASK definition is applied to every numbered
         // object in this detection parameter.
@@ -344,6 +468,62 @@ namespace IntegratedImageProcessingApp.Services
         public string SourceMaskSecondaryId { get; set; }
 
         public string SourceMaskSecondaryNamespace { get; set; }
+
+        public string FlatFieldMaskMode { get; set; }
+
+        public string FlatFieldMaskPrimaryType { get; set; }
+
+        public string FlatFieldMaskPrimaryId { get; set; }
+
+        public string FlatFieldMaskPrimaryNamespace { get; set; }
+
+        public string FlatFieldMaskOperation { get; set; }
+
+        public string FlatFieldMaskSecondaryType { get; set; }
+
+        public string FlatFieldMaskSecondaryId { get; set; }
+
+        public string FlatFieldMaskSecondaryNamespace { get; set; }
+
+        public string FlatFieldMaskDisplayName { get; set; }
+
+        public string FlatFieldUseMaskMode { get; set; }
+
+        public string FlatFieldUseMaskPrimaryType { get; set; }
+
+        public string FlatFieldUseMaskPrimaryId { get; set; }
+
+        public string FlatFieldUseMaskPrimaryNamespace { get; set; }
+
+        public string FlatFieldUseMaskOperation { get; set; }
+
+        public string FlatFieldUseMaskSecondaryType { get; set; }
+
+        public string FlatFieldUseMaskSecondaryId { get; set; }
+
+        public string FlatFieldUseMaskSecondaryNamespace { get; set; }
+
+        public string FlatFieldUseMaskDisplayName { get; set; }
+
+        public bool FlatFieldSamplePositionConfigured { get; set; }
+
+        public double FlatFieldSampleYRatio { get; set; }
+
+        public int FlatFieldSamplingHeight { get; set; }
+
+        public int FlatFieldTargetGray { get; set; }
+
+        public string FlatFieldSmoothingMode { get; set; }
+
+        public int FlatFieldSmoothingWindow { get; set; }
+
+        public int FlatFieldSavedImageWidth { get; set; }
+
+        public int FlatFieldSavedTargetGray { get; set; }
+
+        public string FlatFieldSavedProfileData { get; set; }
+
+        public string FlatFieldSavedSettingsSignature { get; set; }
 
         // Size-measurement geometry is stored as normalized coordinates inside
         // the selected object's ROI, so it can be reused for every object.
@@ -394,6 +574,26 @@ namespace IntegratedImageProcessingApp.Services
         public List<ObjectDetectionMeasurementRecordSettings> MeasurementRecords { get; set; }
 
         public List<ObjectDetectionGoodJudgementRuleSettings> GoodJudgementRules { get; set; }
+
+        public string DefectInspectionRegionId { get; set; }
+
+        public string DefectInspectionRegionObjectDefinitionId { get; set; }
+
+        public int DefectInspectionRegionReferenceObjectNumber { get; set; }
+
+        public bool DefectInspectionRegionConfigured { get; set; }
+
+        public double DefectInspectionRegionLeft { get; set; }
+
+        public double DefectInspectionRegionTop { get; set; }
+
+        public double DefectInspectionRegionRight { get; set; }
+
+        public double DefectInspectionRegionBottom { get; set; }
+
+        public bool DefectParallelExecutionEnabled { get; set; }
+
+        public List<ObjectDetectionDefectCoreSettings> DefectDetectionCores { get; set; }
     }
 
     public class ObjectDetectionGoodJudgementRuleSettings

@@ -105,9 +105,15 @@ namespace IntegratedImageProcessingApp.Forms
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && (components != null))
+            if (disposing)
             {
-                components.Dispose();
+                ClearObjectDetectionDefectCoreResults();
+                ClearObjectDetectionFlatFieldMaskOverlays();
+                ReleaseObjectDetectionFlatFieldCorrectedLargeSource();
+                if (components != null)
+                {
+                    components.Dispose();
+                }
             }
 
             base.Dispose(disposing);
@@ -279,7 +285,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.projectLabel.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(92)))), ((int)(((byte)(101)))), ((int)(((byte)(116)))));
             this.projectLabel.Location = new System.Drawing.Point(198, 17);
             this.projectLabel.Name = "projectLabel";
-            this.projectLabel.Size = new System.Drawing.Size(103, 15);
+            this.projectLabel.Size = new System.Drawing.Size(129, 19);
             this.projectLabel.TabIndex = 1;
             this.projectLabel.Text = "影像處理介面框架";
             // 
@@ -290,7 +296,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.titleLabel.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(34)))), ((int)(((byte)(39)))), ((int)(((byte)(46)))));
             this.titleLabel.Location = new System.Drawing.Point(16, 14);
             this.titleLabel.Name = "titleLabel";
-            this.titleLabel.Size = new System.Drawing.Size(144, 19);
+            this.titleLabel.Size = new System.Drawing.Size(181, 24);
             this.titleLabel.TabIndex = 0;
             this.titleLabel.Text = "整合式影像處理軟件";
             // 
@@ -309,7 +315,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.mainLayoutPanel.Name = "mainLayoutPanel";
             this.mainLayoutPanel.RowCount = 1;
             this.mainLayoutPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.mainLayoutPanel.Size = new System.Drawing.Size(1028, 650);
+            this.mainLayoutPanel.Size = new System.Drawing.Size(1028, 647);
             this.mainLayoutPanel.TabIndex = 1;
             // 
             // leftPanel
@@ -324,7 +330,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftPanel.Margin = new System.Windows.Forms.Padding(0);
             this.leftPanel.Name = "leftPanel";
             this.leftPanel.Padding = new System.Windows.Forms.Padding(14, 12, 14, 12);
-            this.leftPanel.Size = new System.Drawing.Size(205, 650);
+            this.leftPanel.Size = new System.Drawing.Size(205, 647);
             this.leftPanel.TabIndex = 0;
             // 
             // functionListBox
@@ -350,7 +356,7 @@ namespace IntegratedImageProcessingApp.Forms
             "輸出設定"});
             this.functionListBox.Location = new System.Drawing.Point(14, 46);
             this.functionListBox.Name = "functionListBox";
-            this.functionListBox.Size = new System.Drawing.Size(177, 453);
+            this.functionListBox.Size = new System.Drawing.Size(177, 446);
             this.functionListBox.TabIndex = 1;
             this.functionListBox.MouseClick += new System.Windows.Forms.MouseEventHandler(this.FunctionListBox_MouseClick);
             this.functionListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.FunctionListBox_DrawItem);
@@ -361,9 +367,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.suppressImageDisplayCheckBox.AutoSize = true;
             this.suppressImageDisplayCheckBox.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.suppressImageDisplayCheckBox.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(39)))), ((int)(((byte)(46)))), ((int)(((byte)(56)))));
-            this.suppressImageDisplayCheckBox.Location = new System.Drawing.Point(14, 499);
+            this.suppressImageDisplayCheckBox.Location = new System.Drawing.Point(14, 492);
             this.suppressImageDisplayCheckBox.Name = "suppressImageDisplayCheckBox";
-            this.suppressImageDisplayCheckBox.Size = new System.Drawing.Size(177, 19);
+            this.suppressImageDisplayCheckBox.Size = new System.Drawing.Size(177, 23);
             this.suppressImageDisplayCheckBox.TabIndex = 3;
             this.suppressImageDisplayCheckBox.Text = "不顯示畫面";
             this.suppressImageDisplayCheckBox.UseVisualStyleBackColor = true;
@@ -375,7 +381,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.debugTimingMemo.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.debugTimingMemo.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.debugTimingMemo.Font = new System.Drawing.Font("Consolas", 8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.debugTimingMemo.Location = new System.Drawing.Point(14, 518);
+            this.debugTimingMemo.Location = new System.Drawing.Point(14, 515);
             this.debugTimingMemo.Multiline = true;
             this.debugTimingMemo.Name = "debugTimingMemo";
             this.debugTimingMemo.ReadOnly = true;
@@ -405,7 +411,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.centerPanel.Margin = new System.Windows.Forms.Padding(0);
             this.centerPanel.Name = "centerPanel";
             this.centerPanel.Padding = new System.Windows.Forms.Padding(16, 14, 16, 14);
-            this.centerPanel.Size = new System.Drawing.Size(616, 650);
+            this.centerPanel.Size = new System.Drawing.Size(616, 647);
             this.centerPanel.TabIndex = 1;
             // 
             // imageLayoutPanel
@@ -420,7 +426,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.imageLayoutPanel.Name = "imageLayoutPanel";
             this.imageLayoutPanel.RowCount = 1;
             this.imageLayoutPanel.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
-            this.imageLayoutPanel.Size = new System.Drawing.Size(584, 622);
+            this.imageLayoutPanel.Size = new System.Drawing.Size(584, 619);
             this.imageLayoutPanel.TabIndex = 0;
             // 
             // leftImageTabControl
@@ -436,17 +442,17 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftImageTabControl.Margin = new System.Windows.Forms.Padding(0, 0, 8, 0);
             this.leftImageTabControl.Name = "leftImageTabControl";
             this.leftImageTabControl.SelectedIndex = 0;
-            this.leftImageTabControl.Size = new System.Drawing.Size(284, 622);
+            this.leftImageTabControl.Size = new System.Drawing.Size(284, 619);
             this.leftImageTabControl.TabIndex = 0;
             // 
             // leftOriginalTabPage
             // 
             this.leftOriginalTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.leftOriginalTabPage.Controls.Add(this.leftOriginalDisplayHostPanel);
-            this.leftOriginalTabPage.Location = new System.Drawing.Point(4, 24);
+            this.leftOriginalTabPage.Location = new System.Drawing.Point(4, 28);
             this.leftOriginalTabPage.Name = "leftOriginalTabPage";
             this.leftOriginalTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.leftOriginalTabPage.Size = new System.Drawing.Size(276, 594);
+            this.leftOriginalTabPage.Size = new System.Drawing.Size(276, 587);
             this.leftOriginalTabPage.TabIndex = 0;
             this.leftOriginalTabPage.Text = "原圖";
             // 
@@ -460,7 +466,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftOriginalDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftOriginalDisplayHostPanel.Name = "leftOriginalDisplayHostPanel";
-            this.leftOriginalDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.leftOriginalDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.leftOriginalDisplayHostPanel.TabIndex = 0;
             // 
             // leftOriginalPreviewViewPanel
@@ -470,7 +476,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalPreviewViewPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftOriginalPreviewViewPanel.Location = new System.Drawing.Point(0, 42);
             this.leftOriginalPreviewViewPanel.Name = "leftOriginalPreviewViewPanel";
-            this.leftOriginalPreviewViewPanel.Size = new System.Drawing.Size(250, 484);
+            this.leftOriginalPreviewViewPanel.Size = new System.Drawing.Size(250, 477);
             this.leftOriginalPreviewViewPanel.TabIndex = 1;
             // 
             // leftOriginalPreviewBottomPanel
@@ -479,7 +485,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalPreviewBottomPanel.Controls.Add(this.leftOriginalPreviewFitButton);
             this.leftOriginalPreviewBottomPanel.Controls.Add(this.leftOriginalPreviewStatusLabel);
             this.leftOriginalPreviewBottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.leftOriginalPreviewBottomPanel.Location = new System.Drawing.Point(0, 526);
+            this.leftOriginalPreviewBottomPanel.Location = new System.Drawing.Point(0, 519);
             this.leftOriginalPreviewBottomPanel.Name = "leftOriginalPreviewBottomPanel";
             this.leftOriginalPreviewBottomPanel.Padding = new System.Windows.Forms.Padding(10, 7, 10, 7);
             this.leftOriginalPreviewBottomPanel.Size = new System.Drawing.Size(250, 42);
@@ -504,7 +510,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalPreviewStatusLabel.ForeColor = System.Drawing.Color.Black;
             this.leftOriginalPreviewStatusLabel.Location = new System.Drawing.Point(10, 7);
             this.leftOriginalPreviewStatusLabel.Name = "leftOriginalPreviewStatusLabel";
-            this.leftOriginalPreviewStatusLabel.Size = new System.Drawing.Size(79, 15);
+            this.leftOriginalPreviewStatusLabel.Size = new System.Drawing.Size(99, 19);
             this.leftOriginalPreviewStatusLabel.TabIndex = 0;
             this.leftOriginalPreviewStatusLabel.Text = "尚未載入圖片";
             // 
@@ -525,9 +531,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalPreviewResolutionLabel.AutoSize = true;
             this.leftOriginalPreviewResolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
             this.leftOriginalPreviewResolutionLabel.ForeColor = System.Drawing.Color.Black;
-            this.leftOriginalPreviewResolutionLabel.Location = new System.Drawing.Point(207, 8);
+            this.leftOriginalPreviewResolutionLabel.Location = new System.Drawing.Point(198, 8);
             this.leftOriginalPreviewResolutionLabel.Name = "leftOriginalPreviewResolutionLabel";
-            this.leftOriginalPreviewResolutionLabel.Size = new System.Drawing.Size(33, 15);
+            this.leftOriginalPreviewResolutionLabel.Size = new System.Drawing.Size(42, 19);
             this.leftOriginalPreviewResolutionLabel.TabIndex = 1;
             this.leftOriginalPreviewResolutionLabel.Text = "0 x 0";
             // 
@@ -539,7 +545,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftOriginalPreviewTitleLabel.ForeColor = System.Drawing.Color.Black;
             this.leftOriginalPreviewTitleLabel.Location = new System.Drawing.Point(10, 8);
             this.leftOriginalPreviewTitleLabel.Name = "leftOriginalPreviewTitleLabel";
-            this.leftOriginalPreviewTitleLabel.Size = new System.Drawing.Size(58, 15);
+            this.leftOriginalPreviewTitleLabel.Size = new System.Drawing.Size(73, 19);
             this.leftOriginalPreviewTitleLabel.TabIndex = 0;
             this.leftOriginalPreviewTitleLabel.Text = "左側 原圖";
             // 
@@ -547,10 +553,10 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.leftPreprocessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.leftPreprocessedTabPage.Controls.Add(this.leftPreprocessedDisplayHostPanel);
-            this.leftPreprocessedTabPage.Location = new System.Drawing.Point(4, 24);
+            this.leftPreprocessedTabPage.Location = new System.Drawing.Point(4, 28);
             this.leftPreprocessedTabPage.Name = "leftPreprocessedTabPage";
             this.leftPreprocessedTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.leftPreprocessedTabPage.Size = new System.Drawing.Size(276, 594);
+            this.leftPreprocessedTabPage.Size = new System.Drawing.Size(276, 587);
             this.leftPreprocessedTabPage.TabIndex = 1;
             this.leftPreprocessedTabPage.Text = "前處理";
             // 
@@ -561,17 +567,17 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftPreprocessedDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftPreprocessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftPreprocessedDisplayHostPanel.Name = "leftPreprocessedDisplayHostPanel";
-            this.leftPreprocessedDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.leftPreprocessedDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.leftPreprocessedDisplayHostPanel.TabIndex = 0;
             // 
             // leftProcessedTabPage
             // 
             this.leftProcessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.leftProcessedTabPage.Controls.Add(this.leftProcessedDisplayHostPanel);
-            this.leftProcessedTabPage.Location = new System.Drawing.Point(4, 24);
+            this.leftProcessedTabPage.Location = new System.Drawing.Point(4, 28);
             this.leftProcessedTabPage.Name = "leftProcessedTabPage";
             this.leftProcessedTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.leftProcessedTabPage.Size = new System.Drawing.Size(276, 594);
+            this.leftProcessedTabPage.Size = new System.Drawing.Size(276, 587);
             this.leftProcessedTabPage.TabIndex = 1;
             this.leftProcessedTabPage.Text = "處理後";
             // 
@@ -585,7 +591,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftProcessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftProcessedDisplayHostPanel.Name = "leftProcessedDisplayHostPanel";
-            this.leftProcessedDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.leftProcessedDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.leftProcessedDisplayHostPanel.TabIndex = 0;
             // 
             // leftProcessedPreviewViewPanel
@@ -595,7 +601,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedPreviewViewPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftProcessedPreviewViewPanel.Location = new System.Drawing.Point(0, 42);
             this.leftProcessedPreviewViewPanel.Name = "leftProcessedPreviewViewPanel";
-            this.leftProcessedPreviewViewPanel.Size = new System.Drawing.Size(250, 484);
+            this.leftProcessedPreviewViewPanel.Size = new System.Drawing.Size(250, 477);
             this.leftProcessedPreviewViewPanel.TabIndex = 1;
             // 
             // leftProcessedPreviewBottomPanel
@@ -604,7 +610,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedPreviewBottomPanel.Controls.Add(this.leftProcessedPreviewFitButton);
             this.leftProcessedPreviewBottomPanel.Controls.Add(this.leftProcessedPreviewStatusLabel);
             this.leftProcessedPreviewBottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.leftProcessedPreviewBottomPanel.Location = new System.Drawing.Point(0, 526);
+            this.leftProcessedPreviewBottomPanel.Location = new System.Drawing.Point(0, 519);
             this.leftProcessedPreviewBottomPanel.Name = "leftProcessedPreviewBottomPanel";
             this.leftProcessedPreviewBottomPanel.Padding = new System.Windows.Forms.Padding(10, 7, 10, 7);
             this.leftProcessedPreviewBottomPanel.Size = new System.Drawing.Size(250, 42);
@@ -629,7 +635,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedPreviewStatusLabel.ForeColor = System.Drawing.Color.Black;
             this.leftProcessedPreviewStatusLabel.Location = new System.Drawing.Point(10, 7);
             this.leftProcessedPreviewStatusLabel.Name = "leftProcessedPreviewStatusLabel";
-            this.leftProcessedPreviewStatusLabel.Size = new System.Drawing.Size(79, 15);
+            this.leftProcessedPreviewStatusLabel.Size = new System.Drawing.Size(99, 19);
             this.leftProcessedPreviewStatusLabel.TabIndex = 0;
             this.leftProcessedPreviewStatusLabel.Text = "尚未載入圖片";
             // 
@@ -650,9 +656,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedPreviewResolutionLabel.AutoSize = true;
             this.leftProcessedPreviewResolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
             this.leftProcessedPreviewResolutionLabel.ForeColor = System.Drawing.Color.Black;
-            this.leftProcessedPreviewResolutionLabel.Location = new System.Drawing.Point(207, 8);
+            this.leftProcessedPreviewResolutionLabel.Location = new System.Drawing.Point(198, 8);
             this.leftProcessedPreviewResolutionLabel.Name = "leftProcessedPreviewResolutionLabel";
-            this.leftProcessedPreviewResolutionLabel.Size = new System.Drawing.Size(33, 15);
+            this.leftProcessedPreviewResolutionLabel.Size = new System.Drawing.Size(42, 19);
             this.leftProcessedPreviewResolutionLabel.TabIndex = 1;
             this.leftProcessedPreviewResolutionLabel.Text = "0 x 0";
             // 
@@ -664,7 +670,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftProcessedPreviewTitleLabel.ForeColor = System.Drawing.Color.Black;
             this.leftProcessedPreviewTitleLabel.Location = new System.Drawing.Point(10, 8);
             this.leftProcessedPreviewTitleLabel.Name = "leftProcessedPreviewTitleLabel";
-            this.leftProcessedPreviewTitleLabel.Size = new System.Drawing.Size(70, 15);
+            this.leftProcessedPreviewTitleLabel.Size = new System.Drawing.Size(88, 19);
             this.leftProcessedPreviewTitleLabel.TabIndex = 0;
             this.leftProcessedPreviewTitleLabel.Text = "左側 處理後";
             // 
@@ -672,10 +678,10 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.leftBlockProcessingTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.leftBlockProcessingTabPage.Controls.Add(this.leftBlockProcessingDisplayHostPanel);
-            this.leftBlockProcessingTabPage.Location = new System.Drawing.Point(4, 24);
+            this.leftBlockProcessingTabPage.Location = new System.Drawing.Point(4, 28);
             this.leftBlockProcessingTabPage.Name = "leftBlockProcessingTabPage";
             this.leftBlockProcessingTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.leftBlockProcessingTabPage.Size = new System.Drawing.Size(276, 594);
+            this.leftBlockProcessingTabPage.Size = new System.Drawing.Size(276, 587);
             this.leftBlockProcessingTabPage.TabIndex = 2;
             this.leftBlockProcessingTabPage.Text = "區塊處理";
             // 
@@ -686,17 +692,17 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftBlockProcessingDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftBlockProcessingDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftBlockProcessingDisplayHostPanel.Name = "leftBlockProcessingDisplayHostPanel";
-            this.leftBlockProcessingDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.leftBlockProcessingDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.leftBlockProcessingDisplayHostPanel.TabIndex = 0;
             // 
             // leftObjectsTabPage
             // 
             this.leftObjectsTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.leftObjectsTabPage.Controls.Add(this.leftObjectsDisplayHostPanel);
-            this.leftObjectsTabPage.Location = new System.Drawing.Point(4, 24);
+            this.leftObjectsTabPage.Location = new System.Drawing.Point(4, 28);
             this.leftObjectsTabPage.Name = "leftObjectsTabPage";
             this.leftObjectsTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.leftObjectsTabPage.Size = new System.Drawing.Size(276, 594);
+            this.leftObjectsTabPage.Size = new System.Drawing.Size(276, 587);
             this.leftObjectsTabPage.TabIndex = 3;
             this.leftObjectsTabPage.Text = "區塊結果";
             // 
@@ -710,7 +716,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftObjectsDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftObjectsDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftObjectsDisplayHostPanel.Name = "leftObjectsDisplayHostPanel";
-            this.leftObjectsDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.leftObjectsDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.leftObjectsDisplayHostPanel.TabIndex = 0;
             // 
             // leftObjectsPreviewViewPanel
@@ -720,7 +726,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftObjectsPreviewViewPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftObjectsPreviewViewPanel.Location = new System.Drawing.Point(0, 42);
             this.leftObjectsPreviewViewPanel.Name = "leftObjectsPreviewViewPanel";
-            this.leftObjectsPreviewViewPanel.Size = new System.Drawing.Size(250, 484);
+            this.leftObjectsPreviewViewPanel.Size = new System.Drawing.Size(250, 477);
             this.leftObjectsPreviewViewPanel.TabIndex = 1;
             // 
             // leftObjectsPreviewBottomPanel
@@ -729,7 +735,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftObjectsPreviewBottomPanel.Controls.Add(this.leftObjectsPreviewFitButton);
             this.leftObjectsPreviewBottomPanel.Controls.Add(this.leftObjectsPreviewStatusLabel);
             this.leftObjectsPreviewBottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.leftObjectsPreviewBottomPanel.Location = new System.Drawing.Point(0, 526);
+            this.leftObjectsPreviewBottomPanel.Location = new System.Drawing.Point(0, 519);
             this.leftObjectsPreviewBottomPanel.Name = "leftObjectsPreviewBottomPanel";
             this.leftObjectsPreviewBottomPanel.Padding = new System.Windows.Forms.Padding(10, 7, 10, 7);
             this.leftObjectsPreviewBottomPanel.Size = new System.Drawing.Size(250, 42);
@@ -754,7 +760,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftObjectsPreviewStatusLabel.ForeColor = System.Drawing.Color.Black;
             this.leftObjectsPreviewStatusLabel.Location = new System.Drawing.Point(10, 7);
             this.leftObjectsPreviewStatusLabel.Name = "leftObjectsPreviewStatusLabel";
-            this.leftObjectsPreviewStatusLabel.Size = new System.Drawing.Size(79, 15);
+            this.leftObjectsPreviewStatusLabel.Size = new System.Drawing.Size(99, 19);
             this.leftObjectsPreviewStatusLabel.TabIndex = 0;
             this.leftObjectsPreviewStatusLabel.Text = "尚未載入圖片";
             // 
@@ -775,9 +781,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftObjectsPreviewResolutionLabel.AutoSize = true;
             this.leftObjectsPreviewResolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
             this.leftObjectsPreviewResolutionLabel.ForeColor = System.Drawing.Color.Black;
-            this.leftObjectsPreviewResolutionLabel.Location = new System.Drawing.Point(207, 8);
+            this.leftObjectsPreviewResolutionLabel.Location = new System.Drawing.Point(198, 8);
             this.leftObjectsPreviewResolutionLabel.Name = "leftObjectsPreviewResolutionLabel";
-            this.leftObjectsPreviewResolutionLabel.Size = new System.Drawing.Size(33, 15);
+            this.leftObjectsPreviewResolutionLabel.Size = new System.Drawing.Size(42, 19);
             this.leftObjectsPreviewResolutionLabel.TabIndex = 1;
             this.leftObjectsPreviewResolutionLabel.Text = "0 x 0";
             // 
@@ -789,7 +795,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftObjectsPreviewTitleLabel.ForeColor = System.Drawing.Color.Black;
             this.leftObjectsPreviewTitleLabel.Location = new System.Drawing.Point(10, 8);
             this.leftObjectsPreviewTitleLabel.Name = "leftObjectsPreviewTitleLabel";
-            this.leftObjectsPreviewTitleLabel.Size = new System.Drawing.Size(82, 15);
+            this.leftObjectsPreviewTitleLabel.Size = new System.Drawing.Size(103, 19);
             this.leftObjectsPreviewTitleLabel.TabIndex = 0;
             this.leftObjectsPreviewTitleLabel.Text = "左側 區塊結果";
             // 
@@ -797,10 +803,10 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.leftDebugTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.leftDebugTabPage.Controls.Add(this.leftDebugDisplayHostPanel);
-            this.leftDebugTabPage.Location = new System.Drawing.Point(4, 24);
+            this.leftDebugTabPage.Location = new System.Drawing.Point(4, 28);
             this.leftDebugTabPage.Name = "leftDebugTabPage";
             this.leftDebugTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.leftDebugTabPage.Size = new System.Drawing.Size(276, 594);
+            this.leftDebugTabPage.Size = new System.Drawing.Size(276, 587);
             this.leftDebugTabPage.TabIndex = 3;
             this.leftDebugTabPage.Text = "debug";
             // 
@@ -814,7 +820,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftDebugDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftDebugDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.leftDebugDisplayHostPanel.Name = "leftDebugDisplayHostPanel";
-            this.leftDebugDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.leftDebugDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.leftDebugDisplayHostPanel.TabIndex = 0;
             // 
             // leftDebugPreviewViewPanel
@@ -824,7 +830,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftDebugPreviewViewPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.leftDebugPreviewViewPanel.Location = new System.Drawing.Point(0, 42);
             this.leftDebugPreviewViewPanel.Name = "leftDebugPreviewViewPanel";
-            this.leftDebugPreviewViewPanel.Size = new System.Drawing.Size(250, 484);
+            this.leftDebugPreviewViewPanel.Size = new System.Drawing.Size(250, 477);
             this.leftDebugPreviewViewPanel.TabIndex = 1;
             // 
             // leftDebugPreviewBottomPanel
@@ -833,7 +839,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftDebugPreviewBottomPanel.Controls.Add(this.leftDebugPreviewFitButton);
             this.leftDebugPreviewBottomPanel.Controls.Add(this.leftDebugPreviewStatusLabel);
             this.leftDebugPreviewBottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.leftDebugPreviewBottomPanel.Location = new System.Drawing.Point(0, 526);
+            this.leftDebugPreviewBottomPanel.Location = new System.Drawing.Point(0, 519);
             this.leftDebugPreviewBottomPanel.Name = "leftDebugPreviewBottomPanel";
             this.leftDebugPreviewBottomPanel.Padding = new System.Windows.Forms.Padding(10, 7, 10, 7);
             this.leftDebugPreviewBottomPanel.Size = new System.Drawing.Size(250, 42);
@@ -858,7 +864,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftDebugPreviewStatusLabel.ForeColor = System.Drawing.Color.Black;
             this.leftDebugPreviewStatusLabel.Location = new System.Drawing.Point(10, 7);
             this.leftDebugPreviewStatusLabel.Name = "leftDebugPreviewStatusLabel";
-            this.leftDebugPreviewStatusLabel.Size = new System.Drawing.Size(79, 15);
+            this.leftDebugPreviewStatusLabel.Size = new System.Drawing.Size(99, 19);
             this.leftDebugPreviewStatusLabel.TabIndex = 0;
             this.leftDebugPreviewStatusLabel.Text = "尚未載入圖片";
             // 
@@ -879,9 +885,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftDebugPreviewResolutionLabel.AutoSize = true;
             this.leftDebugPreviewResolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
             this.leftDebugPreviewResolutionLabel.ForeColor = System.Drawing.Color.Black;
-            this.leftDebugPreviewResolutionLabel.Location = new System.Drawing.Point(207, 8);
+            this.leftDebugPreviewResolutionLabel.Location = new System.Drawing.Point(198, 8);
             this.leftDebugPreviewResolutionLabel.Name = "leftDebugPreviewResolutionLabel";
-            this.leftDebugPreviewResolutionLabel.Size = new System.Drawing.Size(33, 15);
+            this.leftDebugPreviewResolutionLabel.Size = new System.Drawing.Size(42, 19);
             this.leftDebugPreviewResolutionLabel.TabIndex = 1;
             this.leftDebugPreviewResolutionLabel.Text = "0 x 0";
             // 
@@ -893,7 +899,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.leftDebugPreviewTitleLabel.ForeColor = System.Drawing.Color.Black;
             this.leftDebugPreviewTitleLabel.Location = new System.Drawing.Point(10, 8);
             this.leftDebugPreviewTitleLabel.Name = "leftDebugPreviewTitleLabel";
-            this.leftDebugPreviewTitleLabel.Size = new System.Drawing.Size(73, 15);
+            this.leftDebugPreviewTitleLabel.Size = new System.Drawing.Size(91, 19);
             this.leftDebugPreviewTitleLabel.TabIndex = 0;
             this.leftDebugPreviewTitleLabel.Text = "左側 debug";
             // 
@@ -910,17 +916,17 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightImageTabControl.Margin = new System.Windows.Forms.Padding(8, 0, 0, 0);
             this.rightImageTabControl.Name = "rightImageTabControl";
             this.rightImageTabControl.SelectedIndex = 0;
-            this.rightImageTabControl.Size = new System.Drawing.Size(284, 622);
+            this.rightImageTabControl.Size = new System.Drawing.Size(284, 619);
             this.rightImageTabControl.TabIndex = 1;
             // 
             // rightOriginalTabPage
             // 
             this.rightOriginalTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.rightOriginalTabPage.Controls.Add(this.rightOriginalDisplayHostPanel);
-            this.rightOriginalTabPage.Location = new System.Drawing.Point(4, 24);
+            this.rightOriginalTabPage.Location = new System.Drawing.Point(4, 28);
             this.rightOriginalTabPage.Name = "rightOriginalTabPage";
             this.rightOriginalTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.rightOriginalTabPage.Size = new System.Drawing.Size(276, 594);
+            this.rightOriginalTabPage.Size = new System.Drawing.Size(276, 587);
             this.rightOriginalTabPage.TabIndex = 0;
             this.rightOriginalTabPage.Text = "原圖";
             // 
@@ -934,7 +940,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightOriginalDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightOriginalDisplayHostPanel.Name = "rightOriginalDisplayHostPanel";
-            this.rightOriginalDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.rightOriginalDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.rightOriginalDisplayHostPanel.TabIndex = 0;
             // 
             // rightOriginalPreviewViewPanel
@@ -944,7 +950,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalPreviewViewPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightOriginalPreviewViewPanel.Location = new System.Drawing.Point(0, 42);
             this.rightOriginalPreviewViewPanel.Name = "rightOriginalPreviewViewPanel";
-            this.rightOriginalPreviewViewPanel.Size = new System.Drawing.Size(250, 484);
+            this.rightOriginalPreviewViewPanel.Size = new System.Drawing.Size(250, 477);
             this.rightOriginalPreviewViewPanel.TabIndex = 1;
             // 
             // rightOriginalPreviewBottomPanel
@@ -953,7 +959,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalPreviewBottomPanel.Controls.Add(this.rightOriginalPreviewFitButton);
             this.rightOriginalPreviewBottomPanel.Controls.Add(this.rightOriginalPreviewStatusLabel);
             this.rightOriginalPreviewBottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.rightOriginalPreviewBottomPanel.Location = new System.Drawing.Point(0, 526);
+            this.rightOriginalPreviewBottomPanel.Location = new System.Drawing.Point(0, 519);
             this.rightOriginalPreviewBottomPanel.Name = "rightOriginalPreviewBottomPanel";
             this.rightOriginalPreviewBottomPanel.Padding = new System.Windows.Forms.Padding(10, 7, 10, 7);
             this.rightOriginalPreviewBottomPanel.Size = new System.Drawing.Size(250, 42);
@@ -978,7 +984,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalPreviewStatusLabel.ForeColor = System.Drawing.Color.Black;
             this.rightOriginalPreviewStatusLabel.Location = new System.Drawing.Point(10, 7);
             this.rightOriginalPreviewStatusLabel.Name = "rightOriginalPreviewStatusLabel";
-            this.rightOriginalPreviewStatusLabel.Size = new System.Drawing.Size(79, 15);
+            this.rightOriginalPreviewStatusLabel.Size = new System.Drawing.Size(99, 19);
             this.rightOriginalPreviewStatusLabel.TabIndex = 0;
             this.rightOriginalPreviewStatusLabel.Text = "尚未載入圖片";
             // 
@@ -999,9 +1005,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalPreviewResolutionLabel.AutoSize = true;
             this.rightOriginalPreviewResolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
             this.rightOriginalPreviewResolutionLabel.ForeColor = System.Drawing.Color.Black;
-            this.rightOriginalPreviewResolutionLabel.Location = new System.Drawing.Point(207, 8);
+            this.rightOriginalPreviewResolutionLabel.Location = new System.Drawing.Point(198, 8);
             this.rightOriginalPreviewResolutionLabel.Name = "rightOriginalPreviewResolutionLabel";
-            this.rightOriginalPreviewResolutionLabel.Size = new System.Drawing.Size(33, 15);
+            this.rightOriginalPreviewResolutionLabel.Size = new System.Drawing.Size(42, 19);
             this.rightOriginalPreviewResolutionLabel.TabIndex = 1;
             this.rightOriginalPreviewResolutionLabel.Text = "0 x 0";
             // 
@@ -1013,7 +1019,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightOriginalPreviewTitleLabel.ForeColor = System.Drawing.Color.Black;
             this.rightOriginalPreviewTitleLabel.Location = new System.Drawing.Point(10, 8);
             this.rightOriginalPreviewTitleLabel.Name = "rightOriginalPreviewTitleLabel";
-            this.rightOriginalPreviewTitleLabel.Size = new System.Drawing.Size(58, 15);
+            this.rightOriginalPreviewTitleLabel.Size = new System.Drawing.Size(73, 19);
             this.rightOriginalPreviewTitleLabel.TabIndex = 0;
             this.rightOriginalPreviewTitleLabel.Text = "右側 原圖";
             // 
@@ -1021,10 +1027,10 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.rightPreprocessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.rightPreprocessedTabPage.Controls.Add(this.rightPreprocessedDisplayHostPanel);
-            this.rightPreprocessedTabPage.Location = new System.Drawing.Point(4, 24);
+            this.rightPreprocessedTabPage.Location = new System.Drawing.Point(4, 28);
             this.rightPreprocessedTabPage.Name = "rightPreprocessedTabPage";
             this.rightPreprocessedTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.rightPreprocessedTabPage.Size = new System.Drawing.Size(276, 594);
+            this.rightPreprocessedTabPage.Size = new System.Drawing.Size(276, 587);
             this.rightPreprocessedTabPage.TabIndex = 1;
             this.rightPreprocessedTabPage.Text = "前處理";
             // 
@@ -1035,17 +1041,17 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightPreprocessedDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightPreprocessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightPreprocessedDisplayHostPanel.Name = "rightPreprocessedDisplayHostPanel";
-            this.rightPreprocessedDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.rightPreprocessedDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.rightPreprocessedDisplayHostPanel.TabIndex = 0;
             // 
             // rightProcessedTabPage
             // 
             this.rightProcessedTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.rightProcessedTabPage.Controls.Add(this.rightProcessedDisplayHostPanel);
-            this.rightProcessedTabPage.Location = new System.Drawing.Point(4, 24);
+            this.rightProcessedTabPage.Location = new System.Drawing.Point(4, 28);
             this.rightProcessedTabPage.Name = "rightProcessedTabPage";
             this.rightProcessedTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.rightProcessedTabPage.Size = new System.Drawing.Size(276, 594);
+            this.rightProcessedTabPage.Size = new System.Drawing.Size(276, 587);
             this.rightProcessedTabPage.TabIndex = 1;
             this.rightProcessedTabPage.Text = "處理後";
             // 
@@ -1059,7 +1065,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightProcessedDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightProcessedDisplayHostPanel.Name = "rightProcessedDisplayHostPanel";
-            this.rightProcessedDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.rightProcessedDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.rightProcessedDisplayHostPanel.TabIndex = 0;
             // 
             // rightProcessedPreviewViewPanel
@@ -1069,7 +1075,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedPreviewViewPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightProcessedPreviewViewPanel.Location = new System.Drawing.Point(0, 42);
             this.rightProcessedPreviewViewPanel.Name = "rightProcessedPreviewViewPanel";
-            this.rightProcessedPreviewViewPanel.Size = new System.Drawing.Size(250, 484);
+            this.rightProcessedPreviewViewPanel.Size = new System.Drawing.Size(250, 477);
             this.rightProcessedPreviewViewPanel.TabIndex = 1;
             // 
             // rightProcessedPreviewBottomPanel
@@ -1078,7 +1084,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedPreviewBottomPanel.Controls.Add(this.rightProcessedPreviewFitButton);
             this.rightProcessedPreviewBottomPanel.Controls.Add(this.rightProcessedPreviewStatusLabel);
             this.rightProcessedPreviewBottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.rightProcessedPreviewBottomPanel.Location = new System.Drawing.Point(0, 526);
+            this.rightProcessedPreviewBottomPanel.Location = new System.Drawing.Point(0, 519);
             this.rightProcessedPreviewBottomPanel.Name = "rightProcessedPreviewBottomPanel";
             this.rightProcessedPreviewBottomPanel.Padding = new System.Windows.Forms.Padding(10, 7, 10, 7);
             this.rightProcessedPreviewBottomPanel.Size = new System.Drawing.Size(250, 42);
@@ -1103,7 +1109,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedPreviewStatusLabel.ForeColor = System.Drawing.Color.Black;
             this.rightProcessedPreviewStatusLabel.Location = new System.Drawing.Point(10, 7);
             this.rightProcessedPreviewStatusLabel.Name = "rightProcessedPreviewStatusLabel";
-            this.rightProcessedPreviewStatusLabel.Size = new System.Drawing.Size(79, 15);
+            this.rightProcessedPreviewStatusLabel.Size = new System.Drawing.Size(99, 19);
             this.rightProcessedPreviewStatusLabel.TabIndex = 0;
             this.rightProcessedPreviewStatusLabel.Text = "尚未載入圖片";
             // 
@@ -1124,9 +1130,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedPreviewResolutionLabel.AutoSize = true;
             this.rightProcessedPreviewResolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
             this.rightProcessedPreviewResolutionLabel.ForeColor = System.Drawing.Color.Black;
-            this.rightProcessedPreviewResolutionLabel.Location = new System.Drawing.Point(207, 8);
+            this.rightProcessedPreviewResolutionLabel.Location = new System.Drawing.Point(198, 8);
             this.rightProcessedPreviewResolutionLabel.Name = "rightProcessedPreviewResolutionLabel";
-            this.rightProcessedPreviewResolutionLabel.Size = new System.Drawing.Size(33, 15);
+            this.rightProcessedPreviewResolutionLabel.Size = new System.Drawing.Size(42, 19);
             this.rightProcessedPreviewResolutionLabel.TabIndex = 1;
             this.rightProcessedPreviewResolutionLabel.Text = "0 x 0";
             // 
@@ -1138,7 +1144,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightProcessedPreviewTitleLabel.ForeColor = System.Drawing.Color.Black;
             this.rightProcessedPreviewTitleLabel.Location = new System.Drawing.Point(10, 8);
             this.rightProcessedPreviewTitleLabel.Name = "rightProcessedPreviewTitleLabel";
-            this.rightProcessedPreviewTitleLabel.Size = new System.Drawing.Size(70, 15);
+            this.rightProcessedPreviewTitleLabel.Size = new System.Drawing.Size(88, 19);
             this.rightProcessedPreviewTitleLabel.TabIndex = 0;
             this.rightProcessedPreviewTitleLabel.Text = "右側 處理後";
             // 
@@ -1146,10 +1152,10 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.rightBlockProcessingTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.rightBlockProcessingTabPage.Controls.Add(this.rightBlockProcessingDisplayHostPanel);
-            this.rightBlockProcessingTabPage.Location = new System.Drawing.Point(4, 24);
+            this.rightBlockProcessingTabPage.Location = new System.Drawing.Point(4, 28);
             this.rightBlockProcessingTabPage.Name = "rightBlockProcessingTabPage";
             this.rightBlockProcessingTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.rightBlockProcessingTabPage.Size = new System.Drawing.Size(276, 594);
+            this.rightBlockProcessingTabPage.Size = new System.Drawing.Size(276, 587);
             this.rightBlockProcessingTabPage.TabIndex = 2;
             this.rightBlockProcessingTabPage.Text = "區塊處理";
             // 
@@ -1160,17 +1166,17 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightBlockProcessingDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightBlockProcessingDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightBlockProcessingDisplayHostPanel.Name = "rightBlockProcessingDisplayHostPanel";
-            this.rightBlockProcessingDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.rightBlockProcessingDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.rightBlockProcessingDisplayHostPanel.TabIndex = 0;
             // 
             // rightObjectsTabPage
             // 
             this.rightObjectsTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.rightObjectsTabPage.Controls.Add(this.rightObjectsDisplayHostPanel);
-            this.rightObjectsTabPage.Location = new System.Drawing.Point(4, 24);
+            this.rightObjectsTabPage.Location = new System.Drawing.Point(4, 28);
             this.rightObjectsTabPage.Name = "rightObjectsTabPage";
             this.rightObjectsTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.rightObjectsTabPage.Size = new System.Drawing.Size(276, 594);
+            this.rightObjectsTabPage.Size = new System.Drawing.Size(276, 587);
             this.rightObjectsTabPage.TabIndex = 3;
             this.rightObjectsTabPage.Text = "區塊結果";
             // 
@@ -1184,7 +1190,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightObjectsDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightObjectsDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightObjectsDisplayHostPanel.Name = "rightObjectsDisplayHostPanel";
-            this.rightObjectsDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.rightObjectsDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.rightObjectsDisplayHostPanel.TabIndex = 0;
             // 
             // rightObjectsPreviewViewPanel
@@ -1194,7 +1200,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightObjectsPreviewViewPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightObjectsPreviewViewPanel.Location = new System.Drawing.Point(0, 42);
             this.rightObjectsPreviewViewPanel.Name = "rightObjectsPreviewViewPanel";
-            this.rightObjectsPreviewViewPanel.Size = new System.Drawing.Size(250, 484);
+            this.rightObjectsPreviewViewPanel.Size = new System.Drawing.Size(250, 477);
             this.rightObjectsPreviewViewPanel.TabIndex = 1;
             // 
             // rightObjectsPreviewBottomPanel
@@ -1203,7 +1209,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightObjectsPreviewBottomPanel.Controls.Add(this.rightObjectsPreviewFitButton);
             this.rightObjectsPreviewBottomPanel.Controls.Add(this.rightObjectsPreviewStatusLabel);
             this.rightObjectsPreviewBottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.rightObjectsPreviewBottomPanel.Location = new System.Drawing.Point(0, 526);
+            this.rightObjectsPreviewBottomPanel.Location = new System.Drawing.Point(0, 519);
             this.rightObjectsPreviewBottomPanel.Name = "rightObjectsPreviewBottomPanel";
             this.rightObjectsPreviewBottomPanel.Padding = new System.Windows.Forms.Padding(10, 7, 10, 7);
             this.rightObjectsPreviewBottomPanel.Size = new System.Drawing.Size(250, 42);
@@ -1228,7 +1234,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightObjectsPreviewStatusLabel.ForeColor = System.Drawing.Color.Black;
             this.rightObjectsPreviewStatusLabel.Location = new System.Drawing.Point(10, 7);
             this.rightObjectsPreviewStatusLabel.Name = "rightObjectsPreviewStatusLabel";
-            this.rightObjectsPreviewStatusLabel.Size = new System.Drawing.Size(79, 15);
+            this.rightObjectsPreviewStatusLabel.Size = new System.Drawing.Size(99, 19);
             this.rightObjectsPreviewStatusLabel.TabIndex = 0;
             this.rightObjectsPreviewStatusLabel.Text = "尚未載入圖片";
             // 
@@ -1249,9 +1255,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightObjectsPreviewResolutionLabel.AutoSize = true;
             this.rightObjectsPreviewResolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
             this.rightObjectsPreviewResolutionLabel.ForeColor = System.Drawing.Color.Black;
-            this.rightObjectsPreviewResolutionLabel.Location = new System.Drawing.Point(207, 8);
+            this.rightObjectsPreviewResolutionLabel.Location = new System.Drawing.Point(198, 8);
             this.rightObjectsPreviewResolutionLabel.Name = "rightObjectsPreviewResolutionLabel";
-            this.rightObjectsPreviewResolutionLabel.Size = new System.Drawing.Size(33, 15);
+            this.rightObjectsPreviewResolutionLabel.Size = new System.Drawing.Size(42, 19);
             this.rightObjectsPreviewResolutionLabel.TabIndex = 1;
             this.rightObjectsPreviewResolutionLabel.Text = "0 x 0";
             // 
@@ -1263,7 +1269,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightObjectsPreviewTitleLabel.ForeColor = System.Drawing.Color.Black;
             this.rightObjectsPreviewTitleLabel.Location = new System.Drawing.Point(10, 8);
             this.rightObjectsPreviewTitleLabel.Name = "rightObjectsPreviewTitleLabel";
-            this.rightObjectsPreviewTitleLabel.Size = new System.Drawing.Size(82, 15);
+            this.rightObjectsPreviewTitleLabel.Size = new System.Drawing.Size(103, 19);
             this.rightObjectsPreviewTitleLabel.TabIndex = 0;
             this.rightObjectsPreviewTitleLabel.Text = "右側 區塊結果";
             // 
@@ -1271,10 +1277,10 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.rightDebugTabPage.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(250)))), ((int)(((byte)(251)))), ((int)(((byte)(253)))));
             this.rightDebugTabPage.Controls.Add(this.rightDebugDisplayHostPanel);
-            this.rightDebugTabPage.Location = new System.Drawing.Point(4, 24);
+            this.rightDebugTabPage.Location = new System.Drawing.Point(4, 28);
             this.rightDebugTabPage.Name = "rightDebugTabPage";
             this.rightDebugTabPage.Padding = new System.Windows.Forms.Padding(12);
-            this.rightDebugTabPage.Size = new System.Drawing.Size(276, 594);
+            this.rightDebugTabPage.Size = new System.Drawing.Size(276, 587);
             this.rightDebugTabPage.TabIndex = 3;
             this.rightDebugTabPage.Text = "debug";
             // 
@@ -1288,7 +1294,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightDebugDisplayHostPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightDebugDisplayHostPanel.Location = new System.Drawing.Point(12, 12);
             this.rightDebugDisplayHostPanel.Name = "rightDebugDisplayHostPanel";
-            this.rightDebugDisplayHostPanel.Size = new System.Drawing.Size(252, 570);
+            this.rightDebugDisplayHostPanel.Size = new System.Drawing.Size(252, 563);
             this.rightDebugDisplayHostPanel.TabIndex = 0;
             // 
             // rightDebugPreviewViewPanel
@@ -1298,7 +1304,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightDebugPreviewViewPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.rightDebugPreviewViewPanel.Location = new System.Drawing.Point(0, 42);
             this.rightDebugPreviewViewPanel.Name = "rightDebugPreviewViewPanel";
-            this.rightDebugPreviewViewPanel.Size = new System.Drawing.Size(250, 484);
+            this.rightDebugPreviewViewPanel.Size = new System.Drawing.Size(250, 477);
             this.rightDebugPreviewViewPanel.TabIndex = 1;
             // 
             // rightDebugPreviewBottomPanel
@@ -1307,7 +1313,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightDebugPreviewBottomPanel.Controls.Add(this.rightDebugPreviewFitButton);
             this.rightDebugPreviewBottomPanel.Controls.Add(this.rightDebugPreviewStatusLabel);
             this.rightDebugPreviewBottomPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
-            this.rightDebugPreviewBottomPanel.Location = new System.Drawing.Point(0, 526);
+            this.rightDebugPreviewBottomPanel.Location = new System.Drawing.Point(0, 519);
             this.rightDebugPreviewBottomPanel.Name = "rightDebugPreviewBottomPanel";
             this.rightDebugPreviewBottomPanel.Padding = new System.Windows.Forms.Padding(10, 7, 10, 7);
             this.rightDebugPreviewBottomPanel.Size = new System.Drawing.Size(250, 42);
@@ -1332,7 +1338,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightDebugPreviewStatusLabel.ForeColor = System.Drawing.Color.Black;
             this.rightDebugPreviewStatusLabel.Location = new System.Drawing.Point(10, 7);
             this.rightDebugPreviewStatusLabel.Name = "rightDebugPreviewStatusLabel";
-            this.rightDebugPreviewStatusLabel.Size = new System.Drawing.Size(79, 15);
+            this.rightDebugPreviewStatusLabel.Size = new System.Drawing.Size(99, 19);
             this.rightDebugPreviewStatusLabel.TabIndex = 0;
             this.rightDebugPreviewStatusLabel.Text = "尚未載入圖片";
             // 
@@ -1353,9 +1359,9 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightDebugPreviewResolutionLabel.AutoSize = true;
             this.rightDebugPreviewResolutionLabel.Dock = System.Windows.Forms.DockStyle.Right;
             this.rightDebugPreviewResolutionLabel.ForeColor = System.Drawing.Color.Black;
-            this.rightDebugPreviewResolutionLabel.Location = new System.Drawing.Point(207, 8);
+            this.rightDebugPreviewResolutionLabel.Location = new System.Drawing.Point(198, 8);
             this.rightDebugPreviewResolutionLabel.Name = "rightDebugPreviewResolutionLabel";
-            this.rightDebugPreviewResolutionLabel.Size = new System.Drawing.Size(33, 15);
+            this.rightDebugPreviewResolutionLabel.Size = new System.Drawing.Size(42, 19);
             this.rightDebugPreviewResolutionLabel.TabIndex = 1;
             this.rightDebugPreviewResolutionLabel.Text = "0 x 0";
             // 
@@ -1367,7 +1373,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightDebugPreviewTitleLabel.ForeColor = System.Drawing.Color.Black;
             this.rightDebugPreviewTitleLabel.Location = new System.Drawing.Point(10, 8);
             this.rightDebugPreviewTitleLabel.Name = "rightDebugPreviewTitleLabel";
-            this.rightDebugPreviewTitleLabel.Size = new System.Drawing.Size(73, 15);
+            this.rightDebugPreviewTitleLabel.Size = new System.Drawing.Size(91, 19);
             this.rightDebugPreviewTitleLabel.TabIndex = 0;
             this.rightDebugPreviewTitleLabel.Text = "右側 debug";
             // 
@@ -1381,7 +1387,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.rightPanel.Margin = new System.Windows.Forms.Padding(0);
             this.rightPanel.Name = "rightPanel";
             this.rightPanel.Padding = new System.Windows.Forms.Padding(14, 12, 14, 12);
-            this.rightPanel.Size = new System.Drawing.Size(207, 650);
+            this.rightPanel.Size = new System.Drawing.Size(207, 647);
             this.rightPanel.TabIndex = 2;
             // 
             // parameterPanel
@@ -1391,7 +1397,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.parameterPanel.Dock = System.Windows.Forms.DockStyle.Fill;
             this.parameterPanel.Location = new System.Drawing.Point(14, 46);
             this.parameterPanel.Name = "parameterPanel";
-            this.parameterPanel.Size = new System.Drawing.Size(179, 592);
+            this.parameterPanel.Size = new System.Drawing.Size(179, 589);
             this.parameterPanel.TabIndex = 1;
             // 
             // parameterPlaceholderLabel
@@ -1420,23 +1426,24 @@ namespace IntegratedImageProcessingApp.Forms
             // statusStrip
             // 
             this.statusStrip.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(247)))), ((int)(((byte)(249)))), ((int)(((byte)(252)))));
+            this.statusStrip.ImageScalingSize = new System.Drawing.Size(20, 20);
             this.statusStrip.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.statusLabel});
-            this.statusStrip.Location = new System.Drawing.Point(0, 698);
+            this.statusStrip.Location = new System.Drawing.Point(0, 695);
             this.statusStrip.Name = "statusStrip";
-            this.statusStrip.Size = new System.Drawing.Size(1028, 22);
+            this.statusStrip.Size = new System.Drawing.Size(1028, 25);
             this.statusStrip.TabIndex = 2;
             this.statusStrip.Text = "statusStrip";
             // 
             // statusLabel
             // 
             this.statusLabel.Name = "statusLabel";
-            this.statusLabel.Size = new System.Drawing.Size(67, 17);
+            this.statusLabel.Size = new System.Drawing.Size(84, 19);
             this.statusLabel.Text = "框架準備中";
             // 
             // MainForm
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(9F, 19F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.White;
             this.ClientSize = new System.Drawing.Size(1028, 720);
@@ -1520,8 +1527,6 @@ namespace IntegratedImageProcessingApp.Forms
         }
     }
 }
-
-
 
 
 

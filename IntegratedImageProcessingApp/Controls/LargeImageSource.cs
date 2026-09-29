@@ -18,11 +18,13 @@ namespace IntegratedImageProcessingApp.Controls
         private const int TileSourceSize = 1024;
         private const int MaxDisplayTileCacheCount = 384;
         private const int MaxViewportPrefetchTileCount = 256;
-        private const int MaxPreviewDimension = 2048;
+        private const int MaxPreviewDimension = 3072;
         private readonly object _sync = new object();
         private readonly string _filePath;
         private readonly FileStream _stream;
         private readonly SWMI.BitmapFrame _frame;
+        private LargeImageSource _backingSource;
+        private Func<Rectangle, Bitmap> _tileBitmapFactory;
         private Cv.Mat _memoryGray;
         private readonly Dictionary<string, Bitmap> _tileCache;
         private readonly LinkedList<string> _tileOrder;
@@ -69,6 +71,69 @@ namespace IntegratedImageProcessingApp.Controls
             _previewLevels = new List<PreviewLevel>();
             InitializePreviewLevels();
             CreateFastPreview();
+        }
+
+        public LargeImageSource(
+            LargeImageSource backingSource,
+            Func<Rectangle, Bitmap> tileBitmapFactory,
+            Bitmap overview,
+            float overviewScale)
+        {
+            if (backingSource == null)
+            {
+                throw new ArgumentNullException("backingSource");
+            }
+            if (tileBitmapFactory == null)
+            {
+                throw new ArgumentNullException("tileBitmapFactory");
+            }
+            if (overview == null || overview.Width <= 0 || overview.Height <= 0)
+            {
+                throw new ArgumentException("虛擬影像需要有效的全覽預覽。", "overview");
+            }
+
+            _backingSource = backingSource.AddReference();
+            _tileBitmapFactory = tileBitmapFactory;
+            Width = backingSource.Width;
+            Height = backingSource.Height;
+            SourceIsGrayscale = backingSource.SourceIsGrayscale;
+            _tileCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
+            _tileOrder = new LinkedList<string>();
+            _pendingTiles = new HashSet<string>(StringComparer.Ordinal);
+            _previewLevels = new List<PreviewLevel>();
+            InitializePreviewLevels();
+
+            PreviewLevel closest = null;
+            float scaleDifference = float.MaxValue;
+            foreach (PreviewLevel level in _previewLevels)
+            {
+                float difference = Math.Abs(level.Scale - overviewScale);
+                if (difference < scaleDifference)
+                {
+                    closest = level;
+                    scaleDifference = difference;
+                }
+            }
+
+            if (closest == null)
+            {
+                LargeImageSource source = _backingSource;
+                _backingSource = null;
+                source.ReleaseReference();
+                throw new InvalidOperationException("找不到可用的全覽預覽層級。");
+            }
+
+            try
+            {
+                closest.Bitmap = new Bitmap(overview);
+            }
+            catch
+            {
+                LargeImageSource source = _backingSource;
+                _backingSource = null;
+                source.ReleaseReference();
+                throw;
+            }
         }
 
         public int Width { get; private set; }
@@ -485,7 +550,9 @@ namespace IntegratedImageProcessingApp.Controls
                             Bitmap bitmap = null;
                             try
                             {
-                                bitmap = CreateScaledBitmap(level.DecodeWidth, level.DecodeHeight);
+                                bitmap = _backingSource == null
+                                    ? CreateScaledBitmap(level.DecodeWidth, level.DecodeHeight)
+                                    : CreateScaledBitmapFromAvailablePreview(level);
                                 lock (_sync)
                                 {
                                     if (_disposed)
@@ -716,6 +783,7 @@ namespace IntegratedImageProcessingApp.Controls
 
         public void Dispose()
         {
+            LargeImageSource backingSource;
             lock (_sync)
             {
                 if (_disposed)
@@ -751,6 +819,15 @@ namespace IntegratedImageProcessingApp.Controls
                 {
                     _stream.Dispose();
                 }
+
+                backingSource = _backingSource;
+                _backingSource = null;
+                _tileBitmapFactory = null;
+            }
+
+            if (backingSource != null)
+            {
+                backingSource.ReleaseReference();
             }
         }
 
@@ -801,10 +878,22 @@ namespace IntegratedImageProcessingApp.Controls
                 return;
             }
 
+            GetGrayValues(points, destination, Math.Min(points.Length, destination.Length));
+        }
+
+        public void GetGrayValues(Point[] points, int[] destination, int requestedCount)
+        {
+            if (points == null || destination == null)
+            {
+                return;
+            }
+
             lock (_sync)
             {
                 ThrowIfDisposed();
-                var count = Math.Min(points.Length, destination.Length);
+                var count = Math.Min(
+                    Math.Max(0, requestedCount),
+                    Math.Min(points.Length, destination.Length));
                 var groups = new Dictionary<string, TileSampleGroup>(StringComparer.Ordinal);
                 for (var i = 0; i < count; i++)
                 {
@@ -852,6 +941,7 @@ namespace IntegratedImageProcessingApp.Controls
             AddPreviewLevel(512);
             AddPreviewLevel(1024);
             AddPreviewLevel(2048);
+            AddPreviewLevel(3072);
             _previewLevels.Sort((a, b) => b.Scale.CompareTo(a.Scale));
         }
 
@@ -975,6 +1065,20 @@ namespace IntegratedImageProcessingApp.Controls
                 throw new ArgumentOutOfRangeException("sourceRect", "單次 WIC 轉換只能處理一個原圖 tile。");
             }
 
+            if (_tileBitmapFactory != null)
+            {
+                Bitmap tile = _tileBitmapFactory(sourceRect);
+                if (tile == null || tile.Width != sourceRect.Width || tile.Height != sourceRect.Height)
+                {
+                    if (tile != null)
+                    {
+                        tile.Dispose();
+                    }
+                    throw new InvalidOperationException("虛擬影像產生的 tile 尺寸不正確。");
+                }
+                return tile;
+            }
+
             if (_memoryGray != null)
             {
                 return CreateMemoryTileBitmap(sourceRect);
@@ -1047,6 +1151,62 @@ namespace IntegratedImageProcessingApp.Controls
             // This keeps preview creation away from the GDI+ conversion path,
             // which is not reliable for very large WIC frames.
             return CreateScaledBitmapFromTiles(scale, decodeWidth, decodeHeight);
+        }
+
+        private Bitmap CreateScaledBitmapFromAvailablePreview(PreviewLevel targetLevel)
+        {
+            Bitmap sourcePreview = null;
+            lock (_sync)
+            {
+                ThrowIfDisposed();
+                PreviewLevel closest = null;
+                float scaleDifference = float.MaxValue;
+                foreach (PreviewLevel level in _previewLevels)
+                {
+                    if (level.Bitmap == null)
+                    {
+                        continue;
+                    }
+
+                    float difference = Math.Abs(level.Scale - targetLevel.Scale);
+                    if (difference < scaleDifference)
+                    {
+                        closest = level;
+                        scaleDifference = difference;
+                    }
+                }
+
+                if (closest == null)
+                {
+                    throw new InvalidOperationException("虛擬影像缺少全覽預覽來源。");
+                }
+
+                sourcePreview = (Bitmap)closest.Bitmap.Clone();
+            }
+
+            try
+            {
+                var result = new Bitmap(
+                    targetLevel.DecodeWidth,
+                    targetLevel.DecodeHeight,
+                    PixelFormat.Format32bppArgb);
+                using (Graphics graphics = Graphics.FromImage(result))
+                {
+                    graphics.Clear(Color.Black);
+                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+                    graphics.DrawImage(
+                        sourcePreview,
+                        new Rectangle(0, 0, result.Width, result.Height),
+                        new Rectangle(0, 0, sourcePreview.Width, sourcePreview.Height),
+                        GraphicsUnit.Pixel);
+                }
+                return result;
+            }
+            finally
+            {
+                sourcePreview.Dispose();
+            }
         }
 
         private Bitmap CreateScaledBitmapFromTiles(double scale, int decodeWidth, int decodeHeight)

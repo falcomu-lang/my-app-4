@@ -373,6 +373,21 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".RowCount",
                         0),
+                    CameraXMillimetersPerPixel = GetPositiveDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".CameraXMillimetersPerPixel",
+                        1.0),
+                    CameraYMillimetersPerPixel = GetPositiveDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".CameraYMillimetersPerPixel",
+                        1.0),
+                    CameraPrecisionConfigured = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".CameraPrecisionConfigured",
+                        false),
                     SourceMaskMode = GetValue(
                         sections,
                         SectionObjectDetection,
@@ -412,6 +427,119 @@ namespace IntegratedImageProcessingApp.Services
                         sections,
                         SectionObjectDetection,
                         prefix + ".SourceMaskSecondaryNamespace",
+                        string.Empty),
+                    FlatFieldMaskMode = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskMode",
+                        "Direct"),
+                    FlatFieldMaskPrimaryType = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskPrimaryType",
+                        string.Empty),
+                    FlatFieldMaskPrimaryId = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskPrimaryId",
+                        string.Empty),
+                    FlatFieldMaskPrimaryNamespace = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskPrimaryNamespace",
+                        string.Empty),
+                    FlatFieldMaskOperation = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskOperation",
+                        "None"),
+                    FlatFieldMaskSecondaryType = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskSecondaryType",
+                        string.Empty),
+                    FlatFieldMaskSecondaryId = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskSecondaryId",
+                        string.Empty),
+                    FlatFieldMaskSecondaryNamespace = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskSecondaryNamespace",
+                        string.Empty),
+                    FlatFieldMaskDisplayName = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldMaskDisplayName",
+                        "未指定來源 MASK"),
+                    FlatFieldUseMaskMode = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskMode", "Direct"),
+                    FlatFieldUseMaskPrimaryType = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskPrimaryType", string.Empty),
+                    FlatFieldUseMaskPrimaryId = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskPrimaryId", string.Empty),
+                    FlatFieldUseMaskPrimaryNamespace = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskPrimaryNamespace", string.Empty),
+                    FlatFieldUseMaskOperation = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskOperation", "None"),
+                    FlatFieldUseMaskSecondaryType = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskSecondaryType", string.Empty),
+                    FlatFieldUseMaskSecondaryId = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskSecondaryId", string.Empty),
+                    FlatFieldUseMaskSecondaryNamespace = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskSecondaryNamespace", string.Empty),
+                    FlatFieldUseMaskDisplayName = GetValue(sections, SectionObjectDetection,
+                        prefix + ".FlatFieldUseMaskDisplayName", "沿用平場校正來源 MASK"),
+                    FlatFieldSamplePositionConfigured = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSamplePositionConfigured",
+                        false),
+                    FlatFieldSampleYRatio = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSampleYRatio",
+                        0.5),
+                    FlatFieldSamplingHeight = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSamplingHeight",
+                        100),
+                    FlatFieldTargetGray = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldTargetGray",
+                        128),
+                    FlatFieldSmoothingMode = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSmoothingMode",
+                        "MovingAverage"),
+                    FlatFieldSmoothingWindow = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSmoothingWindow",
+                        51),
+                    FlatFieldSavedImageWidth = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSavedImageWidth",
+                        0),
+                    FlatFieldSavedTargetGray = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSavedTargetGray",
+                        0),
+                    FlatFieldSavedProfileData = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSavedProfileData",
+                        string.Empty),
+                    FlatFieldSavedSettingsSignature = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".FlatFieldSavedSettingsSignature",
                         string.Empty),
                     MeasurementMode = GetValue(
                         sections,
@@ -527,6 +655,54 @@ namespace IntegratedImageProcessingApp.Services
                         sections,
                         prefix),
                     GoodJudgementRules = ReadObjectDetectionGoodJudgementRules(
+                        sections,
+                        prefix),
+                    DefectInspectionRegionId = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectInspectionRegionId",
+                        string.Empty),
+                    DefectInspectionRegionObjectDefinitionId = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectInspectionRegionObjectDefinitionId",
+                        string.Empty),
+                    DefectInspectionRegionReferenceObjectNumber = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectInspectionRegionReferenceObjectNumber",
+                        0),
+                    DefectInspectionRegionConfigured = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectInspectionRegionConfigured",
+                        false),
+                    DefectInspectionRegionLeft = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectInspectionRegionLeft",
+                        0),
+                    DefectInspectionRegionTop = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectInspectionRegionTop",
+                        0),
+                    DefectInspectionRegionRight = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectInspectionRegionRight",
+                        1),
+                    DefectInspectionRegionBottom = GetDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectInspectionRegionBottom",
+                        1),
+                    DefectParallelExecutionEnabled = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectParallelExecutionEnabled",
+                        false),
+                    DefectDetectionCores = ReadObjectDetectionDefectCores(
                         sections,
                         prefix)
                 });
@@ -776,6 +952,18 @@ namespace IntegratedImageProcessingApp.Services
                         "{0}.RowCount={1}",
                         prefix,
                         parameter.RowCount.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.CameraXMillimetersPerPixel={1}",
+                        prefix,
+                        parameter.CameraXMillimetersPerPixel.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.CameraYMillimetersPerPixel={1}",
+                        prefix,
+                        parameter.CameraYMillimetersPerPixel.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.CameraPrecisionConfigured={1}",
+                        prefix,
+                        parameter.CameraPrecisionConfigured ? "1" : "0");
                     writer.WriteLine("{0}.SourceMaskMode={1}", prefix, Escape(parameter.SourceMaskMode));
                     writer.WriteLine("{0}.SourceMaskPrimaryType={1}", prefix, Escape(parameter.SourceMaskPrimaryType));
                     writer.WriteLine("{0}.SourceMaskPrimaryId={1}", prefix, Escape(parameter.SourceMaskPrimaryId));
@@ -784,6 +972,64 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.SourceMaskSecondaryType={1}", prefix, Escape(parameter.SourceMaskSecondaryType));
                     writer.WriteLine("{0}.SourceMaskSecondaryId={1}", prefix, Escape(parameter.SourceMaskSecondaryId));
                     writer.WriteLine("{0}.SourceMaskSecondaryNamespace={1}", prefix, Escape(parameter.SourceMaskSecondaryNamespace));
+                    writer.WriteLine("{0}.FlatFieldMaskMode={1}", prefix, Escape(parameter.FlatFieldMaskMode));
+                    writer.WriteLine("{0}.FlatFieldMaskPrimaryType={1}", prefix, Escape(parameter.FlatFieldMaskPrimaryType));
+                    writer.WriteLine("{0}.FlatFieldMaskPrimaryId={1}", prefix, Escape(parameter.FlatFieldMaskPrimaryId));
+                    writer.WriteLine("{0}.FlatFieldMaskPrimaryNamespace={1}", prefix, Escape(parameter.FlatFieldMaskPrimaryNamespace));
+                    writer.WriteLine("{0}.FlatFieldMaskOperation={1}", prefix, Escape(parameter.FlatFieldMaskOperation));
+                    writer.WriteLine("{0}.FlatFieldMaskSecondaryType={1}", prefix, Escape(parameter.FlatFieldMaskSecondaryType));
+                    writer.WriteLine("{0}.FlatFieldMaskSecondaryId={1}", prefix, Escape(parameter.FlatFieldMaskSecondaryId));
+                    writer.WriteLine("{0}.FlatFieldMaskSecondaryNamespace={1}", prefix, Escape(parameter.FlatFieldMaskSecondaryNamespace));
+                    writer.WriteLine("{0}.FlatFieldMaskDisplayName={1}", prefix, Escape(parameter.FlatFieldMaskDisplayName));
+                    writer.WriteLine("{0}.FlatFieldUseMaskMode={1}", prefix, Escape(parameter.FlatFieldUseMaskMode));
+                    writer.WriteLine("{0}.FlatFieldUseMaskPrimaryType={1}", prefix, Escape(parameter.FlatFieldUseMaskPrimaryType));
+                    writer.WriteLine("{0}.FlatFieldUseMaskPrimaryId={1}", prefix, Escape(parameter.FlatFieldUseMaskPrimaryId));
+                    writer.WriteLine("{0}.FlatFieldUseMaskPrimaryNamespace={1}", prefix, Escape(parameter.FlatFieldUseMaskPrimaryNamespace));
+                    writer.WriteLine("{0}.FlatFieldUseMaskOperation={1}", prefix, Escape(parameter.FlatFieldUseMaskOperation));
+                    writer.WriteLine("{0}.FlatFieldUseMaskSecondaryType={1}", prefix, Escape(parameter.FlatFieldUseMaskSecondaryType));
+                    writer.WriteLine("{0}.FlatFieldUseMaskSecondaryId={1}", prefix, Escape(parameter.FlatFieldUseMaskSecondaryId));
+                    writer.WriteLine("{0}.FlatFieldUseMaskSecondaryNamespace={1}", prefix, Escape(parameter.FlatFieldUseMaskSecondaryNamespace));
+                    writer.WriteLine("{0}.FlatFieldUseMaskDisplayName={1}", prefix, Escape(parameter.FlatFieldUseMaskDisplayName));
+                    writer.WriteLine(
+                        "{0}.FlatFieldSamplePositionConfigured={1}",
+                        prefix,
+                        parameter.FlatFieldSamplePositionConfigured ? "1" : "0");
+                    writer.WriteLine(
+                        "{0}.FlatFieldSampleYRatio={1}",
+                        prefix,
+                        parameter.FlatFieldSampleYRatio.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.FlatFieldSamplingHeight={1}",
+                        prefix,
+                        parameter.FlatFieldSamplingHeight.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.FlatFieldTargetGray={1}",
+                        prefix,
+                        parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.FlatFieldSmoothingMode={1}",
+                        prefix,
+                        Escape(parameter.FlatFieldSmoothingMode));
+                    writer.WriteLine(
+                        "{0}.FlatFieldSmoothingWindow={1}",
+                        prefix,
+                        parameter.FlatFieldSmoothingWindow.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.FlatFieldSavedImageWidth={1}",
+                        prefix,
+                        parameter.FlatFieldSavedImageWidth.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.FlatFieldSavedTargetGray={1}",
+                        prefix,
+                        parameter.FlatFieldSavedTargetGray.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine(
+                        "{0}.FlatFieldSavedProfileData={1}",
+                        prefix,
+                        Escape(parameter.FlatFieldSavedProfileData));
+                    writer.WriteLine(
+                        "{0}.FlatFieldSavedSettingsSignature={1}",
+                        prefix,
+                        Escape(parameter.FlatFieldSavedSettingsSignature));
                     writer.WriteLine("{0}.MeasurementMode={1}", prefix, Escape(parameter.MeasurementMode));
                     writer.WriteLine("{0}.MeasurementDirection={1}", prefix, Escape(parameter.MeasurementDirection));
                     writer.WriteLine(
@@ -818,6 +1064,56 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.MeasurementSecondStartOutsideRoi={1}", prefix, parameter.MeasurementSecondStartOutsideRoi ? "1" : "0");
                     writer.WriteLine("{0}.MeasurementSecondEndOutsideRoi={1}", prefix, parameter.MeasurementSecondEndOutsideRoi ? "1" : "0");
                     writer.WriteLine("{0}.MeasurementSourceMaskDisplayName={1}", prefix, Escape(parameter.MeasurementSourceMaskDisplayName));
+                    writer.WriteLine("{0}.DefectInspectionRegionId={1}", prefix, Escape(parameter.DefectInspectionRegionId));
+                    writer.WriteLine("{0}.DefectInspectionRegionObjectDefinitionId={1}", prefix, Escape(parameter.DefectInspectionRegionObjectDefinitionId));
+                    writer.WriteLine("{0}.DefectInspectionRegionReferenceObjectNumber={1}", prefix, parameter.DefectInspectionRegionReferenceObjectNumber.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectInspectionRegionConfigured={1}", prefix, parameter.DefectInspectionRegionConfigured ? "1" : "0");
+                    writer.WriteLine("{0}.DefectInspectionRegionLeft={1}", prefix, parameter.DefectInspectionRegionLeft.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectInspectionRegionTop={1}", prefix, parameter.DefectInspectionRegionTop.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectInspectionRegionRight={1}", prefix, parameter.DefectInspectionRegionRight.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectInspectionRegionBottom={1}", prefix, parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectParallelExecutionEnabled={1}", prefix, parameter.DefectParallelExecutionEnabled ? "1" : "0");
+                    List<ObjectDetectionDefectCoreSettings> defectCores =
+                        parameter.DefectDetectionCores ?? new List<ObjectDetectionDefectCoreSettings>();
+                    writer.WriteLine(
+                        "{0}.DefectDetectionCoreCount={1}",
+                        prefix,
+                        defectCores.Count.ToString(CultureInfo.InvariantCulture));
+                    for (int coreIndex = 0; coreIndex < defectCores.Count; coreIndex++)
+                    {
+                        ObjectDetectionDefectCoreSettings core = defectCores[coreIndex];
+                        if (core == null)
+                        {
+                            continue;
+                        }
+
+                        string corePrefix = prefix + ".DefectCore" +
+                            (coreIndex + 1).ToString(CultureInfo.InvariantCulture);
+                        writer.WriteLine("{0}.Id={1}", corePrefix, Escape(core.Id));
+                        writer.WriteLine("{0}.CoreKey={1}", corePrefix, Escape(core.CoreKey));
+                        writer.WriteLine("{0}.ContrastGain={1}", corePrefix, core.ContrastGain.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.PreprocessMethod={1}", corePrefix, Escape(core.PreprocessMethod));
+                        writer.WriteLine("{0}.GaussianKernelWidth={1}", corePrefix, core.GaussianKernelWidth.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.GaussianKernelHeight={1}", corePrefix, core.GaussianKernelHeight.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.GaussianSigmaX={1}", corePrefix, core.GaussianSigmaX.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.GaussianSigmaY={1}", corePrefix, core.GaussianSigmaY.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.MedianKernelSize={1}", corePrefix, core.MedianKernelSize.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.DarkThresholdEnabled={1}", corePrefix, core.DarkThresholdEnabled ? "1" : "0");
+                        writer.WriteLine("{0}.DarkThreshold={1}", corePrefix, core.DarkThreshold.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.BrightThresholdEnabled={1}", corePrefix, core.BrightThresholdEnabled ? "1" : "0");
+                        writer.WriteLine("{0}.BrightThreshold={1}", corePrefix, core.BrightThreshold.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.ErodeKernelSize={1}", corePrefix, core.ErodeKernelSize.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.ErodeIterations={1}", corePrefix, core.ErodeIterations.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.DilateKernelSize={1}", corePrefix, core.DilateKernelSize.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.DilateIterations={1}", corePrefix, core.DilateIterations.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.MinimumArea={1}", corePrefix, core.MinimumArea.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.MinimumWidthMillimeters={1}", corePrefix, core.MinimumWidthMillimeters.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.MaximumWidthMillimeters={1}", corePrefix, core.MaximumWidthMillimeters.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.MinimumHeightMillimeters={1}", corePrefix, core.MinimumHeightMillimeters.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.MaximumHeightMillimeters={1}", corePrefix, core.MaximumHeightMillimeters.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.ShowMask={1}", corePrefix, core.ShowMask ? "1" : "0");
+                        writer.WriteLine("{0}.ShowRedBoxes={1}", corePrefix, core.ShowRedBoxes ? "1" : "0");
+                    }
                     List<ObjectDetectionMeasurementRecordSettings> measurementRecords =
                         parameter.MeasurementRecords ?? new List<ObjectDetectionMeasurementRecordSettings>();
                     writer.WriteLine(
@@ -911,9 +1207,40 @@ namespace IntegratedImageProcessingApp.Services
             }
 
             var objectDetectionParameterIds = new HashSet<string>(StringComparer.Ordinal);
+            var defectInspectionRegionIds = new HashSet<string>(StringComparer.Ordinal);
+            var defectCoreIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (ObjectDetectionParameterSettings parameter in settings.ObjectDetectionParameters)
             {
                 parameter.Id = EnsureUniqueId(parameter.Id, objectDetectionParameterIds);
+                parameter.DefectInspectionRegionId = EnsureUniqueId(
+                    parameter.DefectInspectionRegionId,
+                    defectInspectionRegionIds);
+                if (parameter.DefectDetectionCores == null)
+                {
+                    parameter.DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>();
+                }
+                string[] defectCoreKeys = { "FlatField", "Contrast1", "Contrast2", "Contrast3" };
+                for (int coreIndex = 0; coreIndex < parameter.DefectDetectionCores.Count; coreIndex++)
+                {
+                    ObjectDetectionDefectCoreSettings core = parameter.DefectDetectionCores[coreIndex];
+                    if (core == null)
+                    {
+                        continue;
+                    }
+
+                    if (coreIndex < defectCoreKeys.Length)
+                    {
+                        core.CoreKey = defectCoreKeys[coreIndex];
+                        core.Id = parameter.Id + ":DefectCore:" + core.CoreKey;
+                    }
+                }
+                foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores)
+                {
+                    if (core != null)
+                    {
+                        core.Id = EnsureUniqueId(core.Id, defectCoreIds);
+                    }
+                }
                 NormalizeObjectDetectionMeasurementRecordMaskSources(parameter);
                 EnsureObjectDetectionMeasurementRecordIds(parameter.MeasurementRecords);
                 EnsureObjectDetectionMeasurementRecordNumbers(parameter.MeasurementRecords);
@@ -1527,6 +1854,182 @@ namespace IntegratedImageProcessingApp.Services
             return rules;
         }
 
+        private static List<ObjectDetectionDefectCoreSettings> ReadObjectDetectionDefectCores(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string parameterPrefix)
+        {
+            string[] keys = { "FlatField", "Contrast1", "Contrast2", "Contrast3" };
+            double[] defaultGains = { 1.0, 1.25, 1.5, 2.0 };
+            var cores = new List<ObjectDetectionDefectCoreSettings>(keys.Length);
+            for (int index = 0; index < keys.Length; index++)
+            {
+                var defaults = new ObjectDetectionDefectCoreSettings
+                {
+                    CoreKey = keys[index],
+                    ContrastGain = defaultGains[index]
+                };
+                string prefix = parameterPrefix + ".DefectCore" +
+                    (index + 1).ToString(CultureInfo.InvariantCulture);
+                defaults.Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", defaults.Id);
+                defaults.CoreKey = GetValue(sections, SectionObjectDetection, prefix + ".CoreKey", defaults.CoreKey);
+                defaults.ContrastGain = Math.Max(0.1, Math.Min(5.0, GetPositiveDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ContrastGain",
+                    defaults.ContrastGain)));
+                defaults.PreprocessMethod = GetValue(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".PreprocessMethod",
+                    defaults.PreprocessMethod);
+                defaults.GaussianKernelWidth = NormalizeOddKernelSize(GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".GaussianKernelWidth",
+                    defaults.GaussianKernelWidth), 1);
+                defaults.GaussianKernelHeight = NormalizeOddKernelSize(GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".GaussianKernelHeight",
+                    defaults.GaussianKernelHeight), 1);
+                defaults.GaussianSigmaX = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".GaussianSigmaX",
+                    defaults.GaussianSigmaX,
+                    0,
+                    100);
+                defaults.GaussianSigmaY = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".GaussianSigmaY",
+                    defaults.GaussianSigmaY,
+                    0,
+                    100);
+                defaults.MedianKernelSize = NormalizeOddKernelSize(GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".MedianKernelSize",
+                    defaults.MedianKernelSize), 3);
+                defaults.DarkThresholdEnabled = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".DarkThresholdEnabled",
+                    defaults.DarkThresholdEnabled);
+                defaults.DarkThreshold = Math.Max(0, Math.Min(255, GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".DarkThreshold",
+                    defaults.DarkThreshold)));
+                defaults.BrightThresholdEnabled = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".BrightThresholdEnabled",
+                    defaults.BrightThresholdEnabled);
+                defaults.BrightThreshold = Math.Max(0, Math.Min(255, GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".BrightThreshold",
+                    defaults.BrightThreshold)));
+                defaults.ErodeKernelSize = NormalizeOddKernelSize(GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ErodeKernelSize",
+                    defaults.ErodeKernelSize), 1);
+                defaults.ErodeIterations = Math.Max(0, GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ErodeIterations",
+                    defaults.ErodeIterations));
+                defaults.DilateKernelSize = NormalizeOddKernelSize(GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".DilateKernelSize",
+                    defaults.DilateKernelSize), 1);
+                defaults.DilateIterations = Math.Max(0, GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".DilateIterations",
+                    defaults.DilateIterations));
+                defaults.MinimumArea = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".MinimumArea",
+                    defaults.MinimumArea,
+                    0,
+                    1000000000);
+                defaults.MinimumWidthMillimeters = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".MinimumWidthMillimeters",
+                    defaults.MinimumWidthMillimeters,
+                    0,
+                    1000000);
+                defaults.MaximumWidthMillimeters = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".MaximumWidthMillimeters",
+                    defaults.MaximumWidthMillimeters,
+                    0,
+                    1000000);
+                defaults.MinimumHeightMillimeters = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".MinimumHeightMillimeters",
+                    defaults.MinimumHeightMillimeters,
+                    0,
+                    1000000);
+                defaults.MaximumHeightMillimeters = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".MaximumHeightMillimeters",
+                    defaults.MaximumHeightMillimeters,
+                    0,
+                    1000000);
+                defaults.ShowMask = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ShowMask",
+                    defaults.ShowMask);
+                defaults.ShowRedBoxes = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ShowRedBoxes",
+                    defaults.ShowRedBoxes);
+                cores.Add(defaults);
+            }
+
+            return cores;
+        }
+
+        private static int NormalizeOddKernelSize(int value, int minimum)
+        {
+            value = Math.Min(99, Math.Max(minimum, value));
+            if (value % 2 != 0)
+            {
+                return value;
+            }
+
+            return value < 99 ? value + 1 : value - 1;
+        }
+
+        private static double GetClampedFiniteDouble(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string section,
+            string key,
+            double defaultValue,
+            double minimum,
+            double maximum)
+        {
+            double value = GetDouble(sections, section, key, defaultValue);
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                return defaultValue;
+            }
+
+            return Math.Max(minimum, Math.Min(maximum, value));
+        }
+
         private static double GetDouble(Dictionary<string, Dictionary<string, string>> sections, string section, string key, double defaultValue)
         {
             double value;
@@ -1535,10 +2038,30 @@ namespace IntegratedImageProcessingApp.Services
                 : defaultValue;
         }
 
+        private static double GetPositiveDouble(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string section,
+            string key,
+            double defaultValue)
+        {
+            double value = GetDouble(sections, section, key, defaultValue);
+            return value > 0.0 && !double.IsInfinity(value) ? value : defaultValue;
+        }
+
         private static bool GetBool(Dictionary<string, Dictionary<string, string>> sections, string section, string key, bool defaultValue)
         {
+            string text = GetValue(sections, section, key, string.Empty);
+            if (string.Equals(text, "1", StringComparison.Ordinal))
+            {
+                return true;
+            }
+            if (string.Equals(text, "0", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
             bool value;
-            return bool.TryParse(GetValue(sections, section, key, string.Empty), out value)
+            return bool.TryParse(text, out value)
                 ? value
                 : defaultValue;
         }
