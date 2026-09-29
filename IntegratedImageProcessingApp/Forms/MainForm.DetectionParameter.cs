@@ -776,14 +776,13 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (objectDetectionObjectNumberPanel == null &&
                 objectDetectionDefectObjectNumberPanel == null &&
-                objectDetectionDefectIntegrationRoiSelector == null)
+                objectDetectionDefectIntegrationResultsGrid == null)
             {
                 return;
             }
 
             UpdateObjectDetectionNumberButtonState(objectDetectionObjectNumberPanel);
             UpdateObjectDetectionNumberButtonState(objectDetectionDefectObjectNumberPanel);
-            UpdateObjectDetectionDefectIntegrationRoiButtonState();
             RefreshObjectDetectionDefectIntegrationResults(parameter);
         }
 

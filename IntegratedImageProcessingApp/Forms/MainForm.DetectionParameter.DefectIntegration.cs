@@ -37,7 +37,6 @@ namespace IntegratedImageProcessingApp.Forms
         private CheckBox objectDetectionDefectIntegrationBrightCheckBox;
         private CheckBox objectDetectionDefectIntegrationMixedCheckBox;
         private NumericUpDown objectDetectionDefectIntegrationDistanceInput;
-        private FlowLayoutPanel objectDetectionDefectIntegrationRoiSelector;
         private DataGridView objectDetectionDefectIntegrationResultsGrid;
         private Label objectDetectionDefectIntegrationResultsStatus;
         private string objectDetectionDefectIntegrationDraftParameterId;
@@ -123,29 +122,11 @@ namespace IntegratedImageProcessingApp.Forms
             };
             distanceGroup.Controls.Add(objectDetectionDefectIntegrationDistanceInput);
 
-            var roiGroup = new GroupBox
-            {
-                Dock = DockStyle.Top,
-                Height = 108,
-                Text = "ROI 結果",
-                Padding = new Padding(8, 16, 8, 4)
-            };
-            objectDetectionDefectIntegrationRoiSelector = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
-                WrapContents = true,
-                FlowDirection = FlowDirection.LeftToRight,
-                Padding = new Padding(2),
-                Margin = Padding.Empty
-            };
-            roiGroup.Controls.Add(objectDetectionDefectIntegrationRoiSelector);
-
             var resultsGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 190,
-                Text = "整合結果",
+                Height = 250,
+                Text = "ROI 整合結果",
                 Padding = new Padding(6, 16, 6, 6)
             };
             objectDetectionDefectIntegrationResultsGrid = CreateObjectDetectionDefectIntegrationResultsGrid();
@@ -159,7 +140,6 @@ namespace IntegratedImageProcessingApp.Forms
             };
             resultsGroup.Controls.Add(objectDetectionDefectIntegrationResultsGrid);
             resultsGroup.Controls.Add(objectDetectionDefectIntegrationResultsStatus);
-
             var actionBar = new FlowLayoutPanel
             {
                 Dock = DockStyle.Bottom,
@@ -187,14 +167,12 @@ namespace IntegratedImageProcessingApp.Forms
             apply.Click += delegate { ApplyObjectDetectionDefectIntegration(parameter); };
             actionBar.Controls.Add(cancel);
             actionBar.Controls.Add(apply);
+            resultsGroup.Controls.Add(actionBar);
 
             content.Controls.Add(resultsGroup);
-            content.Controls.Add(roiGroup);
             content.Controls.Add(distanceGroup);
             content.Controls.Add(mergeGroup);
-            content.Controls.Add(actionBar);
             page.Controls.Add(content);
-            RefreshObjectDetectionDefectIntegrationRoiSelector(parameter);
             RefreshObjectDetectionDefectIntegrationResults(parameter);
             return page;
         }
@@ -290,139 +268,6 @@ namespace IntegratedImageProcessingApp.Forms
             RefreshObjectDetectionDefectIntegrationResults(parameter);
         }
 
-        private void RefreshObjectDetectionDefectIntegrationRoiSelector(
-            ObjectDetectionParameterSettings parameter)
-        {
-            FlowLayoutPanel selector = objectDetectionDefectIntegrationRoiSelector;
-            if (selector == null || selector.IsDisposed)
-            {
-                return;
-            }
-
-            selector.SuspendLayout();
-            try
-            {
-                selector.Controls.Clear();
-                List<ObjectDefinitionDetectedObject> objects =
-                    GetObjectDetectionDefectIntegrationObjects(parameter);
-                foreach (int number in objects.Select(item => item.Number)
-                    .Where(number => number > 0)
-                    .Distinct()
-                    .OrderBy(number => number))
-                {
-                    var button = new Button
-                    {
-                        Text = number.ToString(CultureInfo.InvariantCulture),
-                        Tag = number,
-                        Width = 48,
-                        Height = 28,
-                        Margin = new Padding(2),
-                        UseVisualStyleBackColor = true
-                    };
-                    button.Click += ObjectDetectionDefectIntegrationRoiButton_Click;
-                    selector.Controls.Add(button);
-                }
-
-                if (selector.Controls.Count == 0)
-                {
-                    selector.Controls.Add(new Label
-                    {
-                        AutoSize = true,
-                        Text = "尚無已完成的 ROI 物件結果",
-                        ForeColor = Color.FromArgb(95, 103, 115),
-                        Margin = new Padding(4, 6, 0, 0)
-                    });
-                }
-            }
-            finally
-            {
-                selector.ResumeLayout(true);
-            }
-            UpdateObjectDetectionDefectIntegrationRoiButtonState();
-        }
-
-        private List<ObjectDefinitionDetectedObject> GetObjectDetectionDefectIntegrationObjects(
-            ObjectDetectionParameterSettings parameter)
-        {
-            if (parameter == null || string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId))
-            {
-                return new List<ObjectDefinitionDetectedObject>();
-            }
-
-            ObjectDefinitionSettings definition = FindObjectDefinition(parameter.ObjectDefinitionId);
-            if (definition == null)
-            {
-                return new List<ObjectDefinitionDetectedObject>();
-            }
-
-            string signature = CreateObjectDefinitionProcessingSignature(definition);
-            return HasCompletedObjectDefinitionResult(definition, signature)
-                ? SnapshotCompletedObjectDefinitionObjects(definition, signature)
-                : new List<ObjectDefinitionDetectedObject>();
-        }
-
-        private void ObjectDetectionDefectIntegrationRoiButton_Click(object sender, EventArgs e)
-        {
-            Button button = sender as Button;
-            if (button == null || !(button.Tag is int))
-            {
-                return;
-            }
-
-            ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
-            if (parameter == null)
-            {
-                return;
-            }
-
-            int number = (int)button.Tag;
-            ObjectDefinitionSettings definition = FindObjectDefinition(parameter.ObjectDefinitionId);
-            ObjectDefinitionDetectedObject detectedObject;
-            if (definition == null ||
-                !TryGetCompletedObjectDefinitionObject(definition, number, out detectedObject))
-            {
-                SetObjectDetectionDefectRegionStatus(
-                    "物件" + number.ToString(CultureInfo.InvariantCulture) + " 尚無有效 ROI 結果。");
-                return;
-            }
-
-            selectedObjectDetectionNumber = number;
-            UpdateObjectDetectionNumberButtonState(parameter);
-            SelectObjectDetectionDefectDisplayForCore(ObjectDetectionDefectCoreKeys.Length);
-            FocusObjectDetectionImage(detectedObject.Bounds);
-            RefreshObjectDetectionDefectIntegrationResults(parameter);
-            ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(4);
-            if (display != null)
-            {
-                display.InvalidateImageView();
-            }
-            SetObjectDetectionDefectRegionStatus(
-                "結果整合：目前檢視物件" + number.ToString(CultureInfo.InvariantCulture));
-        }
-
-        private void UpdateObjectDetectionDefectIntegrationRoiButtonState()
-        {
-            if (objectDetectionDefectIntegrationRoiSelector == null ||
-                objectDetectionDefectIntegrationRoiSelector.IsDisposed)
-            {
-                return;
-            }
-
-            foreach (Control control in objectDetectionDefectIntegrationRoiSelector.Controls)
-            {
-                Button button = control as Button;
-                if (button == null || !(button.Tag is int))
-                {
-                    continue;
-                }
-
-                bool selected = (int)button.Tag == selectedObjectDetectionNumber;
-                button.BackColor = selected ? Color.FromArgb(190, 220, 255) : SystemColors.Control;
-                button.FlatStyle = selected ? FlatStyle.Flat : FlatStyle.Standard;
-            }
-        }
-
         private void RefreshObjectDetectionDefectIntegrationResults(
             ObjectDetectionParameterSettings parameter)
         {
@@ -435,7 +280,7 @@ namespace IntegratedImageProcessingApp.Forms
             grid.Rows.Clear();
             if (parameter == null || selectedObjectDetectionNumber <= 0)
             {
-                SetObjectDetectionDefectIntegrationResultsStatus("請選擇 ROI 查看整合結果");
+                SetObjectDetectionDefectIntegrationResultsStatus("請從上方物件序號選擇 ROI");
                 return;
             }
 
@@ -468,8 +313,10 @@ namespace IntegratedImageProcessingApp.Forms
 
             SetObjectDetectionDefectIntegrationResultsStatus(
                 groups.Count == 0
-                    ? "此 ROI 尚無符合目前設定的缺陷結果"
-                    : "此 ROI 整合出 " + groups.Count.ToString("N0", CultureInfo.CurrentCulture) + " 組缺陷");
+                    ? "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
+                        " 尚無符合目前設定的缺陷結果"
+                    : "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
+                        " 整合出 " + groups.Count.ToString("N0", CultureInfo.CurrentCulture) + " 組缺陷");
         }
 
         private void SetObjectDetectionDefectIntegrationResultsStatus(string text)

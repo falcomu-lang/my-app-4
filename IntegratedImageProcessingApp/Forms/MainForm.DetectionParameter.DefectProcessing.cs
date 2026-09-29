@@ -577,7 +577,6 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     combinedDisplay.InvalidateImageView();
                 }
-                RefreshObjectDetectionDefectIntegrationRoiSelector(parameter);
                 RefreshObjectDetectionDefectIntegrationResults(parameter);
             }
             catch (OutOfMemoryException)
