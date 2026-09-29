@@ -1545,8 +1545,8 @@ namespace IntegratedImageProcessingApp.Forms
             RectangleF visibleBounds = visibleSourceRect;
             foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
                 .Take(ObjectDetectionDefectCoreKeys.Length)
-                .Skip(1)
-                .Where(item => item != null && item.Enabled))
+                .Where(item => item != null &&
+                    (string.Equals(item.CoreKey, "FlatField", StringComparison.Ordinal) || item.Enabled)))
             {
                 ObjectDetectionDefectCoreResult result;
                 if (TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out result) &&
