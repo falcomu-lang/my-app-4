@@ -387,7 +387,10 @@ namespace IntegratedImageProcessingApp.Forms
                                     parameter.CameraXMillimetersPerPixel,
                                     parameter.CameraYMillimetersPerPixel,
                                     coreSettings,
-                                    runParallel);
+                                    runParallel,
+                                    progress,
+                                    objectIndex,
+                                    objects.Count);
                             for (int coreIndex = 0; coreIndex < coreSettings.Count; coreIndex++)
                             {
                                 roiCoreContours[coreIndex, objectIndex] =
@@ -765,7 +768,10 @@ namespace IntegratedImageProcessingApp.Forms
             double xMillimetersPerPixel,
             double yMillimetersPerPixel,
             IList<ObjectDetectionDefectCoreSettings> cores,
-            bool runParallel)
+            bool runParallel,
+            IProgress<string> progress,
+            int objectIndex,
+            int objectCount)
         {
             var result = new ObjectDetectionDefectPerObjectResult
             {
@@ -804,6 +810,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
             try
             {
+                progress?.Report("ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
+                    objectCount.ToString(CultureInfo.CurrentCulture) + "：正在擷取影像並轉換灰階...");
                 Stopwatch roiPreparationStopwatch = Stopwatch.StartNew();
                 using (Bitmap bitmap = source.CreateRegionBitmapFromTiles(crop))
                 using (Cv.Mat gray = CreateOpenCvGrayMat(bitmap))
@@ -823,6 +831,10 @@ namespace IntegratedImageProcessingApp.Forms
                 Action<int> processCore = delegate(int coreIndex)
                 {
                     ObjectDetectionDefectCoreSettings core = cores[coreIndex];
+                    string roiLabel = "ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
+                        objectCount.ToString(CultureInfo.CurrentCulture);
+                    string coreLabel = "核心 " + (coreIndex + 1).ToString(CultureInfo.CurrentCulture);
+                    progress?.Report(roiLabel + "／" + coreLabel + "：對比調整與影像前處理...");
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     Bitmap processedBitmap = null;
                      try
@@ -851,6 +863,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 result.PreviewGenerationElapsedTicksByCore[coreIndex] =
                                     previewStopwatch.ElapsedTicks;
                                 Stopwatch analysisStopwatch = Stopwatch.StartNew();
+                                progress?.Report(roiLabel + "／" + coreLabel + "：門檻分割、連通元件與輪廓分析...");
                                 if (core.DarkThresholdEnabled)
                                 {
                                     AddObjectDetectionDefectMaskContours(
@@ -903,6 +916,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                     stopwatch.Stop();
                     result.ElapsedTicksByCore[coreIndex] = stopwatch.ElapsedTicks;
+                    progress?.Report(roiLabel + "／" + coreLabel + "：完成。");
                 };
 
                     if (runParallel && cores.Count > 1)
@@ -1160,6 +1174,8 @@ namespace IntegratedImageProcessingApp.Forms
                             : Math.Max(0.0, core.MinimumArea);
                         for (int label = 1; label < count; label++)
                         {
+                            int left = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
+                            int top = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Top);
                             int area = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Area);
                             int width = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Width);
                             int height = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Height);
@@ -1178,9 +1194,11 @@ namespace IntegratedImageProcessingApp.Forms
                                 continue;
                             }
 
+                            var componentBounds = new Cv.Rect(left, top, width, height);
+                            using (var labelRegion = new Cv.Mat(labels, componentBounds))
                             using (var componentMask = new Cv.Mat())
                             {
-                                Cv.Cv2.Compare(labels, label, componentMask, Cv.CmpType.EQ);
+                                Cv.Cv2.Compare(labelRegion, label, componentMask, Cv.CmpType.EQ);
                                 Cv.Point[][] foundContours;
                                 Cv.HierarchyIndex[] hierarchy;
                                 Cv.Cv2.FindContours(
@@ -1208,8 +1226,8 @@ namespace IntegratedImageProcessingApp.Forms
                                     for (int pointIndex = 0; pointIndex < contour.Length; pointIndex++)
                                     {
                                         points[pointIndex] = new PointF(
-                                            crop.X + contour[pointIndex].X,
-                                            crop.Y + contour[pointIndex].Y);
+                                            crop.X + left + contour[pointIndex].X,
+                                            crop.Y + top + contour[pointIndex].Y);
                                         minX = Math.Min(minX, points[pointIndex].X);
                                         minY = Math.Min(minY, points[pointIndex].Y);
                                         maxX = Math.Max(maxX, points[pointIndex].X);
