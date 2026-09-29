@@ -314,6 +314,7 @@ namespace IntegratedImageProcessingApp.Services
             ShowMask = true;
             ShowRedBoxes = true;
             ShowOrangeBoxes = true;
+            Enabled = true;
         }
 
         public string Id { get; set; }
@@ -365,6 +366,8 @@ namespace IntegratedImageProcessingApp.Services
         public bool ShowRedBoxes { get; set; }
 
         public bool ShowOrangeBoxes { get; set; }
+
+        public bool Enabled { get; set; }
     }
 
     public class ObjectDetectionParameterSettings

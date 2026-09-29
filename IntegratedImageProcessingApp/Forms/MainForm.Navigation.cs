@@ -111,7 +111,8 @@ namespace IntegratedImageProcessingApp.Forms
                 UpdateActiveObjectDetectionDefectDisplayAlias();
                 int coreIndex = GetObjectDetectionDefectDisplayIndex(leftImageTabControl.SelectedTab);
                 if (objectDetectionDefectCoreTabs != null &&
-                    coreIndex >= 0 && objectDetectionDefectCoreTabs.SelectedIndex != coreIndex)
+                    coreIndex >= 0 && coreIndex < ObjectDetectionDefectCoreKeys.Length &&
+                    objectDetectionDefectCoreTabs.SelectedIndex != coreIndex)
                 {
                     objectDetectionDefectCoreTabs.SelectedIndex = coreIndex;
                 }

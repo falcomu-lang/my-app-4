@@ -1114,6 +1114,7 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.ShowMask={1}", corePrefix, core.ShowMask ? "1" : "0");
                         writer.WriteLine("{0}.ShowRedBoxes={1}", corePrefix, core.ShowRedBoxes ? "1" : "0");
                         writer.WriteLine("{0}.ShowOrangeBoxes={1}", corePrefix, core.ShowOrangeBoxes ? "1" : "0");
+                        writer.WriteLine("{0}.Enabled={1}", corePrefix, core.Enabled ? "1" : "0");
                     }
                     List<ObjectDetectionMeasurementRecordSettings> measurementRecords =
                         parameter.MeasurementRecords ?? new List<ObjectDetectionMeasurementRecordSettings>();
@@ -2003,6 +2004,11 @@ namespace IntegratedImageProcessingApp.Services
                     SectionObjectDetection,
                     prefix + ".ShowOrangeBoxes",
                     showLegacyDefectBoxes);
+                defaults.Enabled = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".Enabled",
+                    defaults.Enabled);
                 cores.Add(defaults);
             }
 

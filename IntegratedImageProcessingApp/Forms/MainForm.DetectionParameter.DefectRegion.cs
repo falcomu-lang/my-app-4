@@ -163,7 +163,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDefectParallelExecutionCheckBox = new CheckBox
             {
                 AutoSize = true,
-                Text = "平行運算（物件 x 四核心）",
+                Text = "平行運算（物件 x 已啟用核心）",
                 Checked = parameter.DefectParallelExecutionEnabled,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Margin = new Padding(0, 6, 8, 0)
@@ -184,7 +184,7 @@ namespace IntegratedImageProcessingApp.Forms
                 AutoSize = false,
                 Width = 128,
                 Height = 27,
-                Text = "執行四核心檢測",
+                Text = "執行缺陷檢測",
                 UseVisualStyleBackColor = true,
                 Margin = new Padding(0, 2, 0, 0)
             };
@@ -582,12 +582,23 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            DrawObjectDetectionDefectCoreResult(
-                e.Graphics,
-                e.Zoom,
-                e.Offset,
-                e.VisibleSourceRect,
-                GetObjectDetectionDefectDisplayCoreKey(displayIndex));
+            if (displayIndex == ObjectDetectionDefectCoreKeys.Length)
+            {
+                DrawObjectDetectionDefectCompositeCoreFrames(
+                    e.Graphics,
+                    e.Zoom,
+                    e.Offset,
+                    e.VisibleSourceRect);
+            }
+            else
+            {
+                DrawObjectDetectionDefectCoreResult(
+                    e.Graphics,
+                    e.Zoom,
+                    e.Offset,
+                    e.VisibleSourceRect,
+                    GetObjectDetectionDefectDisplayCoreKey(displayIndex));
+            }
 
             ObjectDefinitionDetectedObject selectedObject;
             if (!TryGetSelectedObjectDetectionObject(out selectedObject))

@@ -187,17 +187,32 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             EnsureObjectDetectionDefectCores(parameter);
+            int runDisplayIndex = Math.Max(0, Math.Min(
+                selectedObjectDetectionDefectCoreIndex,
+                ObjectDetectionDefectCoreKeys.Length - 1));
+            bool compositeDisplaySelected = leftImageTabControl != null &&
+                GetObjectDetectionDefectDisplayIndex(leftImageTabControl.SelectedTab) ==
+                    ObjectDetectionDefectCoreKeys.Length;
+            if (runAllCores && compositeDisplaySelected)
+            {
+                runDisplayIndex = ObjectDetectionDefectCoreKeys.Length;
+            }
+            else if (runAllCores && runDisplayIndex > 0 &&
+                !parameter.DefectDetectionCores[runDisplayIndex].Enabled)
+            {
+                runDisplayIndex = 0;
+            }
             if (isObjectDetectionParameterImageLayout &&
                 leftImageTabControl != null &&
                     leftImageTabControl.TabPages.Contains(
                     GetObjectDetectionDefectDisplayTabPage(
                         runAllCores
-                            ? Math.Max(0, selectedObjectDetectionDefectCoreIndex)
+                            ? runDisplayIndex
                             : GetObjectDetectionDefectCoreIndex(coreKey))))
             {
                 leftImageTabControl.SelectedTab = GetObjectDetectionDefectDisplayTabPage(
                     runAllCores
-                        ? Math.Max(0, selectedObjectDetectionDefectCoreIndex)
+                        ? runDisplayIndex
                         : GetObjectDetectionDefectCoreIndex(coreKey));
             }
             if (!IsCurrentObjectDetectionFlatFieldImage(parameter) ||
@@ -298,6 +313,12 @@ namespace IntegratedImageProcessingApp.Forms
                 configuredCores = configuredCores.Where(core =>
                     string.Equals(core.CoreKey, coreKey, StringComparison.Ordinal));
             }
+            else
+            {
+                configuredCores = configuredCores.Where(core =>
+                    string.Equals(core.CoreKey, "FlatField", StringComparison.Ordinal) ||
+                    core.Enabled);
+            }
             var coreSettings = configuredCores
                 .Select(CloneObjectDetectionDefectCoreSettings)
                 .ToList();
@@ -327,15 +348,15 @@ namespace IntegratedImageProcessingApp.Forms
                 RemoveObjectDetectionDefectCoreResult(parameter.Id, core.CoreKey);
             }
             string processingScope = runAllCores
-                ? "四核心"
+                ? "平場核心與已啟用條件"
                 : GetObjectDetectionDefectCoreLabel(GetObjectDetectionDefectCoreIndex(coreKey));
             statusLabel.Text = parameter.DisplayName + "：" + processingScope + "缺陷檢測運算中...";
             SetObjectDetectionDefectRegionStatus(runParallel
                 ? runAllCores
-                    ? "所有物件 ROI 同時排程；每個物件的四個核心也同時運算..."
+                    ? "所有物件 ROI 同時排程；平場核心與已啟用條件同時運算..."
                     : "所有物件 ROI 的「" + processingScope + "」同時運算..."
                 : runAllCores
-                    ? "每個物件 ROI 的四個核心依序運算..."
+                    ? "每個物件 ROI 的平場核心與已啟用條件依序運算..."
                     : "所有物件 ROI 的「" + processingScope + "」依序運算...");
 
             Dictionary<string, ObjectDetectionDefectCoreResult> results = null;
@@ -419,7 +440,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                             int completed = System.Threading.Interlocked.Increment(ref completedRois);
                             string coreProgress = runAllCores
-                                ? "四個核心"
+                                ? "平場核心與已啟用條件"
                                 : "「" + processingScope + "」核心";
                             progress.Report(
                                 "物件 ROI 完成 " +
@@ -549,6 +570,11 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         display.InvalidateImageView();
                     }
+                }
+                ImageDisplayControl combinedDisplay = GetObjectDetectionDefectDisplayControl(4);
+                if (combinedDisplay != null)
+                {
+                    combinedDisplay.InvalidateImageView();
                 }
             }
             catch (OutOfMemoryException)
@@ -705,7 +731,8 @@ namespace IntegratedImageProcessingApp.Forms
                 MaximumHeightMillimeters = source.MaximumHeightMillimeters,
                 ShowMask = source.ShowMask,
                 ShowRedBoxes = source.ShowRedBoxes,
-                ShowOrangeBoxes = source.ShowOrangeBoxes
+                ShowOrangeBoxes = source.ShowOrangeBoxes,
+                Enabled = source.Enabled
             };
         }
 
@@ -833,7 +860,7 @@ namespace IntegratedImageProcessingApp.Forms
                     ObjectDetectionDefectCoreSettings core = cores[coreIndex];
                     string roiLabel = "ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
                         objectCount.ToString(CultureInfo.CurrentCulture);
-                    string coreLabel = "核心 " + (coreIndex + 1).ToString(CultureInfo.CurrentCulture);
+                    string coreLabel = GetObjectDetectionDefectCoreLabel(coreIndex);
                     progress?.Report(roiLabel + "／" + coreLabel + "：對比調整與影像前處理...");
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     Bitmap processedBitmap = null;
@@ -1492,27 +1519,82 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            if (core.ShowRedBoxes || core.ShowOrangeBoxes)
-            {
-                using (var darkDefectPen = new Pen(Color.Red, Math.Max(1f, 2f * zoom)))
-                using (var brightDefectPen = new Pen(Color.DarkOrange, Math.Max(1f, 2f * zoom)))
-                {
-                    foreach (ObjectDetectionDefectContour contour in result.Contours)
-                    {
-                        if (!(contour.IsBright ? core.ShowOrangeBoxes : core.ShowRedBoxes) ||
-                            !contour.Bounds.IntersectsWith(visibleBounds))
-                        {
-                            continue;
-                        }
+            DrawObjectDetectionDefectCoreBoxes(
+                graphics,
+                zoom,
+                offset,
+                visibleBounds,
+                core,
+                result.Contours);
+        }
 
-                        RectangleF bounds = contour.Bounds;
-                        graphics.DrawRectangle(
-                            contour.IsBright ? brightDefectPen : darkDefectPen,
-                            offset.X + bounds.X * zoom,
-                            offset.Y + bounds.Y * zoom,
-                            Math.Max(1f, bounds.Width * zoom),
-                            Math.Max(1f, bounds.Height * zoom));
+        private void DrawObjectDetectionDefectCompositeCoreFrames(
+            Graphics graphics,
+            float zoom,
+            PointF offset,
+            Rectangle visibleSourceRect)
+        {
+            ObjectDetectionParameterSettings parameter =
+                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            if (parameter == null)
+            {
+                return;
+            }
+
+            EnsureObjectDetectionDefectCores(parameter);
+            RectangleF visibleBounds = visibleSourceRect;
+            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
+                .Take(ObjectDetectionDefectCoreKeys.Length)
+                .Skip(1)
+                .Where(item => item != null && item.Enabled))
+            {
+                ObjectDetectionDefectCoreResult result;
+                if (TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out result) &&
+                    result.Contours != null)
+                {
+                    DrawObjectDetectionDefectCoreBoxes(
+                        graphics,
+                        zoom,
+                        offset,
+                        visibleBounds,
+                        core,
+                        result.Contours);
+                }
+            }
+        }
+
+        private static void DrawObjectDetectionDefectCoreBoxes(
+            Graphics graphics,
+            float zoom,
+            PointF offset,
+            RectangleF visibleBounds,
+            ObjectDetectionDefectCoreSettings core,
+            System.Collections.Generic.IEnumerable<ObjectDetectionDefectContour> contours)
+        {
+            if (graphics == null || core == null || contours == null ||
+                (!core.ShowRedBoxes && !core.ShowOrangeBoxes))
+            {
+                return;
+            }
+
+            using (var darkDefectPen = new Pen(Color.Red, Math.Max(1f, 2f * zoom)))
+            using (var brightDefectPen = new Pen(Color.DarkOrange, Math.Max(1f, 2f * zoom)))
+            {
+                foreach (ObjectDetectionDefectContour contour in contours)
+                {
+                    if (!(contour.IsBright ? core.ShowOrangeBoxes : core.ShowRedBoxes) ||
+                        !contour.Bounds.IntersectsWith(visibleBounds))
+                    {
+                        continue;
                     }
+
+                    RectangleF bounds = contour.Bounds;
+                    graphics.DrawRectangle(
+                        contour.IsBright ? brightDefectPen : darkDefectPen,
+                        offset.X + bounds.X * zoom,
+                        offset.Y + bounds.Y * zoom,
+                        Math.Max(1f, bounds.Width * zoom),
+                        Math.Max(1f, bounds.Height * zoom));
                 }
             }
         }
@@ -1554,7 +1636,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 string executionMode = result.ParallelExecutionEnabled ? "平行" : "依序";
                 statusLabel.Text = parameter.DisplayName + "：" +
-                    GetSelectedObjectDetectionDefectCoreKey() + " 檢出 " +
+                    GetObjectDetectionDefectCoreLabel(GetObjectDetectionDefectCoreIndex(
+                        GetSelectedObjectDetectionDefectCoreKey())) + " 檢出 " +
                     result.DetectedComponentCount.ToString("N0", CultureInfo.CurrentCulture) +
                     " 個；缺陷檢測完成；" + executionMode + "實際耗時 " +
                     result.TotalElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms（不含畫面顯示）";

@@ -82,7 +82,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 oldPage.Dispose();
             }
-            string[] labels = { "平場校正影像", "對比一", "對比二", "對比三" };
+            string[] labels = { "平場校正影像", "條件一", "條件二", "條件三" };
             for (int index = 0; index < labels.Length; index++)
             {
                 ObjectDetectionDefectCoreSettings core = objectDetectionDefectCoreDrafts[index];
@@ -106,6 +106,11 @@ namespace IntegratedImageProcessingApp.Forms
                 scrollPanel.Controls.Add(thresholdGroup);
                 scrollPanel.Controls.Add(preprocessingGroup);
                 scrollPanel.Controls.Add(contrastGroup);
+                if (index > 0)
+                {
+                    scrollPanel.Controls.Add(
+                        BuildDefectCoreEnabledPanel(parameter, index, core));
+                }
                 scrollPanel.Controls.Add(commandBar);
                 page.Controls.Add(scrollPanel);
                 tabs.TabPages.Add(page);
@@ -237,6 +242,72 @@ namespace IntegratedImageProcessingApp.Forms
             return bar;
         }
 
+        private Control BuildDefectCoreEnabledPanel(
+            ObjectDetectionParameterSettings parameter,
+            int coreIndex,
+            ObjectDetectionDefectCoreSettings core)
+        {
+            var panel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 30
+            };
+            var useCondition = new CheckBox
+            {
+                AutoSize = true,
+                Text = "是否使用",
+                Checked = core.Enabled,
+                Location = new Point(8, 5)
+            };
+            useCondition.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionDefectCoreEnabled(
+                    parameter,
+                    coreIndex,
+                    useCondition.Checked);
+            };
+            panel.Controls.Add(useCondition);
+            return panel;
+        }
+
+        private void UpdateObjectDetectionDefectCoreEnabled(
+            ObjectDetectionParameterSettings parameter,
+            int coreIndex,
+            bool enabled)
+        {
+            if (parameter == null || coreIndex < 1 || coreIndex >= 4)
+            {
+                return;
+            }
+
+            EnsureObjectDetectionDefectCores(parameter);
+            objectDetectionDefectCoreDrafts[coreIndex].Enabled = enabled;
+            parameter.DefectDetectionCores[coreIndex].Enabled = enabled;
+            SaveSystemParameters();
+            if (!enabled)
+            {
+                RemoveObjectDetectionDefectCoreResult(
+                    parameter.Id,
+                    parameter.DefectDetectionCores[coreIndex].CoreKey);
+            }
+
+            ImageDisplayControl coreDisplay = GetObjectDetectionDefectDisplayControl(coreIndex);
+            if (coreDisplay != null)
+            {
+                coreDisplay.InvalidateImageView();
+            }
+            ImageDisplayControl combinedDisplay = GetObjectDetectionDefectDisplayControl(4);
+            if (combinedDisplay != null)
+            {
+                combinedDisplay.InvalidateImageView();
+            }
+            SetObjectDetectionDefectRegionStatus(
+                GetObjectDetectionDefectCoreLabel(coreIndex) +
+                (enabled
+                    ? "已啟用；執行檢測後會納入綜合結果。"
+                    : "已停用，不會納入全部檢測與綜合結果。"));
+        }
+
         private void UpdateObjectDetectionDefectCoreDisplayOption(
             ObjectDetectionParameterSettings parameter,
             int coreIndex,
@@ -341,7 +412,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static string GetObjectDetectionDefectCoreLabel(int index)
         {
-            string[] labels = { "平場校正影像", "對比一", "對比二", "對比三" };
+            string[] labels = { "平場校正影像", "條件一", "條件二", "條件三" };
             return index >= 0 && index < labels.Length ? labels[index] : "缺陷核心";
         }
 

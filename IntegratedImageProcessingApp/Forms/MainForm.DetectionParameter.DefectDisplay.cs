@@ -16,7 +16,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static readonly string[] ObjectDetectionDefectDisplayNames =
         {
-            "缺陷顯示-平場校正", "缺陷顯示-對比一", "缺陷顯示-對比二", "缺陷顯示-對比三"
+            "缺陷顯示-平場校正", "缺陷顯示-條件一", "缺陷顯示-條件二",
+            "缺陷顯示-條件三", "缺陷顯示-綜合"
         };
 
         private TabPage[] objectDetectionDefectDisplayTabPages;
@@ -50,12 +51,13 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            objectDetectionDefectDisplayTabPages = new TabPage[4];
-            objectDetectionDefectDisplayHostPanels = new Panel[4];
-            objectDetectionDefectDisplayControls = new ImageDisplayControl[4];
-            objectDetectionDefectDisplayPlaceholders = new Label[4];
-            objectDetectionDefectDisplayParameterIds = new string[4];
-            objectDetectionDefectDisplayImageGenerations = new[] { -1, -1, -1, -1 };
+            int displayCount = ObjectDetectionDefectDisplayNames.Length;
+            objectDetectionDefectDisplayTabPages = new TabPage[displayCount];
+            objectDetectionDefectDisplayHostPanels = new Panel[displayCount];
+            objectDetectionDefectDisplayControls = new ImageDisplayControl[displayCount];
+            objectDetectionDefectDisplayPlaceholders = new Label[displayCount];
+            objectDetectionDefectDisplayParameterIds = new string[displayCount];
+            objectDetectionDefectDisplayImageGenerations = Enumerable.Repeat(-1, displayCount).ToArray();
             for (int index = 0; index < objectDetectionDefectDisplayTabPages.Length; index++)
             {
                 int coreIndex = index;
@@ -97,7 +99,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private TabPage GetObjectDetectionDefectDisplayTabPage(int coreIndex)
         {
-            if (objectDetectionDefectDisplayTabPages == null || coreIndex < 0 || coreIndex >= 4)
+            if (objectDetectionDefectDisplayTabPages == null || coreIndex < 0 ||
+                coreIndex >= objectDetectionDefectDisplayTabPages.Length)
             {
                 return null;
             }
@@ -106,7 +109,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private ImageDisplayControl GetObjectDetectionDefectDisplayControl(int coreIndex)
         {
-            if (objectDetectionDefectDisplayControls == null || coreIndex < 0 || coreIndex >= 4)
+            if (objectDetectionDefectDisplayControls == null || coreIndex < 0 ||
+                coreIndex >= objectDetectionDefectDisplayControls.Length)
             {
                 return null;
             }
@@ -191,7 +195,10 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDefectDisplayHostPanel = objectDetectionDefectDisplayHostPanels[index];
             objectDetectionDefectDisplayControl = objectDetectionDefectDisplayControls[index];
             objectDetectionDefectDisplayPlaceholder = objectDetectionDefectDisplayPlaceholders[index];
-            selectedObjectDetectionDefectCoreIndex = index;
+            if (index < ObjectDetectionDefectCoreKeys.Length)
+            {
+                selectedObjectDetectionDefectCoreIndex = index;
+            }
         }
 
         private void RefreshObjectDetectionDefectDisplay()
