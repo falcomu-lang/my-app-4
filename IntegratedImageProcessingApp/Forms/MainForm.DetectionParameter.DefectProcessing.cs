@@ -86,6 +86,7 @@ namespace IntegratedImageProcessingApp.Forms
         }
 
         private bool objectDetectionDefectProcessingRequested;
+        private bool objectDetectionDefectLastRunCompleted;
         private readonly Dictionary<string, Dictionary<string, ObjectDetectionDefectCoreResult>>
             objectDetectionDefectCoreResults =
                 new Dictionary<string, Dictionary<string, ObjectDetectionDefectCoreResult>>(StringComparer.Ordinal);
@@ -99,6 +100,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
             objectDetectionDefectProcessingRequested = true;
+            objectDetectionDefectLastRunCompleted = false;
             if (objectDetectionDefectRunButton != null)
             {
                 objectDetectionDefectRunButton.Enabled = false;
@@ -114,6 +116,12 @@ namespace IntegratedImageProcessingApp.Forms
 
             try
             {
+                if (statusLabel != null)
+                {
+                    statusLabel.Text = "缺陷檢測：正在準備運算...";
+                }
+                SetObjectDetectionDefectRegionStatus("正在準備缺陷檢測；請稍候...");
+                await Task.Yield();
                 await RunObjectDetectionDefectProcessingCoreAsync(parameterId, coreKey);
             }
             finally
@@ -128,6 +136,11 @@ namespace IntegratedImageProcessingApp.Forms
                     ObjectDetectionParameterSettings current =
                         FindObjectDetectionParameter(activeObjectDetectionParameterId);
                     UpdateObjectDetectionDefectInspectionRegionControls(current);
+                    if (objectDetectionDefectLastRunCompleted)
+                    {
+                        objectDetectionDefectLastRunCompleted = false;
+                        UpdateObjectDetectionDefectProcessingStatus();
+                    }
                 }
             }
         }
@@ -499,6 +512,12 @@ namespace IntegratedImageProcessingApp.Forms
                     !HasCompletedObjectDefinitionResult(definition, definitionSignature) ||
                     !string.Equals(activeObjectDetectionParameterId, parameter.Id, StringComparison.Ordinal))
                 {
+                    if (!IsDisposed)
+                    {
+                        statusLabel.Text = "缺陷檢測已完成計算，但期間影像或設定已變更，結果未套用。";
+                        SetObjectDetectionDefectRegionStatus(
+                            "計算期間來源影像、平場校正、物件定義或目前參數已變更；請重新執行缺陷檢測。 ");
+                    }
                     return;
                 }
 
@@ -518,6 +537,7 @@ namespace IntegratedImageProcessingApp.Forms
                     currentResults[item.Key] = item.Value;
                 }
                 resultsStored = true;
+                objectDetectionDefectLastRunCompleted = true;
                 foreach (string updatedCoreKey in results.Keys)
                 {
                     ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
@@ -527,17 +547,6 @@ namespace IntegratedImageProcessingApp.Forms
                         display.InvalidateImageView();
                     }
                 }
-                UpdateObjectDetectionDefectProcessingStatus();
-                string completedDescription = runAllCores
-                    ? "四核心缺陷檢測完成"
-                    : GetObjectDetectionDefectCoreLabel(GetObjectDetectionDefectCoreIndex(coreKey)) + " 缺陷檢測完成";
-                statusLabel.Text = parameter.DisplayName + "：" + completedDescription + "；總運算時間 " +
-                    totalElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    " ms（不含顯示）。";
-                SetObjectDetectionDefectRegionStatus(
-                    "檢測完成；" + completedDescription + "，運算時間：" +
-                    totalElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    " ms（不含畫面顯示）。");
             }
             catch (OutOfMemoryException)
             {
@@ -1512,10 +1521,10 @@ namespace IntegratedImageProcessingApp.Forms
                 statusLabel.Text = parameter.DisplayName + "：" +
                     GetSelectedObjectDetectionDefectCoreKey() + " 檢出 " +
                     result.DetectedComponentCount.ToString("N0", CultureInfo.CurrentCulture) +
-                    " 個；" + executionMode + "檢測實際耗時 " +
+                    " 個；缺陷檢測完成；" + executionMode + "實際耗時 " +
                     result.TotalElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms（不含畫面顯示）";
                 SetObjectDetectionDefectRegionStatus(
-                    "各 ROI 累計時間（平行時不等於實際經過時間）：\r\n" +
+                    "缺陷檢測完成；各 ROI 累計時間（平行時不等於實際經過時間）：\r\n" +
                     "ROI 影像準備 " + result.RoiPreparationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
                     " ms；對比調整 " + result.ContrastAdjustmentElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
                     " ms；前處理 " + result.PreprocessingElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms\r\n" +
