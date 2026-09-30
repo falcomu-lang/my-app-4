@@ -343,32 +343,30 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionFlatFieldPreviewDisplayControl.InvalidateImageView();
                     bool hasUseMasks = useMaskParameter == null ||
                         objectDetectionFlatFieldUseMaskOverlays.Count > 0;
-                    if (!hasUseMasks &&
-                        objectDetectionFlatFieldCalibrationStatusLabel != null &&
-                        !objectDetectionFlatFieldCalibrationStatusLabel.IsDisposed)
+                    Label calibrationStatusLabel = isObjectDetectionResultReviewMode ||
+                        objectDetectionFlatFieldCalibrationStatusLabel == null ||
+                        objectDetectionFlatFieldCalibrationStatusLabel.IsDisposed
+                            ? resultLabel : objectDetectionFlatFieldCalibrationStatusLabel;
+                    if (!hasUseMasks)
                     {
-                        objectDetectionFlatFieldCalibrationStatusLabel.Text =
+                        calibrationStatusLabel.Text =
                             "使用位置 MASK 未命中任何 ROI，尚未產生補正預覽。";
                     }
                     if (renderedCount > 0 && hasUseMasks &&
                         !string.IsNullOrWhiteSpace(parameter.FlatFieldSavedProfileData) &&
                         string.Equals(parameter.FlatFieldSavedSettingsSignature,
                             CreateObjectDetectionFlatFieldSettingsSignature(parameter),
-                            StringComparison.Ordinal) &&
-                        objectDetectionFlatFieldCalibrationStatusLabel != null &&
-                        !objectDetectionFlatFieldCalibrationStatusLabel.IsDisposed)
+                            StringComparison.Ordinal))
                     {
                         await ShowSavedObjectDetectionFlatFieldCalibration(
-                            parameter, objectDetectionFlatFieldCalibrationStatusLabel, null,
+                            parameter, calibrationStatusLabel, null,
                             false, correctionComputed);
                     }
-                    else if (canReuseCurrentProfile && renderedCount > 0 && hasUseMasks &&
-                        objectDetectionFlatFieldCalibrationStatusLabel != null &&
-                        !objectDetectionFlatFieldCalibrationStatusLabel.IsDisposed)
+                    else if (canReuseCurrentProfile && renderedCount > 0 && hasUseMasks)
                     {
                         objectDetectionFlatFieldProfileMaskGeneration = generation;
                         await ShowSavedObjectDetectionFlatFieldCalibration(
-                            parameter, objectDetectionFlatFieldCalibrationStatusLabel, null,
+                            parameter, calibrationStatusLabel, null,
                             true, correctionComputed);
                     }
                 }

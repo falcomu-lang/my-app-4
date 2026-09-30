@@ -420,7 +420,6 @@ namespace IntegratedImageProcessingApp.Services
             MeasurementLineCount = 1;
             MeasurementLengthMode = "FirstContinuous";
             MeasurementClipLinesToMask = false;
-            MeasurementShowMeasuredLengthOnly = false;
             MeasurementLineConfigured = false;
             MeasurementName = "量測線1";
             MeasurementLineOrder = "LeftToRight";
@@ -553,8 +552,6 @@ namespace IntegratedImageProcessingApp.Services
         public string MeasurementLengthMode { get; set; }
 
         public bool MeasurementClipLinesToMask { get; set; }
-
-        public bool MeasurementShowMeasuredLengthOnly { get; set; }
 
         public bool MeasurementLineConfigured { get; set; }
 

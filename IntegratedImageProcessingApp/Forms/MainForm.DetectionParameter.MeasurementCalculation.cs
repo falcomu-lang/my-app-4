@@ -173,53 +173,12 @@ namespace IntegratedImageProcessingApp.Forms
             SaveSystemParameters();
             ObjectDetectionMeasurementRecordSettings record =
                 GetActiveObjectDetectionMeasurementRecord(parameter);
-            bool needsMeasuredLineCache = parameter.MeasurementClipLinesToMask ||
-                parameter.MeasurementShowMeasuredLengthOnly;
+            bool needsMeasuredLineCache = parameter.MeasurementClipLinesToMask;
             if (needsMeasuredLineCache)
             {
                 if (record == null)
                 {
                     statusLabel.Text = "請先套用並選取量測紀錄，再顯示量測線段";
-                }
-                else
-                {
-                    objectDetectionMeasurementAppliedRecordId = record.Id;
-                    PrepareObjectDetectionMeasurementClipLines(parameter, record);
-                }
-            }
-            else
-            {
-                ClearObjectDetectionMeasurementClipCache();
-                statusLabel.Text = parameter.DisplayName + " 已恢復顯示完整量測線";
-            }
-
-            if (objectDetectionMeasurementDisplayControl != null)
-            {
-                objectDetectionMeasurementDisplayControl.InvalidateImageView();
-            }
-        }
-
-        private void ObjectDetectionMeasurementShowMeasuredLengthCheckBox_CheckedChanged(
-            ObjectDetectionParameterSettings parameter)
-        {
-            if (objectDetectionMeasurementShowMeasuredLengthCheckBox == null ||
-                parameter == null)
-            {
-                return;
-            }
-
-            parameter.MeasurementShowMeasuredLengthOnly =
-                objectDetectionMeasurementShowMeasuredLengthCheckBox.Checked;
-            SaveSystemParameters();
-            ObjectDetectionMeasurementRecordSettings record =
-                GetActiveObjectDetectionMeasurementRecord(parameter);
-            bool needsMeasuredLineCache = parameter.MeasurementClipLinesToMask ||
-                parameter.MeasurementShowMeasuredLengthOnly;
-            if (needsMeasuredLineCache)
-            {
-                if (record == null)
-                {
-                    statusLabel.Text = "請先套用並選取量測紀錄，再顯示量測長度";
                 }
                 else
                 {

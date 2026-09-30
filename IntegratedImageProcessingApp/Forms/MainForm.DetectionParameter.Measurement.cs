@@ -30,7 +30,6 @@ namespace IntegratedImageProcessingApp.Forms
         private Button objectDetectionMeasurementDrawButton;
         private DataGridView objectDetectionMeasurementRecordsGrid;
         private CheckBox objectDetectionMeasurementClipLinesCheckBox;
-        private CheckBox objectDetectionMeasurementShowMeasuredLengthCheckBox;
         private string objectDetectionMeasurementAppliedRecordId;
         private string objectDetectionMeasurementClipCacheParameterId;
         private string objectDetectionMeasurementClipCacheRecordId;
@@ -289,7 +288,6 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionMeasurementDrawButton = null;
                 objectDetectionMeasurementRecordsGrid = null;
                 objectDetectionMeasurementClipLinesCheckBox = null;
-                objectDetectionMeasurementShowMeasuredLengthCheckBox = null;
                 objectDetectionMeasurementIsDrawing = false;
                 objectDetectionMeasurementDrawingStage = 0;
                 LoadPendingObjectDetectionMeasurementGeometry(parameter);
@@ -675,7 +673,6 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionMeasurementDrawingStage = 0;
                     objectDetectionMeasurementDrawButton.Text = "開始畫線";
                     objectDetectionMeasurementClipLinesCheckBox.Enabled = false;
-                    objectDetectionMeasurementShowMeasuredLengthCheckBox.Enabled = false;
                     objectDetectionMeasurementToolStatusLabel.Text = "尚未設定量測線";
                     objectDetectionMeasurementDisplayControl.InvalidateImageView();
                 };
@@ -765,12 +762,7 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         objectDetectionMeasurementClipLinesCheckBox.Enabled = appliedRecord != null;
                     }
-                    if (objectDetectionMeasurementShowMeasuredLengthCheckBox != null)
-                    {
-                        objectDetectionMeasurementShowMeasuredLengthCheckBox.Enabled = appliedRecord != null;
-                    }
-                    if ((parameter.MeasurementClipLinesToMask ||
-                         parameter.MeasurementShowMeasuredLengthOnly) && appliedRecord != null)
+                    if (parameter.MeasurementClipLinesToMask && appliedRecord != null)
                     {
                         PrepareObjectDetectionMeasurementClipLines(parameter, appliedRecord);
                     }
@@ -975,16 +967,14 @@ namespace IntegratedImageProcessingApp.Forms
                 var measurementRecordFooter = new TableLayoutPanel
                 {
                     Dock = DockStyle.Bottom,
-                    Height = 84,
+                    Height = 57,
                     ColumnCount = 1,
-                    RowCount = 3,
+                    RowCount = 2,
                     Margin = Padding.Empty,
                     Padding = Padding.Empty
                 };
                 measurementRecordFooter.ColumnStyles.Add(
                     new ColumnStyle(SizeType.Percent, 100f));
-                measurementRecordFooter.RowStyles.Add(
-                    new RowStyle(SizeType.Absolute, 27f));
                 measurementRecordFooter.RowStyles.Add(
                     new RowStyle(SizeType.Absolute, 27f));
                 measurementRecordFooter.RowStyles.Add(
@@ -1002,25 +992,10 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     ObjectDetectionMeasurementClipLinesCheckBox_CheckedChanged(parameter);
                 };
-                objectDetectionMeasurementShowMeasuredLengthCheckBox = new CheckBox
-                {
-                    Dock = DockStyle.Fill,
-                    Text = "量測線只顯示量測到的部分",
-                    Checked = parameter.MeasurementShowMeasuredLengthOnly,
-                    Enabled = false,
-                    AutoSize = false,
-                    Margin = Padding.Empty
-                };
-                objectDetectionMeasurementShowMeasuredLengthCheckBox.CheckedChanged += delegate
-                {
-                    ObjectDetectionMeasurementShowMeasuredLengthCheckBox_CheckedChanged(parameter);
-                };
                 saveMeasurementRecordButton.Dock = DockStyle.Fill;
                 measurementRecordFooter.Controls.Add(
                     objectDetectionMeasurementClipLinesCheckBox, 0, 0);
-                measurementRecordFooter.Controls.Add(
-                    objectDetectionMeasurementShowMeasuredLengthCheckBox, 0, 1);
-                measurementRecordFooter.Controls.Add(saveMeasurementRecordButton, 0, 2);
+                measurementRecordFooter.Controls.Add(saveMeasurementRecordButton, 0, 1);
                 measurementRecordsGroup.Controls.Add(objectDetectionMeasurementRecordsGrid);
                 measurementRecordsGroup.Controls.Add(measurementRecordFooter);
                 RefreshObjectDetectionMeasurementRecordsGrid(parameter);
@@ -1030,9 +1005,7 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     objectDetectionMeasurementAppliedRecordId = displayedMeasurementRecord.Id;
                     objectDetectionMeasurementClipLinesCheckBox.Enabled = true;
-                    objectDetectionMeasurementShowMeasuredLengthCheckBox.Enabled = true;
-                    if (parameter.MeasurementClipLinesToMask ||
-                        parameter.MeasurementShowMeasuredLengthOnly)
+                    if (parameter.MeasurementClipLinesToMask)
                     {
                         PrepareObjectDetectionMeasurementClipLines(
                             parameter,

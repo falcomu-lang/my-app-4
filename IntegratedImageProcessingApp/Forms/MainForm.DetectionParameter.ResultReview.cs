@@ -60,6 +60,7 @@ namespace IntegratedImageProcessingApp.Forms
         private Label objectDetectionResultReviewStatusLabel;
         private TabControl objectDetectionResultReviewResultsTabs;
         private DataGridView objectDetectionResultReviewMeasurementsGrid;
+        private CheckBox objectDetectionResultReviewClipLinesToMaskCheckBox;
         private DataGridView objectDetectionResultReviewConditionsGrid;
         private DataGridView objectDetectionResultReviewDefectsGrid;
         private bool isObjectDetectionResultReviewMode;
@@ -357,8 +358,34 @@ namespace IntegratedImageProcessingApp.Forms
             AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewMeasurementsGrid, "Result", "狀態", 20);
             objectDetectionResultReviewMeasurementsGrid.CellClick +=
                 ObjectDetectionResultReviewMeasurementsGrid_CellClick;
+            var measurementTabLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = Padding.Empty
+            };
+            measurementTabLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            measurementTabLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            measurementTabLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+            objectDetectionResultReviewClipLinesToMaskCheckBox = new CheckBox
+            {
+                Dock = DockStyle.Fill,
+                Text = "量測線依 MASK 範圍裁切",
+                AutoSize = false,
+                Margin = new Padding(4, 2, 0, 0)
+            };
+            objectDetectionResultReviewClipLinesToMaskCheckBox.CheckedChanged += delegate
+            {
+                if (objectDetectionMeasurementDisplayControl != null)
+                {
+                    objectDetectionMeasurementDisplayControl.InvalidateImageView();
+                }
+            };
+            measurementTabLayout.Controls.Add(objectDetectionResultReviewMeasurementsGrid, 0, 0);
+            measurementTabLayout.Controls.Add(objectDetectionResultReviewClipLinesToMaskCheckBox, 0, 1);
             objectDetectionResultReviewResultsTabs.TabPages.Add(
-                CreateObjectDetectionResultReviewTab("量測資料", objectDetectionResultReviewMeasurementsGrid));
+                CreateObjectDetectionResultReviewTab("量測資料", measurementTabLayout));
 
             objectDetectionResultReviewConditionsGrid = CreateObjectDetectionResultReviewGrid();
             AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "Number", "編號", 6);
@@ -1558,6 +1585,10 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewConditionsGrid.Rows.Clear();
             objectDetectionResultReviewDefectsGrid.Rows.Clear();
             objectDetectionResultReviewSelectedMeasurement = null;
+            if (objectDetectionResultReviewClipLinesToMaskCheckBox != null)
+            {
+                objectDetectionResultReviewClipLinesToMaskCheckBox.Checked = false;
+            }
             if (objectDetectionResultReviewHighlightTimer != null)
             {
                 objectDetectionResultReviewHighlightTimer.Stop();

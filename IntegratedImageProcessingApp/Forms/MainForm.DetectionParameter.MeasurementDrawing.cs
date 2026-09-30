@@ -560,10 +560,7 @@ namespace IntegratedImageProcessingApp.Forms
             bool clipLinesToMask = activeParameter != null &&
                 activeParameter.MeasurementClipLinesToMask &&
                 !objectDetectionMeasurementIsDrawing;
-            bool showMeasuredLengthOnly = activeParameter != null &&
-                activeParameter.MeasurementShowMeasuredLengthOnly &&
-                !objectDetectionMeasurementIsDrawing;
-            bool needsMeasuredLines = clipLinesToMask || showMeasuredLengthOnly;
+            bool needsMeasuredLines = clipLinesToMask;
             bool hasClippedLines = needsMeasuredLines &&
                 IsObjectDetectionMeasurementClipCacheValid(
                     activeParameter,
@@ -633,7 +630,6 @@ namespace IntegratedImageProcessingApp.Forms
                     hasSecond,
                     lineCount,
                     clipLinesToMask,
-                    showMeasuredLengthOnly,
                     e.Zoom)
                 : null;
             bool rebuildRenderPaths = true;
@@ -705,21 +701,13 @@ namespace IntegratedImageProcessingApp.Forms
                                 if (needsMeasuredLines)
                                 {
                                     if (index >= objectDetectionMeasurementClippedLines.Count ||
-                                        (clipLinesToMask
-                                            ? objectDetectionMeasurementClippedLineSegments[index].Count == 0
-                                            : objectDetectionMeasurementClippedLines[index].X1 ==
-                                                objectDetectionMeasurementClippedLines[index].X2 &&
-                                              objectDetectionMeasurementClippedLines[index].Y1 ==
-                                                objectDetectionMeasurementClippedLines[index].Y2))
+                                        objectDetectionMeasurementClippedLineSegments[index].Count == 0)
                                     {
                                         continue;
                                     }
 
-                                    IEnumerable<ObjectDetectionImageLine> visibleSegments = clipLinesToMask
-                                        ? (IEnumerable<ObjectDetectionImageLine>)
-                                            objectDetectionMeasurementClippedLineSegments[index]
-                                        : new[] { objectDetectionMeasurementClippedLines[index] };
-                                    foreach (ObjectDetectionImageLine segment in visibleSegments)
+                                    foreach (ObjectDetectionImageLine segment in
+                                        objectDetectionMeasurementClippedLineSegments[index])
                                     {
                                         AddObjectDetectionImageLine(
                                             linePath,
@@ -761,11 +749,8 @@ namespace IntegratedImageProcessingApp.Forms
                         }
                         else if (needsMeasuredLines)
                         {
-                            IEnumerable<ObjectDetectionImageLine> visibleSegments = clipLinesToMask
-                                ? (IEnumerable<ObjectDetectionImageLine>)
-                                    objectDetectionMeasurementClippedLineSegments[0]
-                                : new[] { objectDetectionMeasurementClippedLines[0] };
-                            foreach (ObjectDetectionImageLine segment in visibleSegments)
+                            foreach (ObjectDetectionImageLine segment in
+                                objectDetectionMeasurementClippedLineSegments[0])
                             {
                                 AddObjectDetectionImageLine(
                                     primaryPath,
@@ -864,6 +849,10 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionImageLine second = parallel
                 ? CreateObjectDetectionImageLine(context.DetectedObject, context.Record, true)
                 : first;
+            bool clipLinesToMask = objectDetectionResultReviewClipLinesToMaskCheckBox != null &&
+                objectDetectionResultReviewClipLinesToMaskCheckBox.Checked &&
+                context.Statistics != null &&
+                context.Statistics.MeasuredLineSegments != null;
 
             using (var primaryPen = new Pen(Color.Red, 1.5f))
             using (var guidePen = new Pen(Color.FromArgb(180, Color.DeepSkyBlue), 1f))
@@ -889,27 +878,55 @@ namespace IntegratedImageProcessingApp.Forms
                             first,
                             second,
                             index / (double)(renderCount - 1));
-                        DrawObjectDetectionImageLine(
-                            graphics,
-                            line,
-                            boundary ? primaryPen : guidePen,
-                            zoom,
-                            offset);
-                        if (boundary)
+                        Pen linePen = boundary ? primaryPen : guidePen;
+                        if (clipLinesToMask)
                         {
-                            DrawObjectDetectionImageLineEndpoints(
-                                graphics,
-                                line,
-                                endpointBrush,
-                                zoom,
-                                offset);
+                            if (index < context.Statistics.MeasuredLineSegments.Count)
+                            {
+                                foreach (ObjectDetectionImageLine segment in
+                                    context.Statistics.MeasuredLineSegments[index])
+                                {
+                                    DrawObjectDetectionImageLine(
+                                        graphics, segment, linePen, zoom, offset);
+                                    if (boundary)
+                                    {
+                                        DrawObjectDetectionImageLineEndpoints(
+                                            graphics, segment, endpointBrush, zoom, offset);
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            DrawObjectDetectionImageLine(
+                                graphics, line, linePen, zoom, offset);
+                            if (boundary)
+                            {
+                                DrawObjectDetectionImageLineEndpoints(
+                                    graphics, line, endpointBrush, zoom, offset);
+                            }
                         }
                     }
                 }
                 else
                 {
-                    DrawObjectDetectionImageLine(graphics, first, primaryPen, zoom, offset);
-                    DrawObjectDetectionImageLineEndpoints(graphics, first, endpointBrush, zoom, offset);
+                    if (clipLinesToMask && context.Statistics.MeasuredLineSegments.Count > 0)
+                    {
+                        foreach (ObjectDetectionImageLine segment in
+                            context.Statistics.MeasuredLineSegments[0])
+                        {
+                            DrawObjectDetectionImageLine(
+                                graphics, segment, primaryPen, zoom, offset);
+                            DrawObjectDetectionImageLineEndpoints(
+                                graphics, segment, endpointBrush, zoom, offset);
+                        }
+                    }
+                    else if (!clipLinesToMask)
+                    {
+                        DrawObjectDetectionImageLine(graphics, first, primaryPen, zoom, offset);
+                        DrawObjectDetectionImageLineEndpoints(
+                            graphics, first, endpointBrush, zoom, offset);
+                    }
                 }
             }
 
@@ -972,7 +989,6 @@ namespace IntegratedImageProcessingApp.Forms
             bool hasSecond,
             int lineCount,
             bool clipLinesToMask,
-            bool showMeasuredLengthOnly,
             float zoom)
         {
             return string.Join(
@@ -990,8 +1006,7 @@ namespace IntegratedImageProcessingApp.Forms
                 hasSecond ? "second-line" : "single-line",
                 lineCount.ToString(CultureInfo.InvariantCulture),
                 clipLinesToMask ? "clip-mask" : "no-mask-clip",
-                showMeasuredLengthOnly ? "measured-length" : "full-length",
-                clipLinesToMask || showMeasuredLengthOnly
+                clipLinesToMask
                     ? objectDetectionMeasurementClipCacheSignature ?? string.Empty
                     : string.Empty,
                 first.X1.ToString(CultureInfo.InvariantCulture),
