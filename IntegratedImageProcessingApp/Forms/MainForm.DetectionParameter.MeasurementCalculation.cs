@@ -411,16 +411,11 @@ namespace IntegratedImageProcessingApp.Forms
                     }
 
                     int lineCount = parallel ? Math.Max(2, record.LineCount) : 1;
-                    var lengths = new List<double>(lineCount);
-                    var measuredLines = new List<ObjectDetectionImageLine>(lineCount);
-                    var measuredLineSegments =
-                        new List<List<ObjectDetectionImageLine>>(lineCount);
-                    double minimum = double.PositiveInfinity;
-                    double maximum = double.NegativeInfinity;
+                    var lengths = new double[lineCount];
+                    var measuredLines = new ObjectDetectionImageLine[lineCount];
+                    var measuredLineSegments = new List<ObjectDetectionImageLine>[lineCount];
                     bool useMillimeters = IsObjectDetectionCameraPrecisionEnabled(parameter);
-                    ObjectDetectionImageLine minimumLine = new ObjectDetectionImageLine();
-                    ObjectDetectionImageLine maximumLine = new ObjectDetectionImageLine();
-                    for (int index = 0; index < lineCount; index++)
+                    Action<int> measureLine = index =>
                     {
                         double ratio = lineCount == 1
                             ? 0
@@ -446,39 +441,72 @@ namespace IntegratedImageProcessingApp.Forms
                                 parameter.CameraYMillimetersPerPixel);
                         }
 
-                        lengths.Add(length);
-                        measuredLines.Add(measuredSegment);
-                        measuredLineSegments.Add(visibleSegments);
-                        if (length < minimum)
-                        {
-                            minimum = length;
-                            minimumLine = measuredSegment;
-                        }
+                        lengths[index] = length;
+                        measuredLines[index] = measuredSegment;
+                        measuredLineSegments[index] = visibleSegments;
+                    };
 
-                        if (length > maximum)
+                    double lineDeltaX = second.X1 - first.X1;
+                    double lineDeltaY = second.Y1 - first.Y1;
+                    double estimatedPixelSamples = Math.Ceiling(Math.Sqrt(
+                        (lineDeltaX * lineDeltaX) + (lineDeltaY * lineDeltaY))) * lineCount;
+                    if (lineCount >= 32 && estimatedPixelSamples >= 100000d &&
+                        Environment.ProcessorCount > 1)
+                    {
+                        Parallel.For(
+                            0,
+                            lineCount,
+                            new ParallelOptions
+                            {
+                                MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 8)
+                            },
+                            measureLine);
+                    }
+                    else
+                    {
+                        for (int index = 0; index < lineCount; index++)
                         {
-                            maximum = length;
-                            maximumLine = measuredSegment;
+                            measureLine(index);
                         }
                     }
 
-                    if (lengths.Count == 0)
+                    if (lengths.Length == 0)
                     {
                         errorMessage = "沒有可量測的線段";
                         return false;
                     }
 
+                    double minimum = double.PositiveInfinity;
+                    double maximum = double.NegativeInfinity;
+                    ObjectDetectionImageLine minimumLine = new ObjectDetectionImageLine();
+                    ObjectDetectionImageLine maximumLine = new ObjectDetectionImageLine();
+                    for (int index = 0; index < lengths.Length; index++)
+                    {
+                        if (lengths[index] < minimum)
+                        {
+                            minimum = lengths[index];
+                            minimumLine = measuredLines[index];
+                        }
+
+                        if (lengths[index] > maximum)
+                        {
+                            maximum = lengths[index];
+                            maximumLine = measuredLines[index];
+                        }
+                    }
+
                     statistics = new ObjectDetectionMeasurementStatistics
                     {
-                        Minimum = lengths.Min(),
+                        Minimum = minimum,
                         Average = lengths.Average(),
-                        Maximum = lengths.Max(),
+                        Maximum = maximum,
                         Unit = useMillimeters ? "mm" : "px",
                         MinimumLine = minimumLine,
                         MaximumLine = maximumLine,
-                        MeasuredLines = measuredLines,
-                        MeasuredLineLengths = lengths,
-                        MeasuredLineSegments = measuredLineSegments,
+                        MeasuredLines = new List<ObjectDetectionImageLine>(measuredLines),
+                        MeasuredLineLengths = new List<double>(lengths),
+                        MeasuredLineSegments = new List<List<ObjectDetectionImageLine>>(
+                            measuredLineSegments),
                         ObjectNumber = selectedObject.Number,
                         ObjectBounds = objectBounds
                     };

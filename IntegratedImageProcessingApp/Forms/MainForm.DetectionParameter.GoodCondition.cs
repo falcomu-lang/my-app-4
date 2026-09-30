@@ -978,7 +978,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (System.Text.RegularExpressions.Regex.IsMatch(
                 normalized,
-                @"(?<![a-z0-9_])(?:min|avg|max)\(\d",
+                @"(?<![a-z0-9_])(?:min|avg|max)\((?!\(|\d+\))",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase))
             {
                 message = "統計函式格式為 MIN(n)、AVG(n) 或 MAX(n)，n 必須是量測編號；舊式 min/max 請使用 min((1)(2)) 格式";
