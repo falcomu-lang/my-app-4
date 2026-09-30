@@ -32,15 +32,6 @@ namespace IntegratedImageProcessingApp.Forms
             public IDictionary<int, ObjectDetectionMeasurementStatistics> StatisticsByRecord { get; set; }
         }
 
-        private sealed class ResultReviewConditionCount
-        {
-            public ObjectDetectionGoodJudgementRuleSettings Rule { get; set; }
-            public int Passed { get; set; }
-            public int Failed { get; set; }
-            public int Unknown { get; set; }
-            public string Error { get; set; }
-        }
-
         private sealed class ResultReviewMeasurementRowContext
         {
             public ObjectDetectionParameterSettings Parameter { get; set; }
@@ -388,16 +379,19 @@ namespace IntegratedImageProcessingApp.Forms
                 CreateObjectDetectionResultReviewTab("量測資料", measurementTabLayout));
 
             objectDetectionResultReviewConditionsGrid = CreateObjectDetectionResultReviewGrid();
-            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "Number", "編號", 6);
-            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "Name", "條件名稱", 12);
-            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "AExpression", "A 規計算式", 18);
-            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "ASpecification", "A 規規格", 13);
-            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "BExpression", "B 規計算式", 18);
-            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "BSpecification", "B 規規格", 13);
-            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "Counts", "符合 / 不符合 / 未判定", 13);
-            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "Status", "判定", 7);
+            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "Number", "編號", 5);
+            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "Name", "條件名稱", 10);
+            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "AExpression", "A 規計算式", 15);
+            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "ASpecification", "A 規規格", 12);
+            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "AResult", "A 規結果", 16);
+            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "BExpression", "B 規計算式", 15);
+            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "BSpecification", "B 規規格", 12);
+            AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewConditionsGrid, "BResult", "B 規結果", 15);
             objectDetectionResultReviewResultsTabs.TabPages.Add(
-                CreateObjectDetectionResultReviewTab("尺寸良品判定", objectDetectionResultReviewConditionsGrid));
+                CreateObjectDetectionResultReviewTab(
+                    "尺寸良品判定",
+                    CreateObjectDetectionResultReviewGoodJudgementContent(
+                        objectDetectionResultReviewConditionsGrid)));
 
             objectDetectionResultReviewDefectsGrid = CreateObjectDetectionResultReviewGrid();
             AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewDefectsGrid, "Source", "來源", 24);
@@ -1116,10 +1110,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             Stopwatch conditionStopwatch = Stopwatch.StartNew();
-            EvaluateObjectDetectionResultReviewConditions(parameter, objects, contexts);
+            CalculateObjectDetectionResultReviewGoodJudgements(parameter, objects, contexts);
             conditionStopwatch.Stop();
             calculationMilliseconds += conditionStopwatch.ElapsedMilliseconds;
             Stopwatch resultDisplayStopwatch = Stopwatch.StartNew();
+            RefreshObjectDetectionResultReviewGoodJudgementView();
             AddObjectDetectionResultReviewDefectRows(parameter, definition);
             ApplyObjectDetectionResultReviewVerdictStyles();
             resultDisplayStopwatch.Stop();
@@ -1208,145 +1203,6 @@ namespace IntegratedImageProcessingApp.Forms
                 SourceMaskSecondaryId = record.SourceMaskSecondaryId,
                 SourceMaskSecondaryNamespace = record.SourceMaskSecondaryNamespace
             };
-        }
-
-        private void EvaluateObjectDetectionResultReviewConditions(
-            ObjectDetectionParameterSettings parameter,
-            IList<ObjectDefinitionDetectedObject> objects,
-            IDictionary<int, ResultReviewMeasurementContext> contexts)
-        {
-            foreach (ObjectDetectionGoodJudgementRuleSettings rule in
-                (parameter.GoodJudgementRules ?? new List<ObjectDetectionGoodJudgementRuleSettings>())
-                    .Where(item => item != null).OrderBy(item => item.Number))
-            {
-                if (!rule.Enabled)
-                {
-                    objectDetectionResultReviewConditionsGrid.Rows.Add(
-                        rule.Number, rule.Name, rule.CalculationExpression, rule.SpecificationExpression,
-                        rule.AlternativeCalculationExpression, rule.AlternativeSpecificationExpression,
-                        "-", "停用");
-                    continue;
-                }
-
-                int passedCount = 0;
-                int failedCount = 0;
-                int unknownCount = 0;
-                string firstError = string.Empty;
-                foreach (ObjectDefinitionDetectedObject detectedObject in objects)
-                {
-                    ResultReviewMeasurementContext context;
-                    bool passed;
-                    string error = string.Empty;
-                    if (!contexts.TryGetValue(detectedObject.Number, out context) ||
-                        !TryEvaluateObjectDetectionGoodJudgementRule(rule, context, out passed, out error))
-                    {
-                        unknownCount++;
-                        if (string.IsNullOrEmpty(firstError))
-                        {
-                            firstError = error;
-                        }
-                    }
-                    else if (passed)
-                    {
-                        passedCount++;
-                    }
-                    else
-                    {
-                        failedCount++;
-                    }
-                }
-
-                string verdict = failedCount > 0 ? "不符合" :
-                    unknownCount > 0 || objects.Count == 0 ? "待確認" : "符合";
-                objectDetectionResultReviewConditionsGrid.Rows.Add(
-                    rule.Number, rule.Name, rule.CalculationExpression, rule.SpecificationExpression,
-                    rule.AlternativeCalculationExpression, rule.AlternativeSpecificationExpression,
-                    passedCount.ToString(CultureInfo.CurrentCulture) + " / " +
-                    failedCount.ToString(CultureInfo.CurrentCulture) + " / " +
-                    unknownCount.ToString(CultureInfo.CurrentCulture),
-                    verdict + (string.IsNullOrWhiteSpace(firstError) ? string.Empty : "：" + firstError));
-            }
-
-            if (!(parameter.GoodJudgementRules ??
-                new List<ObjectDetectionGoodJudgementRuleSettings>())
-                .Any(rule => rule != null && rule.Enabled))
-            {
-                objectDetectionResultReviewConditionsGrid.Rows.Add(
-                    string.Empty, "未設定尺寸良品判斷條件", string.Empty, string.Empty,
-                    string.Empty, string.Empty, "-", "待確認");
-            }
-        }
-
-        private bool TryEvaluateObjectDetectionGoodJudgementRule(
-            ObjectDetectionGoodJudgementRuleSettings rule,
-            ResultReviewMeasurementContext context,
-            out bool passed,
-            out string error)
-        {
-            passed = false;
-            error = string.Empty;
-            bool hasPrimaryRule = !string.IsNullOrWhiteSpace(rule.CalculationExpression) ||
-                !string.IsNullOrWhiteSpace(rule.SpecificationExpression);
-            bool hasFallbackRule = !string.IsNullOrWhiteSpace(rule.AlternativeCalculationExpression) ||
-                !string.IsNullOrWhiteSpace(rule.AlternativeSpecificationExpression);
-
-            if (hasPrimaryRule)
-            {
-                if (string.IsNullOrWhiteSpace(rule.CalculationExpression) ||
-                    string.IsNullOrWhiteSpace(rule.SpecificationExpression))
-                {
-                    error = "A 規計算式與規格尚未完整";
-                    return false;
-                }
-
-                double primaryValue;
-                bool primaryPassed;
-                if (!TryEvaluateObjectDetectionGoodJudgementExpression(
-                        rule.CalculationExpression, context, out primaryValue, out error) ||
-                    !TryEvaluateObjectDetectionGoodJudgementSpecification(
-                        rule.SpecificationExpression, primaryValue, out primaryPassed))
-                {
-                    if (string.IsNullOrEmpty(error))
-                    {
-                        error = "A 規計算式或規格無法判定";
-                    }
-                    return false;
-                }
-
-                if (primaryPassed || !hasFallbackRule)
-                {
-                    passed = primaryPassed;
-                    return true;
-                }
-            }
-
-            if (!hasFallbackRule)
-            {
-                error = "未設定可執行的 A 規或 B 規";
-                return false;
-            }
-            if (string.IsNullOrWhiteSpace(rule.AlternativeCalculationExpression) ||
-                string.IsNullOrWhiteSpace(rule.AlternativeSpecificationExpression))
-            {
-                error = "B 規計算式與規格尚未完整";
-                return false;
-            }
-
-            double fallbackValue;
-            bool fallbackPassed;
-            if (!TryEvaluateObjectDetectionGoodJudgementExpression(
-                    rule.AlternativeCalculationExpression, context, out fallbackValue, out error) ||
-                !TryEvaluateObjectDetectionGoodJudgementSpecification(
-                    rule.AlternativeSpecificationExpression, fallbackValue, out fallbackPassed))
-            {
-                if (string.IsNullOrEmpty(error))
-                {
-                    error = "B 規計算式或規格無法判定";
-                }
-                return false;
-            }
-            passed = fallbackPassed;
-            return true;
         }
 
         private bool TryEvaluateObjectDetectionGoodJudgementExpression(
@@ -1478,14 +1334,11 @@ namespace IntegratedImageProcessingApp.Forms
         {
             bool sizeHasRules = parameter.GoodJudgementRules != null &&
                 parameter.GoodJudgementRules.Any(rule => rule != null && rule.Enabled);
-            bool sizeFailed = objectDetectionResultReviewConditionsGrid.Rows.Cast<DataGridViewRow>()
-                .Any(row => Convert.ToString(row.Cells[7].Value, CultureInfo.CurrentCulture)
-                    .StartsWith("不符合", StringComparison.Ordinal));
-            bool sizeUnknown = !sizeHasRules || objectDetectionResultReviewConditionsGrid.Rows
-                .Cast<DataGridViewRow>()
-                .Where(row => row.Cells[7].Value != null)
-                .Any(row => row.Cells[7].Value.ToString().StartsWith("待確認", StringComparison.Ordinal) ||
-                    row.Cells[7].Value.ToString().StartsWith("無法判定", StringComparison.Ordinal));
+            bool sizeFailed = objectDetectionResultReviewGoodJudgementResults.Any(result =>
+                result.Grade == ResultReviewGoodJudgementGrade.Ng);
+            bool sizeUnknown = !sizeHasRules || objectDetectionResultReviewGoodJudgementResults.Count == 0 ||
+                objectDetectionResultReviewGoodJudgementResults.Any(result =>
+                    result.Grade == ResultReviewGoodJudgementGrade.Pending);
             bool hasDefectConfig = parameter.DefectInspectionRegionConfigured &&
                 string.Equals(parameter.DefectInspectionRegionObjectDefinitionId,
                     parameter.ObjectDefinitionId, StringComparison.Ordinal);
@@ -1506,9 +1359,22 @@ namespace IntegratedImageProcessingApp.Forms
             string overall = sizeFailed || (defectReady && hasDefects) ? "不良" :
                 sizeHasRules && !sizeUnknown && hasDefectConfig && defectReady && !hasDefects
                     ? "良品" : "待確認";
+            int aGradeCount = objectDetectionResultReviewGoodJudgementResults.Count(result =>
+                result.Grade == ResultReviewGoodJudgementGrade.A);
+            int bGradeCount = objectDetectionResultReviewGoodJudgementResults.Count(result =>
+                result.Grade == ResultReviewGoodJudgementGrade.B);
+            int ngGradeCount = objectDetectionResultReviewGoodJudgementResults.Count(result =>
+                result.Grade == ResultReviewGoodJudgementGrade.Ng);
+            int pendingGradeCount = objectDetectionResultReviewGoodJudgementResults.Count(result =>
+                result.Grade == ResultReviewGoodJudgementGrade.Pending);
             return "整體判定：" + overall + "　|　檢測參數：" + parameter.DisplayName +
                 "　|　物件數：" + objectCount.ToString("N0", CultureInfo.CurrentCulture) +
-                "　|　尺寸條件：" + (sizeFailed ? "不符合" : sizeUnknown ? "待確認" : "符合") +
+                "　|　尺寸 A/B/NG/待確認：" +
+                aGradeCount.ToString(CultureInfo.CurrentCulture) + "/" +
+                bGradeCount.ToString(CultureInfo.CurrentCulture) + "/" +
+                ngGradeCount.ToString(CultureInfo.CurrentCulture) + "/" +
+                pendingGradeCount.ToString(CultureInfo.CurrentCulture) +
+                "（" + (sizeFailed ? "NG" : sizeUnknown ? "待確認" : "符合") + "）" +
                 "　|　缺陷：" + (!hasDefectConfig ? "未設定檢測範圍" : !defectReady
                     ? "待確認" : hasDefects ? "有缺陷" : "未檢出");
         }
@@ -1520,14 +1386,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ApplyObjectDetectionResultReviewVerdictStyles()
         {
-            foreach (DataGridViewRow row in objectDetectionResultReviewConditionsGrid.Rows)
-            {
-                string verdict = Convert.ToString(row.Cells[7].Value, CultureInfo.CurrentCulture);
-                row.DefaultCellStyle.ForeColor = verdict.StartsWith("符合", StringComparison.Ordinal)
-                    ? Color.ForestGreen
-                    : verdict.StartsWith("不符合", StringComparison.Ordinal)
-                        ? Color.Firebrick : Color.FromArgb(75, 83, 95);
-            }
+            ApplyObjectDetectionResultReviewGoodJudgementStyles();
             foreach (DataGridViewRow row in objectDetectionResultReviewDefectsGrid.Rows)
             {
                 string verdict = Convert.ToString(row.Cells[3].Value, CultureInfo.CurrentCulture);
@@ -1584,6 +1443,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewMeasurementsGrid.Rows.Clear();
             objectDetectionResultReviewConditionsGrid.Rows.Clear();
             objectDetectionResultReviewDefectsGrid.Rows.Clear();
+            ClearObjectDetectionResultReviewGoodJudgementState();
             objectDetectionResultReviewSelectedMeasurement = null;
             if (objectDetectionResultReviewClipLinesToMaskCheckBox != null)
             {
