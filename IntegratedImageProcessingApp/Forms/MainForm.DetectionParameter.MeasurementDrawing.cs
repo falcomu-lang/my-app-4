@@ -489,6 +489,15 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (isObjectDetectionResultReviewMode)
+            {
+                DrawObjectDetectionResultReviewMeasurementOverlay(
+                    e.Graphics,
+                    e.Zoom,
+                    e.Offset);
+                return;
+            }
+
             ObjectDefinitionDetectedObject selectedObject;
             if (!TryGetSelectedObjectDetectionObject(out selectedObject))
             {
@@ -813,6 +822,128 @@ namespace IntegratedImageProcessingApp.Forms
                 e.Graphics,
                 e,
                 selectedObject);
+        }
+
+        private void DrawObjectDetectionResultReviewMeasurementOverlay(
+            Graphics graphics,
+            float zoom,
+            PointF offset)
+        {
+            ResultReviewMeasurementRowContext context =
+                objectDetectionResultReviewSelectedMeasurement;
+            if (graphics == null || context == null || context.Record == null ||
+                context.DetectedObject == null)
+            {
+                return;
+            }
+
+            ObjectDetectionImageLine first = CreateObjectDetectionImageLine(
+                context.DetectedObject,
+                context.Record,
+                false);
+            bool parallel = string.Equals(
+                context.Record.Mode,
+                "Parallel",
+                StringComparison.OrdinalIgnoreCase);
+            ObjectDetectionImageLine second = parallel
+                ? CreateObjectDetectionImageLine(context.DetectedObject, context.Record, true)
+                : first;
+
+            using (var primaryPen = new Pen(Color.Red, 1.5f))
+            using (var guidePen = new Pen(Color.FromArgb(180, Color.DeepSkyBlue), 1f))
+            using (var endpointBrush = new SolidBrush(Color.Red))
+            {
+                if (parallel)
+                {
+                    int renderCount = Math.Max(2, Math.Min(1000, context.Record.LineCount));
+                    int renderStride = GetObjectDetectionMeasurementRenderStride(
+                        first,
+                        second,
+                        renderCount,
+                        zoom);
+                    for (int index = 0; index < renderCount; index++)
+                    {
+                        bool boundary = index == 0 || index == renderCount - 1;
+                        if (!boundary && index % renderStride != 0)
+                        {
+                            continue;
+                        }
+
+                        ObjectDetectionImageLine line = InterpolateObjectDetectionImageLine(
+                            first,
+                            second,
+                            index / (double)(renderCount - 1));
+                        DrawObjectDetectionImageLine(
+                            graphics,
+                            line,
+                            boundary ? primaryPen : guidePen,
+                            zoom,
+                            offset);
+                        if (boundary)
+                        {
+                            DrawObjectDetectionImageLineEndpoints(
+                                graphics,
+                                line,
+                                endpointBrush,
+                                zoom,
+                                offset);
+                        }
+                    }
+                }
+                else
+                {
+                    DrawObjectDetectionImageLine(graphics, first, primaryPen, zoom, offset);
+                    DrawObjectDetectionImageLineEndpoints(graphics, first, endpointBrush, zoom, offset);
+                }
+            }
+
+            if (context.Statistics == null || !context.StatisticsHighlightsVisible)
+            {
+                return;
+            }
+
+            ObjectDetectionImageLine minimum = context.Statistics.MinimumLine;
+            ObjectDetectionImageLine maximum = context.Statistics.MaximumLine;
+            bool sameSegment = minimum.X1 == maximum.X1 && minimum.Y1 == maximum.Y1 &&
+                minimum.X2 == maximum.X2 && minimum.Y2 == maximum.Y2;
+            using (var maximumPen = new Pen(Color.Red, sameSegment ? 5f : 3f))
+            using (var minimumPen = new Pen(Color.Yellow, sameSegment ? 2f : 3f))
+            {
+                DrawObjectDetectionMeasurementImageResultLine(
+                    graphics,
+                    maximum,
+                    maximumPen,
+                    zoom,
+                    offset);
+                DrawObjectDetectionMeasurementImageResultLine(
+                    graphics,
+                    minimum,
+                    minimumPen,
+                    zoom,
+                    offset);
+            }
+        }
+
+        private static void DrawObjectDetectionMeasurementImageResultLine(
+            Graphics graphics,
+            ObjectDetectionImageLine line,
+            Pen pen,
+            float zoom,
+            PointF offset)
+        {
+            if (line.X1 == line.X2 && line.Y1 == line.Y2)
+            {
+                float x = offset.X + line.X1 * zoom;
+                float y = offset.Y + line.Y1 * zoom;
+                using (var brush = new SolidBrush(pen.Color))
+                {
+                    graphics.FillEllipse(brush, x - 3f, y - 3f, 6f, 6f);
+                }
+
+                return;
+            }
+
+            DrawObjectDetectionImageLine(graphics, line, pen, zoom, offset);
         }
 
         private string CreateObjectDetectionMeasurementRenderOverlayCacheKey(
@@ -1153,6 +1284,12 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (isObjectDetectionResultReviewMode)
+            {
+                RefreshObjectDetectionResultReviewMeasurementDisplay();
+                return;
+            }
+
             ObjectDefinitionDetectedObject selectedObject;
             bool hasSelectedObject = TryGetSelectedObjectDetectionObject(out selectedObject);
             Rectangle objectBounds = hasSelectedObject
@@ -1253,6 +1390,99 @@ namespace IntegratedImageProcessingApp.Forms
                 if (measurementImage != null)
                 {
                     measurementImage.Dispose();
+                }
+            }
+        }
+
+        private void RefreshObjectDetectionResultReviewMeasurementDisplay()
+        {
+            if (objectDetectionMeasurementDisplayControl == null ||
+                rightOriginalDisplayControl == null ||
+                !rightOriginalDisplayControl.HasImage)
+            {
+                return;
+            }
+
+            if (rightOriginalDisplayControl.IsLargeImageMode)
+            {
+                LargeImageSource source = rightOriginalDisplayControl.GetSharedLargeImageSource();
+                if (source == null)
+                {
+                    return;
+                }
+
+                try
+                {
+                    objectDetectionMeasurementDisplayControl.SetSharedLargeImageSource(source, true);
+                }
+                finally
+                {
+                    source.ReleaseReference();
+                }
+
+                objectDetectionMeasurementDisplayControl.InvalidateImageView();
+                return;
+            }
+
+            Bitmap image = rightOriginalDisplayControl.CloneImage();
+            if (image == null)
+            {
+                return;
+            }
+
+            try
+            {
+                ResultReviewMeasurementRowContext context =
+                    objectDetectionResultReviewSelectedMeasurement;
+                if (context != null && context.DetectedObject != null)
+                {
+                    Rectangle objectBounds = context.DetectedObject.Bounds;
+                    Cv.Mat mask;
+                    if (context.MaskParameter != null &&
+                        TryGetObjectDetectionMeasurementMask(
+                            context.MaskParameter,
+                            context.ObjectNumber,
+                            objectBounds,
+                            null,
+                            image,
+                            out mask))
+                    {
+                        using (mask)
+                        using (Bitmap overlay = CreateObjectDetectionMaskOverlay(
+                            mask,
+                            ObjectDetectionMeasurementMaskColor))
+                        using (Graphics graphics = Graphics.FromImage(image))
+                        {
+                            graphics.DrawImageUnscaled(overlay, objectBounds.Location);
+                        }
+                    }
+
+                    Rectangle visibleBounds = Rectangle.Intersect(
+                        objectBounds,
+                        new Rectangle(0, 0, image.Width, image.Height));
+                    if (visibleBounds.Width > 0 && visibleBounds.Height > 0)
+                    {
+                        using (Graphics graphics = Graphics.FromImage(image))
+                        using (var outline = new Pen(Color.LimeGreen, 3f))
+                        {
+                            DrawObjectDetectionObjectOutline(
+                                graphics,
+                                context.DetectedObject,
+                                outline,
+                                1f,
+                                PointF.Empty);
+                        }
+                    }
+                }
+
+                objectDetectionMeasurementDisplayControl.SetDisplayImage(image, true);
+                image = null;
+            }
+            finally
+            {
+                if (image != null)
+                {
+                    image.Dispose();
                 }
             }
         }

@@ -41,6 +41,17 @@ namespace IntegratedImageProcessingApp.Forms
             public string Error { get; set; }
         }
 
+        private sealed class ResultReviewMeasurementRowContext
+        {
+            public ObjectDetectionParameterSettings Parameter { get; set; }
+            public ObjectDetectionMeasurementRecordSettings Record { get; set; }
+            public ObjectDetectionParameterSettings MaskParameter { get; set; }
+            public ObjectDefinitionDetectedObject DetectedObject { get; set; }
+            public int ObjectNumber { get; set; }
+            public ObjectDetectionMeasurementStatistics Statistics { get; set; }
+            public bool StatisticsHighlightsVisible { get; set; }
+        }
+
         private Panel objectDetectionResultReviewPanel;
         private ComboBox objectDetectionResultReviewParameterComboBox;
         private Button objectDetectionResultReviewLoadImageButton;
@@ -59,6 +70,17 @@ namespace IntegratedImageProcessingApp.Forms
         private float[] objectDetectionResultReviewColumnWidths;
         private string objectDetectionResultReviewPendingDefinitionId;
         private TaskCompletionSource<string> objectDetectionResultReviewDefinitionCompletion;
+        private long? objectDetectionResultReviewImageLoadMilliseconds;
+        private bool? objectDetectionResultReviewImageLoadSucceeded;
+        private long? objectDetectionResultReviewImageProcessingMilliseconds;
+        private long? objectDetectionResultReviewMeasurementMilliseconds;
+        private long? objectDetectionResultReviewDefectMilliseconds;
+        private Stopwatch objectDetectionResultReviewStageStopwatch;
+        private string objectDetectionResultReviewActiveTimingStage;
+        private ResultReviewMeasurementRowContext objectDetectionResultReviewSelectedMeasurement;
+        private Timer objectDetectionResultReviewHighlightTimer;
+        private string objectDetectionResultReviewPreviousParameterId;
+        private int objectDetectionResultReviewPreviousObjectNumber;
 
         private void ShowObjectDetectionResultReviewPanel()
         {
@@ -74,6 +96,9 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (!isObjectDetectionResultReviewMode)
             {
+                objectDetectionResultReviewPreviousParameterId = activeObjectDetectionParameterId;
+                objectDetectionResultReviewPreviousObjectNumber = selectedObjectDetectionNumber;
+                objectDetectionResultReviewSelectedMeasurement = null;
                 objectDetectionResultReviewColumnTypes = mainLayoutPanel.ColumnStyles
                     .Cast<ColumnStyle>().Select(style => style.SizeType).ToArray();
                 objectDetectionResultReviewColumnWidths = mainLayoutPanel.ColumnStyles
@@ -174,6 +199,7 @@ namespace IntegratedImageProcessingApp.Forms
             RefreshObjectDetectionFlatFieldDisplay();
             RefreshObjectDetectionMeasurementDisplay();
             RefreshObjectDetectionDefectDisplay();
+            UpdateObjectDetectionResultReviewTimingMemo();
             statusLabel.Text = "參數結果確認：選擇檢測參數與同規格圖片後，執行確認。";
         }
 
@@ -206,6 +232,17 @@ namespace IntegratedImageProcessingApp.Forms
             isObjectDetectionResultReviewMode = false;
             objectDetectionResultReviewImagePath = null;
             objectDetectionResultReviewReferenceImageSize = Size.Empty;
+            if (objectDetectionResultReviewHighlightTimer != null)
+            {
+                objectDetectionResultReviewHighlightTimer.Stop();
+                objectDetectionResultReviewHighlightTimer.Dispose();
+                objectDetectionResultReviewHighlightTimer = null;
+            }
+            objectDetectionResultReviewSelectedMeasurement = null;
+            activeObjectDetectionParameterId = objectDetectionResultReviewPreviousParameterId;
+            selectedObjectDetectionNumber = objectDetectionResultReviewPreviousObjectNumber;
+            objectDetectionResultReviewPreviousParameterId = null;
+            objectDetectionResultReviewPreviousObjectNumber = 0;
             SetObjectDetectionParameterDisplayMode(false);
         }
 
@@ -317,6 +354,8 @@ namespace IntegratedImageProcessingApp.Forms
             AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewMeasurementsGrid, "Maximum", "最大", 11);
             AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewMeasurementsGrid, "Unit", "單位", 6);
             AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewMeasurementsGrid, "Result", "狀態", 20);
+            objectDetectionResultReviewMeasurementsGrid.CellClick +=
+                ObjectDetectionResultReviewMeasurementsGrid_CellClick;
             objectDetectionResultReviewResultsTabs.TabPages.Add(
                 CreateObjectDetectionResultReviewTab("量測資料", objectDetectionResultReviewMeasurementsGrid));
 
@@ -450,9 +489,9 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             activeObjectDetectionParameterId = choice.Parameter.Id;
-            selectedObjectDetectionNumber = -1;
             ClearObjectDetectionResultReviewResults();
-            UpdateObjectDetectionParameterTabs(choice.Parameter);
+            ResetObjectDetectionResultReviewProcessingTimings();
+            UpdateObjectDetectionResultReviewTimingMemo();
             RefreshObjectDetectionFlatFieldDisplay();
             RefreshObjectDetectionMeasurementDisplay();
             RefreshObjectDetectionDefectDisplay();
@@ -479,6 +518,12 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
+                Stopwatch imageLoadStopwatch = Stopwatch.StartNew();
+                objectDetectionResultReviewImageLoadMilliseconds = null;
+                objectDetectionResultReviewImageLoadSucceeded = null;
+                ResetObjectDetectionResultReviewProcessingTimings();
+                UpdateObjectDetectionResultReviewTimingMemo();
+
                 Size selectedSize;
                 try
                 {
@@ -486,11 +531,16 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 catch (Exception exception)
                 {
+                    imageLoadStopwatch.Stop();
+                    objectDetectionResultReviewImageLoadMilliseconds = imageLoadStopwatch.ElapsedMilliseconds;
+                    objectDetectionResultReviewImageLoadSucceeded = false;
+                    UpdateObjectDetectionResultReviewTimingMemo();
                     SetObjectDetectionResultReviewStatus("圖片讀取失敗：" + exception.Message);
                     return;
                 }
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
+                    imageLoadStopwatch.Stop();
                     return;
                 }
 
@@ -498,6 +548,10 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionResultReviewReferenceImageSize.Height > 0 &&
                     selectedSize != objectDetectionResultReviewReferenceImageSize)
                 {
+                    imageLoadStopwatch.Stop();
+                    objectDetectionResultReviewImageLoadMilliseconds = imageLoadStopwatch.ElapsedMilliseconds;
+                    objectDetectionResultReviewImageLoadSucceeded = false;
+                    UpdateObjectDetectionResultReviewTimingMemo();
                     objectDetectionResultReviewStatusLabel.Text = "圖片規格不符，未載入。";
                     MessageBox.Show(
                         this,
@@ -521,6 +575,10 @@ namespace IntegratedImageProcessingApp.Forms
                     await LoadImageIntoOriginalDisplaysAsync(
                         dialog.FileName,
                         System.Threading.CancellationToken.None);
+                    imageLoadStopwatch.Stop();
+                    objectDetectionResultReviewImageLoadMilliseconds = imageLoadStopwatch.ElapsedMilliseconds;
+                    objectDetectionResultReviewImageLoadSucceeded = true;
+                    UpdateObjectDetectionResultReviewTimingMemo();
                     if (!IsObjectDetectionResultReviewUiAvailable())
                     {
                         return;
@@ -542,6 +600,13 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 catch (Exception exception)
                 {
+                    if (imageLoadStopwatch.IsRunning)
+                    {
+                        imageLoadStopwatch.Stop();
+                    }
+                    objectDetectionResultReviewImageLoadMilliseconds = imageLoadStopwatch.ElapsedMilliseconds;
+                    objectDetectionResultReviewImageLoadSucceeded = false;
+                    UpdateObjectDetectionResultReviewTimingMemo();
                     SetObjectDetectionResultReviewStatus("圖片載入失敗：" + exception.Message);
                 }
                 finally
@@ -593,11 +658,13 @@ namespace IntegratedImageProcessingApp.Forms
             isObjectDetectionResultReviewRunning = true;
             SetObjectDetectionResultReviewControlsEnabled(false);
             ClearObjectDetectionResultReviewResults();
+            ResetObjectDetectionResultReviewProcessingTimings();
+            UpdateObjectDetectionResultReviewTimingMemo();
             try
             {
                 activeObjectDetectionParameterId = parameter.Id;
                 selectedObjectDetectionNumber = -1;
-                UpdateObjectDetectionParameterTabs(parameter);
+                StartObjectDetectionResultReviewTimingStage("影像處理");
                 objectDetectionResultReviewStatusLabel.Text = "正在依參數執行物件定義處理...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：物件搜尋中...";
 
@@ -647,6 +714,8 @@ namespace IntegratedImageProcessingApp.Forms
                         : calibrationStatus);
                 }
 
+                StopObjectDetectionResultReviewTimingStage();
+                StartObjectDetectionResultReviewTimingStage("缺陷檢測");
                 objectDetectionResultReviewStatusLabel.Text =
                     "平場校正已套用，正在執行已啟用的缺陷條件...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：缺陷檢測中...";
@@ -658,9 +727,12 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
+                StopObjectDetectionResultReviewTimingStage();
+                StartObjectDetectionResultReviewTimingStage("尺寸量測");
                 objectDetectionResultReviewStatusLabel.Text = "正在計算尺寸量測與良品條件...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：尺寸判定中...";
                 await BuildObjectDetectionResultReviewResultsAsync(parameter, definition, objects);
+                StopObjectDetectionResultReviewTimingStage();
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
                     return;
@@ -675,16 +747,112 @@ namespace IntegratedImageProcessingApp.Forms
             }
             catch (Exception exception)
             {
+                StopObjectDetectionResultReviewTimingStage();
                 SetObjectDetectionResultReviewStatus("結果確認未完成：" + exception.Message);
                 statusLabel.Text = "結果確認未完成：" + exception.Message;
             }
             finally
             {
+                StopObjectDetectionResultReviewTimingStage();
                 objectDetectionResultReviewPendingDefinitionId = null;
                 objectDetectionResultReviewDefinitionCompletion = null;
                 isObjectDetectionResultReviewRunning = false;
                 SetObjectDetectionResultReviewControlsEnabled(true);
+                UpdateObjectDetectionResultReviewTimingMemo();
             }
+        }
+
+        private void ResetObjectDetectionResultReviewProcessingTimings()
+        {
+            objectDetectionResultReviewImageProcessingMilliseconds = null;
+            objectDetectionResultReviewMeasurementMilliseconds = null;
+            objectDetectionResultReviewDefectMilliseconds = null;
+            objectDetectionResultReviewStageStopwatch = null;
+            objectDetectionResultReviewActiveTimingStage = null;
+        }
+
+        private void StartObjectDetectionResultReviewTimingStage(string stage)
+        {
+            StopObjectDetectionResultReviewTimingStage();
+            objectDetectionResultReviewActiveTimingStage = stage;
+            objectDetectionResultReviewStageStopwatch = Stopwatch.StartNew();
+            UpdateObjectDetectionResultReviewTimingMemo();
+        }
+
+        private void StopObjectDetectionResultReviewTimingStage()
+        {
+            if (objectDetectionResultReviewStageStopwatch == null)
+            {
+                return;
+            }
+
+            objectDetectionResultReviewStageStopwatch.Stop();
+            long elapsed = objectDetectionResultReviewStageStopwatch.ElapsedMilliseconds;
+            if (string.Equals(objectDetectionResultReviewActiveTimingStage, "影像處理", StringComparison.Ordinal))
+            {
+                objectDetectionResultReviewImageProcessingMilliseconds = elapsed;
+            }
+            else if (string.Equals(objectDetectionResultReviewActiveTimingStage, "尺寸量測", StringComparison.Ordinal))
+            {
+                objectDetectionResultReviewMeasurementMilliseconds = elapsed;
+            }
+            else if (string.Equals(objectDetectionResultReviewActiveTimingStage, "缺陷檢測", StringComparison.Ordinal))
+            {
+                objectDetectionResultReviewDefectMilliseconds = elapsed;
+            }
+
+            objectDetectionResultReviewStageStopwatch = null;
+            objectDetectionResultReviewActiveTimingStage = null;
+            UpdateObjectDetectionResultReviewTimingMemo();
+        }
+
+        private void UpdateObjectDetectionResultReviewTimingMemo()
+        {
+            if (debugTimingMemo == null || debugTimingMemo.IsDisposed)
+            {
+                return;
+            }
+
+            ResetDebugTimingMemo();
+            AppendDebugTimingMemo("參數結果確認處理時間");
+            string imageLoadText = !objectDetectionResultReviewImageLoadMilliseconds.HasValue
+                ? "尚未讀取"
+                : objectDetectionResultReviewImageLoadMilliseconds.Value.ToString("N0", CultureInfo.CurrentCulture) +
+                    " ms" + (objectDetectionResultReviewImageLoadSucceeded == false ? "（未完成）" : string.Empty);
+            AppendDebugTimingMemo("讀取圖片：" + imageLoadText);
+
+            long completedMilliseconds =
+                (objectDetectionResultReviewImageProcessingMilliseconds ?? 0) +
+                (objectDetectionResultReviewMeasurementMilliseconds ?? 0) +
+                (objectDetectionResultReviewDefectMilliseconds ?? 0);
+            bool allStagesComplete = objectDetectionResultReviewImageProcessingMilliseconds.HasValue &&
+                objectDetectionResultReviewMeasurementMilliseconds.HasValue &&
+                objectDetectionResultReviewDefectMilliseconds.HasValue;
+            string totalText = allStagesComplete
+                ? completedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms"
+                : objectDetectionResultReviewActiveTimingStage != null
+                    ? "執行中（已完成 " + completedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms）"
+                    : completedMilliseconds > 0
+                        ? "未完成（已完成 " + completedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms）"
+                        : "尚未執行";
+            AppendDebugTimingMemo("影像處理總時間：" + totalText);
+            AppendDebugTimingMemo("  影像處理：" + FormatObjectDetectionResultReviewStageTime(
+                objectDetectionResultReviewImageProcessingMilliseconds, "影像處理"));
+            AppendDebugTimingMemo("  尺寸量測：" + FormatObjectDetectionResultReviewStageTime(
+                objectDetectionResultReviewMeasurementMilliseconds, "尺寸量測"));
+            AppendDebugTimingMemo("  缺陷檢測：" + FormatObjectDetectionResultReviewStageTime(
+                objectDetectionResultReviewDefectMilliseconds, "缺陷檢測"));
+        }
+
+        private string FormatObjectDetectionResultReviewStageTime(long? elapsedMilliseconds, string stage)
+        {
+            if (elapsedMilliseconds.HasValue)
+            {
+                return elapsedMilliseconds.Value.ToString("N0", CultureInfo.CurrentCulture) + " ms";
+            }
+            return string.Equals(objectDetectionResultReviewActiveTimingStage, stage, StringComparison.Ordinal)
+                ? "處理中..."
+                : "尚未執行";
         }
 
         private async Task WaitForObjectDetectionResultReviewDefinitionAsync(
@@ -734,10 +902,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 foreach (ObjectDefinitionDetectedObject detectedObject in objects)
                 {
-                    selectedObjectDetectionNumber = detectedObject.Number;
                     var statsByRecord = new Dictionary<int, ObjectDetectionMeasurementStatistics>();
                     foreach (ObjectDetectionMeasurementRecordSettings record in records)
                     {
+                        ObjectDetectionParameterSettings maskParameter =
+                            CreateObjectDetectionResultReviewMaskParameter(parameter, record);
                         if (!IsObjectDetectionResultReviewUiAvailable())
                         {
                             return;
@@ -757,7 +926,12 @@ namespace IntegratedImageProcessingApp.Forms
                         try
                         {
                             succeeded = TryCalculateObjectDetectionMeasurementRecord(
-                                parameter, record, out statistics, out error);
+                                parameter,
+                                record,
+                                detectedObject,
+                                maskParameter,
+                                out statistics,
+                                out error);
                         }
                         catch (Exception exception)
                         {
@@ -769,7 +943,7 @@ namespace IntegratedImageProcessingApp.Forms
                         if (succeeded && statistics != null)
                         {
                             statsByRecord[record.Number] = statistics;
-                            objectDetectionResultReviewMeasurementsGrid.Rows.Add(
+                            int rowIndex = objectDetectionResultReviewMeasurementsGrid.Rows.Add(
                                 detectedObject.Number, record.Number, record.Name,
                                 string.Equals(record.Mode, "Parallel", StringComparison.OrdinalIgnoreCase)
                                     ? "平行線" : "單線",
@@ -781,10 +955,20 @@ namespace IntegratedImageProcessingApp.Forms
                                 FormatObjectDetectionReviewValue(statistics.Average),
                                 FormatObjectDetectionReviewValue(statistics.Maximum),
                                 statistics.Unit, "完成");
+                            objectDetectionResultReviewMeasurementsGrid.Rows[rowIndex].Tag =
+                                new ResultReviewMeasurementRowContext
+                                {
+                                    Parameter = parameter,
+                                    Record = record,
+                                    MaskParameter = maskParameter,
+                                    DetectedObject = detectedObject,
+                                    ObjectNumber = detectedObject.Number,
+                                    Statistics = statistics
+                                };
                         }
                         else
                         {
-                            objectDetectionResultReviewMeasurementsGrid.Rows.Add(
+                            int rowIndex = objectDetectionResultReviewMeasurementsGrid.Rows.Add(
                                 detectedObject.Number, record.Number, record.Name,
                                 string.Equals(record.Mode, "Parallel", StringComparison.OrdinalIgnoreCase)
                                     ? "平行線" : "單線",
@@ -795,6 +979,15 @@ namespace IntegratedImageProcessingApp.Forms
                                 string.Empty, string.Empty, string.Empty,
                                 IsObjectDetectionCameraPrecisionEnabled(parameter) ? "mm" : "px",
                                 "無法量測：" + error);
+                            objectDetectionResultReviewMeasurementsGrid.Rows[rowIndex].Tag =
+                                new ResultReviewMeasurementRowContext
+                                {
+                                    Parameter = parameter,
+                                    Record = record,
+                                    MaskParameter = maskParameter,
+                                    DetectedObject = detectedObject,
+                                    ObjectNumber = detectedObject.Number
+                                };
                         }
                     }
                     contexts[detectedObject.Number] = new ResultReviewMeasurementContext
@@ -806,13 +999,92 @@ namespace IntegratedImageProcessingApp.Forms
             }
             finally
             {
-                selectedObjectDetectionNumber = originalSelection > 0
-                    ? originalSelection : objects.First().Number;
+                selectedObjectDetectionNumber = originalSelection;
             }
 
             EvaluateObjectDetectionResultReviewConditions(parameter, objects, contexts);
             AddObjectDetectionResultReviewDefectRows(parameter, definition);
             ApplyObjectDetectionResultReviewVerdictStyles();
+        }
+
+        private void ObjectDetectionResultReviewMeasurementsGrid_CellClick(
+            object sender,
+            DataGridViewCellEventArgs e)
+        {
+            if (isObjectDetectionResultReviewRunning || e.RowIndex < 0 ||
+                objectDetectionResultReviewMeasurementsGrid == null ||
+                e.RowIndex >= objectDetectionResultReviewMeasurementsGrid.Rows.Count)
+            {
+                return;
+            }
+
+            var rowContext = objectDetectionResultReviewMeasurementsGrid.Rows[e.RowIndex].Tag
+                as ResultReviewMeasurementRowContext;
+            if (rowContext == null || rowContext.Parameter == null ||
+                rowContext.Record == null || rowContext.DetectedObject == null)
+            {
+                return;
+            }
+
+            if (objectDetectionResultReviewHighlightTimer == null)
+            {
+                objectDetectionResultReviewHighlightTimer = new Timer { Interval = 10000 };
+                objectDetectionResultReviewHighlightTimer.Tick += delegate
+                {
+                    objectDetectionResultReviewHighlightTimer.Stop();
+                    if (objectDetectionResultReviewSelectedMeasurement != null)
+                    {
+                        objectDetectionResultReviewSelectedMeasurement.StatisticsHighlightsVisible = false;
+                    }
+                    if (objectDetectionMeasurementDisplayControl != null)
+                    {
+                        objectDetectionMeasurementDisplayControl.InvalidateImageView();
+                    }
+                };
+            }
+
+            objectDetectionResultReviewHighlightTimer.Stop();
+            rowContext.StatisticsHighlightsVisible = rowContext.Statistics != null;
+            objectDetectionResultReviewSelectedMeasurement = rowContext;
+            if (rowContext.StatisticsHighlightsVisible)
+            {
+                objectDetectionResultReviewHighlightTimer.Start();
+            }
+
+            if (leftImageTabControl != null &&
+                leftImageTabControl.TabPages.Contains(objectDetectionMeasurementTabPage))
+            {
+                leftImageTabControl.SelectedTab = objectDetectionMeasurementTabPage;
+            }
+            RefreshObjectDetectionMeasurementDisplay();
+            if (objectDetectionMeasurementDisplayControl != null)
+            {
+                objectDetectionMeasurementDisplayControl.InvalidateImageView();
+            }
+        }
+
+        private ObjectDetectionParameterSettings CreateObjectDetectionResultReviewMaskParameter(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDetectionMeasurementRecordSettings record)
+        {
+            if (parameter == null || record == null)
+            {
+                return null;
+            }
+
+            return new ObjectDetectionParameterSettings
+            {
+                Id = parameter.Id,
+                ObjectDefinitionId = parameter.ObjectDefinitionId,
+                SourceMaskMode = record.SourceMaskMode,
+                SourceMaskPrimaryType = record.SourceMaskPrimaryType,
+                SourceMaskPrimaryId = record.SourceMaskPrimaryId,
+                SourceMaskPrimaryNamespace = record.SourceMaskPrimaryNamespace,
+                SourceMaskOperation = record.SourceMaskOperation,
+                SourceMaskSecondaryType = record.SourceMaskSecondaryType,
+                SourceMaskSecondaryId = record.SourceMaskSecondaryId,
+                SourceMaskSecondaryNamespace = record.SourceMaskSecondaryNamespace
+            };
         }
 
         private void EvaluateObjectDetectionResultReviewConditions(
@@ -1189,6 +1461,12 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewMeasurementsGrid.Rows.Clear();
             objectDetectionResultReviewConditionsGrid.Rows.Clear();
             objectDetectionResultReviewDefectsGrid.Rows.Clear();
+            objectDetectionResultReviewSelectedMeasurement = null;
+            if (objectDetectionResultReviewHighlightTimer != null)
+            {
+                objectDetectionResultReviewHighlightTimer.Stop();
+            }
+            RefreshObjectDetectionMeasurementDisplay();
             objectDetectionResultReviewStatusLabel.Text = "尚未執行結果確認。";
         }
 

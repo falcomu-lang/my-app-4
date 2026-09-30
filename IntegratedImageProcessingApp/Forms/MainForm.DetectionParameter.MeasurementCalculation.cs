@@ -277,10 +277,49 @@ namespace IntegratedImageProcessingApp.Forms
             out ObjectDetectionMeasurementStatistics statistics,
             out string errorMessage)
         {
-            statistics = null;
-            errorMessage = string.Empty;
             ObjectDefinitionDetectedObject selectedObject;
             if (!TryGetSelectedObjectDetectionObject(out selectedObject))
+            {
+                statistics = null;
+                errorMessage = "請先選擇已找到的物件序號";
+                return false;
+            }
+
+            return TryCalculateObjectDetectionMeasurementRecord(
+                parameter,
+                record,
+                selectedObject,
+                out statistics,
+                out errorMessage);
+        }
+
+        private bool TryCalculateObjectDetectionMeasurementRecord(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDetectionMeasurementRecordSettings record,
+            ObjectDefinitionDetectedObject selectedObject,
+            out ObjectDetectionMeasurementStatistics statistics,
+            out string errorMessage)
+        {
+            return TryCalculateObjectDetectionMeasurementRecord(
+                parameter,
+                record,
+                selectedObject,
+                parameter,
+                out statistics,
+                out errorMessage);
+        }
+
+        private bool TryCalculateObjectDetectionMeasurementRecord(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDetectionMeasurementRecordSettings record,
+            ObjectDefinitionDetectedObject selectedObject,
+            ObjectDetectionParameterSettings maskParameter,
+            out ObjectDetectionMeasurementStatistics statistics,
+            out string errorMessage)
+        {
+            statistics = null;
+            errorMessage = string.Empty;
+            if (selectedObject == null)
             {
                 errorMessage = "請先選擇已找到的物件序號";
                 return false;
@@ -310,7 +349,8 @@ namespace IntegratedImageProcessingApp.Forms
                     largeSource = rightOriginalDisplayControl.GetSharedLargeImageSource();
                     if (largeSource == null ||
                         !TryGetObjectDetectionMeasurementMask(
-                            parameter,
+                            maskParameter,
+                            selectedObject.Number,
                             objectBounds,
                             largeSource,
                             null,
@@ -325,7 +365,8 @@ namespace IntegratedImageProcessingApp.Forms
                     original = rightOriginalDisplayControl.CloneImage();
                     if (original == null ||
                         !TryGetObjectDetectionMeasurementMask(
-                            parameter,
+                            maskParameter,
+                            selectedObject.Number,
                             objectBounds,
                             null,
                             original,

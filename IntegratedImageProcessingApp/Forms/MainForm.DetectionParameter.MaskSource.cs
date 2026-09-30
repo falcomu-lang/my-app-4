@@ -940,6 +940,41 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (isObjectDetectionResultReviewMode)
+            {
+                ResultReviewMeasurementRowContext reviewContext =
+                    objectDetectionResultReviewSelectedMeasurement;
+                if (reviewContext == null || reviewContext.DetectedObject == null ||
+                    !e.VisibleSourceRect.IntersectsWith(reviewContext.DetectedObject.Bounds))
+                {
+                    return;
+                }
+
+                if (reviewContext.MaskParameter != null)
+                {
+                    DrawObjectDetectionMeasurementMaskOverlayTiles(
+                        e,
+                        reviewContext.MaskParameter,
+                        reviewContext.DetectedObject);
+                }
+
+                using (var outline = new Pen(Color.LimeGreen, 2f))
+                {
+                    DrawObjectDetectionObjectOutline(
+                        e.Graphics,
+                        reviewContext.DetectedObject,
+                        outline,
+                        e.Zoom,
+                        e.Offset);
+                }
+
+                DrawObjectDetectionResultReviewMeasurementOverlay(
+                    e.Graphics,
+                    e.Zoom,
+                    e.Offset);
+                return;
+            }
+
             ObjectDefinitionDetectedObject selectedObject;
             if (!TryGetSelectedObjectDetectionObject(out selectedObject) ||
                 selectedObject == null ||
