@@ -133,7 +133,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (!TryGetSelectedObjectDetectionObject(out selectedObject))
             {
                 ClearObjectDetectionMeasurementClipCache();
-                statusLabel.Text = "請先選擇物件序號，再依 MASK 裁切量測線";
+                statusLabel.Text = "請先選擇物件序號，再顯示量測線段";
                 return;
             }
 
@@ -145,19 +145,18 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionMeasurementStatistics statistics;
             string errorMessage;
             if (!TryCalculateObjectDetectionMeasurementRecord(
-                parameter,
-                record,
-                out statistics,
-                out errorMessage))
+                    parameter,
+                    record,
+                    out statistics,
+                    out errorMessage))
             {
                 ClearObjectDetectionMeasurementClipCache();
-                statusLabel.Text = "量測線 MASK 裁切失敗：" + errorMessage;
+                statusLabel.Text = "準備量測線段失敗：" + errorMessage;
                 return;
             }
 
             StoreObjectDetectionMeasurementClipCache(parameter, record, statistics);
-            statusLabel.Text = parameter.DisplayName +
-                " 已依 MASK 裁切量測線";
+            statusLabel.Text = parameter.DisplayName + " 已更新量測線段顯示";
         }
 
         private void ObjectDetectionMeasurementClipLinesCheckBox_CheckedChanged(
@@ -172,13 +171,15 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.MeasurementClipLinesToMask =
                 objectDetectionMeasurementClipLinesCheckBox.Checked;
             SaveSystemParameters();
-            if (parameter.MeasurementClipLinesToMask)
+            ObjectDetectionMeasurementRecordSettings record =
+                GetActiveObjectDetectionMeasurementRecord(parameter);
+            bool needsMeasuredLineCache = parameter.MeasurementClipLinesToMask ||
+                parameter.MeasurementShowMeasuredLengthOnly;
+            if (needsMeasuredLineCache)
             {
-                ObjectDetectionMeasurementRecordSettings record =
-                    GetActiveObjectDetectionMeasurementRecord(parameter);
                 if (record == null)
                 {
-                    statusLabel.Text = "請先套用並選取量測紀錄，再依 MASK 裁切量測線";
+                    statusLabel.Text = "請先套用並選取量測紀錄，再顯示量測線段";
                 }
                 else
                 {
@@ -188,6 +189,47 @@ namespace IntegratedImageProcessingApp.Forms
             }
             else
             {
+                ClearObjectDetectionMeasurementClipCache();
+                statusLabel.Text = parameter.DisplayName + " 已恢復顯示完整量測線";
+            }
+
+            if (objectDetectionMeasurementDisplayControl != null)
+            {
+                objectDetectionMeasurementDisplayControl.InvalidateImageView();
+            }
+        }
+
+        private void ObjectDetectionMeasurementShowMeasuredLengthCheckBox_CheckedChanged(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (objectDetectionMeasurementShowMeasuredLengthCheckBox == null ||
+                parameter == null)
+            {
+                return;
+            }
+
+            parameter.MeasurementShowMeasuredLengthOnly =
+                objectDetectionMeasurementShowMeasuredLengthCheckBox.Checked;
+            SaveSystemParameters();
+            ObjectDetectionMeasurementRecordSettings record =
+                GetActiveObjectDetectionMeasurementRecord(parameter);
+            bool needsMeasuredLineCache = parameter.MeasurementClipLinesToMask ||
+                parameter.MeasurementShowMeasuredLengthOnly;
+            if (needsMeasuredLineCache)
+            {
+                if (record == null)
+                {
+                    statusLabel.Text = "請先套用並選取量測紀錄，再顯示量測長度";
+                }
+                else
+                {
+                    objectDetectionMeasurementAppliedRecordId = record.Id;
+                    PrepareObjectDetectionMeasurementClipLines(parameter, record);
+                }
+            }
+            else
+            {
+                ClearObjectDetectionMeasurementClipCache();
                 statusLabel.Text = parameter.DisplayName + " 已恢復顯示完整量測線";
             }
 

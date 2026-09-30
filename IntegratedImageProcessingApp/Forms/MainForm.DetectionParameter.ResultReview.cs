@@ -708,36 +708,64 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionResultReviewStatusLabel.Text =
                     "已找到 " + objects.Count.ToString("N0", CultureInfo.CurrentCulture) +
                     " 個物件，正在載入參數內保存的 MASK 與平場校正值...";
-                await ApplyObjectDetectionFlatFieldMaskAsync(
-                    parameter,
-                    objectDetectionResultReviewStatusLabel,
-                    null,
-                    false,
-                    true,
-                    elapsed =>
-                    {
-                        imageProcessingMilliseconds += elapsed;
-                        objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
-                        UpdateObjectDetectionResultReviewTimingMemo();
-                    },
-                    elapsed =>
-                    {
-                        imageProcessingMilliseconds += (long)Math.Round(elapsed);
-                        objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
-                        UpdateObjectDetectionResultReviewTimingMemo();
-                    });
-                if (!IsObjectDetectionResultReviewUiAvailable())
+                using (var flatFieldOperationStatus = new Label())
                 {
-                    return;
-                }
-                if (!IsCurrentObjectDetectionFlatFieldImage(parameter))
-                {
-                    string calibrationStatus = objectDetectionResultReviewStatusLabel == null ||
-                        objectDetectionResultReviewStatusLabel.IsDisposed
-                        ? string.Empty : objectDetectionResultReviewStatusLabel.Text;
-                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(calibrationStatus)
-                        ? "無法載入此參數保存的 MASK 或平場校正值。"
-                        : calibrationStatus);
+                    await ApplyObjectDetectionFlatFieldMaskAsync(
+                        parameter,
+                        flatFieldOperationStatus,
+                        null,
+                        false,
+                        true,
+                        elapsed =>
+                        {
+                            imageProcessingMilliseconds += elapsed;
+                            objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
+                            UpdateObjectDetectionResultReviewTimingMemo();
+                        },
+                        elapsed =>
+                        {
+                            imageProcessingMilliseconds += (long)Math.Round(elapsed);
+                            objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
+                            UpdateObjectDetectionResultReviewTimingMemo();
+                        });
+                    if (!IsObjectDetectionResultReviewUiAvailable())
+                    {
+                        return;
+                    }
+                    if (!IsCurrentObjectDetectionFlatFieldImage(parameter))
+                    {
+                        bool hasSavedProfile = !string.IsNullOrWhiteSpace(
+                            parameter.FlatFieldSavedProfileData);
+                        bool savedProfileSettingsMatch = hasSavedProfile &&
+                            string.Equals(parameter.FlatFieldSavedSettingsSignature,
+                                CreateObjectDetectionFlatFieldSettingsSignature(parameter),
+                                StringComparison.Ordinal);
+                        string operationStatus = flatFieldOperationStatus.Text ?? string.Empty;
+                        string failureReason = !hasSavedProfile
+                            ? "此參數沒有保存平場校正曲線。"
+                            : !savedProfileSettingsMatch
+                                ? "保存的平場校正曲線與目前設定不符。"
+                                : operationStatus.StartsWith("來源 MASK：", StringComparison.Ordinal)
+                                    ? "MASK 已套用，但保存的平場校正影像未完成。"
+                                    : string.IsNullOrWhiteSpace(operationStatus)
+                                        ? "無法載入此參數保存的平場校正值。"
+                                        : operationStatus;
+                        throw new InvalidOperationException(failureReason);
+                    }
+
+                    int appliedSourceMaskCount;
+                    int appliedUseMaskCount;
+                    lock (objectDetectionFlatFieldMaskLock)
+                    {
+                        appliedSourceMaskCount = objectDetectionFlatFieldMaskOverlays.Count;
+                        appliedUseMaskCount = objectDetectionFlatFieldUseMaskOverlays.Count;
+                    }
+                    objectDetectionResultReviewStatusLabel.Text =
+                        "平場校正完成：來源 MASK " +
+                        appliedSourceMaskCount.ToString("N0", CultureInfo.CurrentCulture) + "/" +
+                        objects.Count.ToString("N0", CultureInfo.CurrentCulture) +
+                        " 個 ROI；使用位置 MASK " +
+                        appliedUseMaskCount.ToString("N0", CultureInfo.CurrentCulture) + " 個 ROI。";
                 }
 
                 objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;

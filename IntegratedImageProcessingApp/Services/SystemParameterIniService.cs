@@ -566,6 +566,11 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".MeasurementClipLinesToMask",
                         false),
+                    MeasurementShowMeasuredLengthOnly = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".MeasurementShowMeasuredLengthOnly",
+                        false),
                     MeasurementLineConfigured = GetBool(
                         sections,
                         SectionObjectDetection,
@@ -1066,6 +1071,10 @@ namespace IntegratedImageProcessingApp.Services
                         "{0}.MeasurementClipLinesToMask={1}",
                         prefix,
                         parameter.MeasurementClipLinesToMask ? "1" : "0");
+                    writer.WriteLine(
+                        "{0}.MeasurementShowMeasuredLengthOnly={1}",
+                        prefix,
+                        parameter.MeasurementShowMeasuredLengthOnly ? "1" : "0");
                     writer.WriteLine(
                         "{0}.MeasurementLineConfigured={1}",
                         prefix,

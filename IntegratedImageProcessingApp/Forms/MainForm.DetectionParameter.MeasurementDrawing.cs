@@ -560,12 +560,16 @@ namespace IntegratedImageProcessingApp.Forms
             bool clipLinesToMask = activeParameter != null &&
                 activeParameter.MeasurementClipLinesToMask &&
                 !objectDetectionMeasurementIsDrawing;
-            bool hasClippedLines = clipLinesToMask &&
+            bool showMeasuredLengthOnly = activeParameter != null &&
+                activeParameter.MeasurementShowMeasuredLengthOnly &&
+                !objectDetectionMeasurementIsDrawing;
+            bool needsMeasuredLines = clipLinesToMask || showMeasuredLengthOnly;
+            bool hasClippedLines = needsMeasuredLines &&
                 IsObjectDetectionMeasurementClipCacheValid(
                     activeParameter,
                     activeRecord,
                     selectedObject);
-            if (clipLinesToMask && !hasClippedLines)
+            if (needsMeasuredLines && !hasClippedLines)
             {
                 DrawObjectDetectionMeasurementResultHighlights(
                     e.Graphics,
@@ -574,7 +578,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (objectDetectionMeasurementHighlightVisible && !clipLinesToMask)
+            if (objectDetectionMeasurementHighlightVisible && !needsMeasuredLines)
             {
                 using (var highlightPen = new Pen(Color.Yellow, 4f))
                 using (var highlightBrush = new SolidBrush(Color.FromArgb(55, Color.Gold)))
@@ -629,6 +633,7 @@ namespace IntegratedImageProcessingApp.Forms
                     hasSecond,
                     lineCount,
                     clipLinesToMask,
+                    showMeasuredLengthOnly,
                     e.Zoom)
                 : null;
             bool rebuildRenderPaths = true;
@@ -697,16 +702,24 @@ namespace IntegratedImageProcessingApp.Forms
                                     isBoundaryLine
                                         ? primaryPath
                                         : guidePath;
-                                if (clipLinesToMask)
+                                if (needsMeasuredLines)
                                 {
                                     if (index >= objectDetectionMeasurementClippedLines.Count ||
-                                        objectDetectionMeasurementClippedLineSegments[index].Count == 0)
+                                        (clipLinesToMask
+                                            ? objectDetectionMeasurementClippedLineSegments[index].Count == 0
+                                            : objectDetectionMeasurementClippedLines[index].X1 ==
+                                                objectDetectionMeasurementClippedLines[index].X2 &&
+                                              objectDetectionMeasurementClippedLines[index].Y1 ==
+                                                objectDetectionMeasurementClippedLines[index].Y2))
                                     {
                                         continue;
                                     }
 
-                                    foreach (ObjectDetectionImageLine segment in
-                                        objectDetectionMeasurementClippedLineSegments[index])
+                                    IEnumerable<ObjectDetectionImageLine> visibleSegments = clipLinesToMask
+                                        ? (IEnumerable<ObjectDetectionImageLine>)
+                                            objectDetectionMeasurementClippedLineSegments[index]
+                                        : new[] { objectDetectionMeasurementClippedLines[index] };
+                                    foreach (ObjectDetectionImageLine segment in visibleSegments)
                                     {
                                         AddObjectDetectionImageLine(
                                             linePath,
@@ -746,10 +759,13 @@ namespace IntegratedImageProcessingApp.Forms
                                 }
                             }
                         }
-                        else if (clipLinesToMask)
+                        else if (needsMeasuredLines)
                         {
-                            foreach (ObjectDetectionImageLine segment in
-                                objectDetectionMeasurementClippedLineSegments[0])
+                            IEnumerable<ObjectDetectionImageLine> visibleSegments = clipLinesToMask
+                                ? (IEnumerable<ObjectDetectionImageLine>)
+                                    objectDetectionMeasurementClippedLineSegments[0]
+                                : new[] { objectDetectionMeasurementClippedLines[0] };
+                            foreach (ObjectDetectionImageLine segment in visibleSegments)
                             {
                                 AddObjectDetectionImageLine(
                                     primaryPath,
@@ -956,6 +972,7 @@ namespace IntegratedImageProcessingApp.Forms
             bool hasSecond,
             int lineCount,
             bool clipLinesToMask,
+            bool showMeasuredLengthOnly,
             float zoom)
         {
             return string.Join(
@@ -972,7 +989,11 @@ namespace IntegratedImageProcessingApp.Forms
                 mode ?? string.Empty,
                 hasSecond ? "second-line" : "single-line",
                 lineCount.ToString(CultureInfo.InvariantCulture),
-                clipLinesToMask ? objectDetectionMeasurementClipCacheSignature ?? string.Empty : string.Empty,
+                clipLinesToMask ? "clip-mask" : "no-mask-clip",
+                showMeasuredLengthOnly ? "measured-length" : "full-length",
+                clipLinesToMask || showMeasuredLengthOnly
+                    ? objectDetectionMeasurementClipCacheSignature ?? string.Empty
+                    : string.Empty,
                 first.X1.ToString(CultureInfo.InvariantCulture),
                 first.Y1.ToString(CultureInfo.InvariantCulture),
                 first.X2.ToString(CultureInfo.InvariantCulture),

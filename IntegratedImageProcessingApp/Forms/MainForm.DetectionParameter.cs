@@ -745,7 +745,8 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (parameter.MeasurementClipLinesToMask)
+            if (parameter.MeasurementClipLinesToMask ||
+                parameter.MeasurementShowMeasuredLengthOnly)
             {
                 ObjectDetectionMeasurementRecordSettings record =
                     GetActiveObjectDetectionMeasurementRecord(parameter);

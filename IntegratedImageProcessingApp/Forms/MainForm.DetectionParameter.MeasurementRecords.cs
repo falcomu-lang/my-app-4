@@ -335,6 +335,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionMeasurementClipLinesCheckBox.Enabled = true;
             }
+            if (objectDetectionMeasurementShowMeasuredLengthCheckBox != null)
+            {
+                objectDetectionMeasurementShowMeasuredLengthCheckBox.Enabled = true;
+            }
             if (objectDetectionMeasurementNameTextBox != null)
             {
                 objectDetectionMeasurementNameTextBox.Text = parameter.MeasurementName;
@@ -367,7 +371,8 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionMeasurementToolStatusLabel.Text =
                 "已載入紀錄：" + parameter.MeasurementName +
                 "，MASK：" + parameter.MeasurementSourceMaskDisplayName;
-            if (parameter.MeasurementClipLinesToMask)
+            if (parameter.MeasurementClipLinesToMask ||
+                parameter.MeasurementShowMeasuredLengthOnly)
             {
                 PrepareObjectDetectionMeasurementClipLines(parameter, record);
             }
@@ -534,6 +539,10 @@ namespace IntegratedImageProcessingApp.Forms
                 if (objectDetectionMeasurementClipLinesCheckBox != null)
                 {
                     objectDetectionMeasurementClipLinesCheckBox.Enabled = false;
+                }
+                if (objectDetectionMeasurementShowMeasuredLengthCheckBox != null)
+                {
+                    objectDetectionMeasurementShowMeasuredLengthCheckBox.Enabled = false;
                 }
             }
 
