@@ -50,6 +50,7 @@ namespace IntegratedImageProcessingApp.Controls
         private bool _isSynchronizedPanning;
         private Point _lastMousePoint;
         private bool _suppressViewChanged;
+        private bool _isUpdatingImageSource;
         private bool _isSelectingRoi;
         private bool _isDrawingRoi;
         private bool _isEditingRoi;
@@ -154,6 +155,11 @@ namespace IntegratedImageProcessingApp.Controls
                     return _largeImageSource != null;
                 }
             }
+        }
+
+        public bool IsUpdatingImageSource
+        {
+            get { return _isUpdatingImageSource; }
         }
 
         public void CaptureViewerPointer()
@@ -635,7 +641,7 @@ namespace IntegratedImageProcessingApp.Controls
             UpdateStatusLabel();
             viewerPanel.Invalidate();
             largeImageSource.QueuePreviewBuilds(ScheduleTileRefresh);
-            OnViewChanged();
+            OnImageSourceViewChanged();
         }
 
         public void SetSharedLargeImageSource(LargeImageSource largeImageSource)
@@ -692,7 +698,7 @@ namespace IntegratedImageProcessingApp.Controls
             UpdateStatusLabel();
             MarkViewZoomChanged();
             viewerPanel.Invalidate();
-            OnViewChanged();
+            OnImageSourceViewChanged();
         }
 
         public void SetDisplayImage(Bitmap bitmap, bool preserveView)
@@ -729,7 +735,7 @@ namespace IntegratedImageProcessingApp.Controls
             MarkViewZoomChanged();
             UpdateStatusLabel();
             viewerPanel.Invalidate();
-            OnViewChanged();
+            OnImageSourceViewChanged();
             ScheduleViewportPrefetch();
         }
 
@@ -2173,6 +2179,19 @@ namespace IntegratedImageProcessingApp.Controls
             if (handler != null)
             {
                 handler(this, EventArgs.Empty);
+            }
+        }
+
+        private void OnImageSourceViewChanged()
+        {
+            _isUpdatingImageSource = true;
+            try
+            {
+                OnViewChanged();
+            }
+            finally
+            {
+                _isUpdatingImageSource = false;
             }
         }
 

@@ -58,6 +58,7 @@ namespace IntegratedImageProcessingApp.Forms
         private bool isObjectDetectionResultReviewRunning;
         private Size objectDetectionResultReviewReferenceImageSize;
         private string objectDetectionResultReviewImagePath;
+        private int? objectDetectionResultReviewImageGeneration;
         private SizeType[] objectDetectionResultReviewColumnTypes;
         private float[] objectDetectionResultReviewColumnWidths;
         private string objectDetectionResultReviewPendingDefinitionId;
@@ -74,9 +75,19 @@ namespace IntegratedImageProcessingApp.Forms
         private Timer objectDetectionResultReviewHighlightTimer;
         private string objectDetectionResultReviewPreviousParameterId;
         private int objectDetectionResultReviewPreviousObjectNumber;
+        private string objectDetectionResultReviewSelectedParameterId;
+        private bool isPopulatingObjectDetectionResultReviewParameters;
+        private bool preserveObjectDetectionDefectDisplayOnModeExit;
+        private TabPage objectDetectionResultReviewSelectedImageTabPage;
+        private readonly Dictionary<ImageDisplayControl, ImageViewState>
+            objectDetectionResultReviewPendingViewRestores =
+                new Dictionary<ImageDisplayControl, ImageViewState>();
 
         private void ShowObjectDetectionResultReviewPanel()
         {
+            bool isRestoringExistingReviewPanel = objectDetectionResultReviewPanel != null &&
+                !objectDetectionResultReviewPanel.IsDisposed;
+            string previousReviewParameterId = objectDetectionResultReviewSelectedParameterId;
             HideImageProcessingFlowTree();
             HideImageRelationParameterPanel();
             HideObjectJudgementParameterPanel();
@@ -96,7 +107,9 @@ namespace IntegratedImageProcessingApp.Forms
                     .Cast<ColumnStyle>().Select(style => style.SizeType).ToArray();
                 objectDetectionResultReviewColumnWidths = mainLayoutPanel.ColumnStyles
                     .Cast<ColumnStyle>().Select(style => style.Width).ToArray();
-                string referencePath = systemParameters.LastImagePath;
+                string referencePath = objectDetectionResultReviewReferenceImageSize.IsEmpty
+                    ? systemParameters.LastImagePath
+                    : null;
                 if (!string.IsNullOrWhiteSpace(referencePath) && File.Exists(referencePath))
                 {
                     try
@@ -127,7 +140,10 @@ namespace IntegratedImageProcessingApp.Forms
 
                 objectDetectionMeasurementTabPage.Text = "量測位置";
                 objectDetectionDefectDisplayTabPages[4].Text = "整合";
-                leftImageTabControl.SelectedTab = objectDetectionMeasurementTabPage;
+                leftImageTabControl.SelectedTab = objectDetectionResultReviewSelectedImageTabPage != null &&
+                    leftImageTabControl.TabPages.Contains(objectDetectionResultReviewSelectedImageTabPage)
+                        ? objectDetectionResultReviewSelectedImageTabPage
+                        : objectDetectionMeasurementTabPage;
                 objectDetectionMeasurementDisplayControl.TitleText = "左側 量測位置";
                 objectDetectionFlatFieldPreviewDisplayControl.TitleText = "左側 平場校正";
                 for (int index = 0; index < objectDetectionDefectDisplayControls.Length; index++)
@@ -168,7 +184,63 @@ namespace IntegratedImageProcessingApp.Forms
                 leftImageTabControl.ResumeLayout(true);
             }
 
+            string currentImagePath = systemParameters.LastImagePath;
+            bool hasCurrentImage = !string.IsNullOrWhiteSpace(currentImagePath) &&
+                File.Exists(currentImagePath);
+            bool hadReviewImage = !string.IsNullOrWhiteSpace(objectDetectionResultReviewImagePath);
+            bool imageWasAddedWhileAway = isRestoringExistingReviewPanel &&
+                !hadReviewImage && hasCurrentImage;
+            bool imageChanged = hadReviewImage && hasCurrentImage &&
+                !string.Equals(
+                    objectDetectionResultReviewImagePath,
+                    currentImagePath,
+                    StringComparison.OrdinalIgnoreCase);
+            bool imageGenerationChanged = objectDetectionResultReviewImageGeneration.HasValue &&
+                objectDetectionResultReviewImageGeneration.Value != imageSourceGeneration;
+            bool imageSourceChanged = imageWasAddedWhileAway || imageChanged || imageGenerationChanged;
+            if (hasCurrentImage)
+            {
+                objectDetectionResultReviewImagePath = currentImagePath;
+                if (objectDetectionResultReviewReferenceImageSize.IsEmpty || imageSourceChanged)
+                {
+                    try
+                    {
+                        objectDetectionResultReviewReferenceImageSize =
+                            LargeImageSource.ReadImageSize(currentImagePath);
+                    }
+                    catch
+                    {
+                        objectDetectionResultReviewReferenceImageSize = Size.Empty;
+                    }
+                }
+                if (imageSourceChanged)
+                {
+                    ClearObjectDetectionResultReviewResults();
+                    ResetObjectDetectionResultReviewProcessingTimings();
+                    objectDetectionResultReviewStatusLabel.Text =
+                        "目前圖片已變更，請執行確認以更新結果。";
+                }
+            }
+
             PopulateObjectDetectionResultReviewParameters();
+            bool parameterChangedWhileAway = !string.Equals(
+                previousReviewParameterId,
+                objectDetectionResultReviewSelectedParameterId,
+                StringComparison.Ordinal);
+            ResultReviewGoodJudgementObject selectedGoodJudgementObject =
+                objectDetectionResultReviewSelectedGoodJudgementObjectNumber.HasValue
+                    ? objectDetectionResultReviewGoodJudgementResults.FirstOrDefault(result =>
+                        result.ObjectNumber == objectDetectionResultReviewSelectedGoodJudgementObjectNumber.Value)
+                    : null;
+            if (selectedGoodJudgementObject != null)
+            {
+                selectedObjectDetectionNumber = selectedGoodJudgementObject.ObjectNumber;
+            }
+            else if (objectDetectionResultReviewOverviewObjectNumber > 0)
+            {
+                selectedObjectDetectionNumber = objectDetectionResultReviewOverviewObjectNumber;
+            }
+
             if (string.IsNullOrWhiteSpace(objectDetectionResultReviewImagePath) &&
                 !string.IsNullOrWhiteSpace(systemParameters.LastImagePath) &&
                 File.Exists(systemParameters.LastImagePath))
@@ -189,11 +261,13 @@ namespace IntegratedImageProcessingApp.Forms
                                 "N0", CultureInfo.CurrentCulture) + ")"
                         : string.Empty);
             }
-            RefreshObjectDetectionFlatFieldDisplay();
-            RefreshObjectDetectionMeasurementDisplay();
-            RefreshObjectDetectionDefectDisplay();
+            if (!isRestoringExistingReviewPanel || imageSourceChanged || parameterChangedWhileAway)
+            {
+                RefreshObjectDetectionFlatFieldDisplay();
+                RefreshObjectDetectionMeasurementDisplay();
+                RefreshObjectDetectionDefectDisplay();
+            }
             UpdateObjectDetectionResultReviewTimingMemo();
-            statusLabel.Text = "參數結果確認：選擇檢測參數與同規格圖片後，執行確認。";
         }
 
         private void ExitObjectDetectionResultReviewMode()
@@ -205,9 +279,11 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (objectDetectionResultReviewPanel != null)
             {
-                imageLayoutPanel.Controls.Remove(objectDetectionResultReviewPanel);
-                objectDetectionResultReviewPanel.Dispose();
-                objectDetectionResultReviewPanel = null;
+                objectDetectionResultReviewPanel.Visible = false;
+            }
+            if (leftImageTabControl != null)
+            {
+                objectDetectionResultReviewSelectedImageTabPage = leftImageTabControl.SelectedTab;
             }
 
             objectDetectionMeasurementTabPage.Text = "待量測";
@@ -223,8 +299,6 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
             isObjectDetectionResultReviewMode = false;
-            objectDetectionResultReviewImagePath = null;
-            objectDetectionResultReviewReferenceImageSize = Size.Empty;
             if (objectDetectionResultReviewHighlightTimer != null)
             {
                 objectDetectionResultReviewHighlightTimer.Stop();
@@ -236,7 +310,15 @@ namespace IntegratedImageProcessingApp.Forms
             selectedObjectDetectionNumber = objectDetectionResultReviewPreviousObjectNumber;
             objectDetectionResultReviewPreviousParameterId = null;
             objectDetectionResultReviewPreviousObjectNumber = 0;
-            SetObjectDetectionParameterDisplayMode(false);
+            preserveObjectDetectionDefectDisplayOnModeExit = true;
+            try
+            {
+                SetObjectDetectionParameterDisplayMode(false);
+            }
+            finally
+            {
+                preserveObjectDetectionDefectDisplayOnModeExit = false;
+            }
         }
 
         private Panel CreateObjectDetectionResultReviewPanel()
@@ -457,7 +539,18 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            string preferredId = activeObjectDetectionParameterId;
+            string preferredId = string.IsNullOrWhiteSpace(objectDetectionResultReviewSelectedParameterId)
+                ? activeObjectDetectionParameterId
+                : objectDetectionResultReviewSelectedParameterId;
+            string previousReviewParameterId = objectDetectionResultReviewSelectedParameterId;
+            bool hadResults = objectDetectionResultReviewGoodJudgementResults.Count > 0 ||
+                (objectDetectionResultReviewMeasurementsGrid != null &&
+                 objectDetectionResultReviewMeasurementsGrid.Rows.Count > 0) ||
+                (objectDetectionResultReviewConditionsGrid != null &&
+                 objectDetectionResultReviewConditionsGrid.Rows.Count > 0) ||
+                (objectDetectionResultReviewDefectsGrid != null &&
+                 objectDetectionResultReviewDefectsGrid.Rows.Count > 0);
+            isPopulatingObjectDetectionResultReviewParameters = true;
             objectDetectionResultReviewParameterComboBox.BeginUpdate();
             try
             {
@@ -488,11 +581,39 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     selectedIndex = 0;
                 }
+                if (selectedIndex >= 0)
+                {
+                    var targetChoice = objectDetectionResultReviewParameterComboBox.Items[selectedIndex]
+                        as ResultReviewParameterChoice;
+                    if (targetChoice != null && targetChoice.Parameter != null)
+                    {
+                        objectDetectionResultReviewSelectedParameterId = targetChoice.Parameter.Id;
+                    }
+                }
                 objectDetectionResultReviewParameterComboBox.SelectedIndex = selectedIndex;
             }
             finally
             {
                 objectDetectionResultReviewParameterComboBox.EndUpdate();
+                isPopulatingObjectDetectionResultReviewParameters = false;
+            }
+
+            var selectedChoice = objectDetectionResultReviewParameterComboBox.SelectedItem
+                as ResultReviewParameterChoice;
+            if (selectedChoice != null && selectedChoice.Parameter != null)
+            {
+                objectDetectionResultReviewSelectedParameterId = selectedChoice.Parameter.Id;
+                activeObjectDetectionParameterId = selectedChoice.Parameter.Id;
+                if (hadResults && !string.Equals(
+                    previousReviewParameterId,
+                    selectedChoice.Parameter.Id,
+                    StringComparison.Ordinal))
+                {
+                    ClearObjectDetectionResultReviewResults();
+                    ResetObjectDetectionResultReviewProcessingTimings();
+                    objectDetectionResultReviewStatusLabel.Text =
+                        "檢測參數已變更，請重新執行結果確認。";
+                }
             }
 
             if (objectDetectionResultReviewParameterComboBox.SelectedIndex < 0)
@@ -504,12 +625,26 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ObjectDetectionResultReviewParameterComboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
+            if (isPopulatingObjectDetectionResultReviewParameters)
+            {
+                return;
+            }
+
             var choice = objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
             if (choice == null || choice.Parameter == null)
             {
                 return;
             }
 
+            if (string.Equals(
+                objectDetectionResultReviewSelectedParameterId,
+                choice.Parameter.Id,
+                StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            objectDetectionResultReviewSelectedParameterId = choice.Parameter.Id;
             activeObjectDetectionParameterId = choice.Parameter.Id;
             ClearObjectDetectionResultReviewResults();
             ResetObjectDetectionResultReviewProcessingTimings();
@@ -685,6 +820,7 @@ namespace IntegratedImageProcessingApp.Forms
             try
             {
                 activeObjectDetectionParameterId = parameter.Id;
+                objectDetectionResultReviewSelectedParameterId = parameter.Id;
                 selectedObjectDetectionNumber = -1;
                 long imageProcessingMilliseconds = 0;
                 StartObjectDetectionResultReviewTimingStage("影像處理");
@@ -840,6 +976,7 @@ namespace IntegratedImageProcessingApp.Forms
                     defectDisplayStopwatch.ElapsedMilliseconds;
                 objectDetectionResultReviewStatusLabel.Text =
                     BuildObjectDetectionResultReviewSummary(parameter, objects.Count);
+                objectDetectionResultReviewImageGeneration = imageSourceGeneration;
                 statusLabel.Text = parameter.DisplayName + " 結果確認完成";
             }
             catch (Exception exception)
@@ -1443,6 +1580,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewMeasurementsGrid.Rows.Clear();
             objectDetectionResultReviewConditionsGrid.Rows.Clear();
             objectDetectionResultReviewDefectsGrid.Rows.Clear();
+            objectDetectionResultReviewImageGeneration = null;
             ClearObjectDetectionResultReviewGoodJudgementState();
             objectDetectionResultReviewSelectedMeasurement = null;
             if (objectDetectionResultReviewClipLinesToMaskCheckBox != null)

@@ -32,6 +32,30 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            ImageViewState pendingReviewViewState;
+            if (isObjectDetectionResultReviewMode &&
+                objectDetectionResultReviewPendingViewRestores.TryGetValue(
+                    source,
+                    out pendingReviewViewState))
+            {
+                objectDetectionResultReviewPendingViewRestores.Remove(source);
+                if (source.IsUpdatingImageSource)
+                {
+                    isSyncingImageView = true;
+                    try
+                    {
+                        sharedImageViewState = pendingReviewViewState;
+                        hasSharedImageViewState = true;
+                        source.ApplyViewState(pendingReviewViewState);
+                    }
+                    finally
+                    {
+                        isSyncingImageView = false;
+                    }
+                    return;
+                }
+            }
+
             if (isImageViewerMaximized)
             {
                 ImageDisplayControl active = isLeftImageViewerMaximized

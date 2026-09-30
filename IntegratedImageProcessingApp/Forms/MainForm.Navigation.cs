@@ -106,6 +106,24 @@ namespace IntegratedImageProcessingApp.Forms
         private void VisibleImageTabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (ReferenceEquals(sender, leftImageTabControl) &&
+                isObjectDetectionResultReviewMode && hasSharedImageViewState)
+            {
+                ImageDisplayControl newlySelectedDisplay = GetVisibleLeftImageDisplayControl();
+                if (newlySelectedDisplay != null)
+                {
+                    if (!newlySelectedDisplay.HasImage)
+                    {
+                        objectDetectionResultReviewPendingViewRestores[newlySelectedDisplay] =
+                            sharedImageViewState;
+                    }
+                    else
+                    {
+                        objectDetectionResultReviewPendingViewRestores.Remove(newlySelectedDisplay);
+                    }
+                }
+            }
+
+            if (ReferenceEquals(sender, leftImageTabControl) &&
                 IsObjectDetectionDefectDisplayTab(leftImageTabControl.SelectedTab))
             {
                 UpdateActiveObjectDetectionDefectDisplayAlias();
@@ -363,13 +381,17 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ResetRightFunctionPanel()
         {
+            bool wasObjectDetectionResultReviewMode = isObjectDetectionResultReviewMode;
             ExitObjectDetectionResultReviewMode();
             HideImageRelationParameterPanel();
             HideObjectJudgementParameterPanel();
             HideObjectDefinitionParameterPanel();
             HideObjectDetectionParameterPanel();
             HideImageProcessingFlowTree();
-            SetObjectDetectionParameterDisplayMode(false);
+            if (!wasObjectDetectionResultReviewMode)
+            {
+                SetObjectDetectionParameterDisplayMode(false);
+            }
             parameterPlaceholderLabel.Visible = true;
             parameterPlaceholderLabel.BringToFront();
         }
