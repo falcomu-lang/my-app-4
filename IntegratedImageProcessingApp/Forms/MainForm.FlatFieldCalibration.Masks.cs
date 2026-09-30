@@ -139,6 +139,16 @@ namespace IntegratedImageProcessingApp.Forms
             Button applyButton,
             bool preserveCurrentProfile = false)
         {
+            await ApplyObjectDetectionFlatFieldMaskAsync(
+                parameter, resultLabel, applyButton, preserveCurrentProfile);
+        }
+
+        private async Task ApplyObjectDetectionFlatFieldMaskAsync(
+            ObjectDetectionParameterSettings parameter,
+            Label resultLabel,
+            Button applyButton,
+            bool preserveCurrentProfile = false)
+        {
             if (parameter == null || resultLabel == null ||
                 string.IsNullOrWhiteSpace(parameter.FlatFieldMaskPrimaryId))
             {

@@ -630,7 +630,25 @@ namespace IntegratedImageProcessingApp.Forms
                 RefreshObjectDetectionFlatFieldDisplay();
                 objectDetectionResultReviewStatusLabel.Text =
                     "已找到 " + objects.Count.ToString("N0", CultureInfo.CurrentCulture) +
-                    " 個物件，正在執行平場與已啟用的缺陷條件...";
+                    " 個物件，正在載入參數內保存的 MASK 與平場校正值...";
+                await ApplyObjectDetectionFlatFieldMaskAsync(
+                    parameter, objectDetectionFlatFieldResultLabel, null);
+                if (!IsObjectDetectionResultReviewUiAvailable())
+                {
+                    return;
+                }
+                if (!IsCurrentObjectDetectionFlatFieldImage(parameter))
+                {
+                    string calibrationStatus = objectDetectionFlatFieldResultLabel == null ||
+                        objectDetectionFlatFieldResultLabel.IsDisposed
+                        ? string.Empty : objectDetectionFlatFieldResultLabel.Text;
+                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(calibrationStatus)
+                        ? "無法載入此參數保存的 MASK 或平場校正值。"
+                        : calibrationStatus);
+                }
+
+                objectDetectionResultReviewStatusLabel.Text =
+                    "平場校正已套用，正在執行已啟用的缺陷條件...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：缺陷檢測中...";
 
                 leftImageTabControl.SelectedTab = objectDetectionDefectDisplayTabPages[4];
