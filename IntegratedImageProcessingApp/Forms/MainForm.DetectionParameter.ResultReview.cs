@@ -710,7 +710,7 @@ namespace IntegratedImageProcessingApp.Forms
                     " 個物件，正在載入參數內保存的 MASK 與平場校正值...";
                 await ApplyObjectDetectionFlatFieldMaskAsync(
                     parameter,
-                    objectDetectionFlatFieldResultLabel,
+                    objectDetectionResultReviewStatusLabel,
                     null,
                     false,
                     true,
@@ -732,9 +732,9 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 if (!IsCurrentObjectDetectionFlatFieldImage(parameter))
                 {
-                    string calibrationStatus = objectDetectionFlatFieldResultLabel == null ||
-                        objectDetectionFlatFieldResultLabel.IsDisposed
-                        ? string.Empty : objectDetectionFlatFieldResultLabel.Text;
+                    string calibrationStatus = objectDetectionResultReviewStatusLabel == null ||
+                        objectDetectionResultReviewStatusLabel.IsDisposed
+                        ? string.Empty : objectDetectionResultReviewStatusLabel.Text;
                     throw new InvalidOperationException(string.IsNullOrWhiteSpace(calibrationStatus)
                         ? "無法載入此參數保存的 MASK 或平場校正值。"
                         : calibrationStatus);
