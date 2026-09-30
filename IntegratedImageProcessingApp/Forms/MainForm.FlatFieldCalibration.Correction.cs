@@ -142,7 +142,8 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter,
             Label resultLabel,
             Button showButton,
-            bool useCurrentProfile = false)
+            bool useCurrentProfile = false,
+            Action<double> correctionComputed = null)
         {
             if (parameter == null || resultLabel == null || resultLabel.IsDisposed ||
                 (showButton != null && !showButton.Enabled))
@@ -316,6 +317,11 @@ namespace IntegratedImageProcessingApp.Forms
                     !string.Equals(activeObjectDetectionParameterId, parameterId, StringComparison.Ordinal))
                 {
                     return;
+                }
+
+                if (correctionComputed != null)
+                {
+                    correctionComputed(result.CorrectionElapsedMilliseconds);
                 }
 
                 objectDetectionFlatFieldRawProfile = result.RawProfile;

@@ -315,7 +315,8 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDefinitionDetectedObject selectedObject,
             ObjectDetectionParameterSettings maskParameter,
             out ObjectDetectionMeasurementStatistics statistics,
-            out string errorMessage)
+            out string errorMessage,
+            bool rebuildMissingMaskSources = false)
         {
             statistics = null;
             errorMessage = string.Empty;
@@ -354,7 +355,8 @@ namespace IntegratedImageProcessingApp.Forms
                             objectBounds,
                             largeSource,
                             null,
-                            out mask))
+                            out mask,
+                            rebuildMissingMaskSources))
                     {
                         errorMessage = "無法取得量測來源 MASK";
                         return false;
@@ -370,7 +372,8 @@ namespace IntegratedImageProcessingApp.Forms
                             objectBounds,
                             null,
                             original,
-                            out mask))
+                            out mask,
+                            rebuildMissingMaskSources))
                     {
                         errorMessage = "無法取得量測來源 MASK";
                         return false;

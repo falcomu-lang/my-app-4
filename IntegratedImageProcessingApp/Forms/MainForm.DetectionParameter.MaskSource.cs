@@ -53,7 +53,8 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle objectBounds,
             LargeImageSource largeSource,
             Bitmap original,
-            out Cv.Mat mask)
+            out Cv.Mat mask,
+            bool rebuildMissingSources = false)
         {
             mask = null;
             if (parameter == null || objectBounds.Width <= 0 || objectBounds.Height <= 0 ||
@@ -102,7 +103,8 @@ namespace IntegratedImageProcessingApp.Forms
                             null,
                             parameter.SourceMaskPrimaryNamespace,
                             objectNumber,
-                            out created))
+                            out created,
+                            rebuildMissingSources))
                         {
                             return false;
                         }
@@ -125,7 +127,8 @@ namespace IntegratedImageProcessingApp.Forms
                             originalGray,
                             parameter.SourceMaskPrimaryNamespace,
                             objectNumber,
-                            out created))
+                            out created,
+                            rebuildMissingSources))
                         {
                             return false;
                         }
@@ -173,7 +176,8 @@ namespace IntegratedImageProcessingApp.Forms
                             null,
                             parameter.SourceMaskSecondaryNamespace,
                             objectNumber,
-                            out secondary))
+                            out secondary,
+                            rebuildMissingSources))
                         {
                             return false;
                         }
@@ -191,7 +195,8 @@ namespace IntegratedImageProcessingApp.Forms
                             secondaryGray,
                             parameter.SourceMaskSecondaryNamespace,
                             objectNumber,
-                            out secondary))
+                            out secondary,
+                            rebuildMissingSources))
                         {
                             return false;
                         }
@@ -289,7 +294,8 @@ namespace IntegratedImageProcessingApp.Forms
             Cv.Mat originalGray,
             string sourceNamespace,
             int objectNumber,
-            out Cv.Mat mask)
+            out Cv.Mat mask,
+            bool rebuildMissingSource = false)
         {
             mask = null;
             if (string.IsNullOrWhiteSpace(sourceType) || string.IsNullOrWhiteSpace(sourceId))
@@ -315,28 +321,54 @@ namespace IntegratedImageProcessingApp.Forms
             Cv.Mat sourceMask = null;
             if (largeSource != null)
             {
-                if (!TryGetCachedObjectDetectionMaskSource(
+                bool sourceReady = TryGetCachedObjectDetectionMaskSource(
                     largeSource,
                     sourceType,
                     sourceId,
                     sourceRoi,
                     sourceNamespace,
-                    out sourceMask))
+                    out sourceMask);
+                if (!sourceReady && rebuildMissingSource)
+                {
+                    sourceReady = TryBuildObjectDetectionMaskSource(
+                        largeSource,
+                        sourceType,
+                        sourceId,
+                        sourceRoi,
+                        sourceNamespace,
+                        out sourceMask);
+                }
+                if (!sourceReady)
                 {
                     return false;
                 }
             }
             else
             {
-                if (original == null || originalGray == null ||
-                    !TryGetCachedObjectDetectionMaskSourceFromBitmap(
+                if (original == null || originalGray == null)
+                {
+                    return false;
+                }
+                bool sourceReady = TryGetCachedObjectDetectionMaskSourceFromBitmap(
+                    original,
+                    originalGray,
+                    sourceType,
+                    sourceId,
+                    sourceRoi,
+                    sourceNamespace,
+                    out sourceMask);
+                if (!sourceReady && rebuildMissingSource)
+                {
+                    sourceReady = TryBuildObjectDetectionMaskSourceFromBitmap(
                         original,
                         originalGray,
                         sourceType,
                         sourceId,
                         sourceRoi,
                         sourceNamespace,
-                        out sourceMask))
+                        out sourceMask);
+                }
+                if (!sourceReady)
                 {
                     return false;
                 }
@@ -372,6 +404,556 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private bool TryBuildObjectDetectionMaskSource(
+            LargeImageSource originalSource,
+            string sourceType,
+            string sourceId,
+            Rectangle roi,
+            string sourceNamespace,
+            out Cv.Mat mask)
+        {
+            mask = null;
+            if (originalSource == null || roi.Width <= 0 || roi.Height <= 0)
+            {
+                return false;
+            }
+
+            if (string.Equals(sourceType, "ObjectJudgement", StringComparison.Ordinal) ||
+                string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal))
+            {
+                ObjectJudgementSettings judgement = string.Equals(
+                    sourceType, "ObjectJudgement", StringComparison.Ordinal)
+                    ? systemParameters.ObjectJudgements.FirstOrDefault(
+                        item => string.Equals(item.Id, sourceId, StringComparison.Ordinal))
+                    : systemParameters.ObjectJudgements.FirstOrDefault(
+                        item => string.Equals(item.Id, sourceNamespace, StringComparison.Ordinal));
+                if (judgement == null)
+                {
+                    return false;
+                }
+
+                int processingIndex = string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal)
+                    ? judgement.ProcessingSteps.FindIndex(
+                        item => item != null && string.Equals(item.Id, sourceId, StringComparison.Ordinal))
+                    : -1;
+                if (string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal) &&
+                    processingIndex < 0)
+                {
+                    return false;
+                }
+
+                List<ObjectJudgementProcessingSettings> processingSteps =
+                    GetObjectJudgementProcessingChain(judgement, processingIndex);
+                using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(
+                    originalSource, judgement, roi))
+                {
+                    mask = ApplyObjectJudgementProcessingOpenCvAndCache(
+                        judgement,
+                        baseMask,
+                        processingSteps,
+                        roi,
+                        null);
+                }
+                return mask != null && !mask.Empty();
+            }
+
+            if (string.Equals(sourceType, "ObjectJudgementGroup", StringComparison.Ordinal))
+            {
+                ObjectJudgementGroupSettings group = FindObjectJudgementGroup(sourceId);
+                List<ObjectJudgementSettings> judgements = group == null
+                    ? new List<ObjectJudgementSettings>()
+                    : GetObjectJudgementsInGroup(group.Id);
+                if (judgements.Count == 0)
+                {
+                    return false;
+                }
+
+                var combined = new Cv.Mat(roi.Height, roi.Width, Cv.MatType.CV_8UC1, Cv.Scalar.All(0));
+                try
+                {
+                    foreach (ObjectJudgementSettings judgement in judgements)
+                    {
+                        using (Cv.Mat baseMask = CreateLargeObjectJudgementBaseMask(
+                            originalSource, judgement, roi))
+                        using (Cv.Mat judgementMask = ApplyObjectJudgementProcessingOpenCvAndCache(
+                            judgement,
+                            baseMask,
+                            GetObjectJudgementProcessingChain(judgement, -1),
+                            roi,
+                            null))
+                        {
+                            Cv.Cv2.BitwiseOr(combined, judgementMask, combined);
+                        }
+                    }
+
+                    string signature = CreateObjectJudgementGroupProcessingSignature(group.Id, judgements);
+                    string maskKey = CreateObjectJudgementGroupMaskKey(signature, roi);
+                    lock (objectJudgementMaskLock)
+                    {
+                        Cv.Mat previous;
+                        if (objectJudgementGroupLargeMasks.TryGetValue(maskKey, out previous) &&
+                            previous != null)
+                        {
+                            previous.Dispose();
+                        }
+                        objectJudgementGroupLargeMasks[maskKey] = combined;
+                        combined = null;
+                        Cv.Mat cached = objectJudgementGroupLargeMasks[maskKey];
+                        mask = CreateLargeRoiMatView(
+                            cached,
+                            new Rectangle(0, 0, cached.Cols, cached.Rows));
+                    }
+                    return true;
+                }
+                finally
+                {
+                    if (combined != null)
+                    {
+                        combined.Dispose();
+                    }
+                }
+            }
+
+            ImageRelationSettings relation = string.Equals(sourceType, "Relation", StringComparison.Ordinal)
+                ? systemParameters.ImageRelations.FirstOrDefault(
+                    item => string.Equals(item.Id, sourceId, StringComparison.Ordinal))
+                : null;
+            if (relation != null)
+            {
+                return TryBuildLargeImageRelationMask(originalSource, relation, roi, out mask);
+            }
+
+            if (string.Equals(sourceType, "RelationGroup", StringComparison.Ordinal))
+            {
+                ImageRelationGroupSettings group = FindImageRelationGroup(sourceId);
+                List<ImageRelationSettings> relations = group == null
+                    ? new List<ImageRelationSettings>()
+                    : GetImageRelationGroupRelations(group.Id);
+                return TryBuildLargeImageRelationGroupMask(originalSource, relations, roi, out mask);
+            }
+
+            bool isGroupStep = string.Equals(sourceType, "ImageProcessingGroupStep", StringComparison.Ordinal);
+            if (string.Equals(sourceType, "ImageProcessingStep", StringComparison.Ordinal) || isGroupStep)
+            {
+                ImageProcessingStepSettings step = systemParameters.ImageProcessingSteps.FirstOrDefault(
+                    item => string.Equals(item.Id, sourceId, StringComparison.Ordinal));
+                if (step == null)
+                {
+                    return false;
+                }
+
+                List<ImageProcessingStepSettings> steps = GetImageProcessingExecutionChain(step);
+                return TryBuildLargeImageProcessingMask(
+                    originalSource, steps, roi, sourceNamespace, out mask);
+            }
+
+            if (string.Equals(sourceType, "ImageProcessingGroup", StringComparison.Ordinal))
+            {
+                ImageProcessingGroupSettings group = FindImageProcessingGroup(sourceId);
+                if (group == null)
+                {
+                    return false;
+                }
+
+                var steps = new List<ImageProcessingStepSettings>();
+                CollectImageProcessingGroupSteps(group.Id, steps);
+                return TryBuildLargeImageProcessingMask(
+                    originalSource, steps, roi, sourceNamespace, out mask);
+            }
+
+            return false;
+        }
+
+        private bool TryBuildLargeImageProcessingMask(
+            LargeImageSource originalSource,
+            IEnumerable<ImageProcessingStepSettings> steps,
+            Rectangle roi,
+            string sourceNamespace,
+            out Cv.Mat mask)
+        {
+            mask = null;
+            LargeImageSource processingSource = null;
+            try
+            {
+                ImageRelationSettings relation = FindObjectDetectionMaskRelation(sourceNamespace);
+                processingSource = relation == null
+                    ? originalSource.AddReference()
+                    : GetLargeRelationSource(originalSource, relation);
+                string namespaceValue = string.IsNullOrWhiteSpace(sourceNamespace)
+                    ? "result-review|original"
+                    : sourceNamespace;
+                using (Cv.Mat gray = GetOrCreateLargeRoiOpenCvGrayCache(processingSource, roi))
+                {
+                    mask = CreateCombinedImageProcessingGroupMask(gray, roi, steps, namespaceValue);
+                }
+                return mask != null && !mask.Empty();
+            }
+            finally
+            {
+                if (processingSource != null)
+                {
+                    processingSource.ReleaseReference();
+                }
+            }
+        }
+
+        private bool TryBuildLargeImageRelationMask(
+            LargeImageSource originalSource,
+            ImageRelationSettings relation,
+            Rectangle roi,
+            out Cv.Mat mask)
+        {
+            return TryBuildLargeImageRelationGroupMask(
+                originalSource,
+                relation == null ? null : new[] { relation },
+                roi,
+                out mask);
+        }
+
+        private bool TryBuildLargeImageRelationGroupMask(
+            LargeImageSource originalSource,
+            IEnumerable<ImageRelationSettings> relations,
+            Rectangle roi,
+            out Cv.Mat mask)
+        {
+            mask = null;
+            List<ImageRelationSettings> relationList = (relations ?? Enumerable.Empty<ImageRelationSettings>())
+                .Where(item => item != null).ToList();
+            if (relationList.Count == 0)
+            {
+                return false;
+            }
+
+            var combined = new Cv.Mat(roi.Height, roi.Width, Cv.MatType.CV_8UC1, Cv.Scalar.All(0));
+            try
+            {
+                foreach (ImageRelationSettings relation in relationList)
+                {
+                    List<ImageProcessingStepSettings> steps = GetImageProcessingStepsForRelation(relation);
+                    LargeImageSource relationSource = GetLargeRelationSource(originalSource, relation);
+                    try
+                    {
+                        using (Cv.Mat gray = GetOrCreateLargeRoiOpenCvGrayCache(relationSource, roi))
+                        using (Cv.Mat relationMask = CreateCombinedImageProcessingGroupMask(
+                            gray,
+                            roi,
+                            steps,
+                            CreateImageRelationSourceNamespace(relation)))
+                        {
+                            Cv.Cv2.BitwiseOr(combined, relationMask, combined);
+                        }
+                    }
+                    finally
+                    {
+                        if (relationSource != null)
+                        {
+                            relationSource.ReleaseReference();
+                        }
+                    }
+                }
+
+                mask = combined;
+                combined = null;
+                return true;
+            }
+            finally
+            {
+                if (combined != null)
+                {
+                    combined.Dispose();
+                }
+            }
+        }
+
+        private ImageRelationSettings FindObjectDetectionMaskRelation(string sourceNamespace)
+        {
+            if (string.IsNullOrWhiteSpace(sourceNamespace) || systemParameters.ImageRelations == null)
+            {
+                return null;
+            }
+
+            return systemParameters.ImageRelations.FirstOrDefault(
+                relation => string.Equals(
+                    CreateImageRelationSourceNamespace(relation),
+                    sourceNamespace,
+                    StringComparison.Ordinal));
+        }
+
+        private bool TryBuildObjectDetectionMaskSourceFromBitmap(
+            Bitmap original,
+            Cv.Mat originalGray,
+            string sourceType,
+            string sourceId,
+            Rectangle roi,
+            string sourceNamespace,
+            out Cv.Mat mask)
+        {
+            mask = null;
+            if (original == null || originalGray == null || roi.Width <= 0 || roi.Height <= 0)
+            {
+                return false;
+            }
+
+            if (string.Equals(sourceType, "ObjectJudgement", StringComparison.Ordinal) ||
+                string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal))
+            {
+                ObjectJudgementSettings judgement = string.Equals(
+                    sourceType, "ObjectJudgement", StringComparison.Ordinal)
+                    ? systemParameters.ObjectJudgements.FirstOrDefault(
+                        item => string.Equals(item.Id, sourceId, StringComparison.Ordinal))
+                    : systemParameters.ObjectJudgements.FirstOrDefault(
+                        item => string.Equals(item.Id, sourceNamespace, StringComparison.Ordinal));
+                if (judgement == null)
+                {
+                    return false;
+                }
+
+                int processingIndex = string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal)
+                    ? judgement.ProcessingSteps.FindIndex(
+                        item => item != null && string.Equals(item.Id, sourceId, StringComparison.Ordinal))
+                    : -1;
+                if (string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal) &&
+                    processingIndex < 0)
+                {
+                    return false;
+                }
+
+                List<ObjectJudgementProcessingSettings> processingSteps =
+                    GetObjectJudgementProcessingChain(judgement, processingIndex);
+                using (Cv.Mat baseMask = CreateObjectJudgementBaseMaskFromBitmap(
+                    original, originalGray, judgement, roi))
+                {
+                    mask = ApplyObjectJudgementProcessingOpenCvAndCache(
+                        judgement,
+                        baseMask,
+                        processingSteps,
+                        roi,
+                        null);
+                }
+                return mask != null && !mask.Empty();
+            }
+
+            if (string.Equals(sourceType, "ObjectJudgementGroup", StringComparison.Ordinal))
+            {
+                ObjectJudgementGroupSettings group = FindObjectJudgementGroup(sourceId);
+                List<ObjectJudgementSettings> judgements = group == null
+                    ? new List<ObjectJudgementSettings>()
+                    : GetObjectJudgementsInGroup(group.Id);
+                if (judgements.Count == 0)
+                {
+                    return false;
+                }
+
+                var combined = new Cv.Mat(roi.Height, roi.Width, Cv.MatType.CV_8UC1, Cv.Scalar.All(0));
+                try
+                {
+                    foreach (ObjectJudgementSettings judgement in judgements)
+                    {
+                        using (Cv.Mat baseMask = CreateObjectJudgementBaseMaskFromBitmap(
+                            original, originalGray, judgement, roi))
+                        using (Cv.Mat judgementMask = ApplyObjectJudgementProcessingOpenCvAndCache(
+                            judgement,
+                            baseMask,
+                            GetObjectJudgementProcessingChain(judgement, -1),
+                            roi,
+                            null))
+                        {
+                            Cv.Cv2.BitwiseOr(combined, judgementMask, combined);
+                        }
+                    }
+
+                    string signature = CreateObjectJudgementGroupProcessingSignature(group.Id, judgements);
+                    string maskKey = CreateObjectJudgementGroupMaskKey(signature, roi);
+                    lock (objectJudgementMaskLock)
+                    {
+                        Cv.Mat previous;
+                        if (objectJudgementGroupLargeMasks.TryGetValue(maskKey, out previous) &&
+                            previous != null)
+                        {
+                            previous.Dispose();
+                        }
+                        objectJudgementGroupLargeMasks[maskKey] = combined;
+                        combined = null;
+                        Cv.Mat cached = objectJudgementGroupLargeMasks[maskKey];
+                        mask = CreateLargeRoiMatView(
+                            cached,
+                            new Rectangle(0, 0, cached.Cols, cached.Rows));
+                    }
+                    return true;
+                }
+                finally
+                {
+                    if (combined != null)
+                    {
+                        combined.Dispose();
+                    }
+                }
+            }
+
+            if (string.Equals(sourceType, "Relation", StringComparison.Ordinal))
+            {
+                ImageRelationSettings relation = systemParameters.ImageRelations.FirstOrDefault(
+                    item => string.Equals(item.Id, sourceId, StringComparison.Ordinal));
+                return TryBuildBitmapImageRelationMask(original, originalGray, relation, roi, out mask);
+            }
+
+            if (string.Equals(sourceType, "RelationGroup", StringComparison.Ordinal))
+            {
+                ImageRelationGroupSettings group = FindImageRelationGroup(sourceId);
+                List<ImageRelationSettings> relations = group == null
+                    ? new List<ImageRelationSettings>()
+                    : GetImageRelationGroupRelations(group.Id);
+                return TryBuildBitmapImageRelationGroupMask(
+                    original, originalGray, relations, roi, out mask);
+            }
+
+            List<ImageProcessingStepSettings> steps = null;
+            if (string.Equals(sourceType, "ImageProcessingStep", StringComparison.Ordinal) ||
+                string.Equals(sourceType, "ImageProcessingGroupStep", StringComparison.Ordinal))
+            {
+                ImageProcessingStepSettings step = systemParameters.ImageProcessingSteps.FirstOrDefault(
+                    item => string.Equals(item.Id, sourceId, StringComparison.Ordinal));
+                if (step != null)
+                {
+                    steps = GetImageProcessingExecutionChain(step);
+                }
+            }
+            else if (string.Equals(sourceType, "ImageProcessingGroup", StringComparison.Ordinal))
+            {
+                ImageProcessingGroupSettings group = FindImageProcessingGroup(sourceId);
+                if (group != null)
+                {
+                    steps = new List<ImageProcessingStepSettings>();
+                    CollectImageProcessingGroupSteps(group.Id, steps);
+                }
+            }
+
+            if (steps == null)
+            {
+                return false;
+            }
+
+            ImageRelationSettings sourceRelation = FindObjectDetectionMaskRelation(sourceNamespace);
+            Bitmap relationBitmap = sourceRelation == null
+                ? null
+                : CreateRelationSourceBitmap(original, sourceRelation);
+            Cv.Mat relationGray = null;
+            try
+            {
+                Cv.Mat fullGray = originalGray;
+                if (relationBitmap != null)
+                {
+                    relationGray = CreateOpenCvGrayMat(relationBitmap);
+                    fullGray = relationGray;
+                }
+
+                using (var gray = new Cv.Mat(
+                    fullGray,
+                    new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height)))
+                {
+                    string namespaceValue = string.IsNullOrWhiteSpace(sourceNamespace)
+                        ? "result-review|original"
+                        : sourceNamespace;
+                    mask = CreateCombinedImageProcessingGroupMask(gray, roi, steps, namespaceValue);
+                }
+                return mask != null && !mask.Empty();
+            }
+            finally
+            {
+                if (relationGray != null)
+                {
+                    relationGray.Dispose();
+                }
+                if (relationBitmap != null)
+                {
+                    relationBitmap.Dispose();
+                }
+            }
+        }
+
+        private bool TryBuildBitmapImageRelationMask(
+            Bitmap original,
+            Cv.Mat originalGray,
+            ImageRelationSettings relation,
+            Rectangle roi,
+            out Cv.Mat mask)
+        {
+            return TryBuildBitmapImageRelationGroupMask(
+                original,
+                originalGray,
+                relation == null ? null : new[] { relation },
+                roi,
+                out mask);
+        }
+
+        private bool TryBuildBitmapImageRelationGroupMask(
+            Bitmap original,
+            Cv.Mat originalGray,
+            IEnumerable<ImageRelationSettings> relations,
+            Rectangle roi,
+            out Cv.Mat mask)
+        {
+            mask = null;
+            List<ImageRelationSettings> relationList = (relations ?? Enumerable.Empty<ImageRelationSettings>())
+                .Where(item => item != null).ToList();
+            if (relationList.Count == 0)
+            {
+                return false;
+            }
+
+            var combined = new Cv.Mat(roi.Height, roi.Width, Cv.MatType.CV_8UC1, Cv.Scalar.All(0));
+            try
+            {
+                foreach (ImageRelationSettings relation in relationList)
+                {
+                    Bitmap relationBitmap = null;
+                    Cv.Mat relationGray = originalGray;
+                    try
+                    {
+                        if (!string.Equals(relation.SourceType, "Original", StringComparison.Ordinal))
+                        {
+                            relationBitmap = CreateRelationSourceBitmap(original, relation);
+                            relationGray = CreateOpenCvGrayMat(relationBitmap);
+                        }
+
+                        using (var gray = new Cv.Mat(
+                            relationGray,
+                            new Cv.Rect(roi.X, roi.Y, roi.Width, roi.Height)))
+                        using (Cv.Mat relationMask = CreateCombinedImageProcessingGroupMask(
+                            gray,
+                            roi,
+                            GetImageProcessingStepsForRelation(relation),
+                            CreateImageRelationSourceNamespace(relation)))
+                        {
+                            Cv.Cv2.BitwiseOr(combined, relationMask, combined);
+                        }
+                    }
+                    finally
+                    {
+                        if (!ReferenceEquals(relationGray, originalGray) && relationGray != null)
+                        {
+                            relationGray.Dispose();
+                        }
+                        if (relationBitmap != null)
+                        {
+                            relationBitmap.Dispose();
+                        }
+                    }
+                }
+
+                mask = combined;
+                combined = null;
+                return true;
+            }
+            finally
+            {
+                if (combined != null)
+                {
+                    combined.Dispose();
+                }
+            }
+        }
+
         private bool TryGetCachedObjectDetectionMaskSource(
             LargeImageSource source,
             string sourceType,
@@ -381,6 +963,46 @@ namespace IntegratedImageProcessingApp.Forms
             out Cv.Mat mask)
         {
             mask = null;
+            if (string.Equals(sourceType, "ObjectJudgement", StringComparison.Ordinal))
+            {
+                ObjectJudgementSettings judgement = systemParameters.ObjectJudgements.FirstOrDefault(
+                    item => string.Equals(item.Id, sourceId, StringComparison.Ordinal));
+                return judgement != null && TryGetCachedObjectJudgementMask(
+                    judgement,
+                    GetObjectJudgementProcessingChain(judgement, -1),
+                    roi,
+                    out mask);
+            }
+
+            if (string.Equals(sourceType, "ObjectJudgementGroup", StringComparison.Ordinal))
+            {
+                ObjectJudgementGroupSettings group = FindObjectJudgementGroup(sourceId);
+                List<ObjectJudgementSettings> judgements = group == null
+                    ? new List<ObjectJudgementSettings>()
+                    : GetObjectJudgementsInGroup(group.Id);
+                if (judgements.Count == 0)
+                {
+                    return false;
+                }
+
+                string signature = CreateObjectJudgementGroupProcessingSignature(group.Id, judgements);
+                string key = CreateObjectJudgementGroupMaskKey(signature, roi);
+                lock (objectJudgementMaskLock)
+                {
+                    Cv.Mat cached;
+                    if (!objectJudgementGroupLargeMasks.TryGetValue(key, out cached) ||
+                        cached == null || cached.Empty() ||
+                        cached.Rows != roi.Height || cached.Cols != roi.Width)
+                    {
+                        return false;
+                    }
+                    mask = CreateLargeRoiMatView(
+                        cached,
+                        new Rectangle(0, 0, cached.Cols, cached.Rows));
+                    return true;
+                }
+            }
+
             if (string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal))
             {
                 ObjectJudgementSettings objectJudgement = systemParameters.ObjectJudgements.Find(
@@ -415,14 +1037,21 @@ namespace IntegratedImageProcessingApp.Forms
                     return false;
                 }
 
-                if (!string.IsNullOrWhiteSpace(sourceNamespace) &&
-                    TryGetCachedProcessedBinaryMask(
+                string processingNamespace = string.IsNullOrWhiteSpace(sourceNamespace)
+                    ? "result-review|original"
+                    : sourceNamespace;
+                if (TryGetCachedProcessedBinaryMask(
                         roi,
                         step,
-                        sourceNamespace,
+                        processingNamespace,
                         out mask))
                 {
                     return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(sourceNamespace))
+                {
+                    return false;
                 }
 
                 return TryGetCachedLargeProcessedStepMask(roi, step, out mask) ||
@@ -436,8 +1065,7 @@ namespace IntegratedImageProcessingApp.Forms
                         out mask);
             }
 
-            if (string.Equals(sourceType, "ImageProcessingGroup", StringComparison.Ordinal) &&
-                !string.IsNullOrWhiteSpace(sourceNamespace))
+            if (string.Equals(sourceType, "ImageProcessingGroup", StringComparison.Ordinal))
             {
                 ImageProcessingGroupSettings group = FindImageProcessingGroup(sourceId);
                 if (group == null)
@@ -451,7 +1079,9 @@ namespace IntegratedImageProcessingApp.Forms
                     roi,
                     steps,
                     out mask,
-                    sourceNamespace);
+                    string.IsNullOrWhiteSpace(sourceNamespace)
+                        ? "result-review|original"
+                        : sourceNamespace);
             }
 
             return TryGetCachedObjectDefinitionMaskSource(
@@ -472,13 +1102,62 @@ namespace IntegratedImageProcessingApp.Forms
             out Cv.Mat mask)
         {
             mask = null;
-            // Object-judgement processing step masks are stored per ROI by
-            // the large-image processing path. The bitmap path has no
-            // equivalent per-step cache yet, so do not silently rerun the
-            // relation here or show a result from the wrong processing step.
-            if (string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal))
+            if (string.Equals(sourceType, "ObjectJudgement", StringComparison.Ordinal) ||
+                string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal))
             {
-                return false;
+                ObjectJudgementSettings judgement = string.Equals(
+                    sourceType, "ObjectJudgement", StringComparison.Ordinal)
+                    ? systemParameters.ObjectJudgements.FirstOrDefault(
+                        item => string.Equals(item.Id, sourceId, StringComparison.Ordinal))
+                    : systemParameters.ObjectJudgements.FirstOrDefault(
+                        item => string.Equals(item.Id, sourceNamespace, StringComparison.Ordinal));
+                if (judgement == null)
+                {
+                    return false;
+                }
+
+                int processingIndex = string.Equals(sourceType, "ObjectJudgementProcessing", StringComparison.Ordinal)
+                    ? judgement.ProcessingSteps.FindIndex(
+                        item => item != null && string.Equals(item.Id, sourceId, StringComparison.Ordinal))
+                    : -1;
+                return processingIndex >= 0 ||
+                    string.Equals(sourceType, "ObjectJudgement", StringComparison.Ordinal)
+                    ? TryGetCachedObjectJudgementMask(
+                        judgement,
+                        GetObjectJudgementProcessingChain(judgement, processingIndex),
+                        roi,
+                        out mask)
+                    : false;
+            }
+
+            if (string.Equals(sourceType, "ObjectJudgementGroup", StringComparison.Ordinal))
+            {
+                ObjectJudgementGroupSettings judgementGroup = FindObjectJudgementGroup(sourceId);
+                List<ObjectJudgementSettings> judgements = judgementGroup == null
+                    ? new List<ObjectJudgementSettings>()
+                    : GetObjectJudgementsInGroup(judgementGroup.Id);
+                if (judgements.Count == 0)
+                {
+                    return false;
+                }
+
+                string signature = CreateObjectJudgementGroupProcessingSignature(
+                    judgementGroup.Id, judgements);
+                string key = CreateObjectJudgementGroupMaskKey(signature, roi);
+                lock (objectJudgementMaskLock)
+                {
+                    Cv.Mat cached;
+                    if (!objectJudgementGroupLargeMasks.TryGetValue(key, out cached) ||
+                        cached == null || cached.Empty() ||
+                        cached.Rows != roi.Height || cached.Cols != roi.Width)
+                    {
+                        return false;
+                    }
+                    mask = CreateLargeRoiMatView(
+                        cached,
+                        new Rectangle(0, 0, cached.Cols, cached.Rows));
+                    return true;
+                }
             }
 
             if (string.Equals(sourceType, "ImageProcessingGroupStep", StringComparison.Ordinal) ||
@@ -491,16 +1170,23 @@ namespace IntegratedImageProcessingApp.Forms
                     return false;
                 }
 
-                if (!string.IsNullOrWhiteSpace(sourceNamespace) &&
-                    TryCreateCachedImageProcessingMaskFromBitmap(
+                string processingNamespace = string.IsNullOrWhiteSpace(sourceNamespace)
+                    ? "result-review|original"
+                    : sourceNamespace;
+                if (TryCreateCachedImageProcessingMaskFromBitmap(
                         original,
                         originalGray,
                         roi,
                         new[] { step },
-                        sourceNamespace,
+                        processingNamespace,
                         out mask))
                 {
                     return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(sourceNamespace))
+                {
+                    return false;
                 }
 
                 return TryGetCachedObjectDefinitionMaskSourceFromBitmap(
@@ -512,8 +1198,7 @@ namespace IntegratedImageProcessingApp.Forms
                     out mask);
             }
 
-            if (string.Equals(sourceType, "ImageProcessingGroup", StringComparison.Ordinal) &&
-                !string.IsNullOrWhiteSpace(sourceNamespace))
+            if (string.Equals(sourceType, "ImageProcessingGroup", StringComparison.Ordinal))
             {
                 ImageProcessingGroupSettings group = FindImageProcessingGroup(sourceId);
                 if (group == null)
@@ -528,7 +1213,9 @@ namespace IntegratedImageProcessingApp.Forms
                     originalGray,
                     roi,
                     steps,
-                    sourceNamespace,
+                    string.IsNullOrWhiteSpace(sourceNamespace)
+                        ? "result-review|original"
+                        : sourceNamespace,
                     out mask);
             }
 
@@ -1084,7 +1771,8 @@ namespace IntegratedImageProcessingApp.Forms
                                 objectBounds,
                                 source,
                                 null,
-                                out measurementMask))
+                                out measurementMask,
+                                isObjectDetectionResultReviewMode))
                             {
                                 return;
                             }

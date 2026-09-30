@@ -93,7 +93,9 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task RunObjectDetectionDefectProcessingAsync(
             string parameterId,
-            string coreKey)
+            string coreKey,
+            Action<long> computationCompleted = null,
+            Action<long> displayCompleted = null)
         {
             if (objectDetectionDefectProcessingRequested)
             {
@@ -122,7 +124,8 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 SetObjectDetectionDefectRegionStatus("正在準備缺陷檢測；請稍候...");
                 await Task.Yield();
-                await RunObjectDetectionDefectProcessingCoreAsync(parameterId, coreKey);
+                await RunObjectDetectionDefectProcessingCoreAsync(
+                    parameterId, coreKey, computationCompleted, displayCompleted);
             }
             finally
             {
@@ -147,7 +150,9 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task RunObjectDetectionDefectProcessingCoreAsync(
             string parameterId,
-            string coreKey)
+            string coreKey,
+            Action<long> computationCompleted = null,
+            Action<long> displayCompleted = null)
         {
 
             ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(parameterId);
@@ -551,6 +556,7 @@ namespace IntegratedImageProcessingApp.Forms
                     currentResults = new Dictionary<string, ObjectDetectionDefectCoreResult>(StringComparer.Ordinal);
                     objectDetectionDefectCoreResults[parameter.Id] = currentResults;
                 }
+                Stopwatch displayStopwatch = Stopwatch.StartNew();
                 foreach (KeyValuePair<string, ObjectDetectionDefectCoreResult> item in results)
                 {
                     ObjectDetectionDefectCoreResult previous;
@@ -577,7 +583,26 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     combinedDisplay.InvalidateImageView();
                 }
-                RefreshObjectDetectionDefectIntegrationResults(parameter);
+                long integrationElapsedMilliseconds = 0;
+                RefreshObjectDetectionDefectIntegrationResults(
+                    parameter,
+                    elapsed => integrationElapsedMilliseconds = elapsed);
+                displayStopwatch.Stop();
+                long totalComputationMilliseconds = totalElapsedMilliseconds + integrationElapsedMilliseconds;
+                foreach (ObjectDetectionDefectCoreResult coreResult in results.Values)
+                {
+                    coreResult.TotalElapsedMilliseconds = totalComputationMilliseconds;
+                }
+                if (computationCompleted != null)
+                {
+                    computationCompleted(totalComputationMilliseconds);
+                }
+                if (displayCompleted != null)
+                {
+                    displayCompleted(Math.Max(
+                        0,
+                        displayStopwatch.ElapsedMilliseconds - integrationElapsedMilliseconds));
+                }
             }
             catch (OutOfMemoryException)
             {

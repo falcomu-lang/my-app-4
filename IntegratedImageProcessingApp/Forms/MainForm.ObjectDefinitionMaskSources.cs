@@ -61,7 +61,8 @@ namespace IntegratedImageProcessingApp.Forms
                     definition,
                     roi,
                     out configuredMask,
-                    timing);
+                    timing,
+                    true);
                 if (configuredMask == null)
                 {
                     throw new InvalidOperationException("來源 MASK 尚未建立，請先處理來源項目");
@@ -305,7 +306,8 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDefinitionSettings definition,
             Rectangle roi,
             out Cv.Mat mask,
-            ObjectDefinitionSourceTiming timing)
+            ObjectDefinitionSourceTiming timing,
+            bool rebuildMissingSources = false)
         {
             mask = null;
             if (!HasConfiguredObjectDefinitionMaskSource(definition) ||
@@ -314,14 +316,25 @@ namespace IntegratedImageProcessingApp.Forms
                 return false;
             }
 
-            Cv.Mat primary;
-            if (!TryGetCachedObjectDefinitionMaskSource(
-                source,
-                definition.SourceMaskPrimaryType,
-                definition.SourceMaskPrimaryId,
-                roi,
-                out primary,
-                timing))
+            Cv.Mat primary = null;
+            bool primaryReady = rebuildMissingSources && TryBuildObjectDetectionMaskSource(
+                    source,
+                    definition.SourceMaskPrimaryType,
+                    definition.SourceMaskPrimaryId,
+                    roi,
+                    string.Empty,
+                    out primary);
+            if (!primaryReady)
+            {
+                primaryReady = TryGetCachedObjectDefinitionMaskSource(
+                    source,
+                    definition.SourceMaskPrimaryType,
+                    definition.SourceMaskPrimaryId,
+                    roi,
+                    out primary,
+                    timing);
+            }
+            if (!primaryReady)
             {
                 return false;
             }
@@ -351,13 +364,24 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            Cv.Mat secondary;
-            if (!TryGetCachedObjectDefinitionMaskSource(
-                source,
-                definition.SourceMaskSecondaryType,
-                definition.SourceMaskSecondaryId,
-                roi,
-                out secondary))
+            Cv.Mat secondary = null;
+            bool secondaryReady = rebuildMissingSources && TryBuildObjectDetectionMaskSource(
+                    source,
+                    definition.SourceMaskSecondaryType,
+                    definition.SourceMaskSecondaryId,
+                    roi,
+                    string.Empty,
+                    out secondary);
+            if (!secondaryReady)
+            {
+                secondaryReady = TryGetCachedObjectDefinitionMaskSource(
+                    source,
+                    definition.SourceMaskSecondaryType,
+                    definition.SourceMaskSecondaryId,
+                    roi,
+                    out secondary);
+            }
+            if (!secondaryReady)
             {
                 primary.Dispose();
                 return false;
@@ -657,7 +681,8 @@ namespace IntegratedImageProcessingApp.Forms
             Cv.Mat originalGray,
             ObjectDefinitionSettings definition,
             Rectangle roi,
-            out Cv.Mat mask)
+            out Cv.Mat mask,
+            bool rebuildMissingSources = false)
         {
             mask = null;
             if (original == null || originalGray == null ||
@@ -666,14 +691,26 @@ namespace IntegratedImageProcessingApp.Forms
                 return false;
             }
 
-            Cv.Mat primary;
-            if (!TryGetCachedObjectDefinitionMaskSourceFromBitmap(
-                original,
-                originalGray,
-                definition.SourceMaskPrimaryType,
-                definition.SourceMaskPrimaryId,
-                roi,
-                out primary))
+            Cv.Mat primary = null;
+            bool primaryReady = rebuildMissingSources && TryBuildObjectDetectionMaskSourceFromBitmap(
+                    original,
+                    originalGray,
+                    definition.SourceMaskPrimaryType,
+                    definition.SourceMaskPrimaryId,
+                    roi,
+                    string.Empty,
+                    out primary);
+            if (!primaryReady)
+            {
+                primaryReady = TryGetCachedObjectDefinitionMaskSourceFromBitmap(
+                    original,
+                    originalGray,
+                    definition.SourceMaskPrimaryType,
+                    definition.SourceMaskPrimaryId,
+                    roi,
+                    out primary);
+            }
+            if (!primaryReady)
             {
                 return false;
             }
@@ -703,14 +740,26 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            Cv.Mat secondary;
-            if (!TryGetCachedObjectDefinitionMaskSourceFromBitmap(
-                original,
-                originalGray,
-                definition.SourceMaskSecondaryType,
-                definition.SourceMaskSecondaryId,
-                roi,
-                out secondary))
+            Cv.Mat secondary = null;
+            bool secondaryReady = rebuildMissingSources && TryBuildObjectDetectionMaskSourceFromBitmap(
+                    original,
+                    originalGray,
+                    definition.SourceMaskSecondaryType,
+                    definition.SourceMaskSecondaryId,
+                    roi,
+                    string.Empty,
+                    out secondary);
+            if (!secondaryReady)
+            {
+                secondaryReady = TryGetCachedObjectDefinitionMaskSourceFromBitmap(
+                    original,
+                    originalGray,
+                    definition.SourceMaskSecondaryType,
+                    definition.SourceMaskSecondaryId,
+                    roi,
+                    out secondary);
+            }
+            if (!secondaryReady)
             {
                 primary.Dispose();
                 return false;
@@ -1112,7 +1161,8 @@ namespace IntegratedImageProcessingApp.Forms
                     originalGray,
                     definition,
                     roi,
-                    out configuredMask))
+                    out configuredMask,
+                    true))
                 {
                     throw new InvalidOperationException("來源 MASK 尚未建立，請先處理來源項目");
                 }

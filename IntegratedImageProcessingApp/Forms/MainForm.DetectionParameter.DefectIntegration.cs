@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.Linq;
@@ -194,6 +195,7 @@ namespace IntegratedImageProcessingApp.Forms
                 BorderStyle = BorderStyle.FixedSingle
             };
             grid.Columns.Add("Number", "編號");
+            grid.Columns.Add("ObjectNumber", "ROI");
             grid.Columns.Add("Type", "類型");
             grid.Columns.Add("CandidateCount", "候選數");
             grid.Columns.Add("Sources", "來源條件");
@@ -202,10 +204,11 @@ namespace IntegratedImageProcessingApp.Forms
             grid.Columns.Add("Width", "寬 (px)");
             grid.Columns.Add("Height", "高 (px)");
             grid.Columns[0].FillWeight = 45;
-            grid.Columns[1].FillWeight = 55;
+            grid.Columns[1].FillWeight = 45;
             grid.Columns[2].FillWeight = 55;
-            grid.Columns[3].FillWeight = 125;
-            for (int index = 4; index < grid.Columns.Count; index++)
+            grid.Columns[3].FillWeight = 55;
+            grid.Columns[4].FillWeight = 125;
+            for (int index = 5; index < grid.Columns.Count; index++)
             {
                 grid.Columns[index].FillWeight = 65;
             }
@@ -269,7 +272,8 @@ namespace IntegratedImageProcessingApp.Forms
         }
 
         private void RefreshObjectDetectionDefectIntegrationResults(
-            ObjectDetectionParameterSettings parameter)
+            ObjectDetectionParameterSettings parameter,
+            Action<long> computationElapsed = null)
         {
             DataGridView grid = objectDetectionDefectIntegrationResultsGrid;
             if (grid == null || grid.IsDisposed)
@@ -278,16 +282,24 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             grid.Rows.Clear();
-            if (parameter == null || selectedObjectDetectionNumber <= 0)
+            if (parameter == null)
             {
-                SetObjectDetectionDefectIntegrationResultsStatus("請從上方物件序號選擇 ROI");
                 return;
             }
 
-            List<ObjectDetectionDefectIntegrationGroup> groups =
-                GetObjectDetectionDefectIntegrationGroups(parameter)
-                    .Where(group => group.ObjectNumber == selectedObjectDetectionNumber)
-                    .OrderBy(group => group.Bounds.Top)
+            Stopwatch computationStopwatch = Stopwatch.StartNew();
+            List<ObjectDetectionDefectIntegrationGroup> allGroups =
+                GetObjectDetectionDefectIntegrationGroups(parameter);
+            computationStopwatch.Stop();
+            if (computationElapsed != null)
+            {
+                computationElapsed(computationStopwatch.ElapsedMilliseconds);
+            }
+            List<ObjectDetectionDefectIntegrationGroup> groups = allGroups
+                    .Where(group => selectedObjectDetectionNumber <= 0 ||
+                        group.ObjectNumber == selectedObjectDetectionNumber)
+                    .OrderBy(group => group.ObjectNumber)
+                    .ThenBy(group => group.Bounds.Top)
                     .ThenBy(group => group.Bounds.Left)
                     .ToList();
             for (int index = 0; index < groups.Count; index++)
@@ -302,6 +314,7 @@ namespace IntegratedImageProcessingApp.Forms
                     .Distinct(StringComparer.Ordinal));
                 grid.Rows.Add(
                     (index + 1).ToString(CultureInfo.InvariantCulture),
+                    group.ObjectNumber.ToString(CultureInfo.InvariantCulture),
                     type,
                     group.Candidates.Count.ToString(CultureInfo.InvariantCulture),
                     sources,
@@ -313,10 +326,14 @@ namespace IntegratedImageProcessingApp.Forms
 
             SetObjectDetectionDefectIntegrationResultsStatus(
                 groups.Count == 0
-                    ? "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
-                        " 尚無符合目前設定的缺陷結果"
-                    : "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
-                        " 整合出 " + groups.Count.ToString("N0", CultureInfo.CurrentCulture) + " 組缺陷");
+                    ? selectedObjectDetectionNumber > 0
+                        ? "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
+                            " 尚無符合目前設定的缺陷結果"
+                        : "目前沒有符合設定的 ROI 整合缺陷結果"
+                    : selectedObjectDetectionNumber > 0
+                        ? "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
+                            " 整合出 " + groups.Count.ToString("N0", CultureInfo.CurrentCulture) + " 組缺陷"
+                        : "全部 ROI 共整合出 " + groups.Count.ToString("N0", CultureInfo.CurrentCulture) + " 組缺陷");
         }
 
         private void SetObjectDetectionDefectIntegrationResultsStatus(string text)

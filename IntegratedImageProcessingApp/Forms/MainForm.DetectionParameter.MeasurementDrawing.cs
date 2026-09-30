@@ -1445,7 +1445,8 @@ namespace IntegratedImageProcessingApp.Forms
                             objectBounds,
                             null,
                             image,
-                            out mask))
+                            out mask,
+                            true))
                     {
                         using (mask)
                         using (Bitmap overlay = CreateObjectDetectionMaskOverlay(

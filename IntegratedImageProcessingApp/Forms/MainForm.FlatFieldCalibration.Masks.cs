@@ -147,7 +147,10 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter,
             Label resultLabel,
             Button applyButton,
-            bool preserveCurrentProfile = false)
+            bool preserveCurrentProfile = false,
+            bool rebuildMissingSources = false,
+            Action<long> masksComputed = null,
+            Action<double> correctionComputed = null)
         {
             if (parameter == null || resultLabel == null ||
                 string.IsNullOrWhiteSpace(parameter.FlatFieldMaskPrimaryId))
@@ -271,24 +274,32 @@ namespace IntegratedImageProcessingApp.Forms
                 statusLabel.Text = parameter.DisplayName + "：正在準備所有 ROI 的平場 MASK 預覽...";
 
                 int[] failureCounts = new int[2];
+                Stopwatch maskBuildStopwatch = Stopwatch.StartNew();
                 bool completed = await Task.Run(
                     delegate
                     {
                         if (!BuildObjectDetectionFlatFieldMaskOverlays(
                             objects, maskParameter, largeSource, original,
-                            generation, createdOverlays, out failureCounts[0]))
+                            generation, createdOverlays, out failureCounts[0],
+                            rebuildMissingSources))
                         {
                             return false;
                         }
                         if (useMaskParameter != null &&
                             !BuildObjectDetectionFlatFieldMaskOverlays(
                                 objects, useMaskParameter, largeSource, original,
-                                generation, createdUseOverlays, out failureCounts[1]))
+                                generation, createdUseOverlays, out failureCounts[1],
+                                rebuildMissingSources))
                         {
                             return false;
                         }
                         return generation == objectDetectionFlatFieldEvaluationGeneration;
                     });
+                maskBuildStopwatch.Stop();
+                if (completed && masksComputed != null)
+                {
+                    masksComputed(maskBuildStopwatch.ElapsedMilliseconds);
+                }
                 if (!completed)
                 {
                     return;
@@ -348,7 +359,8 @@ namespace IntegratedImageProcessingApp.Forms
                         !objectDetectionFlatFieldCalibrationStatusLabel.IsDisposed)
                     {
                         await ShowSavedObjectDetectionFlatFieldCalibration(
-                            parameter, objectDetectionFlatFieldCalibrationStatusLabel, null);
+                            parameter, objectDetectionFlatFieldCalibrationStatusLabel, null,
+                            false, correctionComputed);
                     }
                     else if (canReuseCurrentProfile && renderedCount > 0 && hasUseMasks &&
                         objectDetectionFlatFieldCalibrationStatusLabel != null &&
@@ -356,7 +368,8 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         objectDetectionFlatFieldProfileMaskGeneration = generation;
                         await ShowSavedObjectDetectionFlatFieldCalibration(
-                            parameter, objectDetectionFlatFieldCalibrationStatusLabel, null, true);
+                            parameter, objectDetectionFlatFieldCalibrationStatusLabel, null,
+                            true, correctionComputed);
                     }
                 }
             }
@@ -433,7 +446,8 @@ namespace IntegratedImageProcessingApp.Forms
             Bitmap original,
             int generation,
             List<ObjectDetectionFlatFieldMaskOverlay> overlays,
-            out int failed)
+            out int failed,
+            bool rebuildMissingSources = false)
         {
             failed = 0;
             foreach (ObjectDefinitionDetectedObject item in objects)
@@ -445,7 +459,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                 Cv.Mat mask;
                 if (!TryGetObjectDetectionMeasurementMask(maskParameter, item.Number,
-                    item.Bounds, largeSource, original, out mask) || mask == null ||
+                    item.Bounds, largeSource, original, out mask, rebuildMissingSources) || mask == null ||
                     mask.Empty() || mask.Rows != item.Bounds.Height ||
                     mask.Cols != item.Bounds.Width)
                 {

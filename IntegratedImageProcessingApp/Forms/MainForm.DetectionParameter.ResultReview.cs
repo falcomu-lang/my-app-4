@@ -74,8 +74,9 @@ namespace IntegratedImageProcessingApp.Forms
         private bool? objectDetectionResultReviewImageLoadSucceeded;
         private long? objectDetectionResultReviewImageProcessingMilliseconds;
         private long? objectDetectionResultReviewMeasurementMilliseconds;
+        private long? objectDetectionResultReviewMeasurementDisplayMilliseconds;
         private long? objectDetectionResultReviewDefectMilliseconds;
-        private Stopwatch objectDetectionResultReviewStageStopwatch;
+        private long? objectDetectionResultReviewDefectDisplayMilliseconds;
         private string objectDetectionResultReviewActiveTimingStage;
         private ResultReviewMeasurementRowContext objectDetectionResultReviewSelectedMeasurement;
         private Timer objectDetectionResultReviewHighlightTimer;
@@ -664,6 +665,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 activeObjectDetectionParameterId = parameter.Id;
                 selectedObjectDetectionNumber = -1;
+                long imageProcessingMilliseconds = 0;
                 StartObjectDetectionResultReviewTimingStage("影像處理");
                 objectDetectionResultReviewStatusLabel.Text = "正在依參數執行物件定義處理...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：物件搜尋中...";
@@ -679,7 +681,10 @@ namespace IntegratedImageProcessingApp.Forms
                         definition,
                         definitionSignature,
                         objectDetectionResultReviewDefinitionCompletion);
+                    imageProcessingMilliseconds += Math.Max(0, objectDefinitionProcessingElapsedMilliseconds);
                 }
+                objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
+                UpdateObjectDetectionResultReviewTimingMemo();
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
                     return;
@@ -693,13 +698,34 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 selectedObjectDetectionNumber = objects[0].Number;
+                Stopwatch measurementDisplayStopwatch = Stopwatch.StartNew();
                 RefreshObjectDetectionMeasurementDisplay();
+                measurementDisplayStopwatch.Stop();
+                objectDetectionResultReviewMeasurementDisplayMilliseconds =
+                    (objectDetectionResultReviewMeasurementDisplayMilliseconds ?? 0) +
+                    measurementDisplayStopwatch.ElapsedMilliseconds;
                 RefreshObjectDetectionFlatFieldDisplay();
                 objectDetectionResultReviewStatusLabel.Text =
                     "已找到 " + objects.Count.ToString("N0", CultureInfo.CurrentCulture) +
                     " 個物件，正在載入參數內保存的 MASK 與平場校正值...";
                 await ApplyObjectDetectionFlatFieldMaskAsync(
-                    parameter, objectDetectionFlatFieldResultLabel, null);
+                    parameter,
+                    objectDetectionFlatFieldResultLabel,
+                    null,
+                    false,
+                    true,
+                    elapsed =>
+                    {
+                        imageProcessingMilliseconds += elapsed;
+                        objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
+                        UpdateObjectDetectionResultReviewTimingMemo();
+                    },
+                    elapsed =>
+                    {
+                        imageProcessingMilliseconds += (long)Math.Round(elapsed);
+                        objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
+                        UpdateObjectDetectionResultReviewTimingMemo();
+                    });
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
                     return;
@@ -714,21 +740,33 @@ namespace IntegratedImageProcessingApp.Forms
                         : calibrationStatus);
                 }
 
-                StopObjectDetectionResultReviewTimingStage();
-                StartObjectDetectionResultReviewTimingStage("缺陷檢測");
+                objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
+                StartObjectDetectionResultReviewTimingStage("缺陷檢測計算");
                 objectDetectionResultReviewStatusLabel.Text =
                     "平場校正已套用，正在執行已啟用的缺陷條件...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：缺陷檢測中...";
 
                 leftImageTabControl.SelectedTab = objectDetectionDefectDisplayTabPages[4];
-                await RunObjectDetectionDefectProcessingAsync(parameter.Id, null);
+                await RunObjectDetectionDefectProcessingAsync(
+                    parameter.Id,
+                    null,
+                    elapsed =>
+                    {
+                        objectDetectionResultReviewDefectMilliseconds = elapsed;
+                        UpdateObjectDetectionResultReviewTimingMemo();
+                    },
+                    elapsed =>
+                    {
+                        objectDetectionResultReviewDefectDisplayMilliseconds = elapsed;
+                        UpdateObjectDetectionResultReviewTimingMemo();
+                    });
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
                     return;
                 }
 
                 StopObjectDetectionResultReviewTimingStage();
-                StartObjectDetectionResultReviewTimingStage("尺寸量測");
+                StartObjectDetectionResultReviewTimingStage("尺寸量測計算");
                 objectDetectionResultReviewStatusLabel.Text = "正在計算尺寸量測與良品條件...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：尺寸判定中...";
                 await BuildObjectDetectionResultReviewResultsAsync(parameter, definition, objects);
@@ -738,9 +776,19 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
                 leftImageTabControl.SelectedTab = objectDetectionMeasurementTabPage;
+                measurementDisplayStopwatch = Stopwatch.StartNew();
                 RefreshObjectDetectionMeasurementDisplay();
+                measurementDisplayStopwatch.Stop();
+                objectDetectionResultReviewMeasurementDisplayMilliseconds =
+                    (objectDetectionResultReviewMeasurementDisplayMilliseconds ?? 0) +
+                    measurementDisplayStopwatch.ElapsedMilliseconds;
                 RefreshObjectDetectionFlatFieldDisplay();
+                Stopwatch defectDisplayStopwatch = Stopwatch.StartNew();
                 RefreshObjectDetectionDefectDisplay();
+                defectDisplayStopwatch.Stop();
+                objectDetectionResultReviewDefectDisplayMilliseconds =
+                    (objectDetectionResultReviewDefectDisplayMilliseconds ?? 0) +
+                    defectDisplayStopwatch.ElapsedMilliseconds;
                 objectDetectionResultReviewStatusLabel.Text =
                     BuildObjectDetectionResultReviewSummary(parameter, objects.Count);
                 statusLabel.Text = parameter.DisplayName + " 結果確認完成";
@@ -766,42 +814,20 @@ namespace IntegratedImageProcessingApp.Forms
         {
             objectDetectionResultReviewImageProcessingMilliseconds = null;
             objectDetectionResultReviewMeasurementMilliseconds = null;
+            objectDetectionResultReviewMeasurementDisplayMilliseconds = null;
             objectDetectionResultReviewDefectMilliseconds = null;
-            objectDetectionResultReviewStageStopwatch = null;
+            objectDetectionResultReviewDefectDisplayMilliseconds = null;
             objectDetectionResultReviewActiveTimingStage = null;
         }
 
         private void StartObjectDetectionResultReviewTimingStage(string stage)
         {
-            StopObjectDetectionResultReviewTimingStage();
             objectDetectionResultReviewActiveTimingStage = stage;
-            objectDetectionResultReviewStageStopwatch = Stopwatch.StartNew();
             UpdateObjectDetectionResultReviewTimingMemo();
         }
 
         private void StopObjectDetectionResultReviewTimingStage()
         {
-            if (objectDetectionResultReviewStageStopwatch == null)
-            {
-                return;
-            }
-
-            objectDetectionResultReviewStageStopwatch.Stop();
-            long elapsed = objectDetectionResultReviewStageStopwatch.ElapsedMilliseconds;
-            if (string.Equals(objectDetectionResultReviewActiveTimingStage, "影像處理", StringComparison.Ordinal))
-            {
-                objectDetectionResultReviewImageProcessingMilliseconds = elapsed;
-            }
-            else if (string.Equals(objectDetectionResultReviewActiveTimingStage, "尺寸量測", StringComparison.Ordinal))
-            {
-                objectDetectionResultReviewMeasurementMilliseconds = elapsed;
-            }
-            else if (string.Equals(objectDetectionResultReviewActiveTimingStage, "缺陷檢測", StringComparison.Ordinal))
-            {
-                objectDetectionResultReviewDefectMilliseconds = elapsed;
-            }
-
-            objectDetectionResultReviewStageStopwatch = null;
             objectDetectionResultReviewActiveTimingStage = null;
             UpdateObjectDetectionResultReviewTimingMemo();
         }
@@ -838,10 +864,30 @@ namespace IntegratedImageProcessingApp.Forms
             AppendDebugTimingMemo("影像處理總時間：" + totalText);
             AppendDebugTimingMemo("  影像處理：" + FormatObjectDetectionResultReviewStageTime(
                 objectDetectionResultReviewImageProcessingMilliseconds, "影像處理"));
-            AppendDebugTimingMemo("  尺寸量測：" + FormatObjectDetectionResultReviewStageTime(
-                objectDetectionResultReviewMeasurementMilliseconds, "尺寸量測"));
-            AppendDebugTimingMemo("  缺陷檢測：" + FormatObjectDetectionResultReviewStageTime(
-                objectDetectionResultReviewDefectMilliseconds, "缺陷檢測"));
+            AppendDebugTimingMemo("  尺寸量測計算：" + FormatObjectDetectionResultReviewStageTime(
+                objectDetectionResultReviewMeasurementMilliseconds, "尺寸量測計算"));
+            AppendDebugTimingMemo("  缺陷檢測計算：" + FormatObjectDetectionResultReviewStageTime(
+                objectDetectionResultReviewDefectMilliseconds, "缺陷檢測計算"));
+
+            long displayMilliseconds = objectDetectionResultReviewImageLoadMilliseconds.GetValueOrDefault() +
+                objectDetectionResultReviewMeasurementDisplayMilliseconds.GetValueOrDefault() +
+                objectDetectionResultReviewDefectDisplayMilliseconds.GetValueOrDefault();
+            bool displayComplete = objectDetectionResultReviewImageLoadMilliseconds.HasValue &&
+                objectDetectionResultReviewMeasurementDisplayMilliseconds.HasValue &&
+                objectDetectionResultReviewDefectDisplayMilliseconds.HasValue;
+            string displayTotalText = displayComplete
+                ? displayMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms"
+                : objectDetectionResultReviewActiveTimingStage != null
+                    ? "執行中（已完成 " + displayMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms）"
+                    : displayMilliseconds > 0
+                        ? "未完成（已完成 " + displayMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms）"
+                        : "尚未執行";
+            AppendDebugTimingMemo("顯示處理總時間：" + displayTotalText);
+            AppendDebugTimingMemo("  讀取圖片：" + imageLoadText);
+            AppendDebugTimingMemo("  尺寸量測顯示：" + FormatObjectDetectionResultReviewStageTime(
+                objectDetectionResultReviewMeasurementDisplayMilliseconds, "尺寸量測顯示"));
+            AppendDebugTimingMemo("  缺陷檢測顯示：" + FormatObjectDetectionResultReviewStageTime(
+                objectDetectionResultReviewDefectDisplayMilliseconds, "缺陷檢測顯示"));
         }
 
         private string FormatObjectDetectionResultReviewStageTime(long? elapsedMilliseconds, string stage)
@@ -892,6 +938,8 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewMeasurementsGrid.Rows.Clear();
             objectDetectionResultReviewConditionsGrid.Rows.Clear();
             objectDetectionResultReviewDefectsGrid.Rows.Clear();
+            long calculationMilliseconds = 0;
+            long displayMilliseconds = 0;
 
             List<ObjectDetectionMeasurementRecordSettings> records = (parameter.MeasurementRecords ??
                 new List<ObjectDetectionMeasurementRecordSettings>())
@@ -923,6 +971,7 @@ namespace IntegratedImageProcessingApp.Forms
                         ObjectDetectionMeasurementStatistics statistics;
                         string error;
                         bool succeeded;
+                        Stopwatch calculationStopwatch = Stopwatch.StartNew();
                         try
                         {
                             succeeded = TryCalculateObjectDetectionMeasurementRecord(
@@ -931,7 +980,8 @@ namespace IntegratedImageProcessingApp.Forms
                                 detectedObject,
                                 maskParameter,
                                 out statistics,
-                                out error);
+                                out error,
+                                true);
                         }
                         catch (Exception exception)
                         {
@@ -939,10 +989,13 @@ namespace IntegratedImageProcessingApp.Forms
                             error = exception.Message;
                             succeeded = false;
                         }
+                        calculationStopwatch.Stop();
+                        calculationMilliseconds += calculationStopwatch.ElapsedMilliseconds;
 
                         if (succeeded && statistics != null)
                         {
                             statsByRecord[record.Number] = statistics;
+                            Stopwatch rowDisplayStopwatch = Stopwatch.StartNew();
                             int rowIndex = objectDetectionResultReviewMeasurementsGrid.Rows.Add(
                                 detectedObject.Number, record.Number, record.Name,
                                 string.Equals(record.Mode, "Parallel", StringComparison.OrdinalIgnoreCase)
@@ -965,9 +1018,12 @@ namespace IntegratedImageProcessingApp.Forms
                                     ObjectNumber = detectedObject.Number,
                                     Statistics = statistics
                                 };
+                            rowDisplayStopwatch.Stop();
+                            displayMilliseconds += rowDisplayStopwatch.ElapsedMilliseconds;
                         }
                         else
                         {
+                            Stopwatch rowDisplayStopwatch = Stopwatch.StartNew();
                             int rowIndex = objectDetectionResultReviewMeasurementsGrid.Rows.Add(
                                 detectedObject.Number, record.Number, record.Name,
                                 string.Equals(record.Mode, "Parallel", StringComparison.OrdinalIgnoreCase)
@@ -988,6 +1044,8 @@ namespace IntegratedImageProcessingApp.Forms
                                     DetectedObject = detectedObject,
                                     ObjectNumber = detectedObject.Number
                                 };
+                            rowDisplayStopwatch.Stop();
+                            displayMilliseconds += rowDisplayStopwatch.ElapsedMilliseconds;
                         }
                     }
                     contexts[detectedObject.Number] = new ResultReviewMeasurementContext
@@ -1002,9 +1060,19 @@ namespace IntegratedImageProcessingApp.Forms
                 selectedObjectDetectionNumber = originalSelection;
             }
 
+            Stopwatch conditionStopwatch = Stopwatch.StartNew();
             EvaluateObjectDetectionResultReviewConditions(parameter, objects, contexts);
+            conditionStopwatch.Stop();
+            calculationMilliseconds += conditionStopwatch.ElapsedMilliseconds;
+            Stopwatch resultDisplayStopwatch = Stopwatch.StartNew();
             AddObjectDetectionResultReviewDefectRows(parameter, definition);
             ApplyObjectDetectionResultReviewVerdictStyles();
+            resultDisplayStopwatch.Stop();
+            displayMilliseconds += resultDisplayStopwatch.ElapsedMilliseconds;
+            objectDetectionResultReviewMeasurementMilliseconds = calculationMilliseconds;
+            objectDetectionResultReviewMeasurementDisplayMilliseconds =
+                (objectDetectionResultReviewMeasurementDisplayMilliseconds ?? 0) + displayMilliseconds;
+            UpdateObjectDetectionResultReviewTimingMemo();
         }
 
         private void ObjectDetectionResultReviewMeasurementsGrid_CellClick(
