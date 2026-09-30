@@ -426,6 +426,14 @@ namespace IntegratedImageProcessingApp.Forms
             bool succeeded,
             string errorMessage)
         {
+            if (objectDetectionResultReviewDefinitionCompletion != null &&
+                string.Equals(objectDetectionResultReviewPendingDefinitionId, definitionId,
+                    StringComparison.Ordinal))
+            {
+                objectDetectionResultReviewDefinitionCompletion.TrySetResult(
+                    succeeded ? string.Empty : errorMessage ?? "物件定義處理失敗。");
+            }
+
             if (string.IsNullOrWhiteSpace(activeObjectDetectionParameterId))
             {
                 return;

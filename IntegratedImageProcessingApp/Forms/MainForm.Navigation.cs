@@ -212,8 +212,8 @@ namespace IntegratedImageProcessingApp.Forms
             else if (selectedFunction == ObjectDetectionResultReviewMenuText)
             {
                 HideImageProcessingFlowTree();
-                parameterPlaceholderLabel.Text =
-                    "這裡會顯示檢測參數的結果確認內容；目前尚未開始結果確認流程。";
+                ShowObjectDetectionResultReviewPanel();
+                return;
             }
             else if (GetObjectJudgementGroupId(selectedFunction) != null)
             {
@@ -363,6 +363,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ResetRightFunctionPanel()
         {
+            ExitObjectDetectionResultReviewMode();
             HideImageRelationParameterPanel();
             HideObjectJudgementParameterPanel();
             HideObjectDefinitionParameterPanel();

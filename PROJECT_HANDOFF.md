@@ -1,6 +1,6 @@
 # Project Handoff：整合式影像處理軟體
 
-文件快照：2026-09-28。此文件描述本機工作樹；本機變更不代表已提交或推送到 GitHub。
+文件快照：2026-09-29。此文件描述本機工作樹；本機變更不代表已提交或推送到 GitHub。
 
 ## 1. 專案與 Git 狀態
 
@@ -8,10 +8,10 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C#、Windows Forms、.NET Framework 4.7.2、OpenCvSharp。
-- 分支：`main`；目前最新提交 `04f9f33 新增量測紀錄編輯與 MASK 裁切顯示`。
-- 工作樹包含已修改及未追蹤的程式檔，涵蓋功能拆分、缺陷檢測、大型影像／OpenCV 服務與本次顯示效能調整；尚未納入最新提交。這次只整理文件，未提交或推送 GitHub。
+- 分支：`main`；目前 HEAD `81ad967 Polish defect integration result layout`。
+- 工作樹另有未提交的「參數結果確認」與 A／B 備援判定修改；本次調整判定流程並整理文件，未提交或推送 GitHub。
 - 最新 Debug 建置使用獨立輸出 `IntegratedImageProcessingApp\bin\Debug-Codex-Sharp\`，成功。一般 `bin\Debug` 輸出曾因程式執行中鎖住 EXE 而無法覆寫；未關閉使用者程式。
-- 本次沒有啟動 GUI 或以實際影像做自動驗收；最新平移／清晰度調整仍待使用者實測。
+- 參數結果確認版本已成功建置；本次沒有啟動 GUI 或以實際影像完成端到端驗收。最新平移／清晰度調整與結果確認流程仍待使用者實測。
 
 ## 2. 系統流程與責任邊界
 
@@ -27,6 +27,7 @@
        ├─ 尺寸量測與尺寸良品判斷條件
        ├─ 平場校正
        └─ 缺陷量測設定與四個檢測核心
+  -> 參數結果確認（選參數／載入同規格影像／執行／檢視判定）
 ```
 
 WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial MainForm` 將功能拆在多個檔案，不代表已完全轉成 MVVM 或服務導向架構。大型影像顯示、灰階解碼、ROI 快取和部分 OpenCV 運算已有獨立服務／控制項。
@@ -53,7 +54,7 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 - 尺寸量測記錄可保存多條量測定義、名稱、測量模式／方向、平行線數、繪製方向、ROI 外資訊、MASK 來源及穩定識別資訊；載入參數時讀回。
 - 量測位置以 ROI 相對座標保存，以面對物件大小、縮放與旋轉的差異。結果支援像素及依 X/Y 精度換算的 mm；斜向距離使用兩軸精度分別換算。
 - 1000 條量測線的顯示會依縮放抽樣以降低遠景繪製負擔，完整線數仍用於實際量測；合併線段繪圖時已明確分開各路徑，避免 GDI+ 額外連接相鄰線段。此顯示需實機確認線距與端點外觀。
-- 良品條件編輯器支援尺寸量測編號語法，包括不區分大小寫的 `MIN(n)`、`AVG(n)`、`MAX(n)`，並兼容專案舊語法。要把條件編輯／保存，與完整產品判定流程的端到端驗收分開看待。
+- 良品條件編輯器支援尺寸量測編號語法，包括不區分大小寫的 `MIN(n)`、`AVG(n)`、`MAX(n)`，並兼容專案舊語法。A 規先判；A 規符合即通過，不符合才進入 B 規；B 規可獨立使用。A 規計算錯誤或缺少量測資料屬於待確認，不當成不符合後轉判 B。
 - 主參數有相機 X、Y 向 `mm/pixel` 精度設定。缺少舊參數時以 1 作為顯示預設，但換算須維持未啟用，避免把預設誤認為已校正精度；實際 mm 值仍需相機標定資料。
 
 ### 3.4 平場校正
@@ -74,6 +75,17 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 - 平行運算選項把每個物件 ROI 的四個核心分支作為可並行工作單位；物件數乘四是工作數概念，不代表會無上限地建立相同數目的 OS 執行緒。應確認並行度受控、取消與例外狀況能正常收尾。
 - 重新執行、載入圖片、刪除檢測參數及關閉視窗時會釋放舊結果預覽等資源；仍需以大圖反覆操作觀察記憶體回收。
 
+### 3.6 參數結果確認
+
+- 使用流程規劃為：工程師設定並保存檢測參數；使用者在結果確認頁選參數、載入同規格圖片、明確執行，再檢視影像與數值判定。設定和檢視分離符合預期操作方式；目前屬逐步完成中的功能，不代表規劃需要重做。
+- 此主頁是檢測與判定的唯讀操作頁，不提供參數編輯。使用者選擇既有檢測參數、載入影像尺寸符合參考規格的圖片，再按「執行確認」。
+- 執行時依所選參數關聯的物件定義重新確認物件；接著執行平場與已啟用的缺陷核心，並逐物件計算量測記錄與尺寸良品條件。
+- 左側顯示頁籤包含量測位置、平場校正、缺陷顯示（平場／條件一／條件二／條件三）及整合結果；右側表格呈現量測統計、尺寸條件的符合／不符合／未判定數，以及各核心與整合缺陷數和耗時。
+- 整體判定只有在尺寸條件、缺陷範圍及核心結果足以判定時才顯示良品；任一尺寸條件不符或檢出整合缺陷時為不良，設定不足或結果未完成時為待確認。這是檢視結果用途，尚未取代正式產品放行／資料匯出流程。
+- 目前總判定要求至少有啟用的尺寸良品條件及已設定的缺陷檢測範圍；若實際作業允許只做尺寸或只做缺陷，需再調整總判定政策。整批總判定目前採任一物件／條件不符合即為不良，應以實際產品流程確認是否符合預期。
+- 待補設定防呆：若啟用的缺陷核心沒有開啟暗部或亮部門檻，目前有可能得到零缺陷元件並被當成「未檢出」。完成防呆後，未設定有效門檻應顯示待設定／待確認，不可當作檢測通過。這是尚待補齊的檢測前置條件，不改變設定與執行分離的流程方向。
+- 功能已通過 Debug 建置；尚待使用同規格實際圖片驗證參數切換、圖片載入、物件重新搜尋、七個影像頁籤、尺寸語法解析、缺陷運算及整體判定正確性。
+
 ## 4. 重要設定與資料
 
 - 專案參數由 `SystemParameterSettings` 建模、`SystemParameterIniService` 序列化到 `SystemParameters.ini`。參數格式變更需同時檢查預設值、載入相容性、保存與讀回。
@@ -83,7 +95,7 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 
 ## 5. 檔案職責與行數快照
 
-行數是 2026-09-28 本機工作樹的快照，後續修改即會變動。`obj`、`bin` 產生檔不列入；Designer 檔雖主要由設計器維護，仍列出供定位。
+行數是 2026-09-29 本機工作樹的快照，後續修改即會變動。`obj`、`bin` 產生檔不列入；Designer 檔雖主要由設計器維護，仍列出供定位。
 
 ### 專案入口
 
@@ -108,7 +120,7 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 | 檔案 | 行數 | 職責 |
 |---|---:|---|
 | `Forms/MainForm.cs` | 2,375 | 主視窗主要狀態、UI 佈局協調及跨功能流程協調；共用大圖 MASK 快取狀態已委派至服務。 |
-| `Forms/MainForm.Navigation.cs` | 809 | 主視窗鍵盤、功能清單選取與導覽事件。 |
+| `Forms/MainForm.Navigation.cs` | 882 | 主視窗鍵盤、功能清單選取與導覽事件；切入／離開參數結果確認模式。 |
 | `Forms/MainForm.ImageRelations.cs` | 441 | 左側影像關聯清單的新增、編輯、刪除及選單 UI。 |
 | `Forms/MainForm.FunctionTree.cs` | 961 | ROI、影像處理群組／步驟的清單操作與右鍵選單。 |
 | `Forms/MainForm.Designer.cs` | 1,525 | 主視窗設計器控制項宣告／初始化。 |
@@ -130,14 +142,14 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 
 | 檔案 | 行數 | 職責 |
 |---|---:|---|
-| `Forms/MainForm.DetectionParameter.cs` | 1,283 | 檢測參數頁籤與主要設定 UI 協調。 |
+| `Forms/MainForm.DetectionParameter.cs` | 1,446 | 檢測參數頁籤與主要設定 UI 協調，並通知結果確認頁物件定義處理完成。 |
 | `Forms/MainForm.DetectionParameter.Management.cs` | 529 | 檢測參數新增、刪除、選取及生命週期。 |
 | `Forms/MainForm.DetectionParameter.Measurement.cs` | 966 | 尺寸量測頁面、控制項與共用量測狀態。 |
 | `Forms/MainForm.DetectionParameter.MeasurementRecords.cs` | 565 | 量測紀錄表格、新增／編輯／刪除、保存與讀回。 |
 | `Forms/MainForm.DetectionParameter.MeasurementCalculation.cs` | 667 | MASK 裁切快取、長度統計、連續／忽略斷線邏輯與 mm 換算。 |
 | `Forms/MainForm.DetectionParameter.MeasurementDrawing.cs` | 1,165 | Ctrl 畫線互動、ROI 相對幾何、平行線、顯示抽樣與結果 overlay。 |
 | `Forms/MainForm.DetectionParameter.MaskSource.cs` | 1,387 | 處理階段 MASK 來源選擇、來源解析與設定套用。 |
-| `Forms/MainForm.DetectionParameter.GoodCondition.cs` | 977 | 尺寸良品判斷條件的編輯、保存與語法協調。 |
+| `Forms/MainForm.DetectionParameter.GoodCondition.cs` | 1,052 | 尺寸良品判斷條件的編輯、保存、A／B 備援語意說明及語法協調。 |
 | `Forms/MainForm.FlatFieldCalibration.cs` | 1,293 | 平場校正 UI、取樣互動、流程協調與狀態管理。 |
 | `Forms/MainForm.FlatFieldCalibration.Profile.cs` | 462 | 校正曲線計算、平滑／空洞補值、設定簽章與校正設定保存／讀取。 |
 | `Forms/MainForm.FlatFieldCalibration.Correction.cs` | 568 | 校正影像預覽、保存結果套用、分塊像素補正與計時資料。 |
@@ -146,6 +158,7 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 | `Forms/MainForm.DetectionParameter.DefectRegion.cs` | 1,006 | 缺陷檢測矩形的建立、編輯與 ROI 相對範圍設定。 |
 | `Forms/MainForm.DetectionParameter.DefectCores.cs` | 803 | 四核心設定頁、每核心控制項及單核心／全核心命令。 |
 | `Forms/MainForm.DetectionParameter.DefectProcessing.cs` | 1,341 | 缺陷核心運算、篩選、並行工作與結果套用。 |
+| `Forms/MainForm.DetectionParameter.ResultReview.cs` | 1,417 | 唯讀參數結果確認頁；載入同規格圖片、觸發物件／缺陷處理、計算量測與 A 優先／B 備援良品條件，並呈現各核心及整合判定。 |
 
 ### Services：影像運算、快取、參數
 
@@ -174,12 +187,13 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU"
 
 Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLayout` 是先前使用的輸出資料夾，不代表目前最新測試版。
 
-2026-09-28 本機效能調整版輸出為 `IntegratedImageProcessingApp\bin\Debug-Codex-Sharp\IntegratedImageProcessingApp.exe`。此為獨立 Debug 輸出；目前一般 `bin\Debug` EXE 曾被執行中的程式鎖定，建置新版本後需重新啟動測試版才能載入新程式碼。
+2026-09-29 參數結果確認與 A／B 備援判定版已成功建置，輸出為 `IntegratedImageProcessingApp\bin\Debug\IntegratedImageProcessingApp.exe`。先前獨立測試輸出位於 `IntegratedImageProcessingApp\bin\Debug-Codex-Sharp\`；一般 `bin\Debug` EXE 曾被執行中的程式鎖定，建置新版本後需重新啟動測試版才能載入新程式碼。
 
 ## 7. 驗證清單
 
 ### 已做
 
+- 2026-09-29 參數結果確認頁與 A 優先／B 備援判定流程 Debug 建置成功；`git diff --check` 通過。尚未以真實影像進行 GUI 端到端驗收或自動化判定測試。
 - 2026-09-28 最新 Debug-Codex-Sharp 獨立輸出建置成功。
 - 平移時快取磚塊上限調為 64、預覽長邊上限與預覽層級增為 3072；改動目標是低倍率流暢度與中低倍率清晰度折衷，尚無本機 FPS 數據。
 - 尺寸量測疊圖改為快取 `GraphicsPath`、依螢幕像素密度抽樣顯示，並以 `StartFigure` 保持每條線獨立；實際量測資料不抽樣。
@@ -190,6 +204,11 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 
 ### 尚待手動／端到端驗收
 
+- 在「參數結果確認」選擇不同已保存參數、載入相同尺寸圖片並執行；確認左側量測／平場／各缺陷核心／整合頁籤同步顯示該次影像的結果。
+- 以含多個物件的實際圖片核對量測統計、`MIN(n)`／`AVG(n)`／`MAX(n)` 等尺寸判定語法、A 通過、A 不符後 B 通過／不符、B 單獨使用、A 計算錯誤時待確認等分支，以及缺陷核心、整合缺陷數和整體判定。
+- 測試圖片規格不符、無物件定義、找不到物件、未設定缺陷範圍／平場值、核心未完成等情境；頁面應清楚呈現未完成或待確認，不得誤報良品。
+- 確認所有啟用的缺陷核心至少設定暗部或亮部門檻；未設定任何有效門檻時不得以零檢出判成良品。
+- 由產品流程確認尺寸條件與缺陷檢測是否都必須設定，以及總判定應以整批或每枚物件為單位。
 - 啟動程式，檢查原圖、待測、平場和四個缺陷預覽外框、影像位置、縮放平移一致性。
 - 使用最新版 `Debug-Codex-Sharp` 對同一張大圖測試 `0.03X`、`0.04X`、`0.05X`、`0.06X`、`0.14X` 平移：分別記錄流暢度、平移中清晰度、放開滑鼠後清晰度及遮罩／ROI 對位；確認 64 塊上限不會在較大視窗或不同影像尺寸下重新造成卡頓。
 - 在待量測頁測試 1000 條線的遠景顯示，確認沒有多餘的垂直／斜向連接線、線距觀感可接受，且縮放後顯示與實際統計一致。
@@ -204,12 +223,13 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 
 ## 8. 後續建議順序
 
-1. 先用真實產品影像完成缺陷四核心視覺與結果驗收，記錄每核心的輸入圖、門檻／形態處理結果、MASK 及合格元件數。
-2. 以代表性 ROI 數量做序列與平行模式對照；量測吞吐、CPU、記憶體與取消響應，確定合理的並行上限。
-3. 建立參數往返測試：新舊 INI、MASK 穩定識別、量測、平場補值與四核心結果設定。
-4. 完成端到端尺寸良品判定與 mm 校正驗收，補上測試資料與可重複步驟。
-5. 再評估把大型流程協調從 `MainForm` 拆成服務；每次只搬一個責任並保持結果對照，避免只為降低行數而大規模重構。
-6. 完成驗收後再整理提交與 GitHub 發布；目前工作樹尚未提交／推送。
+1. 先補齊檢測前置條件防呆與算式解析驗證，確認未設定門檻或無法計算時不會誤判通過。
+2. 以真實產品影像完成參數結果確認端到端驗收，核對尺寸語法、A／B 備援、單物件與整批判定，以及影像 overlay。
+3. 由產品流程確認尺寸與缺陷條件是否都必填、總判定粒度，以及結果履歷需求。
+4. 以代表性 ROI 數量做序列與平行模式對照；量測吞吐、CPU、記憶體與取消響應，確定合理的並行上限。
+5. 建立參數往返測試：新舊 INI、MASK 穩定識別、量測、平場補值與四核心結果設定。
+6. 再評估把大型流程協調從 `MainForm` 拆成服務；每次只搬一個責任並保持結果對照，避免只為降低行數而大規模重構。
+7. 完成驗收後再整理提交與 GitHub 發布；目前工作樹尚未提交／推送。
 
 ## 9. 維護注意事項
 
