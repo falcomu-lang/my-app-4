@@ -87,6 +87,21 @@ namespace IntegratedImageProcessingApp.Controls
             get { return _isPanning || _isSynchronizedPanning || _isResizingRoi; }
         }
 
+        public Size ImageSize
+        {
+            get
+            {
+                lock (_imageLock)
+                {
+                    int width;
+                    int height;
+                    return TryGetImageSizeUnsafe(out width, out height)
+                        ? new Size(width, height)
+                        : Size.Empty;
+                }
+            }
+        }
+
         public bool IsViewInteractionInProgress
         {
             get { return IsPanning || IsZoomSettling(); }

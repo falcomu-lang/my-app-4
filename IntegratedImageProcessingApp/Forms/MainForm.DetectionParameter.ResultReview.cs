@@ -408,7 +408,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewStatusLabel = new Label
             {
                 Dock = DockStyle.Fill,
-                Text = "選擇檢測參數與同規格圖片後，可執行尺寸與缺陷確認。",
+                Text = "選擇檢測參數並載入同規格圖片後，系統會自動執行尺寸與缺陷確認。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(75, 83, 95),
                 Padding = new Padding(2, 0, 2, 0),
@@ -658,7 +658,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewStatusLabel.Text =
                 string.IsNullOrWhiteSpace(choice.Parameter.ObjectDefinitionId)
                     ? "此檢測參數尚未關聯物件定義結果。"
-                    : "目前參數：" + choice.Parameter.DisplayName + "；請載入同規格圖片後執行確認。";
+                    : "目前參數：" + choice.Parameter.DisplayName + "；載入同規格圖片後會自動執行確認。";
         }
 
         private async Task LoadObjectDetectionResultReviewImageAsync()
@@ -728,6 +728,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                 isLoadingImage = true;
                 SetObjectDetectionResultReviewControlsEnabled(false);
+                bool imageLoadedSuccessfully = false;
                 try
                 {
                     objectDetectionResultReviewStatusLabel.Text = "正在載入圖片...";
@@ -753,10 +754,11 @@ namespace IntegratedImageProcessingApp.Forms
                         Path.GetFileName(dialog.FileName) + "  (" +
                         selectedSize.Width.ToString("N0", CultureInfo.CurrentCulture) + " x " +
                         selectedSize.Height.ToString("N0", CultureInfo.CurrentCulture) + ")";
-                    objectDetectionResultReviewStatusLabel.Text = "圖片已載入；請執行確認以更新所有結果。";
+                    objectDetectionResultReviewStatusLabel.Text = "圖片已載入，準備依目前參數更新所有結果...";
                     RefreshObjectDetectionFlatFieldDisplay();
                     RefreshObjectDetectionMeasurementDisplay();
                     RefreshObjectDetectionDefectDisplay();
+                    imageLoadedSuccessfully = true;
                 }
                 catch (Exception exception)
                 {
@@ -773,6 +775,13 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     isLoadingImage = false;
                     SetObjectDetectionResultReviewControlsEnabled(true);
+                }
+
+                if (imageLoadedSuccessfully && IsObjectDetectionResultReviewUiAvailable())
+                {
+                    objectDetectionResultReviewStatusLabel.Text =
+                        "圖片已載入，正在使用目前選取的檢測參數執行尺寸與缺陷判定...";
+                    await RunObjectDetectionResultReviewAsync();
                 }
             }
         }

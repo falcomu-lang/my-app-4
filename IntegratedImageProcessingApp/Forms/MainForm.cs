@@ -2270,24 +2270,14 @@ namespace IntegratedImageProcessingApp.Forms
 
                 isLoadingImage = true;
                 string fileName = Path.GetFileName(dialog.FileName);
+                Size previousImageSize = leftOriginalDisplayControl.ImageSize;
 
                 try
                 {
                     statusLabel.Text = "讀取圖片中：" + fileName;
                     leftImageTabControl.SelectedTab = leftOriginalTabPage;
                     rightImageTabControl.SelectedTab = rightOriginalTabPage;
-                    rightOriginalDisplayControl.ClearRoiOverlay();
-                    leftPreprocessedDisplayControl.ClearRoiOverlay();
-                    rightPreprocessedDisplayControl.ClearRoiOverlay();
-                    leftProcessedDisplayControl.ClearRoiOverlay();
-                    rightProcessedDisplayControl.ClearRoiOverlay();
-                    leftBlockProcessingDisplayControl.ClearRoiOverlay();
-                    rightBlockProcessingDisplayControl.ClearRoiOverlay();
                     systemParameters.LastImagePath = dialog.FileName;
-                    systemParameters.RoiEnabled = false;
-                    systemParameters.Roi = Rectangle.Empty;
-                    systemParameters.RoiRegions.Clear();
-                    selectedRoiIndex = -1;
                     selectedImageProcessingStepIndex = -1;
                     selectedImageProcessingGroupId = null;
                     RebuildVisibleRoiItems();
@@ -2297,7 +2287,19 @@ namespace IntegratedImageProcessingApp.Forms
                     SyncVisibleImageDisplaysFromLeft();
                     SaveSystemParameters();
 
+                    Size loadedImageSize = leftOriginalDisplayControl.ImageSize;
                     statusLabel.Text = "已讀取圖片：" + fileName;
+                    if (!previousImageSize.IsEmpty &&
+                        !loadedImageSize.IsEmpty &&
+                        previousImageSize != loadedImageSize)
+                    {
+                        statusLabel.Text += string.Format(
+                            "；ROI 設定已保留，影像尺寸由 {0}x{1} 變更為 {2}x{3}，請確認 ROI 座標。",
+                            previousImageSize.Width,
+                            previousImageSize.Height,
+                            loadedImageSize.Width,
+                            loadedImageSize.Height);
+                    }
                 }
                 catch (Exception ex)
                 {
