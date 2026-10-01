@@ -35,6 +35,7 @@ namespace IntegratedImageProcessingApp.Controls
         private const int MaxCachedTilesWhilePanning = 64;
         private const int TileRefreshIntervalMs = 33;
         private const int PanInvalidateIntervalMs = 16;
+        private const int PanOverlaySettleIntervalMs = 120;
         private const int StatusUpdateIntervalMs = 60;
         private const int ZoomSettleIntervalMs = 180;
         private const long MaxDisplayPixels = 50000000L;
@@ -47,6 +48,7 @@ namespace IntegratedImageProcessingApp.Controls
         private float _zoom = 1f;
         private PointF _imageOffset = PointF.Empty;
         private bool _isPanning;
+        private bool _panMovedSinceMouseDown;
         private bool _isSynchronizedPanning;
         private Point _lastMousePoint;
         private bool _suppressViewChanged;
@@ -64,6 +66,7 @@ namespace IntegratedImageProcessingApp.Controls
         private bool _tileRefreshPending;
         private int _tileRefreshCallbackPending;
         private DateTime _lastPanInvalidateUtc = DateTime.MinValue;
+        private DateTime _lastPanCompletedUtc = DateTime.MinValue;
         private DateTime _lastStatusUpdateUtc = DateTime.MinValue;
         private DateTime _lastZoomUtc = DateTime.MinValue;
         private const int ViewportPrefetchDelayMs = 120;
@@ -87,6 +90,16 @@ namespace IntegratedImageProcessingApp.Controls
         public bool IsViewInteractionInProgress
         {
             get { return IsPanning || IsZoomSettling(); }
+        }
+
+        public bool IsPanOverlaySettling
+        {
+            get
+            {
+                DateTime completedUtc = _lastPanCompletedUtc;
+                return completedUtc != DateTime.MinValue &&
+                    (DateTime.UtcNow - completedUtc).TotalMilliseconds < PanOverlaySettleIntervalMs;
+            }
         }
 
         public ImageDisplayControl()
@@ -954,6 +967,7 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             _isPanning = true;
+            _panMovedSinceMouseDown = false;
             _lastMousePoint = e.Location;
             _lastPanInvalidateUtc = DateTime.MinValue;
             viewerPanel.Cursor = Cursors.Hand;
@@ -1005,6 +1019,11 @@ namespace IntegratedImageProcessingApp.Controls
             int deltaX = e.X - _lastMousePoint.X;
             int deltaY = e.Y - _lastMousePoint.Y;
             _lastMousePoint = e.Location;
+            if (deltaX == 0 && deltaY == 0)
+            {
+                return;
+            }
+            _panMovedSinceMouseDown = true;
 
             lock (_imageLock)
             {
@@ -1057,13 +1076,51 @@ namespace IntegratedImageProcessingApp.Controls
                 return;
             }
 
+            bool panMoved = _panMovedSinceMouseDown;
+            _panMovedSinceMouseDown = false;
             _isPanning = false;
+            if (panMoved)
+            {
+                _lastPanCompletedUtc = DateTime.UtcNow;
+            }
             viewerPanel.Cursor = Cursors.Default;
             UpdateStatusLabel();
             viewerPanel.Invalidate();
             OnViewChanged();
             ScheduleViewportPrefetch();
+            if (panMoved)
+            {
+                SchedulePanOverlayRefresh();
+            }
             OnImagePointerMoved(e.Location, true);
+        }
+
+        private void SchedulePanOverlayRefresh()
+        {
+            Task.Delay(PanOverlaySettleIntervalMs).ContinueWith(delegate
+            {
+                if (IsDisposed || !IsHandleCreated)
+                {
+                    return;
+                }
+
+                try
+                {
+                    BeginInvoke(new Action(delegate
+                    {
+                        if (!IsDisposed && !_isPanning && !IsPanOverlaySettling)
+                        {
+                            viewerPanel.Invalidate();
+                        }
+                    }));
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+                catch (InvalidOperationException)
+                {
+                }
+            });
         }
 
         private void viewerPanel_MouseEnter(object sender, EventArgs e)

@@ -582,23 +582,27 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (!display.IsViewInteractionInProgress &&
-                displayIndex == ObjectDetectionDefectCoreKeys.Length)
+            bool deferCoreDetailOverlay = displayIndex < ObjectDetectionDefectCoreKeys.Length &&
+                display.IsPanOverlaySettling;
+            if (!display.IsViewInteractionInProgress && !deferCoreDetailOverlay)
             {
-                DrawObjectDetectionDefectCompositeCoreFrames(
-                    e.Graphics,
-                    e.Zoom,
-                    e.Offset,
-                    e.VisibleSourceRect);
-            }
-            else if (!display.IsViewInteractionInProgress)
-            {
-                DrawObjectDetectionDefectCoreResult(
-                    e.Graphics,
-                    e.Zoom,
-                    e.Offset,
-                    e.VisibleSourceRect,
-                    GetObjectDetectionDefectDisplayCoreKey(displayIndex));
+                if (displayIndex == ObjectDetectionDefectCoreKeys.Length)
+                {
+                    DrawObjectDetectionDefectCompositeCoreFrames(
+                        e.Graphics,
+                        e.Zoom,
+                        e.Offset,
+                        e.VisibleSourceRect);
+                }
+                else
+                {
+                    DrawObjectDetectionDefectCoreResult(
+                        e.Graphics,
+                        e.Zoom,
+                        e.Offset,
+                        e.VisibleSourceRect,
+                        GetObjectDetectionDefectDisplayCoreKey(displayIndex));
+                }
             }
 
             ObjectDefinitionDetectedObject selectedObject;
