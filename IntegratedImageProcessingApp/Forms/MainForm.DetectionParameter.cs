@@ -959,7 +959,7 @@ namespace IntegratedImageProcessingApp.Forms
                     Left = 62,
                     Top = 26,
                     Width = 110,
-                    Minimum = 0.000001m,
+                    Minimum = 0,
                     Maximum = 10000,
                     Value = Math.Max(0, Math.Min(10000, parameter.ColumnCount))
                 };
@@ -977,7 +977,7 @@ namespace IntegratedImageProcessingApp.Forms
                     Left = 248,
                     Top = 26,
                     Width = 110,
-                    Minimum = 0.000001m,
+                    Minimum = 0,
                     Maximum = 10000,
                     Value = Math.Max(0, Math.Min(10000, parameter.RowCount))
                 };

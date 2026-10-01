@@ -239,6 +239,18 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 selectedObjectDetectionNumber = objectDetectionResultReviewOverviewObjectNumber;
             }
+            if (leftImageTabControl != null &&
+                IsObjectDetectionDefectDisplayTab(leftImageTabControl.SelectedTab))
+            {
+                int selectedDefectDisplayIndex =
+                    GetObjectDetectionDefectDisplayIndex(leftImageTabControl.SelectedTab);
+                ImageDisplayControl selectedDefectDisplay =
+                    GetObjectDetectionDefectDisplayControl(selectedDefectDisplayIndex);
+                if (selectedDefectDisplay != null)
+                {
+                    selectedDefectDisplay.InvalidateImageView();
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(objectDetectionResultReviewImagePath) &&
                 !string.IsNullOrWhiteSpace(systemParameters.LastImagePath) &&
