@@ -77,7 +77,6 @@ namespace IntegratedImageProcessingApp.Forms
         private int objectDetectionResultReviewPreviousObjectNumber;
         private string objectDetectionResultReviewSelectedParameterId;
         private bool isPopulatingObjectDetectionResultReviewParameters;
-        private bool preserveObjectDetectionDefectDisplayOnModeExit;
         private TabPage objectDetectionResultReviewSelectedImageTabPage;
         private readonly Dictionary<ImageDisplayControl, ImageViewState>
             objectDetectionResultReviewPendingViewRestores =
@@ -310,15 +309,7 @@ namespace IntegratedImageProcessingApp.Forms
             selectedObjectDetectionNumber = objectDetectionResultReviewPreviousObjectNumber;
             objectDetectionResultReviewPreviousParameterId = null;
             objectDetectionResultReviewPreviousObjectNumber = 0;
-            preserveObjectDetectionDefectDisplayOnModeExit = true;
-            try
-            {
-                SetObjectDetectionParameterDisplayMode(false);
-            }
-            finally
-            {
-                preserveObjectDetectionDefectDisplayOnModeExit = false;
-            }
+            SetObjectDetectionParameterDisplayMode(false);
         }
 
         private Panel CreateObjectDetectionResultReviewPanel()

@@ -1201,10 +1201,6 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else
                 {
-                    if (!preserveObjectDetectionDefectDisplayOnModeExit)
-                    {
-                        ClearObjectDetectionDefectDisplayImage();
-                    }
                     leftImageTabControl.TabPages.Clear();
                     leftImageTabControl.TabPages.Add(leftOriginalTabPage);
                     leftImageTabControl.TabPages.Add(leftPreprocessedTabPage);
