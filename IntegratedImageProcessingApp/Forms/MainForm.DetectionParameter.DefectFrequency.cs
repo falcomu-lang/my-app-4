@@ -29,6 +29,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             public double DirectionalLineStrength { get; set; }
 
+            public double DirectionalLineLengthRatio { get; set; }
+
             public double DirectionalLineScore { get; set; }
 
             public bool IsDirectionalLineAnomaly { get; set; }
@@ -985,6 +987,12 @@ namespace IntegratedImageProcessingApp.Forms
                                                 tile,
                                                 windowMask,
                                                 validPixels)
+                                            : 0.0,
+                                        DirectionalLineLengthRatio = analyzeDirectionalLines
+                                            ? CalculateObjectDetectionLongestLineRatio(
+                                                tile,
+                                                windowMask,
+                                                sensitivity)
                                             : 0.0
                                     };
                                     objectCells.Add(cell);
@@ -1091,11 +1099,16 @@ namespace IntegratedImageProcessingApp.Forms
                     double lineMad = CalculateObjectDetectionFrequencyMedian(
                         objectCells.Select(cell => Math.Abs(cell.DirectionalLineStrength - lineMedian)).ToList());
                     double lineScale = Math.Max(0.025, lineMad * 1.4826);
+                    double minimumLineRatio = GetObjectDetectionFrequencyMinimumLineRatio(sensitivity);
                     foreach (ObjectDetectionFrequencyCell cell in objectCells)
                     {
-                        cell.DirectionalLineScore = Math.Max(
+                        double coherenceScore = Math.Max(
                             0.0,
                             (cell.DirectionalLineStrength - lineMedian) / lineScale);
+                        double segmentScore = cell.DirectionalLineLengthRatio <= 0.0
+                            ? 0.0
+                            : cell.DirectionalLineLengthRatio / minimumLineRatio * sensitivity;
+                        cell.DirectionalLineScore = Math.Max(coherenceScore, segmentScore);
                         cell.IsDirectionalLineAnomaly =
                             cell.DirectionalLineScore >= sensitivity;
                     }
@@ -1143,6 +1156,69 @@ namespace IntegratedImageProcessingApp.Forms
                 return Math.Min(1.0, Math.Sqrt(
                     (xx - yy) * (xx - yy) + 4.0 * xy * xy) / total);
             }
+        }
+
+        private static double CalculateObjectDetectionLongestLineRatio(
+            Cv.Mat tile,
+            Cv.Mat mask,
+            double sensitivity)
+        {
+            if (tile == null || tile.Empty() || tile.Type() != Cv.MatType.CV_8UC1 ||
+                mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
+                mask.Size() != tile.Size())
+            {
+                throw new ArgumentException("線段分析需要有效的灰階區塊與檢測範圍遮罩。", "tile");
+            }
+
+            double minimumLineRatio = GetObjectDetectionFrequencyMinimumLineRatio(sensitivity);
+            int minimumLineLength = Math.Max(
+                6,
+                (int)Math.Ceiling(Math.Min(tile.Width, tile.Height) * minimumLineRatio));
+            double strictness = (Math.Max(1.0, Math.Min(10.0, sensitivity)) - 1.0) / 9.0;
+            double cannyHighThreshold = 60.0 + strictness * 90.0;
+            double cannyLowThreshold = cannyHighThreshold * 0.45;
+            int houghThreshold = Math.Max(6, minimumLineLength / 5);
+            double maximumLineGap = Math.Max(2.0, Math.Min(tile.Width, tile.Height) * 0.08);
+
+            using (var smoothed = new Cv.Mat())
+            using (var edges = new Cv.Mat())
+            using (var maskedEdges = new Cv.Mat())
+            {
+                Cv.Cv2.GaussianBlur(tile, smoothed, new Cv.Size(3, 3), 0.8);
+                Cv.Cv2.Canny(
+                    smoothed,
+                    edges,
+                    cannyLowThreshold,
+                    cannyHighThreshold,
+                    3,
+                    true);
+                Cv.Cv2.BitwiseAnd(edges, mask, maskedEdges);
+
+                Cv.LineSegmentPoint[] segments = Cv.Cv2.HoughLinesP(
+                    maskedEdges,
+                    1.0,
+                    Math.PI / 180.0,
+                    houghThreshold,
+                    minimumLineLength,
+                    maximumLineGap);
+                if (segments == null || segments.Length == 0)
+                {
+                    return 0.0;
+                }
+
+                double longestLength = 0.0;
+                foreach (Cv.LineSegmentPoint segment in segments)
+                {
+                    longestLength = Math.Max(longestLength, segment.Length());
+                }
+                return longestLength / Math.Max(1.0, Math.Min(tile.Width, tile.Height));
+            }
+        }
+
+        private static double GetObjectDetectionFrequencyMinimumLineRatio(double sensitivity)
+        {
+            double clampedSensitivity = Math.Max(1.0, Math.Min(10.0, sensitivity));
+            return 0.25 + (clampedSensitivity - 1.0) * 0.05;
         }
 
         private static void DisposeObjectDetectionFrequencyResult(
