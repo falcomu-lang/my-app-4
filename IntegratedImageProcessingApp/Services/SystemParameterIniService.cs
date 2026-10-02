@@ -741,6 +741,11 @@ namespace IntegratedImageProcessingApp.Services
                         3.0,
                         1.0,
                         10.0),
+                    DefectFrequencyDirectionalLineEnabled = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyDirectionalLineEnabled",
+                        false),
                     DefectFrequencyShowHeatmap = GetBool(
                         sections,
                         SectionObjectDetection,
@@ -750,6 +755,16 @@ namespace IntegratedImageProcessingApp.Services
                         sections,
                         SectionObjectDetection,
                         prefix + ".DefectFrequencyShowAnomalyBoxes",
+                        true),
+                    DefectFrequencyShowDirectionalLineHeatmap = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyShowDirectionalLineHeatmap",
+                        true),
+                    DefectFrequencyShowDirectionalLineBoxes = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyShowDirectionalLineBoxes",
                         true),
                     DefectDetectionCores = ReadObjectDetectionDefectCores(
                         sections,
@@ -1129,8 +1144,11 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, parameter.DefectFrequencyEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyDirectionalLineEnabled={1}", prefix, parameter.DefectFrequencyDirectionalLineEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, parameter.DefectFrequencyShowHeatmap ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowAnomalyBoxes={1}", prefix, parameter.DefectFrequencyShowAnomalyBoxes ? "1" : "0");
+                    writer.WriteLine("{0}.DefectFrequencyShowDirectionalLineHeatmap={1}", prefix, parameter.DefectFrequencyShowDirectionalLineHeatmap ? "1" : "0");
+                    writer.WriteLine("{0}.DefectFrequencyShowDirectionalLineBoxes={1}", prefix, parameter.DefectFrequencyShowDirectionalLineBoxes ? "1" : "0");
                     List<ObjectDetectionDefectCoreSettings> defectCores =
                         parameter.DefectDetectionCores ?? new List<ObjectDetectionDefectCoreSettings>();
                     writer.WriteLine(

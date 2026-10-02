@@ -26,6 +26,12 @@ namespace IntegratedImageProcessingApp.Forms
             public double Score { get; set; }
 
             public bool IsAnomaly { get; set; }
+
+            public double DirectionalLineStrength { get; set; }
+
+            public double DirectionalLineScore { get; set; }
+
+            public bool IsDirectionalLineAnomaly { get; set; }
         }
 
         private sealed class ObjectDetectionFrequencyResult
@@ -35,6 +41,8 @@ namespace IntegratedImageProcessingApp.Forms
             public int ScanHeight { get; set; }
 
             public double Sensitivity { get; set; }
+
+            public bool DirectionalLineAnalysisEnabled { get; set; }
 
             public double MedianEnergy { get; set; }
 
@@ -56,8 +64,11 @@ namespace IntegratedImageProcessingApp.Forms
         private NumericUpDown objectDetectionFrequencyScanHeightInput;
         private NumericUpDown objectDetectionFrequencySensitivityInput;
         private CheckBox objectDetectionFrequencyEnabledCheckBox;
+        private CheckBox objectDetectionFrequencyDirectionalLineCheckBox;
         private CheckBox objectDetectionFrequencyShowHeatmapCheckBox;
         private CheckBox objectDetectionFrequencyShowBoxesCheckBox;
+        private CheckBox objectDetectionFrequencyShowLineHeatmapCheckBox;
+        private CheckBox objectDetectionFrequencyShowLineBoxesCheckBox;
         private Label objectDetectionFrequencyWindowHint;
         private Label objectDetectionFrequencyStatusLabel;
         private Button objectDetectionFrequencyRunButton;
@@ -109,7 +120,7 @@ namespace IntegratedImageProcessingApp.Forms
             var scanGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 144,
+                Height = 171,
                 Text = "掃描設定",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -117,13 +128,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 4,
+                RowCount = 5,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty
             };
             scanLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
             scanLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
-            for (int row = 0; row < 4; row++)
+            for (int row = 0; row < 5; row++)
             {
                 scanLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
             }
@@ -170,14 +181,28 @@ namespace IntegratedImageProcessingApp.Forms
             scanLayout.Controls.Add(objectDetectionFrequencySensitivityInput, 1, 2);
             scanLayout.Controls.Add(baselineInfo, 0, 3);
             scanLayout.SetColumnSpan(baselineInfo, 2);
+            objectDetectionFrequencyDirectionalLineCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "自動方向線條分析（不需指定角度）",
+                Checked = parameter.DefectFrequencyDirectionalLineEnabled,
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, 3, 0, 0)
+            };
+            scanLayout.Controls.Add(objectDetectionFrequencyDirectionalLineCheckBox, 0, 4);
+            scanLayout.SetColumnSpan(objectDetectionFrequencyDirectionalLineCheckBox, 2);
+            objectDetectionFrequencyDirectionalLineCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
+            };
             scanGroup.Controls.Add(scanLayout);
 
             var displayOptions = new FlowLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 36,
+                Height = 64,
                 FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
+                WrapContents = true,
                 Padding = new Padding(5, 6, 0, 0),
                 Margin = Padding.Empty
             };
@@ -195,6 +220,20 @@ namespace IntegratedImageProcessingApp.Forms
                 Checked = parameter.DefectFrequencyShowAnomalyBoxes,
                 Margin = new Padding(2, 1, 0, 1)
             };
+            objectDetectionFrequencyShowLineHeatmapCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "顯示線條方向熱圖",
+                Checked = parameter.DefectFrequencyShowDirectionalLineHeatmap,
+                Margin = new Padding(2, 1, 14, 1)
+            };
+            objectDetectionFrequencyShowLineBoxesCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "顯示線條異常框",
+                Checked = parameter.DefectFrequencyShowDirectionalLineBoxes,
+                Margin = new Padding(2, 1, 0, 1)
+            };
             objectDetectionFrequencyShowHeatmapCheckBox.CheckedChanged += delegate
             {
                 UpdateObjectDetectionFrequencyDisplayOptions(parameter);
@@ -203,8 +242,18 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 UpdateObjectDetectionFrequencyDisplayOptions(parameter);
             };
+            objectDetectionFrequencyShowLineHeatmapCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+            };
+            objectDetectionFrequencyShowLineBoxesCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+            };
             displayOptions.Controls.Add(objectDetectionFrequencyShowHeatmapCheckBox);
             displayOptions.Controls.Add(objectDetectionFrequencyShowBoxesCheckBox);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowLineHeatmapCheckBox);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowLineBoxesCheckBox);
 
             objectDetectionFrequencyStatusLabel = new Label
             {
@@ -273,6 +322,7 @@ namespace IntegratedImageProcessingApp.Forms
             page.Controls.Add(content);
             UpdateObjectDetectionFrequencyWindowHint();
             UpdateObjectDetectionFrequencyControlsEnabled(parameter.DefectFrequencyEnabled);
+            UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
             return page;
         }
 
@@ -325,6 +375,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencySensitivityInput.Enabled = enabled;
             }
+            if (objectDetectionFrequencyDirectionalLineCheckBox != null)
+            {
+                objectDetectionFrequencyDirectionalLineCheckBox.Enabled = enabled;
+            }
             if (objectDetectionFrequencyShowHeatmapCheckBox != null)
             {
                 objectDetectionFrequencyShowHeatmapCheckBox.Enabled = enabled;
@@ -333,10 +387,27 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencyShowBoxesCheckBox.Enabled = enabled;
             }
+            UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
             if (objectDetectionFrequencyRunButton != null)
             {
                 objectDetectionFrequencyRunButton.Enabled = enabled &&
                     !objectDetectionFrequencyAnalysisRunning;
+            }
+        }
+
+        private void UpdateObjectDetectionFrequencyLineDisplayControlsEnabled()
+        {
+            bool enabled = objectDetectionFrequencyEnabledCheckBox != null &&
+                objectDetectionFrequencyEnabledCheckBox.Checked &&
+                objectDetectionFrequencyDirectionalLineCheckBox != null &&
+                objectDetectionFrequencyDirectionalLineCheckBox.Checked;
+            if (objectDetectionFrequencyShowLineHeatmapCheckBox != null)
+            {
+                objectDetectionFrequencyShowLineHeatmapCheckBox.Enabled = enabled;
+            }
+            if (objectDetectionFrequencyShowLineBoxesCheckBox != null)
+            {
+                objectDetectionFrequencyShowLineBoxesCheckBox.Enabled = enabled;
             }
         }
 
@@ -369,10 +440,16 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.DefectFrequencyScanHeight = (int)objectDetectionFrequencyScanHeightInput.Value;
             parameter.DefectFrequencySensitivity = Decimal.ToDouble(
                 objectDetectionFrequencySensitivityInput.Value);
+            parameter.DefectFrequencyDirectionalLineEnabled =
+                objectDetectionFrequencyDirectionalLineCheckBox.Checked;
             parameter.DefectFrequencyShowHeatmap =
                 objectDetectionFrequencyShowHeatmapCheckBox.Checked;
             parameter.DefectFrequencyShowAnomalyBoxes =
                 objectDetectionFrequencyShowBoxesCheckBox.Checked;
+            parameter.DefectFrequencyShowDirectionalLineHeatmap =
+                objectDetectionFrequencyShowLineHeatmapCheckBox.Checked;
+            parameter.DefectFrequencyShowDirectionalLineBoxes =
+                objectDetectionFrequencyShowLineBoxesCheckBox.Checked;
             SaveSystemParameters();
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                 ObjectDetectionDefectFrequencyDisplayIndex);
@@ -413,6 +490,13 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectFrequencyShowHeatmap;
             objectDetectionFrequencyShowBoxesCheckBox.Checked =
                 parameter.DefectFrequencyShowAnomalyBoxes;
+            objectDetectionFrequencyDirectionalLineCheckBox.Checked =
+                parameter.DefectFrequencyDirectionalLineEnabled;
+            objectDetectionFrequencyShowLineHeatmapCheckBox.Checked =
+                parameter.DefectFrequencyShowDirectionalLineHeatmap;
+            objectDetectionFrequencyShowLineBoxesCheckBox.Checked =
+                parameter.DefectFrequencyShowDirectionalLineBoxes;
+            UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
             SetObjectDetectionDefectRegionStatus("已取消頻域異常設定變更。 ");
         }
 
@@ -420,7 +504,9 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter)
         {
             if (parameter == null || objectDetectionFrequencyShowHeatmapCheckBox == null ||
-                objectDetectionFrequencyShowBoxesCheckBox == null)
+                objectDetectionFrequencyShowBoxesCheckBox == null ||
+                objectDetectionFrequencyShowLineHeatmapCheckBox == null ||
+                objectDetectionFrequencyShowLineBoxesCheckBox == null)
             {
                 return;
             }
@@ -428,6 +514,10 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyShowHeatmapCheckBox.Checked;
             parameter.DefectFrequencyShowAnomalyBoxes =
                 objectDetectionFrequencyShowBoxesCheckBox.Checked;
+            parameter.DefectFrequencyShowDirectionalLineHeatmap =
+                objectDetectionFrequencyShowLineHeatmapCheckBox.Checked;
+            parameter.DefectFrequencyShowDirectionalLineBoxes =
+                objectDetectionFrequencyShowLineBoxesCheckBox.Checked;
             SaveSystemParameters();
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                 ObjectDetectionDefectFrequencyDisplayIndex);
@@ -519,6 +609,7 @@ namespace IntegratedImageProcessingApp.Forms
                     ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
                 double sensitivity = Math.Max(1.0, Math.Min(10.0, parameter.DefectFrequencySensitivity));
+                bool analyzeDirectionalLines = parameter.DefectFrequencyDirectionalLineEnabled;
                 bool runParallel = parameter.DefectParallelExecutionEnabled;
                 int capturedImageGeneration = imageSourceGeneration;
                 int capturedFlatFieldGeneration = objectDetectionFlatFieldEvaluationGeneration;
@@ -552,6 +643,7 @@ namespace IntegratedImageProcessingApp.Forms
                             imageBounds,
                             scanHeight,
                             sensitivity,
+                            analyzeDirectionalLines,
                             runParallel,
                             progress);
                     }
@@ -564,6 +656,7 @@ namespace IntegratedImageProcessingApp.Forms
                 result.Signature = signature;
                 result.ScanHeight = scanHeight;
                 result.Sensitivity = sensitivity;
+                result.DirectionalLineAnalysisEnabled = analyzeDirectionalLines;
                 result.ElapsedMilliseconds = stopwatch.ElapsedMilliseconds;
 
                 if (IsDisposed || capturedImageGeneration != imageSourceGeneration ||
@@ -589,9 +682,13 @@ namespace IntegratedImageProcessingApp.Forms
                     display.InvalidateImageView();
                 }
                 int anomalyCount = result.Cells.Count(cell => cell.IsAnomaly);
+                int lineAnomalyCount = result.Cells.Count(cell => cell.IsDirectionalLineAnomaly);
                 string summary = "頻域掃描完成：" +
                     result.Cells.Count.ToString("N0", CultureInfo.CurrentCulture) + " 個區塊；可疑 " +
-                    anomalyCount.ToString("N0", CultureInfo.CurrentCulture) + " 個；耗時 " +
+                    anomalyCount.ToString("N0", CultureInfo.CurrentCulture) + " 個能量異常" +
+                    (analyzeDirectionalLines
+                        ? "；方向線條 " + lineAnomalyCount.ToString("N0", CultureInfo.CurrentCulture) + " 個"
+                        : string.Empty) + "；耗時 " +
                     result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms。";
                 if (objectDetectionFrequencyStatusLabel != null)
                 {
@@ -699,6 +796,7 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle imageBounds,
             int requestedWindowSize,
             double sensitivity,
+            bool analyzeDirectionalLines,
             bool runParallel,
             IProgress<string> progress)
         {
@@ -780,7 +878,13 @@ namespace IntegratedImageProcessingApp.Forms
                                         Energy = CalculateObjectDetectionFrequencyEnergy(
                                             tile,
                                             windowMask,
-                                            validPixels)
+                                            validPixels),
+                                        DirectionalLineStrength = analyzeDirectionalLines
+                                            ? CalculateObjectDetectionDirectionalLineStrength(
+                                                tile,
+                                                windowMask,
+                                                validPixels)
+                                            : 0.0
                                     };
                                     objectCells.Add(cell);
                                 }
@@ -845,9 +949,71 @@ namespace IntegratedImageProcessingApp.Forms
                 cell.Score = Math.Abs(cell.Energy - median) / scale;
                 cell.IsAnomaly = cell.Score >= sensitivity;
             }
+            if (analyzeDirectionalLines)
+            {
+                foreach (List<ObjectDetectionFrequencyCell> objectCells in result.CellsByObject.Values)
+                {
+                    if (objectCells.Count == 0)
+                    {
+                        continue;
+                    }
+                    double lineMedian = CalculateObjectDetectionFrequencyMedian(
+                        objectCells.Select(cell => cell.DirectionalLineStrength).ToList());
+                    double lineMad = CalculateObjectDetectionFrequencyMedian(
+                        objectCells.Select(cell => Math.Abs(cell.DirectionalLineStrength - lineMedian)).ToList());
+                    double lineScale = Math.Max(0.025, lineMad * 1.4826);
+                    foreach (ObjectDetectionFrequencyCell cell in objectCells)
+                    {
+                        cell.DirectionalLineScore = Math.Max(
+                            0.0,
+                            (cell.DirectionalLineStrength - lineMedian) / lineScale);
+                        cell.IsDirectionalLineAnomaly =
+                            cell.DirectionalLineScore >= sensitivity;
+                    }
+                }
+            }
             result.MedianEnergy = median;
             result.EnergyScale = scale;
             return result;
+        }
+
+        private static double CalculateObjectDetectionDirectionalLineStrength(
+            Cv.Mat tile,
+            Cv.Mat mask,
+            int validPixels)
+        {
+            if (tile == null || tile.Empty() || tile.Type() != Cv.MatType.CV_8UC1 ||
+                mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
+                mask.Size() != tile.Size() || validPixels <= 0)
+            {
+                throw new ArgumentException("方向線條分析需要有效的灰階區塊與檢測範圍遮罩。", "tile");
+            }
+
+            using (var floatTile = new Cv.Mat())
+            using (var gradientX = new Cv.Mat())
+            using (var gradientY = new Cv.Mat())
+            using (var gradientXX = new Cv.Mat())
+            using (var gradientYY = new Cv.Mat())
+            using (var gradientXY = new Cv.Mat())
+            {
+                tile.ConvertTo(floatTile, Cv.MatType.CV_32FC1);
+                Cv.Cv2.Sobel(floatTile, gradientX, Cv.MatType.CV_32FC1, 1, 0, 3, scale: 0.125);
+                Cv.Cv2.Sobel(floatTile, gradientY, Cv.MatType.CV_32FC1, 0, 1, 3, scale: 0.125);
+                Cv.Cv2.Multiply(gradientX, gradientX, gradientXX);
+                Cv.Cv2.Multiply(gradientY, gradientY, gradientYY);
+                Cv.Cv2.Multiply(gradientX, gradientY, gradientXY);
+
+                double xx = Cv.Cv2.Mean(gradientXX, mask).Val0;
+                double yy = Cv.Cv2.Mean(gradientYY, mask).Val0;
+                double xy = Cv.Cv2.Mean(gradientXY, mask).Val0;
+                double total = xx + yy;
+                if (total <= 1e-9)
+                {
+                    return 0.0;
+                }
+                return Math.Min(1.0, Math.Sqrt(
+                    (xx - yy) * (xx - yy) + 4.0 * xy * xy) / total);
+            }
         }
 
         private static List<int> CreateFrequencyScanStarts(int extent, int windowSize, int step)
@@ -956,6 +1122,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyDirectionalLineEnabled ? "1" : "0",
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,
                 CreateObjectDetectionFlatFieldSettingsSignature(parameter)
             });
@@ -1015,17 +1182,25 @@ namespace IntegratedImageProcessingApp.Forms
             RectangleF visibleBounds = visibleSourceRect;
             bool showHeatmap = parameter.DefectFrequencyShowHeatmap;
             bool showBoxes = parameter.DefectFrequencyShowAnomalyBoxes;
+            bool showLineHeatmap = result.DirectionalLineAnalysisEnabled &&
+                parameter.DefectFrequencyShowDirectionalLineHeatmap;
+            bool showLineBoxes = result.DirectionalLineAnalysisEnabled &&
+                parameter.DefectFrequencyShowDirectionalLineBoxes;
             int[] heatmapAlpha = { 16, 24, 32, 40, 48 };
             var highEnergyBrushes = new SolidBrush[heatmapAlpha.Length];
             var lowEnergyBrushes = new SolidBrush[heatmapAlpha.Length];
+            var lineBrushes = new SolidBrush[heatmapAlpha.Length];
             for (int index = 0; index < heatmapAlpha.Length; index++)
             {
                 highEnergyBrushes[index] = new SolidBrush(
                     Color.FromArgb(heatmapAlpha[index], 255, 190, 0));
                 lowEnergyBrushes[index] = new SolidBrush(
                     Color.FromArgb(heatmapAlpha[index], 50, 145, 255));
+                lineBrushes[index] = new SolidBrush(
+                    Color.FromArgb(heatmapAlpha[index], 220, 50, 160));
             }
             using (var anomalyOutline = new Pen(Color.OrangeRed, Math.Max(1.0f, Math.Min(3.0f, zoom * 1.5f))))
+            using (var lineAnomalyOutline = new Pen(Color.Magenta, Math.Max(1.0f, Math.Min(3.0f, zoom * 1.5f))))
             {
                 try
                 {
@@ -1080,6 +1255,22 @@ namespace IntegratedImageProcessingApp.Forms
                                             destination.Width,
                                             destination.Height);
                                     }
+                                    if (showLineHeatmap && cell.DirectionalLineScore > 0.0)
+                                    {
+                                        int level = (int)Math.Floor(
+                                            cell.DirectionalLineScore / Math.Max(1.0, result.Sensitivity) * heatmapAlpha.Length);
+                                        level = Math.Max(0, Math.Min(heatmapAlpha.Length - 1, level));
+                                        graphics.FillRectangle(lineBrushes[level], destination);
+                                    }
+                                    if (showLineBoxes && cell.IsDirectionalLineAnomaly)
+                                    {
+                                        graphics.DrawRectangle(
+                                            lineAnomalyOutline,
+                                            destination.X,
+                                            destination.Y,
+                                            destination.Width,
+                                            destination.Height);
+                                    }
                                 }
                             }
                             finally
@@ -1096,6 +1287,10 @@ namespace IntegratedImageProcessingApp.Forms
                         brush.Dispose();
                     }
                     foreach (SolidBrush brush in lowEnergyBrushes)
+                    {
+                        brush.Dispose();
+                    }
+                    foreach (SolidBrush brush in lineBrushes)
                     {
                         brush.Dispose();
                     }
