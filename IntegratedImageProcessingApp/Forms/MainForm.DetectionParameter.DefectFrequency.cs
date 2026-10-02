@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -40,6 +41,10 @@ namespace IntegratedImageProcessingApp.Forms
             public double EnergyScale { get; set; }
 
             public long ElapsedMilliseconds { get; set; }
+
+            public Dictionary<int, PointF[]> ObjectPolygons { get; set; }
+
+            public Dictionary<int, List<ObjectDetectionFrequencyCell>> CellsByObject { get; set; }
 
             public List<ObjectDetectionFrequencyCell> Cells { get; set; }
         }
@@ -693,7 +698,9 @@ namespace IntegratedImageProcessingApp.Forms
         {
             var result = new ObjectDetectionFrequencyResult
             {
-                Cells = new List<ObjectDetectionFrequencyCell>()
+                Cells = new List<ObjectDetectionFrequencyCell>(),
+                ObjectPolygons = new Dictionary<int, PointF[]>(),
+                CellsByObject = new Dictionary<int, List<ObjectDetectionFrequencyCell>>()
             };
             for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
             {
@@ -701,6 +708,9 @@ namespace IntegratedImageProcessingApp.Forms
                 PointF[] corners = CreateObjectDetectionDefectRegionImageCorners(
                     detectedObject,
                     normalizedRegion);
+                result.ObjectPolygons[detectedObject.Number] = corners;
+                var objectCells = new List<ObjectDetectionFrequencyCell>();
+                result.CellsByObject[detectedObject.Number] = objectCells;
                 int left = (int)Math.Floor(corners.Min(point => point.X));
                 int top = (int)Math.Floor(corners.Min(point => point.Y));
                 int right = (int)Math.Ceiling(corners.Max(point => point.X));
@@ -745,28 +755,34 @@ namespace IntegratedImageProcessingApp.Forms
                                 new Cv.Rect(localWindow.X, localWindow.Y,
                                     localWindow.Width, localWindow.Height)))
                             {
-                                if (Cv.Cv2.CountNonZero(windowMask) != windowSize * windowSize)
+                                int validPixels = Cv.Cv2.CountNonZero(windowMask);
+                                if (validPixels == 0)
                                 {
                                     continue;
                                 }
-                            }
 
-                            using (Cv.Mat tile = gray.SubMat(new Cv.Rect(
-                                localWindow.X,
-                                localWindow.Y,
-                                localWindow.Width,
-                                localWindow.Height)))
-                            {
-                                result.Cells.Add(new ObjectDetectionFrequencyCell
+                                using (Cv.Mat tile = gray.SubMat(new Cv.Rect(
+                                    localWindow.X,
+                                    localWindow.Y,
+                                    localWindow.Width,
+                                    localWindow.Height)))
                                 {
-                                    ObjectNumber = detectedObject.Number,
-                                    Bounds = new Rectangle(
-                                        crop.X + localWindow.X,
-                                        crop.Y + localWindow.Y,
-                                        localWindow.Width,
-                                        localWindow.Height),
-                                    Energy = CalculateObjectDetectionFrequencyEnergy(tile)
-                                });
+                                    var cell = new ObjectDetectionFrequencyCell
+                                    {
+                                        ObjectNumber = detectedObject.Number,
+                                        Bounds = new Rectangle(
+                                            crop.X + localWindow.X,
+                                            crop.Y + localWindow.Y,
+                                            localWindow.Width,
+                                            localWindow.Height),
+                                        Energy = CalculateObjectDetectionFrequencyEnergy(
+                                            tile,
+                                            windowMask,
+                                            validPixels)
+                                    };
+                                    result.Cells.Add(cell);
+                                    objectCells.Add(cell);
+                                }
                             }
                         }
                     }
@@ -817,27 +833,35 @@ namespace IntegratedImageProcessingApp.Forms
             return starts;
         }
 
-        private static double CalculateObjectDetectionFrequencyEnergy(Cv.Mat tile)
+        private static double CalculateObjectDetectionFrequencyEnergy(
+            Cv.Mat tile,
+            Cv.Mat mask,
+            int validPixels)
         {
-            if (tile == null || tile.Empty() || tile.Type() != Cv.MatType.CV_8UC1)
+            if (tile == null || tile.Empty() || tile.Type() != Cv.MatType.CV_8UC1 ||
+                mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
+                mask.Size() != tile.Size() || validPixels <= 0)
             {
-                throw new ArgumentException("頻域分析需要有效的 8-bit 灰階區塊。", "tile");
+                throw new ArgumentException("頻域分析需要有效的灰階區塊與檢測範圍遮罩。", "tile");
             }
 
             using (var floatTile = new Cv.Mat())
             using (var centered = new Cv.Mat())
             using (var hann = new Cv.Mat())
+            using (var maskFloat = new Cv.Mat())
             using (var windowed = new Cv.Mat())
             using (var spectrum = new Cv.Mat())
             {
-                double mean = Cv.Cv2.Mean(tile).Val0;
+                double mean = Cv.Cv2.Mean(tile, mask).Val0;
                 tile.ConvertTo(floatTile, Cv.MatType.CV_32FC1);
                 Cv.Cv2.Subtract(floatTile, Cv.Scalar.All(mean), centered);
+                mask.ConvertTo(maskFloat, Cv.MatType.CV_32FC1, 1.0 / 255.0);
                 Cv.Cv2.CreateHanningWindow(
                     hann,
                     new Cv.Size(tile.Width, tile.Height),
                     Cv.MatType.CV_32FC1);
                 Cv.Cv2.Multiply(centered, hann, windowed);
+                Cv.Cv2.Multiply(windowed, maskFloat, windowed);
                 Cv.Cv2.Dft(windowed, spectrum, Cv.DftFlags.ComplexOutput);
                 Cv.Mat[] planes = Cv.Cv2.Split(spectrum);
                 try
@@ -850,7 +874,7 @@ namespace IntegratedImageProcessingApp.Forms
                         Cv.Cv2.Multiply(planes[1], planes[1], imaginaryPower);
                         Cv.Cv2.Add(realPower, imaginaryPower, power);
                         double pixelCount = (double)tile.Width * tile.Height;
-                        return Cv.Cv2.Sum(power).Val0 / (pixelCount * pixelCount);
+                        return Cv.Cv2.Sum(power).Val0 / (pixelCount * validPixels);
                     }
                 }
                 finally
@@ -969,35 +993,63 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 try
                 {
-                    foreach (ObjectDetectionFrequencyCell cell in result.Cells)
+                    foreach (KeyValuePair<int, List<ObjectDetectionFrequencyCell>> objectEntry in
+                        result.CellsByObject)
                     {
-                        if (!cell.Bounds.IntersectsWith(Rectangle.Ceiling(visibleBounds)))
+                        PointF[] imagePolygon;
+                        if (result.ObjectPolygons == null ||
+                            !result.ObjectPolygons.TryGetValue(objectEntry.Key, out imagePolygon) ||
+                            imagePolygon == null || imagePolygon.Length < 3)
                         {
                             continue;
                         }
-                        var destination = new RectangleF(
-                            offset.X + cell.Bounds.X * zoom,
-                            offset.Y + cell.Bounds.Y * zoom,
-                            Math.Max(1f, cell.Bounds.Width * zoom),
-                            Math.Max(1f, cell.Bounds.Height * zoom));
-                        if (showHeatmap)
+
+                        PointF[] screenPolygon = imagePolygon.Select(point => new PointF(
+                            offset.X + point.X * zoom,
+                            offset.Y + point.Y * zoom)).ToArray();
+                        using (var clipPath = new GraphicsPath())
                         {
-                            int level = (int)Math.Floor(
-                                cell.Score / Math.Max(1.0, result.Sensitivity) * heatmapAlpha.Length);
-                            level = Math.Max(0, Math.Min(heatmapAlpha.Length - 1, level));
-                            SolidBrush fill = cell.Energy >= result.MedianEnergy
-                                ? highEnergyBrushes[level]
-                                : lowEnergyBrushes[level];
-                            graphics.FillRectangle(fill, destination);
-                        }
-                        if (showBoxes && cell.IsAnomaly)
-                        {
-                            graphics.DrawRectangle(
-                                anomalyOutline,
-                                destination.X,
-                                destination.Y,
-                                destination.Width,
-                                destination.Height);
+                            clipPath.AddPolygon(screenPolygon);
+                            GraphicsState state = graphics.Save();
+                            try
+                            {
+                                graphics.SetClip(clipPath, CombineMode.Intersect);
+                                foreach (ObjectDetectionFrequencyCell cell in objectEntry.Value)
+                                {
+                                    if (!cell.Bounds.IntersectsWith(Rectangle.Ceiling(visibleBounds)))
+                                    {
+                                        continue;
+                                    }
+                                    var destination = new RectangleF(
+                                        offset.X + cell.Bounds.X * zoom,
+                                        offset.Y + cell.Bounds.Y * zoom,
+                                        Math.Max(1f, cell.Bounds.Width * zoom),
+                                        Math.Max(1f, cell.Bounds.Height * zoom));
+                                    if (showHeatmap)
+                                    {
+                                        int level = (int)Math.Floor(
+                                            cell.Score / Math.Max(1.0, result.Sensitivity) * heatmapAlpha.Length);
+                                        level = Math.Max(0, Math.Min(heatmapAlpha.Length - 1, level));
+                                        SolidBrush fill = cell.Energy >= result.MedianEnergy
+                                            ? highEnergyBrushes[level]
+                                            : lowEnergyBrushes[level];
+                                        graphics.FillRectangle(fill, destination);
+                                    }
+                                    if (showBoxes && cell.IsAnomaly)
+                                    {
+                                        graphics.DrawRectangle(
+                                            anomalyOutline,
+                                            destination.X,
+                                            destination.Y,
+                                            destination.Width,
+                                            destination.Height);
+                                    }
+                                }
+                            }
+                            finally
+                            {
+                                graphics.Restore(state);
+                            }
                         }
                     }
                 }
