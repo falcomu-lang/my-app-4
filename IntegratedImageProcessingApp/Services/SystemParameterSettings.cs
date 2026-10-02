@@ -455,6 +455,7 @@ namespace IntegratedImageProcessingApp.Services
             DefectIntegrationMergeBright = false;
             DefectIntegrationMergeDarkBright = false;
             DefectIntegrationMergeDistancePixels = 0;
+            DefectFrequencyEnabled = true;
             DefectFrequencyScanHeight = 50;
             DefectFrequencySensitivity = 3.0;
             DefectFrequencyShowHeatmap = true;
@@ -635,6 +636,8 @@ namespace IntegratedImageProcessingApp.Services
         public bool DefectIntegrationMergeDarkBright { get; set; }
 
         public double DefectIntegrationMergeDistancePixels { get; set; }
+
+        public bool DefectFrequencyEnabled { get; set; }
 
         public int DefectFrequencyScanHeight { get; set; }
 

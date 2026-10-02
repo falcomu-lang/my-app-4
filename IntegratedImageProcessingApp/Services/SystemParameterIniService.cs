@@ -724,6 +724,11 @@ namespace IntegratedImageProcessingApp.Services
                         0,
                         0,
                         1000000),
+                    DefectFrequencyEnabled = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyEnabled",
+                        true),
                     DefectFrequencyScanHeight = Math.Max(8, Math.Min(1000, GetInt(
                         sections,
                         SectionObjectDetection,
@@ -1121,6 +1126,7 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectIntegrationMergeBright={1}", prefix, parameter.DefectIntegrationMergeBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDarkBright={1}", prefix, parameter.DefectIntegrationMergeDarkBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDistancePixels={1}", prefix, parameter.DefectIntegrationMergeDistancePixels.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, parameter.DefectFrequencyEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, parameter.DefectFrequencyShowHeatmap ? "1" : "0");

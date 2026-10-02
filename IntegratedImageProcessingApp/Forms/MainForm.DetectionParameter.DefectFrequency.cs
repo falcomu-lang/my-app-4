@@ -50,6 +50,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private NumericUpDown objectDetectionFrequencyScanHeightInput;
         private NumericUpDown objectDetectionFrequencySensitivityInput;
+        private CheckBox objectDetectionFrequencyEnabledCheckBox;
         private CheckBox objectDetectionFrequencyShowHeatmapCheckBox;
         private CheckBox objectDetectionFrequencyShowBoxesCheckBox;
         private Label objectDetectionFrequencyWindowHint;
@@ -80,6 +81,25 @@ namespace IntegratedImageProcessingApp.Forms
                 AutoEllipsis = true,
                 ForeColor = Color.FromArgb(55, 63, 76)
             };
+            var enabledPanel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 30
+            };
+            objectDetectionFrequencyEnabledCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "是否使用",
+                Checked = parameter.DefectFrequencyEnabled,
+                Location = new Point(8, 5)
+            };
+            objectDetectionFrequencyEnabledCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyEnabled(
+                    parameter,
+                    objectDetectionFrequencyEnabledCheckBox.Checked);
+            };
+            enabledPanel.Controls.Add(objectDetectionFrequencyEnabledCheckBox);
 
             var scanGroup = new GroupBox
             {
@@ -186,7 +206,9 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Top,
                 Height = 48,
                 Padding = new Padding(8, 4, 8, 2),
-                Text = "尚未執行頻域掃描。",
+                Text = parameter.DefectFrequencyEnabled
+                    ? "尚未執行頻域掃描。"
+                    : "頻域分析已停用。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true,
                 ForeColor = Color.FromArgb(75, 83, 95)
@@ -242,9 +264,75 @@ namespace IntegratedImageProcessingApp.Forms
             content.Controls.Add(displayOptions);
             content.Controls.Add(scanGroup);
             content.Controls.Add(sourceInfo);
+            content.Controls.Add(enabledPanel);
             page.Controls.Add(content);
             UpdateObjectDetectionFrequencyWindowHint();
+            UpdateObjectDetectionFrequencyControlsEnabled(parameter.DefectFrequencyEnabled);
             return page;
+        }
+
+        private void UpdateObjectDetectionFrequencyEnabled(
+            ObjectDetectionParameterSettings parameter,
+            bool enabled)
+        {
+            if (parameter == null ||
+                !string.Equals(objectDetectionFrequencyDraftParameterId, parameter.Id,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            parameter.DefectFrequencyEnabled = enabled;
+            SaveSystemParameters();
+            UpdateObjectDetectionFrequencyControlsEnabled(enabled);
+            if (!enabled)
+            {
+                objectDetectionFrequencyResults.Remove(parameter.Id);
+                if (objectDetectionFrequencyStatusLabel != null)
+                {
+                    objectDetectionFrequencyStatusLabel.Text = "頻域分析已停用。";
+                }
+            }
+            else if (objectDetectionFrequencyStatusLabel != null)
+            {
+                objectDetectionFrequencyStatusLabel.Text = "頻域分析已啟用，按「開始分析」更新結果。";
+            }
+
+            ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
+                ObjectDetectionDefectFrequencyDisplayIndex);
+            if (display != null)
+            {
+                display.InvalidateImageView();
+            }
+            SetObjectDetectionDefectRegionStatus(
+                enabled
+                    ? "頻域異常分析已啟用。"
+                    : "頻域異常分析已停用，頻域標記已清除。");
+        }
+
+        private void UpdateObjectDetectionFrequencyControlsEnabled(bool enabled)
+        {
+            if (objectDetectionFrequencyScanHeightInput != null)
+            {
+                objectDetectionFrequencyScanHeightInput.Enabled = enabled;
+            }
+            if (objectDetectionFrequencySensitivityInput != null)
+            {
+                objectDetectionFrequencySensitivityInput.Enabled = enabled;
+            }
+            if (objectDetectionFrequencyShowHeatmapCheckBox != null)
+            {
+                objectDetectionFrequencyShowHeatmapCheckBox.Enabled = enabled;
+            }
+            if (objectDetectionFrequencyShowBoxesCheckBox != null)
+            {
+                objectDetectionFrequencyShowBoxesCheckBox.Enabled = enabled;
+            }
+            if (objectDetectionFrequencyRunButton != null)
+            {
+                objectDetectionFrequencyRunButton.Enabled = enabled &&
+                    !objectDetectionFrequencyAnalysisRunning;
+            }
         }
 
         private void UpdateObjectDetectionFrequencyWindowHint()
@@ -356,6 +444,11 @@ namespace IntegratedImageProcessingApp.Forms
                 SetObjectDetectionDefectRegionStatus("找不到頻域分析所屬的檢測參數。 ");
                 return;
             }
+            if (!parameter.DefectFrequencyEnabled)
+            {
+                SetObjectDetectionDefectRegionStatus("頻域異常分析目前已停用。 ");
+                return;
+            }
             if (!parameter.DefectInspectionRegionConfigured ||
                 !string.Equals(parameter.DefectInspectionRegionObjectDefinitionId,
                     parameter.ObjectDefinitionId, StringComparison.Ordinal))
@@ -454,7 +547,7 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     finally
                     {
-                        sourceReference.Dispose();
+                        sourceReference.ReleaseReference();
                     }
                 });
                 stopwatch.Stop();
@@ -515,7 +608,8 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     if (objectDetectionFrequencyRunButton != null)
                     {
-                        objectDetectionFrequencyRunButton.Enabled = true;
+                        objectDetectionFrequencyRunButton.Enabled =
+                            parameter != null && parameter.DefectFrequencyEnabled;
                     }
                     if (objectDetectionDefectCoreTabs != null &&
                         !objectDetectionDefectCoreTabs.IsDisposed)
@@ -791,6 +885,7 @@ namespace IntegratedImageProcessingApp.Forms
             return string.Join("|", new[]
             {
                 parameter.Id ?? string.Empty,
+                parameter.DefectFrequencyEnabled ? "1" : "0",
                 definitionSignature ?? string.Empty,
                 imageGeneration.ToString(CultureInfo.InvariantCulture),
                 flatFieldGeneration.ToString(CultureInfo.InvariantCulture),
@@ -811,7 +906,7 @@ namespace IntegratedImageProcessingApp.Forms
             out ObjectDetectionFrequencyResult result)
         {
             result = null;
-            if (parameter == null ||
+            if (parameter == null || !parameter.DefectFrequencyEnabled ||
                 !objectDetectionFrequencyResults.TryGetValue(parameter.Id, out result))
             {
                 return false;
