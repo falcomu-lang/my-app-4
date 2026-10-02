@@ -1512,12 +1512,22 @@ namespace IntegratedImageProcessingApp.Forms
                     control.Dispose();
                 }
                 objectDetectionResultReviewDefectObjectButtonsPanel.RowStyles.Clear();
+                objectDetectionResultReviewDefectObjectButtonsPanel.ColumnStyles.Clear();
 
                 List<ResultReviewGoodJudgementObject> objects =
                     objectDetectionResultReviewGoodJudgementResults;
-                int rowCount = Math.Max(1, (objects.Count + 2) / 3);
+                int columnCount = Math.Max(1, objects
+                    .Select(item => item.GridColumn).DefaultIfEmpty(0).Max() + 1);
+                int rowCount = Math.Max(1, objects
+                    .Select(item => item.GridRow).DefaultIfEmpty(0).Max() + 1);
+                objectDetectionResultReviewDefectObjectButtonsPanel.ColumnCount = columnCount;
                 objectDetectionResultReviewDefectObjectButtonsPanel.RowCount = rowCount;
                 objectDetectionResultReviewDefectObjectButtonsPanel.Height = rowCount * 34 + 4;
+                for (int column = 0; column < columnCount; column++)
+                {
+                    objectDetectionResultReviewDefectObjectButtonsPanel.ColumnStyles.Add(
+                        new ColumnStyle(SizeType.Percent, 100F / columnCount));
+                }
                 for (int row = 0; row < rowCount; row++)
                 {
                     objectDetectionResultReviewDefectObjectButtonsPanel.RowStyles.Add(
@@ -1549,8 +1559,8 @@ namespace IntegratedImageProcessingApp.Forms
                     button.Click += ObjectDetectionResultReviewDefectObjectButton_Click;
                     objectDetectionResultReviewDefectObjectButtonsPanel.Controls.Add(
                         button,
-                        index % 3,
-                        index / 3);
+                        objects[index].GridColumn,
+                        objects[index].GridRow);
                 }
             }
             finally

@@ -44,9 +44,19 @@ namespace IntegratedImageProcessingApp.Forms
         private sealed class ResultReviewGoodJudgementObject
         {
             public int ObjectNumber { get; set; }
+            public int GridRow { get; set; }
+            public int GridColumn { get; set; }
             public ResultReviewGoodJudgementGrade Grade { get; set; }
             public string Reason { get; set; }
             public List<ResultReviewGoodJudgementCondition> Conditions { get; set; }
+        }
+
+        private sealed class ResultReviewObjectGridRow
+        {
+            public List<ObjectDefinitionDetectedObject> Objects { get; } =
+                new List<ObjectDefinitionDetectedObject>();
+
+            public double CenterY { get; set; }
         }
 
         private Panel objectDetectionResultReviewGoodJudgementObjectButtonsHost;
@@ -144,15 +154,26 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewOverviewObjectNumber = objects != null && objects.Count > 0
                 ? objects[0].Number
                 : 0;
+            Dictionary<int, Point> gridPositions =
+                CreateObjectDetectionResultReviewObjectGridPositions(objects);
 
             foreach (ObjectDefinitionDetectedObject detectedObject in
                 objects ?? new List<ObjectDefinitionDetectedObject>())
             {
                 ResultReviewMeasurementContext context;
                 contexts.TryGetValue(detectedObject.Number, out context);
+                Point gridPosition;
+                if (!gridPositions.TryGetValue(detectedObject.Number, out gridPosition))
+                {
+                    gridPosition = new Point(
+                        objectDetectionResultReviewGoodJudgementResults.Count % 3,
+                        objectDetectionResultReviewGoodJudgementResults.Count / 3);
+                }
                 var result = new ResultReviewGoodJudgementObject
                 {
                     ObjectNumber = detectedObject.Number,
+                    GridRow = gridPosition.Y,
+                    GridColumn = gridPosition.X,
                     Grade = ResultReviewGoodJudgementGrade.Pending,
                     Conditions = new List<ResultReviewGoodJudgementCondition>()
                 };
@@ -275,6 +296,99 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private static Dictionary<int, Point> CreateObjectDetectionResultReviewObjectGridPositions(
+            IList<ObjectDefinitionDetectedObject> objects)
+        {
+            List<ObjectDefinitionDetectedObject> items = (objects ??
+                new List<ObjectDefinitionDetectedObject>())
+                .Where(item => item != null && item.Bounds.Width > 0 && item.Bounds.Height > 0)
+                .ToList();
+            var positions = new Dictionary<int, Point>();
+            if (items.Count == 0)
+            {
+                return positions;
+            }
+
+            double typicalWidth = GetObjectDetectionResultReviewTypicalDimension(
+                items.Select(item => item.Bounds.Width));
+            double typicalHeight = GetObjectDetectionResultReviewTypicalDimension(
+                items.Select(item => item.Bounds.Height));
+            double columnTolerance = Math.Max(1.0, typicalWidth * 0.5);
+            double rowTolerance = Math.Max(1.0, typicalHeight * 0.5);
+
+            var rows = new List<ResultReviewObjectGridRow>();
+            foreach (ObjectDefinitionDetectedObject item in items
+                .OrderBy(candidate => candidate.Bounds.Top + candidate.Bounds.Height / 2.0)
+                .ThenBy(candidate => candidate.Bounds.Left))
+            {
+                double centerY = item.Bounds.Top + item.Bounds.Height / 2.0;
+                ResultReviewObjectGridRow row = rows
+                    .OrderBy(candidate => Math.Abs(candidate.CenterY - centerY))
+                    .FirstOrDefault(candidate =>
+                        Math.Abs(candidate.CenterY - centerY) <= rowTolerance);
+                if (row == null)
+                {
+                    row = new ResultReviewObjectGridRow();
+                    rows.Add(row);
+                }
+
+                row.Objects.Add(item);
+                row.CenterY = row.Objects.Average(candidate =>
+                    candidate.Bounds.Top + candidate.Bounds.Height / 2.0);
+            }
+            rows = rows.OrderBy(row => row.CenterY).ToList();
+
+            var columnCenters = new List<List<double>>();
+            foreach (ObjectDefinitionDetectedObject item in items
+                .OrderBy(candidate => candidate.Bounds.Left + candidate.Bounds.Width / 2.0))
+            {
+                double centerX = item.Bounds.Left + item.Bounds.Width / 2.0;
+                List<double> lastColumn = columnCenters.LastOrDefault();
+                double lastColumnCenter = lastColumn == null ? 0 : lastColumn.Average();
+                if (lastColumn == null || Math.Abs(lastColumnCenter - centerX) > columnTolerance)
+                {
+                    columnCenters.Add(new List<double> { centerX });
+                }
+                else
+                {
+                    lastColumn.Add(centerX);
+                }
+            }
+            List<double> columns = columnCenters.Select(column => column.Average()).ToList();
+
+            for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                foreach (ObjectDefinitionDetectedObject item in rows[rowIndex].Objects)
+                {
+                    double centerX = item.Bounds.Left + item.Bounds.Width / 2.0;
+                    int columnIndex = 0;
+                    double closestDistance = double.MaxValue;
+                    for (int index = 0; index < columns.Count; index++)
+                    {
+                        double distance = Math.Abs(columns[index] - centerX);
+                        if (distance < closestDistance)
+                        {
+                            columnIndex = index;
+                            closestDistance = distance;
+                        }
+                    }
+                    positions[item.Number] = new Point(columnIndex, rowIndex);
+                }
+            }
+
+            return positions;
+        }
+
+        private static double GetObjectDetectionResultReviewTypicalDimension(
+            IEnumerable<int> dimensions)
+        {
+            List<int> sorted = (dimensions ?? Enumerable.Empty<int>())
+                .Where(value => value > 0)
+                .OrderBy(value => value)
+                .ToList();
+            return sorted.Count == 0 ? 1.0 : sorted[sorted.Count / 2];
+        }
+
         private ResultReviewGoodJudgementConditionState EvaluateObjectDetectionResultReviewGoodJudgementCondition(
             string calculation,
             string specification,
@@ -366,10 +480,19 @@ namespace IntegratedImageProcessingApp.Forms
                     control.Dispose();
                 }
                 objectDetectionResultReviewGoodJudgementObjectButtonsPanel.RowStyles.Clear();
-                int rowCount = Math.Max(1,
-                    (objectDetectionResultReviewGoodJudgementResults.Count + 2) / 3);
+                objectDetectionResultReviewGoodJudgementObjectButtonsPanel.ColumnStyles.Clear();
+                int columnCount = Math.Max(1, objectDetectionResultReviewGoodJudgementResults
+                    .Select(result => result.GridColumn).DefaultIfEmpty(0).Max() + 1);
+                int rowCount = Math.Max(1, objectDetectionResultReviewGoodJudgementResults
+                    .Select(result => result.GridRow).DefaultIfEmpty(0).Max() + 1);
+                objectDetectionResultReviewGoodJudgementObjectButtonsPanel.ColumnCount = columnCount;
                 objectDetectionResultReviewGoodJudgementObjectButtonsPanel.RowCount = rowCount;
                 objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Height = rowCount * 34 + 4;
+                for (int column = 0; column < columnCount; column++)
+                {
+                    objectDetectionResultReviewGoodJudgementObjectButtonsPanel.ColumnStyles.Add(
+                        new ColumnStyle(SizeType.Percent, 100F / columnCount));
+                }
                 for (int row = 0; row < rowCount; row++)
                 {
                     objectDetectionResultReviewGoodJudgementObjectButtonsPanel.RowStyles.Add(
@@ -407,8 +530,8 @@ namespace IntegratedImageProcessingApp.Forms
                     button.Click += ObjectDetectionResultReviewGoodJudgementObjectButton_Click;
                     objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls.Add(
                         button,
-                        index % 3,
-                        index / 3);
+                        result.GridColumn,
+                        result.GridRow);
                 }
             }
             finally
