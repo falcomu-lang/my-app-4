@@ -54,6 +54,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             public Dictionary<int, List<ObjectDetectionFrequencyCell>> CellsByObject { get; set; }
 
+            public List<ObjectDetectionDefectProcessedPatch> ProcessedPatches { get; set; }
+
             public List<ObjectDetectionFrequencyCell> Cells { get; set; }
         }
 
@@ -395,7 +397,7 @@ namespace IntegratedImageProcessingApp.Forms
             UpdateObjectDetectionFrequencyControlsEnabled(enabled);
             if (!enabled)
             {
-                objectDetectionFrequencyResults.Remove(parameter.Id);
+                RemoveObjectDetectionFrequencyResult(parameter.Id);
                 if (objectDetectionFrequencyStatusLabel != null)
                 {
                     objectDetectionFrequencyStatusLabel.Text = "頻域分析已停用。";
@@ -449,6 +451,17 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencyRunButton.Enabled = enabled &&
                     !objectDetectionFrequencyAnalysisRunning;
+            }
+        }
+
+        private void RemoveObjectDetectionFrequencyResult(string parameterId)
+        {
+            ObjectDetectionFrequencyResult previousResult;
+            if (!string.IsNullOrWhiteSpace(parameterId) &&
+                objectDetectionFrequencyResults.TryGetValue(parameterId, out previousResult))
+            {
+                objectDetectionFrequencyResults.Remove(parameterId);
+                DisposeObjectDetectionFrequencyResult(previousResult);
             }
         }
 
@@ -511,6 +524,7 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.DefectFrequencyShowDirectionalLineBoxes =
                 objectDetectionFrequencyShowLineBoxesCheckBox.Checked;
             SaveSystemParameters();
+            RemoveObjectDetectionFrequencyResult(parameter.Id);
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                 ObjectDetectionDefectFrequencyDisplayIndex);
             if (display != null)
@@ -519,7 +533,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
             if (objectDetectionFrequencyStatusLabel != null)
             {
-                objectDetectionFrequencyStatusLabel.Text = "設定已套用，請重新分析以更新頻域結果。";
+                objectDetectionFrequencyStatusLabel.Text =
+                    "設定已套用；按「開始分析」後，左圖會顯示對比後 ROI。";
             }
             SetObjectDetectionDefectRegionStatus(
                 "頻域異常設定已套用；掃描高度 " +
@@ -728,7 +743,7 @@ namespace IntegratedImageProcessingApp.Forms
                 result.DirectionalLineAnalysisEnabled = analyzeDirectionalLines;
                 result.ElapsedMilliseconds = stopwatch.ElapsedMilliseconds;
 
-                if (IsDisposed || capturedImageGeneration != imageSourceGeneration ||
+            if (IsDisposed || capturedImageGeneration != imageSourceGeneration ||
                     capturedFlatFieldGeneration != objectDetectionFlatFieldEvaluationGeneration ||
                     !string.Equals(activeObjectDetectionParameterId, parameter.Id, StringComparison.Ordinal) ||
                     !string.Equals(CreateObjectDefinitionProcessingSignature(definition),
@@ -740,9 +755,11 @@ namespace IntegratedImageProcessingApp.Forms
                         capturedFlatFieldGeneration), signature, StringComparison.Ordinal))
                 {
                     SetObjectDetectionDefectRegionStatus("掃描期間影像或設定已變更，結果未套用；請重新分析。 ");
+                    DisposeObjectDetectionFrequencyResult(result);
                     return;
                 }
 
+                RemoveObjectDetectionFrequencyResult(parameter.Id);
                 objectDetectionFrequencyResults[parameter.Id] = result;
                 ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                     ObjectDetectionDefectFrequencyDisplayIndex);
@@ -758,7 +775,7 @@ namespace IntegratedImageProcessingApp.Forms
                     (analyzeDirectionalLines
                         ? "；方向線條 " + lineAnomalyCount.ToString("N0", CultureInfo.CurrentCulture) + " 個"
                         : string.Empty) + "；耗時 " +
-                    result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms。";
+                    result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms；左圖已顯示對比後 ROI。";
                 if (objectDetectionFrequencyStatusLabel != null)
                 {
                     objectDetectionFrequencyStatusLabel.Text = summary;
@@ -873,6 +890,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             var cellsByObjectIndex = new List<ObjectDetectionFrequencyCell>[objects.Count];
             var polygonsByObjectIndex = new PointF[objects.Count][];
+            var processedPatchesByObjectIndex = new ObjectDetectionDefectProcessedPatch[objects.Count];
             Action<int> scanObject = delegate(int objectIndex)
             {
                 ObjectDefinitionDetectedObject detectedObject = objects[objectIndex];
@@ -909,6 +927,12 @@ namespace IntegratedImageProcessingApp.Forms
                         : Math.Max(0.1, Math.Min(5.0, contrastGain));
                     double beta = Math.Max(1, Math.Min(255, pivotGray)) * (1.0 - gain);
                     gray.ConvertTo(contrastAdjusted, Cv.MatType.CV_8UC1, gain, beta);
+                    processedPatchesByObjectIndex[objectIndex] = new ObjectDetectionDefectProcessedPatch
+                    {
+                        Bounds = crop,
+                        InspectionPolygon = corners.ToArray(),
+                        ProcessedImage = CreateObjectDetectionDefectPreviewBitmap(contrastAdjusted)
+                    };
                     Cv.Point[] polygon = corners.Select(point => new Cv.Point(
                         (int)Math.Round(point.X - crop.X),
                         (int)Math.Round(point.Y - crop.Y))).ToArray();
@@ -976,17 +1000,39 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (runParallel && objects.Count > 1)
             {
-                Parallel.For(
-                    0,
-                    objects.Count,
-                    new ParallelOptions { MaxDegreeOfParallelism = objects.Count },
-                    scanObject);
+                try
+                {
+                    Parallel.For(
+                        0,
+                        objects.Count,
+                        new ParallelOptions { MaxDegreeOfParallelism = objects.Count },
+                        scanObject);
+                }
+                catch
+                {
+                    foreach (ObjectDetectionDefectProcessedPatch patch in processedPatchesByObjectIndex)
+                    {
+                        DisposeObjectDetectionDefectProcessedPatch(patch);
+                    }
+                    throw;
+                }
             }
             else
             {
-                for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+                try
                 {
-                    scanObject(objectIndex);
+                    for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+                    {
+                        scanObject(objectIndex);
+                    }
+                }
+                catch
+                {
+                    foreach (ObjectDetectionDefectProcessedPatch patch in processedPatchesByObjectIndex)
+                    {
+                        DisposeObjectDetectionDefectProcessedPatch(patch);
+                    }
+                    throw;
                 }
             }
 
@@ -994,7 +1040,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Cells = new List<ObjectDetectionFrequencyCell>(),
                 ObjectPolygons = new Dictionary<int, PointF[]>(),
-                CellsByObject = new Dictionary<int, List<ObjectDetectionFrequencyCell>>()
+                CellsByObject = new Dictionary<int, List<ObjectDetectionFrequencyCell>>(),
+                ProcessedPatches = new List<ObjectDetectionDefectProcessedPatch>()
             };
             for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
             {
@@ -1007,6 +1054,11 @@ namespace IntegratedImageProcessingApp.Forms
                 result.ObjectPolygons[objectNumber] = polygonsByObjectIndex[objectIndex];
                 result.CellsByObject[objectNumber] = objectCells;
                 result.Cells.AddRange(objectCells);
+                if (processedPatchesByObjectIndex[objectIndex] != null)
+                {
+                    result.ProcessedPatches.Add(processedPatchesByObjectIndex[objectIndex]);
+                    processedPatchesByObjectIndex[objectIndex] = null;
+                }
             }
 
             if (result.Cells.Count == 0)
@@ -1091,6 +1143,20 @@ namespace IntegratedImageProcessingApp.Forms
                 return Math.Min(1.0, Math.Sqrt(
                     (xx - yy) * (xx - yy) + 4.0 * xy * xy) / total);
             }
+        }
+
+        private static void DisposeObjectDetectionFrequencyResult(
+            ObjectDetectionFrequencyResult result)
+        {
+            if (result == null || result.ProcessedPatches == null)
+            {
+                return;
+            }
+            foreach (ObjectDetectionDefectProcessedPatch patch in result.ProcessedPatches)
+            {
+                DisposeObjectDetectionDefectProcessedPatch(patch);
+            }
+            result.ProcessedPatches.Clear();
         }
 
         private static List<int> CreateFrequencyScanStarts(int extent, int windowSize, int step)
@@ -1222,6 +1288,7 @@ namespace IntegratedImageProcessingApp.Forms
                 : FindObjectDefinition(parameter.ObjectDefinitionId);
             if (definition == null)
             {
+                RemoveObjectDetectionFrequencyResult(parameter.Id);
                 result = null;
                 return false;
             }
@@ -1233,6 +1300,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFlatFieldEvaluationGeneration);
             if (!string.Equals(result.Signature, expectedSignature, StringComparison.Ordinal))
             {
+                RemoveObjectDetectionFrequencyResult(parameter.Id);
                 result = null;
                 return false;
             }
@@ -1253,12 +1321,50 @@ namespace IntegratedImageProcessingApp.Forms
                 FindObjectDetectionParameter(activeObjectDetectionParameterId);
             ObjectDetectionFrequencyResult result;
             if (!TryGetCurrentObjectDetectionFrequencyResult(parameter, out result) ||
-                result.Cells == null || result.Cells.Count == 0)
+                (result.Cells == null || result.Cells.Count == 0) &&
+                (result.ProcessedPatches == null || result.ProcessedPatches.Count == 0))
             {
                 return;
             }
 
             RectangleF visibleBounds = visibleSourceRect;
+            if (result.ProcessedPatches != null)
+            {
+                foreach (ObjectDetectionDefectProcessedPatch patch in result.ProcessedPatches)
+                {
+                    if (patch == null || patch.ProcessedImage == null ||
+                        !patch.Bounds.IntersectsWith(Rectangle.Ceiling(visibleBounds)))
+                    {
+                        continue;
+                    }
+                    GraphicsState patchState = graphics.Save();
+                    try
+                    {
+                        if (patch.InspectionPolygon != null && patch.InspectionPolygon.Length >= 3)
+                        {
+                            PointF[] screenPolygon = patch.InspectionPolygon.Select(point => new PointF(
+                                offset.X + point.X * zoom,
+                                offset.Y + point.Y * zoom)).ToArray();
+                            using (var clip = new GraphicsPath())
+                            {
+                                clip.AddPolygon(screenPolygon);
+                                graphics.SetClip(clip, CombineMode.Intersect);
+                            }
+                        }
+                        var destination = new RectangleF(
+                            offset.X + patch.Bounds.X * zoom,
+                            offset.Y + patch.Bounds.Y * zoom,
+                            patch.Bounds.Width * zoom,
+                            patch.Bounds.Height * zoom);
+                        graphics.DrawImage(patch.ProcessedImage, destination);
+                    }
+                    finally
+                    {
+                        graphics.Restore(patchState);
+                    }
+                }
+            }
+
             bool showHeatmap = parameter.DefectFrequencyShowHeatmap;
             bool showBoxes = parameter.DefectFrequencyShowAnomalyBoxes;
             bool showLineHeatmap = result.DirectionalLineAnalysisEnabled &&
