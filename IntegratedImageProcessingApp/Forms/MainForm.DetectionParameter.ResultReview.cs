@@ -54,6 +54,9 @@ namespace IntegratedImageProcessingApp.Forms
         private CheckBox objectDetectionResultReviewClipLinesToMaskCheckBox;
         private DataGridView objectDetectionResultReviewConditionsGrid;
         private DataGridView objectDetectionResultReviewDefectsGrid;
+        private Panel objectDetectionResultReviewDefectObjectButtonsHost;
+        private TableLayoutPanel objectDetectionResultReviewDefectObjectButtonsPanel;
+        private int? objectDetectionResultReviewSelectedDefectObjectNumber;
         private bool isObjectDetectionResultReviewMode;
         private bool isObjectDetectionResultReviewRunning;
         private Size objectDetectionResultReviewReferenceImageSize;
@@ -485,7 +488,9 @@ namespace IntegratedImageProcessingApp.Forms
             AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewDefectsGrid, "Status", "結果", 20);
             AddObjectDetectionResultReviewTextColumn(objectDetectionResultReviewDefectsGrid, "Detail", "說明", 25);
             objectDetectionResultReviewResultsTabs.TabPages.Add(
-                CreateObjectDetectionResultReviewTab("缺陷判定", objectDetectionResultReviewDefectsGrid));
+                CreateObjectDetectionResultReviewTab(
+                    "缺陷判定",
+                    CreateObjectDetectionResultReviewDefectContent(objectDetectionResultReviewDefectsGrid)));
 
             layout.Controls.Add(header, 0, 0);
             layout.Controls.Add(objectDetectionResultReviewStatusLabel, 0, 1);
@@ -501,6 +506,59 @@ namespace IntegratedImageProcessingApp.Forms
             var page = new TabPage(title);
             page.Controls.Add(content);
             return page;
+        }
+
+        private Control CreateObjectDetectionResultReviewDefectContent(DataGridView grid)
+        {
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 78F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+
+            layout.Controls.Add(new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "物件序號（再次點選同一片可取消選取）",
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = Color.FromArgb(75, 83, 95),
+                Padding = new Padding(4, 0, 2, 0),
+                Margin = Padding.Empty
+            }, 0, 0);
+
+            objectDetectionResultReviewDefectObjectButtonsHost = new Panel
+            {
+                Dock = DockStyle.Fill,
+                AutoScroll = true,
+                BackColor = Color.FromArgb(248, 250, 252),
+                Margin = Padding.Empty
+            };
+            objectDetectionResultReviewDefectObjectButtonsPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 3,
+                RowCount = 1,
+                Height = 34,
+                Margin = Padding.Empty,
+                Padding = new Padding(2)
+            };
+            for (int column = 0; column < 3; column++)
+            {
+                objectDetectionResultReviewDefectObjectButtonsPanel.ColumnStyles.Add(
+                    new ColumnStyle(SizeType.Percent, 100F / 3F));
+            }
+            objectDetectionResultReviewDefectObjectButtonsHost.Controls.Add(
+                objectDetectionResultReviewDefectObjectButtonsPanel);
+            layout.Controls.Add(objectDetectionResultReviewDefectObjectButtonsHost, 0, 1);
+            layout.Controls.Add(grid, 0, 2);
+            return layout;
         }
 
         private static DataGridView CreateObjectDetectionResultReviewGrid()
@@ -1430,6 +1488,124 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter,
             ObjectDefinitionSettings definition)
         {
+            RefreshObjectDetectionResultReviewDefectObjectButtons();
+            RenderObjectDetectionResultReviewDefectRows(
+                parameter,
+                objectDetectionResultReviewSelectedDefectObjectNumber);
+        }
+
+        private void RefreshObjectDetectionResultReviewDefectObjectButtons()
+        {
+            if (objectDetectionResultReviewDefectObjectButtonsPanel == null ||
+                objectDetectionResultReviewDefectObjectButtonsPanel.IsDisposed)
+            {
+                return;
+            }
+
+            objectDetectionResultReviewDefectObjectButtonsPanel.SuspendLayout();
+            try
+            {
+                foreach (Control control in objectDetectionResultReviewDefectObjectButtonsPanel.Controls
+                    .Cast<Control>().ToList())
+                {
+                    objectDetectionResultReviewDefectObjectButtonsPanel.Controls.Remove(control);
+                    control.Dispose();
+                }
+                objectDetectionResultReviewDefectObjectButtonsPanel.RowStyles.Clear();
+
+                List<ResultReviewGoodJudgementObject> objects =
+                    objectDetectionResultReviewGoodJudgementResults;
+                int rowCount = Math.Max(1, (objects.Count + 2) / 3);
+                objectDetectionResultReviewDefectObjectButtonsPanel.RowCount = rowCount;
+                objectDetectionResultReviewDefectObjectButtonsPanel.Height = rowCount * 34 + 4;
+                for (int row = 0; row < rowCount; row++)
+                {
+                    objectDetectionResultReviewDefectObjectButtonsPanel.RowStyles.Add(
+                        new RowStyle(SizeType.Absolute, 34F));
+                }
+
+                for (int index = 0; index < objects.Count; index++)
+                {
+                    int objectNumber = objects[index].ObjectNumber;
+                    var button = new Button
+                    {
+                        Text = objectNumber.ToString(CultureInfo.CurrentCulture),
+                        Tag = objectNumber,
+                        Dock = DockStyle.Fill,
+                        Margin = new Padding(2),
+                        FlatStyle = FlatStyle.Flat,
+                        UseVisualStyleBackColor = false,
+                        BackColor = objectDetectionResultReviewSelectedDefectObjectNumber == objectNumber
+                            ? Color.FromArgb(190, 220, 250)
+                            : Color.FromArgb(240, 241, 243),
+                        ForeColor = Color.FromArgb(35, 45, 58),
+                        AccessibleName = "物件 " + objectNumber.ToString(CultureInfo.CurrentCulture)
+                    };
+                    bool selected = objectDetectionResultReviewSelectedDefectObjectNumber == objectNumber;
+                    button.FlatAppearance.BorderColor = selected
+                        ? Color.DodgerBlue
+                        : Color.FromArgb(190, 195, 202);
+                    button.FlatAppearance.BorderSize = selected ? 2 : 1;
+                    button.Click += ObjectDetectionResultReviewDefectObjectButton_Click;
+                    objectDetectionResultReviewDefectObjectButtonsPanel.Controls.Add(
+                        button,
+                        index % 3,
+                        index / 3);
+                }
+            }
+            finally
+            {
+                objectDetectionResultReviewDefectObjectButtonsPanel.ResumeLayout(true);
+            }
+        }
+
+        private void ObjectDetectionResultReviewDefectObjectButton_Click(object sender, EventArgs e)
+        {
+            if (isObjectDetectionResultReviewRunning)
+            {
+                return;
+            }
+
+            var button = sender as Button;
+            var choice = objectDetectionResultReviewParameterComboBox == null
+                ? null
+                : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+            if (button == null || !(button.Tag is int) || choice == null || choice.Parameter == null)
+            {
+                return;
+            }
+
+            int objectNumber = (int)button.Tag;
+            if (objectDetectionResultReviewSelectedDefectObjectNumber == objectNumber)
+            {
+                objectDetectionResultReviewSelectedDefectObjectNumber = null;
+                objectDetectionResultReviewSelectedGoodJudgementObjectNumber = null;
+                if (objectDetectionResultReviewOverviewObjectNumber > 0)
+                {
+                    selectedObjectDetectionNumber = objectDetectionResultReviewOverviewObjectNumber;
+                }
+            }
+            else
+            {
+                objectDetectionResultReviewSelectedDefectObjectNumber = objectNumber;
+                objectDetectionResultReviewSelectedGoodJudgementObjectNumber = objectNumber;
+                selectedObjectDetectionNumber = objectNumber;
+                ClearObjectDetectionResultReviewMeasurementHighlight();
+            }
+
+            RefreshObjectDetectionResultReviewDefectObjectButtons();
+            RefreshObjectDetectionResultReviewGoodJudgementView();
+            RenderObjectDetectionResultReviewDefectRows(
+                choice.Parameter,
+                objectDetectionResultReviewSelectedDefectObjectNumber);
+            RefreshObjectDetectionResultReviewSelectedObjectDisplays();
+        }
+
+        private void RenderObjectDetectionResultReviewDefectRows(
+            ObjectDetectionParameterSettings parameter,
+            int? selectedObjectNumber)
+        {
+            objectDetectionResultReviewDefectsGrid.Rows.Clear();
             EnsureObjectDetectionDefectCores(parameter);
             bool allCoreResultsReady = true;
             int totalComponents = 0;
@@ -1455,27 +1631,80 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 totalComponents += result.DetectedComponentCount;
+                int componentCount = selectedObjectNumber.HasValue
+                    ? CountObjectDetectionResultReviewDefectComponents(result, selectedObjectNumber.Value)
+                    : result.DetectedComponentCount;
                 objectDetectionResultReviewDefectsGrid.Rows.Add(
                     GetObjectDetectionDefectCoreLabel(GetObjectDetectionDefectCoreIndex(core.CoreKey)),
-                    result.DetectedComponentCount, result.TotalElapsedMilliseconds,
-                    result.DetectedComponentCount > 0 ? "檢出缺陷" : "未檢出",
-                    "OpenCV 元件數：" + result.DetectedComponentCount.ToString("N0", CultureInfo.CurrentCulture));
+                    componentCount,
+                    selectedObjectNumber.HasValue ? (object)"-" : result.TotalElapsedMilliseconds,
+                    componentCount > 0 ? "檢出缺陷" : "未檢出",
+                    (selectedObjectNumber.HasValue
+                        ? "物件 " + selectedObjectNumber.Value.ToString("N0", CultureInfo.CurrentCulture) + "；"
+                        : string.Empty) +
+                    "OpenCV 元件數：" + componentCount.ToString("N0", CultureInfo.CurrentCulture));
             }
 
             if (allCoreResultsReady)
             {
-                int integratedCount = GetObjectDetectionDefectIntegrationGroups(parameter).Count;
+                IEnumerable<ObjectDetectionDefectIntegrationGroup> groups =
+                    GetObjectDetectionDefectIntegrationGroups(parameter);
+                int integratedCount = selectedObjectNumber.HasValue
+                    ? groups.Count(group => group.ObjectNumber == selectedObjectNumber.Value)
+                    : groups.Count();
                 objectDetectionResultReviewDefectsGrid.Rows.Add(
                     "整合結果", integratedCount, string.Empty,
                     integratedCount > 0 ? "檢出缺陷" : "未檢出",
-                    "各條件合併後的缺陷群數；單核心元件合計 " +
-                    totalComponents.ToString("N0", CultureInfo.CurrentCulture));
+                    (selectedObjectNumber.HasValue
+                        ? "物件 " + selectedObjectNumber.Value.ToString("N0", CultureInfo.CurrentCulture) + "；"
+                        : "各條件合併後的缺陷群數；") +
+                    "單核心元件合計 " +
+                    (selectedObjectNumber.HasValue
+                        ? SumObjectDetectionResultReviewDefectComponents(parameter, selectedObjectNumber.Value)
+                        : totalComponents).ToString("N0", CultureInfo.CurrentCulture));
             }
             else
             {
                 objectDetectionResultReviewDefectsGrid.Rows.Add(
                     "整合結果", "-", string.Empty, "待確認", "尚有啟用核心未完成");
             }
+
+            ApplyObjectDetectionResultReviewVerdictStyles();
+        }
+
+        private static int CountObjectDetectionResultReviewDefectComponents(
+            ObjectDetectionDefectCoreResult result,
+            int objectNumber)
+        {
+            return result == null || result.Contours == null
+                ? 0
+                : result.Contours
+                    .Where(contour => contour != null && contour.ObjectNumber == objectNumber)
+                    .Select(contour => (contour.IsBright ? "B" : "D") + ":" +
+                        contour.ComponentLabel.ToString(CultureInfo.InvariantCulture))
+                    .Distinct(StringComparer.Ordinal)
+                    .Count();
+        }
+
+        private int SumObjectDetectionResultReviewDefectComponents(
+            ObjectDetectionParameterSettings parameter,
+            int objectNumber)
+        {
+            int total = 0;
+            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4))
+            {
+                if (!string.Equals(core.CoreKey, "FlatField", StringComparison.Ordinal) && !core.Enabled)
+                {
+                    continue;
+                }
+
+                ObjectDetectionDefectCoreResult result;
+                if (TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out result))
+                {
+                    total += CountObjectDetectionResultReviewDefectComponents(result, objectNumber);
+                }
+            }
+            return total;
         }
 
         private string BuildObjectDetectionResultReviewSummary(
@@ -1593,6 +1822,17 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewConditionsGrid.Rows.Clear();
             objectDetectionResultReviewDefectsGrid.Rows.Clear();
             objectDetectionResultReviewImageGeneration = null;
+            objectDetectionResultReviewSelectedDefectObjectNumber = null;
+            if (objectDetectionResultReviewDefectObjectButtonsPanel != null &&
+                !objectDetectionResultReviewDefectObjectButtonsPanel.IsDisposed)
+            {
+                foreach (Control control in objectDetectionResultReviewDefectObjectButtonsPanel.Controls
+                    .Cast<Control>().ToList())
+                {
+                    objectDetectionResultReviewDefectObjectButtonsPanel.Controls.Remove(control);
+                    control.Dispose();
+                }
+            }
             ClearObjectDetectionResultReviewGoodJudgementState();
             objectDetectionResultReviewSelectedMeasurement = null;
             if (objectDetectionResultReviewClipLinesToMaskCheckBox != null)

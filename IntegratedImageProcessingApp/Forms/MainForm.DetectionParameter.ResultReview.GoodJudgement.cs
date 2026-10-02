@@ -49,7 +49,8 @@ namespace IntegratedImageProcessingApp.Forms
             public List<ResultReviewGoodJudgementCondition> Conditions { get; set; }
         }
 
-        private FlowLayoutPanel objectDetectionResultReviewGoodJudgementObjectButtonsPanel;
+        private Panel objectDetectionResultReviewGoodJudgementObjectButtonsHost;
+        private TableLayoutPanel objectDetectionResultReviewGoodJudgementObjectButtonsPanel;
         private Label objectDetectionResultReviewGoodJudgementSummaryLabel;
         private List<ObjectDetectionGoodJudgementRuleSettings> objectDetectionResultReviewGoodJudgementRules =
             new List<ObjectDetectionGoodJudgementRuleSettings>();
@@ -70,29 +71,44 @@ namespace IntegratedImageProcessingApp.Forms
             };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 78F));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26F));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
 
             var legend = new Label
             {
                 Dock = DockStyle.Fill,
-                Text = "物件序號色彩：綠色 A 規　黃色 B 規　紅色 NG　灰色待確認",
+                Text = "物件序號色彩：綠色 A 規　黃色 B 規　紅色 NG　灰色待確認；再次點同一片回總覽",
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(75, 83, 95),
                 Padding = new Padding(4, 0, 2, 0),
-                Margin = Padding.Empty
+                Margin = Padding.Empty,
+                AutoEllipsis = true
             };
 
-            objectDetectionResultReviewGoodJudgementObjectButtonsPanel = new FlowLayoutPanel
+            objectDetectionResultReviewGoodJudgementObjectButtonsHost = new Panel
             {
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = false,
-                Padding = new Padding(2, 3, 2, 1),
+                BackColor = Color.FromArgb(248, 250, 252),
                 Margin = Padding.Empty
             };
+            objectDetectionResultReviewGoodJudgementObjectButtonsPanel = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top,
+                ColumnCount = 3,
+                RowCount = 1,
+                Height = 34,
+                Margin = Padding.Empty,
+                Padding = new Padding(2)
+            };
+            for (int column = 0; column < 3; column++)
+            {
+                objectDetectionResultReviewGoodJudgementObjectButtonsPanel.ColumnStyles.Add(
+                    new ColumnStyle(SizeType.Percent, 100F / 3F));
+            }
+            objectDetectionResultReviewGoodJudgementObjectButtonsHost.Controls.Add(
+                objectDetectionResultReviewGoodJudgementObjectButtonsPanel);
             objectDetectionResultReviewGoodJudgementSummaryLabel = new Label
             {
                 Dock = DockStyle.Fill,
@@ -105,7 +121,7 @@ namespace IntegratedImageProcessingApp.Forms
             };
 
             layout.Controls.Add(legend, 0, 0);
-            layout.Controls.Add(objectDetectionResultReviewGoodJudgementObjectButtonsPanel, 0, 1);
+            layout.Controls.Add(objectDetectionResultReviewGoodJudgementObjectButtonsHost, 0, 1);
             layout.Controls.Add(objectDetectionResultReviewGoodJudgementSummaryLabel, 0, 2);
             layout.Controls.Add(grid, 0, 3);
             return layout;
@@ -343,16 +359,35 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewGoodJudgementObjectButtonsPanel.SuspendLayout();
             try
             {
-                objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls.Clear();
-                foreach (ResultReviewGoodJudgementObject result in
-                    objectDetectionResultReviewGoodJudgementResults)
+                foreach (Control control in objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls
+                    .Cast<Control>().ToList())
                 {
+                    objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls.Remove(control);
+                    control.Dispose();
+                }
+                objectDetectionResultReviewGoodJudgementObjectButtonsPanel.RowStyles.Clear();
+                int rowCount = Math.Max(1,
+                    (objectDetectionResultReviewGoodJudgementResults.Count + 2) / 3);
+                objectDetectionResultReviewGoodJudgementObjectButtonsPanel.RowCount = rowCount;
+                objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Height = rowCount * 34 + 4;
+                for (int row = 0; row < rowCount; row++)
+                {
+                    objectDetectionResultReviewGoodJudgementObjectButtonsPanel.RowStyles.Add(
+                        new RowStyle(SizeType.Absolute, 34F));
+                }
+
+                for (int index = 0;
+                    index < objectDetectionResultReviewGoodJudgementResults.Count;
+                    index++)
+                {
+                    ResultReviewGoodJudgementObject result =
+                        objectDetectionResultReviewGoodJudgementResults[index];
                     var button = new Button
                     {
                         Text = result.ObjectNumber.ToString(CultureInfo.CurrentCulture),
                         Tag = result.ObjectNumber,
-                        Size = new Size(48, 28),
-                        Margin = new Padding(2, 1, 2, 1),
+                        Dock = DockStyle.Fill,
+                        Margin = new Padding(2),
                         FlatStyle = FlatStyle.Flat,
                         UseVisualStyleBackColor = false,
                         BackColor = GetObjectDetectionResultReviewGoodJudgementColor(result.Grade),
@@ -370,7 +405,10 @@ namespace IntegratedImageProcessingApp.Forms
                     button.FlatAppearance.BorderSize =
                         objectDetectionResultReviewSelectedGoodJudgementObjectNumber == result.ObjectNumber ? 3 : 1;
                     button.Click += ObjectDetectionResultReviewGoodJudgementObjectButton_Click;
-                    objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls.Add(button);
+                    objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls.Add(
+                        button,
+                        index % 3,
+                        index / 3);
                 }
             }
             finally
@@ -408,6 +446,19 @@ namespace IntegratedImageProcessingApp.Forms
                 selectedObjectDetectionNumber = objectNumber;
                 ClearObjectDetectionResultReviewMeasurementHighlight();
                 RefreshObjectDetectionResultReviewSelectedObjectDisplays();
+            }
+
+            objectDetectionResultReviewSelectedDefectObjectNumber =
+                objectDetectionResultReviewSelectedGoodJudgementObjectNumber;
+            RefreshObjectDetectionResultReviewDefectObjectButtons();
+            var choice = objectDetectionResultReviewParameterComboBox == null
+                ? null
+                : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+            if (choice != null && choice.Parameter != null && objectDetectionResultReviewDefectsGrid != null)
+            {
+                RenderObjectDetectionResultReviewDefectRows(
+                    choice.Parameter,
+                    objectDetectionResultReviewSelectedDefectObjectNumber);
             }
 
             RefreshObjectDetectionResultReviewGoodJudgementView();
@@ -666,7 +717,12 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewOverviewObjectNumber = 0;
             if (objectDetectionResultReviewGoodJudgementObjectButtonsPanel != null)
             {
-                objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls.Clear();
+                foreach (Control control in objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls
+                    .Cast<Control>().ToList())
+                {
+                    objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls.Remove(control);
+                    control.Dispose();
+                }
             }
             if (objectDetectionResultReviewGoodJudgementSummaryLabel != null)
             {
