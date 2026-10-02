@@ -63,6 +63,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private NumericUpDown objectDetectionFrequencyScanHeightInput;
         private NumericUpDown objectDetectionFrequencySensitivityInput;
+        private NumericUpDown objectDetectionFrequencyContrastGainInput;
         private CheckBox objectDetectionFrequencyEnabledCheckBox;
         private CheckBox objectDetectionFrequencyDirectionalLineCheckBox;
         private CheckBox objectDetectionFrequencyShowHeatmapCheckBox;
@@ -116,6 +117,57 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionFrequencyEnabledCheckBox.Checked);
             };
             enabledPanel.Controls.Add(objectDetectionFrequencyEnabledCheckBox);
+
+            var sourceContrastGroup = new GroupBox
+            {
+                Dock = DockStyle.Top,
+                Height = 108,
+                Text = "影像來源與對比",
+                Padding = new Padding(8, 16, 8, 4)
+            };
+            var sourceContrastLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            sourceContrastLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
+            sourceContrastLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
+            for (int row = 0; row < 3; row++)
+            {
+                sourceContrastLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            }
+            var frequencySourceLabel = new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "平場校正後影像",
+                TextAlign = ContentAlignment.MiddleLeft
+            };
+            objectDetectionFrequencyContrastGainInput = new NumericUpDown
+            {
+                Dock = DockStyle.Fill,
+                Minimum = 0.1m,
+                Maximum = 5.0m,
+                Increment = 0.05m,
+                DecimalPlaces = 2,
+                Value = (decimal)Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain))
+            };
+            var pivotGrayLabel = new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "基準灰階：平場目標值 " + parameter.FlatFieldTargetGray.ToString(CultureInfo.CurrentCulture),
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true
+            };
+            sourceContrastLayout.Controls.Add(frequencySourceLabel, 0, 0);
+            sourceContrastLayout.SetColumnSpan(frequencySourceLabel, 2);
+            sourceContrastLayout.Controls.Add(CreateDefectCoreLabel("對比倍率"), 0, 1);
+            sourceContrastLayout.Controls.Add(objectDetectionFrequencyContrastGainInput, 1, 1);
+            sourceContrastLayout.Controls.Add(pivotGrayLabel, 0, 2);
+            sourceContrastLayout.SetColumnSpan(pivotGrayLabel, 2);
+            sourceContrastGroup.Controls.Add(sourceContrastLayout);
 
             var scanGroup = new GroupBox
             {
@@ -317,6 +369,7 @@ namespace IntegratedImageProcessingApp.Forms
             content.Controls.Add(objectDetectionFrequencyStatusLabel);
             content.Controls.Add(displayOptions);
             content.Controls.Add(scanGroup);
+            content.Controls.Add(sourceContrastGroup);
             content.Controls.Add(sourceInfo);
             content.Controls.Add(enabledPanel);
             page.Controls.Add(content);
@@ -367,6 +420,10 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void UpdateObjectDetectionFrequencyControlsEnabled(bool enabled)
         {
+            if (objectDetectionFrequencyContrastGainInput != null)
+            {
+                objectDetectionFrequencyContrastGainInput.Enabled = enabled;
+            }
             if (objectDetectionFrequencyScanHeightInput != null)
             {
                 objectDetectionFrequencyScanHeightInput.Enabled = enabled;
@@ -431,6 +488,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (parameter == null ||
                 !string.Equals(objectDetectionFrequencyDraftParameterId, parameter.Id,
                     StringComparison.Ordinal) ||
+                objectDetectionFrequencyContrastGainInput == null ||
                 objectDetectionFrequencyScanHeightInput == null ||
                 objectDetectionFrequencySensitivityInput == null)
             {
@@ -440,6 +498,8 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.DefectFrequencyScanHeight = (int)objectDetectionFrequencyScanHeightInput.Value;
             parameter.DefectFrequencySensitivity = Decimal.ToDouble(
                 objectDetectionFrequencySensitivityInput.Value);
+            parameter.DefectFrequencyContrastGain = Decimal.ToDouble(
+                objectDetectionFrequencyContrastGainInput.Value);
             parameter.DefectFrequencyDirectionalLineEnabled =
                 objectDetectionFrequencyDirectionalLineCheckBox.Checked;
             parameter.DefectFrequencyShowHeatmap =
@@ -466,7 +526,9 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.CurrentCulture) +
                 " px，敏感度 " +
                 parameter.DefectFrequencySensitivity.ToString("0.0", CultureInfo.CurrentCulture) +
-                "。設定變更後請重新分析。 ");
+                "，對比倍率 " +
+                parameter.DefectFrequencyContrastGain.ToString("0.00", CultureInfo.CurrentCulture) +
+                "。影像來源為平場校正後影像；設定變更後請重新分析。 ");
         }
 
         private void CancelObjectDetectionFrequencySettings(
@@ -482,6 +544,10 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyScanHeightInput.Minimum,
                 Math.Min(objectDetectionFrequencyScanHeightInput.Maximum,
                     parameter.DefectFrequencyScanHeight));
+            objectDetectionFrequencyContrastGainInput.Value = (decimal)Math.Max(
+                (double)objectDetectionFrequencyContrastGainInput.Minimum,
+                Math.Min((double)objectDetectionFrequencyContrastGainInput.Maximum,
+                    parameter.DefectFrequencyContrastGain));
             objectDetectionFrequencySensitivityInput.Value = (decimal)Math.Max(
                 (double)objectDetectionFrequencySensitivityInput.Minimum,
                 Math.Min((double)objectDetectionFrequencySensitivityInput.Maximum,
@@ -609,6 +675,7 @@ namespace IntegratedImageProcessingApp.Forms
                     ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
                 double sensitivity = Math.Max(1.0, Math.Min(10.0, parameter.DefectFrequencySensitivity));
+                double contrastGain = Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain));
                 bool analyzeDirectionalLines = parameter.DefectFrequencyDirectionalLineEnabled;
                 bool runParallel = parameter.DefectParallelExecutionEnabled;
                 int capturedImageGeneration = imageSourceGeneration;
@@ -643,6 +710,8 @@ namespace IntegratedImageProcessingApp.Forms
                             imageBounds,
                             scanHeight,
                             sensitivity,
+                            contrastGain,
+                            parameter.FlatFieldTargetGray,
                             analyzeDirectionalLines,
                             runParallel,
                             progress);
@@ -796,6 +865,8 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle imageBounds,
             int requestedWindowSize,
             double sensitivity,
+            double contrastGain,
+            int pivotGray,
             bool analyzeDirectionalLines,
             bool runParallel,
             IProgress<string> progress)
@@ -826,12 +897,18 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 using (Cv.Mat gray = CreateObjectDetectionDefectGrayRegionMat(source, crop))
+                using (var contrastAdjusted = new Cv.Mat())
                 using (var polygonMask = new Cv.Mat(
                     crop.Height,
                     crop.Width,
                     Cv.MatType.CV_8UC1,
                     Cv.Scalar.Black))
                 {
+                    double gain = double.IsNaN(contrastGain) || double.IsInfinity(contrastGain)
+                        ? 1.0
+                        : Math.Max(0.1, Math.Min(5.0, contrastGain));
+                    double beta = Math.Max(1, Math.Min(255, pivotGray)) * (1.0 - gain);
+                    gray.ConvertTo(contrastAdjusted, Cv.MatType.CV_8UC1, gain, beta);
                     Cv.Point[] polygon = corners.Select(point => new Cv.Point(
                         (int)Math.Round(point.X - crop.X),
                         (int)Math.Round(point.Y - crop.Y))).ToArray();
@@ -861,7 +938,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     continue;
                                 }
 
-                                using (Cv.Mat tile = gray.SubMat(new Cv.Rect(
+                                using (Cv.Mat tile = contrastAdjusted.SubMat(new Cv.Rect(
                                     localWindow.X,
                                     localWindow.Y,
                                     localWindow.Width,
@@ -1122,6 +1199,8 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture),
+                parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyDirectionalLineEnabled ? "1" : "0",
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,
                 CreateObjectDetectionFlatFieldSettingsSignature(parameter)
