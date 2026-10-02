@@ -519,6 +519,7 @@ namespace IntegratedImageProcessingApp.Forms
                     ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
                 double sensitivity = Math.Max(1.0, Math.Min(10.0, parameter.DefectFrequencySensitivity));
+                bool runParallel = parameter.DefectParallelExecutionEnabled;
                 int capturedImageGeneration = imageSourceGeneration;
                 int capturedFlatFieldGeneration = objectDetectionFlatFieldEvaluationGeneration;
                 string signature = CreateObjectDetectionFrequencySignature(
@@ -537,6 +538,9 @@ namespace IntegratedImageProcessingApp.Forms
                 });
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
+                SetObjectDetectionDefectRegionStatus(runParallel
+                    ? "平行頻域掃描中：各物件 ROI 同時處理... "
+                    : "頻域掃描中：各物件 ROI 依序處理... ");
                 ObjectDetectionFrequencyResult result = await Task.Run(delegate
                 {
                     try
@@ -548,6 +552,7 @@ namespace IntegratedImageProcessingApp.Forms
                             imageBounds,
                             scanHeight,
                             sensitivity,
+                            runParallel,
                             progress);
                     }
                     finally
@@ -694,23 +699,20 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle imageBounds,
             int requestedWindowSize,
             double sensitivity,
+            bool runParallel,
             IProgress<string> progress)
         {
-            var result = new ObjectDetectionFrequencyResult
-            {
-                Cells = new List<ObjectDetectionFrequencyCell>(),
-                ObjectPolygons = new Dictionary<int, PointF[]>(),
-                CellsByObject = new Dictionary<int, List<ObjectDetectionFrequencyCell>>()
-            };
-            for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+            var cellsByObjectIndex = new List<ObjectDetectionFrequencyCell>[objects.Count];
+            var polygonsByObjectIndex = new PointF[objects.Count][];
+            Action<int> scanObject = delegate(int objectIndex)
             {
                 ObjectDefinitionDetectedObject detectedObject = objects[objectIndex];
                 PointF[] corners = CreateObjectDetectionDefectRegionImageCorners(
                     detectedObject,
                     normalizedRegion);
-                result.ObjectPolygons[detectedObject.Number] = corners;
                 var objectCells = new List<ObjectDetectionFrequencyCell>();
-                result.CellsByObject[detectedObject.Number] = objectCells;
+                cellsByObjectIndex[objectIndex] = objectCells;
+                polygonsByObjectIndex[objectIndex] = corners;
                 int left = (int)Math.Floor(corners.Min(point => point.X));
                 int top = (int)Math.Floor(corners.Min(point => point.Y));
                 int right = (int)Math.Ceiling(corners.Max(point => point.X));
@@ -722,7 +724,7 @@ namespace IntegratedImageProcessingApp.Forms
                     imageBounds);
                 if (crop.Width < 8 || crop.Height < 8)
                 {
-                    continue;
+                    return;
                 }
 
                 using (Cv.Mat gray = CreateObjectDetectionDefectGrayRegionMat(source, crop))
@@ -741,7 +743,7 @@ namespace IntegratedImageProcessingApp.Forms
                         Math.Min(crop.Width, crop.Height));
                     if (windowSize < 8)
                     {
-                        continue;
+                        return;
                     }
                     int step = Math.Max(1, windowSize / 2);
                     List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
@@ -780,7 +782,6 @@ namespace IntegratedImageProcessingApp.Forms
                                             windowMask,
                                             validPixels)
                                     };
-                                    result.Cells.Add(cell);
                                     objectCells.Add(cell);
                                 }
                             }
@@ -789,7 +790,42 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 progress?.Report(
                     "頻域掃描 ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
-                    objects.Count.ToString(CultureInfo.CurrentCulture) + "... ");
+                    objects.Count.ToString(CultureInfo.CurrentCulture) + " 完成... ");
+            };
+
+            if (runParallel && objects.Count > 1)
+            {
+                Parallel.For(
+                    0,
+                    objects.Count,
+                    new ParallelOptions { MaxDegreeOfParallelism = objects.Count },
+                    scanObject);
+            }
+            else
+            {
+                for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+                {
+                    scanObject(objectIndex);
+                }
+            }
+
+            var result = new ObjectDetectionFrequencyResult
+            {
+                Cells = new List<ObjectDetectionFrequencyCell>(),
+                ObjectPolygons = new Dictionary<int, PointF[]>(),
+                CellsByObject = new Dictionary<int, List<ObjectDetectionFrequencyCell>>()
+            };
+            for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+            {
+                List<ObjectDetectionFrequencyCell> objectCells = cellsByObjectIndex[objectIndex];
+                if (objectCells == null)
+                {
+                    continue;
+                }
+                int objectNumber = objects[objectIndex].Number;
+                result.ObjectPolygons[objectNumber] = polygonsByObjectIndex[objectIndex];
+                result.CellsByObject[objectNumber] = objectCells;
+                result.Cells.AddRange(objectCells);
             }
 
             if (result.Cells.Count == 0)
