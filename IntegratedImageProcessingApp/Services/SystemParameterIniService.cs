@@ -1119,6 +1119,9 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.CoreKey={1}", corePrefix, Escape(core.CoreKey));
                         writer.WriteLine("{0}.ContrastGain={1}", corePrefix, core.ContrastGain.ToString("R", CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.PreprocessMethod={1}", corePrefix, Escape(core.PreprocessMethod));
+                        writer.WriteLine("{0}.DefectEnhancementMethod={1}", corePrefix, Escape(core.DefectEnhancementMethod));
+                        writer.WriteLine("{0}.LocalBackgroundKernelSize={1}", corePrefix, core.LocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.LocalBackgroundGain={1}", corePrefix, core.LocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.GaussianKernelWidth={1}", corePrefix, core.GaussianKernelWidth.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.GaussianKernelHeight={1}", corePrefix, core.GaussianKernelHeight.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.GaussianSigmaX={1}", corePrefix, core.GaussianSigmaX.ToString("R", CultureInfo.InvariantCulture));
@@ -1912,6 +1915,23 @@ namespace IntegratedImageProcessingApp.Services
                     SectionObjectDetection,
                     prefix + ".PreprocessMethod",
                     defaults.PreprocessMethod);
+                defaults.DefectEnhancementMethod = GetValue(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".DefectEnhancementMethod",
+                    defaults.DefectEnhancementMethod);
+                defaults.LocalBackgroundKernelSize = NormalizeOddKernelSize(GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".LocalBackgroundKernelSize",
+                    defaults.LocalBackgroundKernelSize), 3);
+                defaults.LocalBackgroundGain = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".LocalBackgroundGain",
+                    defaults.LocalBackgroundGain,
+                    0.1,
+                    10.0);
                 defaults.GaussianKernelWidth = NormalizeOddKernelSize(GetInt(
                     sections,
                     SectionObjectDetection,

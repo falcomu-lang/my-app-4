@@ -44,6 +44,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             public long PreprocessingElapsedMilliseconds { get; set; }
 
+            public long EnhancementElapsedMilliseconds { get; set; }
+
             public long DefectAnalysisElapsedMilliseconds { get; set; }
 
             public long PreviewGenerationElapsedMilliseconds { get; set; }
@@ -77,6 +79,8 @@ namespace IntegratedImageProcessingApp.Forms
             public long[] ContrastAdjustmentElapsedTicksByCore { get; set; }
 
             public long[] PreprocessingElapsedTicksByCore { get; set; }
+
+            public long[] EnhancementElapsedTicksByCore { get; set; }
 
             public long[] DefectAnalysisElapsedTicksByCore { get; set; }
 
@@ -397,6 +401,7 @@ namespace IntegratedImageProcessingApp.Forms
                         var coreElapsedTicks = new long[coreSettings.Count];
                         var contrastAdjustmentElapsedTicks = new long[coreSettings.Count];
                         var preprocessingElapsedTicks = new long[coreSettings.Count];
+                        var enhancementElapsedTicks = new long[coreSettings.Count];
                         var defectAnalysisElapsedTicks = new long[coreSettings.Count];
                         var previewGenerationElapsedTicks = new long[coreSettings.Count];
                         long roiPreparationElapsedTicks = 0;
@@ -429,6 +434,9 @@ namespace IntegratedImageProcessingApp.Forms
                                 System.Threading.Interlocked.Add(
                                     ref preprocessingElapsedTicks[coreIndex],
                                     objectResult.PreprocessingElapsedTicksByCore[coreIndex]);
+                                System.Threading.Interlocked.Add(
+                                    ref enhancementElapsedTicks[coreIndex],
+                                    objectResult.EnhancementElapsedTicksByCore[coreIndex]);
                                 System.Threading.Interlocked.Add(
                                     ref defectAnalysisElapsedTicks[coreIndex],
                                     objectResult.DefectAnalysisElapsedTicksByCore[coreIndex]);
@@ -499,6 +507,9 @@ namespace IntegratedImageProcessingApp.Forms
                             coreResult.PreprocessingElapsedMilliseconds =
                                 ConvertObjectDetectionDefectTicksToMilliseconds(
                                     preprocessingElapsedTicks[coreIndex]);
+                            coreResult.EnhancementElapsedMilliseconds =
+                                ConvertObjectDetectionDefectTicksToMilliseconds(
+                                    enhancementElapsedTicks[coreIndex]);
                             coreResult.DefectAnalysisElapsedMilliseconds =
                                 ConvertObjectDetectionDefectTicksToMilliseconds(
                                     defectAnalysisElapsedTicks[coreIndex]);
@@ -738,6 +749,9 @@ namespace IntegratedImageProcessingApp.Forms
                 CoreKey = source.CoreKey,
                 ContrastGain = source.ContrastGain,
                 PreprocessMethod = source.PreprocessMethod,
+                DefectEnhancementMethod = source.DefectEnhancementMethod,
+                LocalBackgroundKernelSize = source.LocalBackgroundKernelSize,
+                LocalBackgroundGain = source.LocalBackgroundGain,
                 GaussianKernelWidth = source.GaussianKernelWidth,
                 GaussianKernelHeight = source.GaussianKernelHeight,
                 GaussianSigmaX = source.GaussianSigmaX,
@@ -791,6 +805,9 @@ namespace IntegratedImageProcessingApp.Forms
                 core.CoreKey ?? string.Empty,
                 core.ContrastGain.ToString("R", CultureInfo.InvariantCulture),
                 core.PreprocessMethod ?? string.Empty,
+                core.DefectEnhancementMethod ?? string.Empty,
+                core.LocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture),
+                core.LocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture),
                 core.GaussianKernelWidth.ToString(CultureInfo.InvariantCulture),
                 core.GaussianKernelHeight.ToString(CultureInfo.InvariantCulture),
                 core.GaussianSigmaX.ToString("R", CultureInfo.InvariantCulture),
@@ -838,6 +855,7 @@ namespace IntegratedImageProcessingApp.Forms
                 ElapsedTicksByCore = new long[cores.Count],
                 ContrastAdjustmentElapsedTicksByCore = new long[cores.Count],
                 PreprocessingElapsedTicksByCore = new long[cores.Count],
+                EnhancementElapsedTicksByCore = new long[cores.Count],
                 DefectAnalysisElapsedTicksByCore = new long[cores.Count],
                 PreviewGenerationElapsedTicksByCore = new long[cores.Count],
                 ProcessedPatchesByCore = new ObjectDetectionDefectProcessedPatch[cores.Count]
@@ -915,44 +933,72 @@ namespace IntegratedImageProcessingApp.Forms
                                 preprocessingStopwatch.Stop();
                                 result.PreprocessingElapsedTicksByCore[coreIndex] =
                                     preprocessingStopwatch.ElapsedTicks;
-                                Stopwatch previewStopwatch = Stopwatch.StartNew();
-                                processedBitmap = CreateObjectDetectionDefectPreviewBitmap(preprocessed);
-                                previewStopwatch.Stop();
-                                result.PreviewGenerationElapsedTicksByCore[coreIndex] =
-                                    previewStopwatch.ElapsedTicks;
-                                Stopwatch analysisStopwatch = Stopwatch.StartNew();
-                                progress?.Report(roiLabel + "／" + coreLabel + "：門檻分割、連通元件與輪廓分析...");
-                                if (core.DarkThresholdEnabled)
+                                Cv.Mat enhanced = null;
+                                Cv.Mat defectImage = preprocessed;
+                                if (string.Equals(
+                                    core.DefectEnhancementMethod,
+                                    "LocalBackgroundDifference",
+                                    StringComparison.OrdinalIgnoreCase))
                                 {
-                                    AddObjectDetectionDefectMaskContours(
+                                    Stopwatch enhancementStopwatch = Stopwatch.StartNew();
+                                    enhanced = ApplyObjectDetectionDefectEnhancement(
                                         preprocessed,
-                                        polygonMask,
-                                        crop,
-                                        detectedObject.Number,
-                                        core.DarkThreshold,
-                                        false,
                                         core,
-                                        xMillimetersPerPixel,
-                                        yMillimetersPerPixel,
-                                        result.ContoursByCore[coreIndex]);
+                                        pivotGray);
+                                    enhancementStopwatch.Stop();
+                                    result.EnhancementElapsedTicksByCore[coreIndex] =
+                                        enhancementStopwatch.ElapsedTicks;
+                                    defectImage = enhanced;
                                 }
-                                if (core.BrightThresholdEnabled)
+
+                                try
                                 {
-                                    AddObjectDetectionDefectMaskContours(
-                                        preprocessed,
-                                        polygonMask,
-                                        crop,
-                                        detectedObject.Number,
-                                        core.BrightThreshold,
-                                        true,
-                                        core,
-                                        xMillimetersPerPixel,
-                                        yMillimetersPerPixel,
-                                        result.ContoursByCore[coreIndex]);
+                                    Stopwatch previewStopwatch = Stopwatch.StartNew();
+                                    processedBitmap = CreateObjectDetectionDefectPreviewBitmap(defectImage);
+                                    previewStopwatch.Stop();
+                                    result.PreviewGenerationElapsedTicksByCore[coreIndex] =
+                                        previewStopwatch.ElapsedTicks;
+                                    Stopwatch analysisStopwatch = Stopwatch.StartNew();
+                                    progress?.Report(roiLabel + "／" + coreLabel + "：門檻分割、連通元件與輪廓分析...");
+                                    if (core.DarkThresholdEnabled)
+                                    {
+                                        AddObjectDetectionDefectMaskContours(
+                                            defectImage,
+                                            polygonMask,
+                                            crop,
+                                            detectedObject.Number,
+                                            core.DarkThreshold,
+                                            false,
+                                            core,
+                                            xMillimetersPerPixel,
+                                            yMillimetersPerPixel,
+                                            result.ContoursByCore[coreIndex]);
+                                    }
+                                    if (core.BrightThresholdEnabled)
+                                    {
+                                        AddObjectDetectionDefectMaskContours(
+                                            defectImage,
+                                            polygonMask,
+                                            crop,
+                                            detectedObject.Number,
+                                            core.BrightThreshold,
+                                            true,
+                                            core,
+                                            xMillimetersPerPixel,
+                                            yMillimetersPerPixel,
+                                            result.ContoursByCore[coreIndex]);
+                                    }
+                                    analysisStopwatch.Stop();
+                                    result.DefectAnalysisElapsedTicksByCore[coreIndex] =
+                                        analysisStopwatch.ElapsedTicks;
                                 }
-                                analysisStopwatch.Stop();
-                                result.DefectAnalysisElapsedTicksByCore[coreIndex] =
-                                    analysisStopwatch.ElapsedTicks;
+                                finally
+                                {
+                                    if (enhanced != null)
+                                    {
+                                        enhanced.Dispose();
+                                    }
+                                }
                             }
                         }
 
@@ -1069,6 +1115,66 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return source.Clone();
+        }
+
+        private static Cv.Mat ApplyObjectDetectionDefectEnhancement(
+            Cv.Mat source,
+            ObjectDetectionDefectCoreSettings core,
+            int pivotGray)
+        {
+            if (source == null || source.Empty() || core == null)
+            {
+                throw new ArgumentException("局部背景差分缺少有效的影像或設定。");
+            }
+
+            int kernelSize = NormalizeDefectEnhancementKernel(core.LocalBackgroundKernelSize);
+            double gain = double.IsNaN(core.LocalBackgroundGain) ||
+                double.IsInfinity(core.LocalBackgroundGain)
+                ? 1.5
+                : Math.Max(0.1, Math.Min(10.0, core.LocalBackgroundGain));
+            int centerGray = Math.Max(0, Math.Min(255, pivotGray));
+
+            using (var background = new Cv.Mat())
+            using (var signedSource = new Cv.Mat())
+            using (var signedBackground = new Cv.Mat())
+            using (var difference = new Cv.Mat())
+            {
+                Cv.Cv2.GaussianBlur(
+                    source,
+                    background,
+                    new Cv.Size(kernelSize, kernelSize),
+                    0,
+                    0);
+                source.ConvertTo(signedSource, Cv.MatType.CV_16SC1);
+                background.ConvertTo(signedBackground, Cv.MatType.CV_16SC1);
+                Cv.Cv2.Subtract(signedSource, signedBackground, difference);
+
+                var enhanced = new Cv.Mat();
+                try
+                {
+                    difference.ConvertTo(
+                        enhanced,
+                        Cv.MatType.CV_8UC1,
+                        gain,
+                        centerGray);
+                    return enhanced;
+                }
+                catch
+                {
+                    enhanced.Dispose();
+                    throw;
+                }
+            }
+        }
+
+        private static int NormalizeDefectEnhancementKernel(int value)
+        {
+            int normalized = Math.Max(3, Math.Min(99, value));
+            if (normalized % 2 == 0)
+            {
+                normalized = normalized < 99 ? normalized + 1 : normalized - 1;
+            }
+            return normalized;
         }
 
         private static Bitmap CreateObjectDetectionDefectPreviewBitmap(Cv.Mat source)
@@ -1668,7 +1774,8 @@ namespace IntegratedImageProcessingApp.Forms
                     "以下是工作時間加總；平行時不代表實際等待時間：\r\n" +
                     "ROI 準備 " + result.RoiPreparationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
                     "；對比 " + result.ContrastAdjustmentElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
-                    "；前處理 " + result.PreprocessingElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms\r\n" +
+                    "；前處理 " + result.PreprocessingElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                    "；淡色增強 " + result.EnhancementElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms\r\n" +
                     "分析 " + result.DefectAnalysisElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
                     "；預覽 " + result.PreviewGenerationElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
                     "；此核心各 ROI 耗時加總 " + result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms");

@@ -293,6 +293,9 @@ namespace IntegratedImageProcessingApp.Services
             CoreKey = string.Empty;
             ContrastGain = 1.0;
             PreprocessMethod = "None";
+            DefectEnhancementMethod = "None";
+            LocalBackgroundKernelSize = 31;
+            LocalBackgroundGain = 1.5;
             GaussianKernelWidth = 3;
             GaussianKernelHeight = 3;
             GaussianSigmaX = 0;
@@ -326,6 +329,12 @@ namespace IntegratedImageProcessingApp.Services
         public double ContrastGain { get; set; }
 
         public string PreprocessMethod { get; set; }
+
+        public string DefectEnhancementMethod { get; set; }
+
+        public int LocalBackgroundKernelSize { get; set; }
+
+        public double LocalBackgroundGain { get; set; }
 
         public int GaussianKernelWidth { get; set; }
 

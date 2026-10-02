@@ -35,6 +35,24 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private sealed class DefectCoreEnhancementOption
+        {
+            public DefectCoreEnhancementOption(string text, string value)
+            {
+                Text = text;
+                Value = value;
+            }
+
+            public string Text { get; private set; }
+
+            public string Value { get; private set; }
+
+            public override string ToString()
+            {
+                return Text;
+            }
+        }
+
         private enum DefectCoreDisplayOption
         {
             Mask,
@@ -108,11 +126,13 @@ namespace IntegratedImageProcessingApp.Forms
                 Control morphologyGroup = BuildDefectCoreMorphologyGroup(core);
                 Control thresholdGroup = BuildDefectCoreThresholdGroup(core);
                 Control preprocessingGroup = BuildDefectCorePreprocessingGroup(core);
+                Control enhancementGroup = BuildDefectCoreEnhancementGroup(core);
                 Control contrastGroup = BuildDefectCoreContrastGroup(parameter, core, index == 0);
 
                 scrollPanel.Controls.Add(areaGroup);
                 scrollPanel.Controls.Add(morphologyGroup);
                 scrollPanel.Controls.Add(thresholdGroup);
+                scrollPanel.Controls.Add(enhancementGroup);
                 scrollPanel.Controls.Add(preprocessingGroup);
                 scrollPanel.Controls.Add(contrastGroup);
                 if (index > 0)
@@ -667,6 +687,84 @@ namespace IntegratedImageProcessingApp.Forms
             return group;
         }
 
+        private Control BuildDefectCoreEnhancementGroup(
+            ObjectDetectionDefectCoreSettings core)
+        {
+            var group = new GroupBox
+            {
+                Dock = DockStyle.Top,
+                Height = 126,
+                Text = "淡色缺陷增強",
+                Padding = new Padding(8, 16, 8, 4)
+            };
+            var layout = CreateDefectCoreTable(4, 2);
+            layout.RowStyles.Clear();
+            for (int row = 0; row < 4; row++)
+            {
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            }
+
+            var method = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            method.Items.Add(new DefectCoreEnhancementOption("不處理", "None"));
+            method.Items.Add(new DefectCoreEnhancementOption("局部背景差分", "LocalBackgroundDifference"));
+            SelectDefectCoreEnhancementOption(method, core.DefectEnhancementMethod);
+
+            NumericUpDown backgroundKernel = CreateOddDefectCoreNumber(
+                core.LocalBackgroundKernelSize,
+                3);
+            NumericUpDown enhancementGain = CreateDefectCoreNumber(
+                0.1m,
+                10m,
+                0.1m,
+                1,
+                (decimal)Math.Max(0.1, Math.Min(10.0, core.LocalBackgroundGain)));
+            Label hint = CreateDefectCoreLabel(
+                "背景尺度須大於缺陷；差值以平場目標灰階為中心。 ");
+
+            layout.Controls.Add(CreateDefectCoreLabel("增強方式"), 0, 0);
+            layout.Controls.Add(method, 1, 0);
+            layout.Controls.Add(CreateDefectCoreLabel("背景估算核心 (px)"), 0, 1);
+            layout.Controls.Add(backgroundKernel, 1, 1);
+            layout.Controls.Add(CreateDefectCoreLabel("缺陷強化倍率"), 0, 2);
+            layout.Controls.Add(enhancementGain, 1, 2);
+            layout.Controls.Add(hint, 0, 3);
+            layout.SetColumnSpan(hint, 2);
+            group.Controls.Add(layout);
+
+            Action updateMode = delegate
+            {
+                DefectCoreEnhancementOption option =
+                    method.SelectedItem as DefectCoreEnhancementOption;
+                bool enabled = option != null && string.Equals(
+                    option.Value,
+                    "LocalBackgroundDifference",
+                    StringComparison.Ordinal);
+                backgroundKernel.Enabled = enabled;
+                enhancementGain.Enabled = enabled;
+            };
+            updateMode();
+            method.SelectedIndexChanged += delegate
+            {
+                DefectCoreEnhancementOption option =
+                    method.SelectedItem as DefectCoreEnhancementOption;
+                core.DefectEnhancementMethod = option == null ? "None" : option.Value;
+                updateMode();
+            };
+            BindDefectCoreNumber(backgroundKernel, delegate(int value)
+            {
+                core.LocalBackgroundKernelSize = value;
+            });
+            BindDefectCoreNumber(enhancementGain, delegate(double value)
+            {
+                core.LocalBackgroundGain = value;
+            });
+            return group;
+        }
+
         private Control BuildDefectCoreThresholdGroup(
             ObjectDetectionDefectCoreSettings core)
         {
@@ -1007,6 +1105,24 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 DefectCorePreprocessOption option =
                     comboBox.Items[index] as DefectCorePreprocessOption;
+                if (option != null && string.Equals(option.Value, value, StringComparison.Ordinal))
+                {
+                    comboBox.SelectedIndex = index;
+                    return;
+                }
+            }
+
+            comboBox.SelectedIndex = 0;
+        }
+
+        private static void SelectDefectCoreEnhancementOption(
+            ComboBox comboBox,
+            string value)
+        {
+            for (int index = 0; index < comboBox.Items.Count; index++)
+            {
+                DefectCoreEnhancementOption option =
+                    comboBox.Items[index] as DefectCoreEnhancementOption;
                 if (option != null && string.Equals(option.Value, value, StringComparison.Ordinal))
                 {
                     comboBox.SelectedIndex = index;
