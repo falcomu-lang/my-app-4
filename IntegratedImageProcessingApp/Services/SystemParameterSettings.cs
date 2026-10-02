@@ -296,6 +296,8 @@ namespace IntegratedImageProcessingApp.Services
             DefectEnhancementMethod = "None";
             LocalBackgroundKernelSize = 31;
             LocalBackgroundGain = 1.5;
+            ClaheClipLimit = 2.0;
+            ClaheTileGridSize = 8;
             GaussianKernelWidth = 3;
             GaussianKernelHeight = 3;
             GaussianSigmaX = 0;
@@ -335,6 +337,10 @@ namespace IntegratedImageProcessingApp.Services
         public int LocalBackgroundKernelSize { get; set; }
 
         public double LocalBackgroundGain { get; set; }
+
+        public double ClaheClipLimit { get; set; }
+
+        public int ClaheTileGridSize { get; set; }
 
         public int GaussianKernelWidth { get; set; }
 

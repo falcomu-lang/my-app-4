@@ -693,13 +693,13 @@ namespace IntegratedImageProcessingApp.Forms
             var group = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 126,
+                Height = 178,
                 Text = "淡色缺陷增強",
                 Padding = new Padding(8, 16, 8, 4)
             };
-            var layout = CreateDefectCoreTable(4, 2);
+            var layout = CreateDefectCoreTable(6, 2);
             layout.RowStyles.Clear();
-            for (int row = 0; row < 4; row++)
+            for (int row = 0; row < 6; row++)
             {
                 layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
             }
@@ -711,6 +711,7 @@ namespace IntegratedImageProcessingApp.Forms
             };
             method.Items.Add(new DefectCoreEnhancementOption("不處理", "None"));
             method.Items.Add(new DefectCoreEnhancementOption("局部背景差分", "LocalBackgroundDifference"));
+            method.Items.Add(new DefectCoreEnhancementOption("CLAHE 局部對比", "CLAHE"));
             SelectDefectCoreEnhancementOption(method, core.DefectEnhancementMethod);
 
             NumericUpDown backgroundKernel = CreateOddDefectCoreNumber(
@@ -722,8 +723,19 @@ namespace IntegratedImageProcessingApp.Forms
                 0.1m,
                 1,
                 (decimal)Math.Max(0.1, Math.Min(10.0, core.LocalBackgroundGain)));
-            Label hint = CreateDefectCoreLabel(
-                "背景尺度須大於缺陷；差值以平場目標灰階為中心。 ");
+            NumericUpDown claheClipLimit = CreateDefectCoreNumber(
+                0.1m,
+                40m,
+                0.1m,
+                1,
+                (decimal)Math.Max(0.1, Math.Min(40.0, core.ClaheClipLimit)));
+            NumericUpDown claheTileGridSize = CreateDefectCoreNumber(
+                2m,
+                32m,
+                1m,
+                0,
+                Math.Max(2, Math.Min(32, core.ClaheTileGridSize)));
+            Label hint = CreateDefectCoreLabel("局部背景差分以平場目標灰階為中心；CLAHE 可提升局部對比，也可能放大雜訊。");
 
             layout.Controls.Add(CreateDefectCoreLabel("增強方式"), 0, 0);
             layout.Controls.Add(method, 1, 0);
@@ -731,7 +743,11 @@ namespace IntegratedImageProcessingApp.Forms
             layout.Controls.Add(backgroundKernel, 1, 1);
             layout.Controls.Add(CreateDefectCoreLabel("缺陷強化倍率"), 0, 2);
             layout.Controls.Add(enhancementGain, 1, 2);
-            layout.Controls.Add(hint, 0, 3);
+            layout.Controls.Add(CreateDefectCoreLabel("CLAHE Clip Limit"), 0, 3);
+            layout.Controls.Add(claheClipLimit, 1, 3);
+            layout.Controls.Add(CreateDefectCoreLabel("CLAHE Tile Grid (格數)"), 0, 4);
+            layout.Controls.Add(claheTileGridSize, 1, 4);
+            layout.Controls.Add(hint, 0, 5);
             layout.SetColumnSpan(hint, 2);
             group.Controls.Add(layout);
 
@@ -739,12 +755,18 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 DefectCoreEnhancementOption option =
                     method.SelectedItem as DefectCoreEnhancementOption;
-                bool enabled = option != null && string.Equals(
+                bool localBackgroundEnabled = option != null && string.Equals(
                     option.Value,
                     "LocalBackgroundDifference",
                     StringComparison.Ordinal);
-                backgroundKernel.Enabled = enabled;
-                enhancementGain.Enabled = enabled;
+                bool claheEnabled = option != null && string.Equals(
+                    option.Value,
+                    "CLAHE",
+                    StringComparison.Ordinal);
+                backgroundKernel.Enabled = localBackgroundEnabled;
+                enhancementGain.Enabled = localBackgroundEnabled;
+                claheClipLimit.Enabled = claheEnabled;
+                claheTileGridSize.Enabled = claheEnabled;
             };
             updateMode();
             method.SelectedIndexChanged += delegate
@@ -761,6 +783,14 @@ namespace IntegratedImageProcessingApp.Forms
             BindDefectCoreNumber(enhancementGain, delegate(double value)
             {
                 core.LocalBackgroundGain = value;
+            });
+            BindDefectCoreNumber(claheClipLimit, delegate(double value)
+            {
+                core.ClaheClipLimit = value;
+            });
+            BindDefectCoreNumber(claheTileGridSize, delegate(int value)
+            {
+                core.ClaheTileGridSize = value;
             });
             return group;
         }

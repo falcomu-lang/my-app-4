@@ -1122,6 +1122,8 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.DefectEnhancementMethod={1}", corePrefix, Escape(core.DefectEnhancementMethod));
                         writer.WriteLine("{0}.LocalBackgroundKernelSize={1}", corePrefix, core.LocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.LocalBackgroundGain={1}", corePrefix, core.LocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.ClaheClipLimit={1}", corePrefix, core.ClaheClipLimit.ToString("R", CultureInfo.InvariantCulture));
+                        writer.WriteLine("{0}.ClaheTileGridSize={1}", corePrefix, core.ClaheTileGridSize.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.GaussianKernelWidth={1}", corePrefix, core.GaussianKernelWidth.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.GaussianKernelHeight={1}", corePrefix, core.GaussianKernelHeight.ToString(CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.GaussianSigmaX={1}", corePrefix, core.GaussianSigmaX.ToString("R", CultureInfo.InvariantCulture));
@@ -1932,6 +1934,18 @@ namespace IntegratedImageProcessingApp.Services
                     defaults.LocalBackgroundGain,
                     0.1,
                     10.0);
+                defaults.ClaheClipLimit = GetClampedFiniteDouble(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ClaheClipLimit",
+                    defaults.ClaheClipLimit,
+                    0.1,
+                    40.0);
+                defaults.ClaheTileGridSize = Math.Max(2, Math.Min(32, GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ClaheTileGridSize",
+                    defaults.ClaheTileGridSize)));
                 defaults.GaussianKernelWidth = NormalizeOddKernelSize(GetInt(
                     sections,
                     SectionObjectDetection,

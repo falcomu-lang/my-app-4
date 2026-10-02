@@ -752,6 +752,8 @@ namespace IntegratedImageProcessingApp.Forms
                 DefectEnhancementMethod = source.DefectEnhancementMethod,
                 LocalBackgroundKernelSize = source.LocalBackgroundKernelSize,
                 LocalBackgroundGain = source.LocalBackgroundGain,
+                ClaheClipLimit = source.ClaheClipLimit,
+                ClaheTileGridSize = source.ClaheTileGridSize,
                 GaussianKernelWidth = source.GaussianKernelWidth,
                 GaussianKernelHeight = source.GaussianKernelHeight,
                 GaussianSigmaX = source.GaussianSigmaX,
@@ -808,6 +810,8 @@ namespace IntegratedImageProcessingApp.Forms
                 core.DefectEnhancementMethod ?? string.Empty,
                 core.LocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture),
                 core.LocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture),
+                core.ClaheClipLimit.ToString("R", CultureInfo.InvariantCulture),
+                core.ClaheTileGridSize.ToString(CultureInfo.InvariantCulture),
                 core.GaussianKernelWidth.ToString(CultureInfo.InvariantCulture),
                 core.GaussianKernelHeight.ToString(CultureInfo.InvariantCulture),
                 core.GaussianSigmaX.ToString("R", CultureInfo.InvariantCulture),
@@ -935,20 +939,34 @@ namespace IntegratedImageProcessingApp.Forms
                                     preprocessingStopwatch.ElapsedTicks;
                                 Cv.Mat enhanced = null;
                                 Cv.Mat defectImage = preprocessed;
-                                if (string.Equals(
-                                    core.DefectEnhancementMethod,
-                                    "LocalBackgroundDifference",
-                                    StringComparison.OrdinalIgnoreCase))
+                                if (!string.IsNullOrWhiteSpace(core.DefectEnhancementMethod) &&
+                                    !string.Equals(core.DefectEnhancementMethod, "None", StringComparison.OrdinalIgnoreCase))
                                 {
                                     Stopwatch enhancementStopwatch = Stopwatch.StartNew();
-                                    enhanced = ApplyObjectDetectionDefectEnhancement(
-                                        preprocessed,
-                                        core,
-                                        pivotGray);
+                                    if (string.Equals(
+                                        core.DefectEnhancementMethod,
+                                        "LocalBackgroundDifference",
+                                        StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        enhanced = ApplyObjectDetectionDefectEnhancement(
+                                            preprocessed,
+                                            core,
+                                            pivotGray);
+                                    }
+                                    else if (string.Equals(
+                                        core.DefectEnhancementMethod,
+                                        "CLAHE",
+                                        StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        enhanced = ApplyObjectDetectionDefectClahe(preprocessed, core);
+                                    }
                                     enhancementStopwatch.Stop();
-                                    result.EnhancementElapsedTicksByCore[coreIndex] =
-                                        enhancementStopwatch.ElapsedTicks;
-                                    defectImage = enhanced;
+                                    if (enhanced != null)
+                                    {
+                                        result.EnhancementElapsedTicksByCore[coreIndex] =
+                                            enhancementStopwatch.ElapsedTicks;
+                                        defectImage = enhanced;
+                                    }
                                 }
 
                                 try
@@ -1175,6 +1193,39 @@ namespace IntegratedImageProcessingApp.Forms
                 normalized = normalized < 99 ? normalized + 1 : normalized - 1;
             }
             return normalized;
+        }
+
+        private static Cv.Mat ApplyObjectDetectionDefectClahe(
+            Cv.Mat source,
+            ObjectDetectionDefectCoreSettings core)
+        {
+            if (source == null || source.Empty() || core == null ||
+                source.Type() != Cv.MatType.CV_8UC1)
+            {
+                throw new ArgumentException("CLAHE 缺少有效的 8-bit 灰階影像或設定。");
+            }
+
+            double clipLimit = double.IsNaN(core.ClaheClipLimit) ||
+                double.IsInfinity(core.ClaheClipLimit)
+                ? 2.0
+                : Math.Max(0.1, Math.Min(40.0, core.ClaheClipLimit));
+            int gridSize = Math.Max(2, Math.Min(32, core.ClaheTileGridSize));
+            var enhanced = new Cv.Mat();
+            try
+            {
+                using (Cv.CLAHE clahe = Cv.Cv2.CreateCLAHE(
+                    clipLimit,
+                    new Cv.Size(gridSize, gridSize)))
+                {
+                    clahe.Apply(source, enhanced);
+                }
+                return enhanced;
+            }
+            catch
+            {
+                enhanced.Dispose();
+                throw;
+            }
         }
 
         private static Bitmap CreateObjectDetectionDefectPreviewBitmap(Cv.Mat source)
