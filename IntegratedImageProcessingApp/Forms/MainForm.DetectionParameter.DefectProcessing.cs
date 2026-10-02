@@ -201,10 +201,10 @@ namespace IntegratedImageProcessingApp.Forms
                 ObjectDetectionDefectCoreKeys.Length - 1));
             bool compositeDisplaySelected = leftImageTabControl != null &&
                 GetObjectDetectionDefectDisplayIndex(leftImageTabControl.SelectedTab) ==
-                    ObjectDetectionDefectCoreKeys.Length;
+                    ObjectDetectionDefectIntegratedDisplayIndex;
             if (runAllCores && compositeDisplaySelected)
             {
-                runDisplayIndex = ObjectDetectionDefectCoreKeys.Length;
+                runDisplayIndex = ObjectDetectionDefectIntegratedDisplayIndex;
             }
             else if (runAllCores && runDisplayIndex > 0 &&
                 !parameter.DefectDetectionCores[runDisplayIndex].Enabled)
@@ -589,7 +589,8 @@ namespace IntegratedImageProcessingApp.Forms
                         display.InvalidateImageView();
                     }
                 }
-                ImageDisplayControl combinedDisplay = GetObjectDetectionDefectDisplayControl(4);
+                ImageDisplayControl combinedDisplay = GetObjectDetectionDefectDisplayControl(
+                    ObjectDetectionDefectIntegratedDisplayIndex);
                 if (combinedDisplay != null)
                 {
                     combinedDisplay.InvalidateImageView();

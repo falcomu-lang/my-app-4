@@ -724,6 +724,28 @@ namespace IntegratedImageProcessingApp.Services
                         0,
                         0,
                         1000000),
+                    DefectFrequencyScanHeight = Math.Max(8, Math.Min(1000, GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyScanHeight",
+                        50))),
+                    DefectFrequencySensitivity = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencySensitivity",
+                        3.0,
+                        1.0,
+                        10.0),
+                    DefectFrequencyShowHeatmap = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyShowHeatmap",
+                        true),
+                    DefectFrequencyShowAnomalyBoxes = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyShowAnomalyBoxes",
+                        true),
                     DefectDetectionCores = ReadObjectDetectionDefectCores(
                         sections,
                         prefix)
@@ -1099,6 +1121,10 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectIntegrationMergeBright={1}", prefix, parameter.DefectIntegrationMergeBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDarkBright={1}", prefix, parameter.DefectIntegrationMergeDarkBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDistancePixels={1}", prefix, parameter.DefectIntegrationMergeDistancePixels.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, parameter.DefectFrequencyShowHeatmap ? "1" : "0");
+                    writer.WriteLine("{0}.DefectFrequencyShowAnomalyBoxes={1}", prefix, parameter.DefectFrequencyShowAnomalyBoxes ? "1" : "0");
                     List<ObjectDetectionDefectCoreSettings> defectCores =
                         parameter.DefectDetectionCores ?? new List<ObjectDetectionDefectCoreSettings>();
                     writer.WriteLine(

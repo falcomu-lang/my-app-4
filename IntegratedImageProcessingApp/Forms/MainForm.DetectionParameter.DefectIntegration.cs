@@ -240,7 +240,8 @@ namespace IntegratedImageProcessingApp.Forms
             InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
             SaveSystemParameters();
             RefreshObjectDetectionDefectIntegrationResults(parameter);
-            ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(4);
+            ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
+                ObjectDetectionDefectIntegratedDisplayIndex);
             if (display != null)
             {
                 display.InvalidateImageView();

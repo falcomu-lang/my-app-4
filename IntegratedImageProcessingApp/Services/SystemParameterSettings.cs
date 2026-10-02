@@ -455,6 +455,10 @@ namespace IntegratedImageProcessingApp.Services
             DefectIntegrationMergeBright = false;
             DefectIntegrationMergeDarkBright = false;
             DefectIntegrationMergeDistancePixels = 0;
+            DefectFrequencyScanHeight = 50;
+            DefectFrequencySensitivity = 3.0;
+            DefectFrequencyShowHeatmap = true;
+            DefectFrequencyShowAnomalyBoxes = true;
             DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
             {
                 new ObjectDetectionDefectCoreSettings { CoreKey = "FlatField" },
@@ -631,6 +635,14 @@ namespace IntegratedImageProcessingApp.Services
         public bool DefectIntegrationMergeDarkBright { get; set; }
 
         public double DefectIntegrationMergeDistancePixels { get; set; }
+
+        public int DefectFrequencyScanHeight { get; set; }
+
+        public double DefectFrequencySensitivity { get; set; }
+
+        public bool DefectFrequencyShowHeatmap { get; set; }
+
+        public bool DefectFrequencyShowAnomalyBoxes { get; set; }
 
         public List<ObjectDetectionDefectCoreSettings> DefectDetectionCores { get; set; }
     }

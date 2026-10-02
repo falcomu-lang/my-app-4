@@ -582,13 +582,23 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            bool deferCoreDetailOverlay = displayIndex < ObjectDetectionDefectCoreKeys.Length &&
+            bool deferCoreDetailOverlay =
+                (displayIndex < ObjectDetectionDefectCoreKeys.Length ||
+                    displayIndex == ObjectDetectionDefectFrequencyDisplayIndex) &&
                 display.IsPanOverlaySettling;
             if (!display.IsViewInteractionInProgress && !deferCoreDetailOverlay)
             {
-                if (displayIndex == ObjectDetectionDefectCoreKeys.Length)
+                if (displayIndex == ObjectDetectionDefectIntegratedDisplayIndex)
                 {
                     DrawObjectDetectionDefectCompositeCoreFrames(
+                        e.Graphics,
+                        e.Zoom,
+                        e.Offset,
+                        e.VisibleSourceRect);
+                }
+                else if (displayIndex == ObjectDetectionDefectFrequencyDisplayIndex)
+                {
+                    DrawObjectDetectionFrequencyAnomalies(
                         e.Graphics,
                         e.Zoom,
                         e.Offset,

@@ -141,7 +141,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 objectDetectionMeasurementTabPage.Text = "量測位置";
-                objectDetectionDefectDisplayTabPages[4].Text = "整合";
+                objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex].Text = "整合";
                 leftImageTabControl.SelectedTab = objectDetectionResultReviewSelectedImageTabPage != null &&
                     leftImageTabControl.TabPages.Contains(objectDetectionResultReviewSelectedImageTabPage)
                         ? objectDetectionResultReviewSelectedImageTabPage
@@ -151,7 +151,9 @@ namespace IntegratedImageProcessingApp.Forms
                 for (int index = 0; index < objectDetectionDefectDisplayControls.Length; index++)
                 {
                     objectDetectionDefectDisplayControls[index].TitleText =
-                        "左側 " + (index == 4 ? "整合" : ObjectDetectionDefectDisplayNames[index]);
+                        "左側 " + (index == ObjectDetectionDefectIntegratedDisplayIndex
+                            ? "整合"
+                            : ObjectDetectionDefectDisplayNames[index]);
                 }
 
                 rightImageTabControl.Visible = false;
@@ -301,7 +303,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             objectDetectionMeasurementTabPage.Text = "待量測";
-            objectDetectionDefectDisplayTabPages[4].Text = ObjectDetectionDefectDisplayNames[4];
+            objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex].Text =
+                ObjectDetectionDefectDisplayNames[ObjectDetectionDefectIntegratedDisplayIndex];
             rightPanel.Visible = true;
             for (int index = 0; index < mainLayoutPanel.ColumnStyles.Count; index++)
             {
@@ -1001,7 +1004,8 @@ namespace IntegratedImageProcessingApp.Forms
                     "平場校正已套用，正在執行已啟用的缺陷條件...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：缺陷檢測中...";
 
-                leftImageTabControl.SelectedTab = objectDetectionDefectDisplayTabPages[4];
+                leftImageTabControl.SelectedTab =
+                    objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
                 await RunObjectDetectionDefectProcessingAsync(
                     parameter.Id,
                     null,

@@ -144,6 +144,7 @@ namespace IntegratedImageProcessingApp.Forms
                 page.Controls.Add(scrollPanel);
                 tabs.TabPages.Add(page);
             }
+            tabs.TabPages.Add(BuildObjectDetectionDefectFrequencyTab(parameter));
             tabs.TabPages.Add(BuildObjectDetectionDefectIntegrationTab(parameter));
             ResizeObjectDetectionDefectCoreTabsToContent();
         }
@@ -326,7 +327,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 coreDisplay.InvalidateImageView();
             }
-            ImageDisplayControl combinedDisplay = GetObjectDetectionDefectDisplayControl(4);
+            ImageDisplayControl combinedDisplay = GetObjectDetectionDefectDisplayControl(
+                ObjectDetectionDefectIntegratedDisplayIndex);
             if (combinedDisplay != null)
             {
                 combinedDisplay.InvalidateImageView();
