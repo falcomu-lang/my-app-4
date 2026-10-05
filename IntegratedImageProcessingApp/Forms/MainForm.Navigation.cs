@@ -415,7 +415,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string selectedFunction = functionListBox.Items[clickedIndex] as string;
-            if (selectedFunction == DetectionParameterLoadMenuText)
+            if (selectedFunction == FindObjectFlowMenuText)
+            {
+                ToggleFindObjectFlowMenu();
+            }
+            else if (selectedFunction == DetectionParameterLoadMenuText)
             {
                 ImportDetectionParameterSettings();
             }

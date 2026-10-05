@@ -40,6 +40,7 @@ namespace IntegratedImageProcessingApp.Forms
         private bool roiMenuExpanded;
         private string expandedRoiText;
         private int selectedRoiIndex = -1;
+        private bool findObjectFlowExpanded;
         private bool imageProcessingMenuExpanded;
         private bool isUpdatingFunctionListText;
         // SelectionChanged handles a newly selected item.  Keep this marker so
@@ -387,6 +388,7 @@ namespace IntegratedImageProcessingApp.Forms
             MoveFunctionListItemAfter(ImageRelationMenuText, ImageProcessingMenuText);
             MoveFunctionListItemAfter(ObjectJudgementMenuText, ImageRelationMenuText);
             MoveFunctionListItemAfter(ObjectDefinitionMenuText, ObjectJudgementMenuText);
+            SetFindObjectFlowExpanded(false);
             RebuildVisibleImageRelations();
             RebuildVisibleObjectJudgements();
             RebuildVisibleObjectDefinitions();
@@ -423,6 +425,68 @@ namespace IntegratedImageProcessingApp.Forms
                 ? functionListBox.Items.Count
                 : previousIndex + 1;
             functionListBox.Items.Insert(insertIndex, itemText);
+        }
+
+        private void SetFindObjectFlowExpanded(bool expanded)
+        {
+            if (!expanded)
+            {
+                RemoveImagePreprocessingSubMenuItems();
+                RemoveImageProcessingSubMenuItems();
+                RemoveImageProcessingStepCommandMenuItems();
+
+                imageRelationMenuExpanded = false;
+                RebuildVisibleImageRelations();
+                objectJudgementMenuExpanded = false;
+                RebuildVisibleObjectJudgements();
+                objectDefinitionMenuExpanded = false;
+                RebuildVisibleObjectDefinitions();
+
+                functionListBox.Items.Remove(ImagePreprocessingMenuText);
+                functionListBox.Items.Remove(ImageProcessingMenuText);
+                functionListBox.Items.Remove(ImageRelationMenuText);
+                functionListBox.Items.Remove(ObjectJudgementMenuText);
+                functionListBox.Items.Remove(ObjectDefinitionMenuText);
+                findObjectFlowExpanded = false;
+                return;
+            }
+
+            int insertIndex = functionListBox.Items.IndexOf(FindObjectFlowMenuText) + 1;
+            if (insertIndex <= 0)
+            {
+                return;
+            }
+
+            string[] childMenuItems =
+            {
+                ImagePreprocessingMenuText,
+                ImageProcessingMenuText,
+                ImageRelationMenuText,
+                ObjectJudgementMenuText,
+                ObjectDefinitionMenuText
+            };
+            foreach (string childMenuItem in childMenuItems)
+            {
+                if (!functionListBox.Items.Contains(childMenuItem))
+                {
+                    functionListBox.Items.Insert(insertIndex++, childMenuItem);
+                }
+            }
+
+            findObjectFlowExpanded = true;
+            RebuildVisibleImagePreprocessingSteps();
+            RebuildVisibleImageProcessingSteps();
+            RebuildVisibleImageRelations();
+            RebuildVisibleObjectJudgements();
+            RebuildVisibleObjectDefinitions();
+        }
+
+        private void ToggleFindObjectFlowMenu()
+        {
+            SetFindObjectFlowExpanded(!findObjectFlowExpanded);
+            statusLabel.Text = findObjectFlowExpanded
+                ? "已展開找尋物件流程"
+                : "已收合找尋物件流程";
         }
 
         private void InitializeImageDisplayControls()
@@ -2493,6 +2557,33 @@ namespace IntegratedImageProcessingApp.Forms
                 textBounds,
                 foreColor,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+
+            if (menuText == FindObjectFlowMenuText)
+            {
+                float centerX = e.Bounds.Right - 12;
+                float centerY = e.Bounds.Top + (e.Bounds.Height / 2f);
+                using (var pen = new Pen(Color.FromArgb(75, 103, 132), 1.6f))
+                {
+                    if (findObjectFlowExpanded)
+                    {
+                        e.Graphics.DrawLines(pen, new[]
+                        {
+                            new PointF(centerX - 4, centerY - 2),
+                            new PointF(centerX, centerY + 2),
+                            new PointF(centerX + 4, centerY - 2)
+                        });
+                    }
+                    else
+                    {
+                        e.Graphics.DrawLines(pen, new[]
+                        {
+                            new PointF(centerX - 2, centerY - 4),
+                            new PointF(centerX + 2, centerY),
+                            new PointF(centerX - 2, centerY + 4)
+                        });
+                    }
+                }
+            }
         }
 
         private static FunctionMenuIcon GetFunctionMenuIcon(string menuText)
