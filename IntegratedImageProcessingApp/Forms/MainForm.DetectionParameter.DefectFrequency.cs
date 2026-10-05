@@ -66,12 +66,25 @@ namespace IntegratedImageProcessingApp.Forms
 
         private sealed class ObjectDetectionFrequencyWorkspace : IDisposable
         {
-            public ObjectDetectionFrequencyWorkspace(int windowSize)
+            public ObjectDetectionFrequencyWorkspace(
+                Cv.Mat image,
+                Cv.Mat mask,
+                int windowSize)
             {
-                FloatTile = new Cv.Mat();
-                Centered = new Cv.Mat();
-                Windowed = new Cv.Mat();
-                SquaredEnergy = new Cv.Mat();
+                if (image == null || image.Empty() || image.Type() != Cv.MatType.CV_8UC1 ||
+                    mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
+                    image.Cols != mask.Cols || image.Rows != mask.Rows ||
+                    windowSize < 8 || windowSize > image.Cols || windowSize > image.Rows)
+                {
+                    throw new ArgumentException("頻域掃描需要有效且尺寸相同的灰階影像與 MASK。");
+                }
+
+                ImageData = image.Data;
+                ImageStep = image.Step();
+                MaskData = mask.Data;
+                MaskStep = mask.Step();
+                ImageWidth = image.Cols;
+                ImageHeight = image.Rows;
                 HannWindow = new Cv.Mat();
                 try
                 {
@@ -79,6 +92,8 @@ namespace IntegratedImageProcessingApp.Forms
                         HannWindow,
                         new Cv.Size(windowSize, windowSize),
                         Cv.MatType.CV_32FC1);
+                    HannData = HannWindow.Data;
+                    HannStep = HannWindow.Step();
                 }
                 catch
                 {
@@ -87,22 +102,26 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            public Cv.Mat FloatTile { get; private set; }
+            public IntPtr ImageData { get; private set; }
 
-            public Cv.Mat Centered { get; private set; }
+            public long ImageStep { get; private set; }
 
-            public Cv.Mat Windowed { get; private set; }
+            public IntPtr MaskData { get; private set; }
 
-            public Cv.Mat SquaredEnergy { get; private set; }
+            public long MaskStep { get; private set; }
+
+            public int ImageWidth { get; private set; }
+
+            public int ImageHeight { get; private set; }
 
             public Cv.Mat HannWindow { get; private set; }
 
+            public IntPtr HannData { get; private set; }
+
+            public long HannStep { get; private set; }
+
             public void Dispose()
             {
-                FloatTile.Dispose();
-                Centered.Dispose();
-                Windowed.Dispose();
-                SquaredEnergy.Dispose();
                 HannWindow.Dispose();
             }
         }
@@ -970,7 +989,10 @@ namespace IntegratedImageProcessingApp.Forms
                     int step = Math.Max(1, windowSize / 2);
                     List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
                     List<int> yStarts = CreateFrequencyScanStarts(crop.Height, windowSize, step);
-                    using (var workspace = new ObjectDetectionFrequencyWorkspace(windowSize))
+                    using (var workspace = new ObjectDetectionFrequencyWorkspace(
+                        contrastAdjusted,
+                        polygonMask,
+                        windowSize))
                     {
                         long objectScannedWindowCount = 0;
                         Stopwatch cellLoopStopwatch = Stopwatch.StartNew();
@@ -980,39 +1002,27 @@ namespace IntegratedImageProcessingApp.Forms
                             {
                                 objectScannedWindowCount++;
                                 var localWindow = new Rectangle(x, y, windowSize, windowSize);
-                                using (Cv.Mat windowMask = polygonMask.SubMat(
-                                    new Cv.Rect(localWindow.X, localWindow.Y,
-                                        localWindow.Width, localWindow.Height)))
+                                double energy;
+                                if (!TryCalculateObjectDetectionFrequencyEnergy(
+                                    workspace,
+                                    localWindow.X,
+                                    localWindow.Y,
+                                    windowSize,
+                                    out energy))
                                 {
-                                    int validPixels = Cv.Cv2.CountNonZero(windowMask);
-                                    if (validPixels == 0)
-                                    {
-                                        continue;
-                                    }
-
-                                    using (Cv.Mat tile = contrastAdjusted.SubMat(new Cv.Rect(
-                                        localWindow.X,
-                                        localWindow.Y,
-                                        localWindow.Width,
-                                        localWindow.Height)))
-                                    {
-                                        var cell = new ObjectDetectionFrequencyCell
-                                        {
-                                            ObjectNumber = detectedObject.Number,
-                                            Bounds = new Rectangle(
-                                                crop.X + localWindow.X,
-                                                crop.Y + localWindow.Y,
-                                                localWindow.Width,
-                                                localWindow.Height),
-                                            Energy = CalculateObjectDetectionFrequencyEnergy(
-                                                tile,
-                                                windowMask,
-                                                validPixels,
-                                                workspace)
-                                        };
-                                        objectCells.Add(cell);
-                                    }
+                                    continue;
                                 }
+
+                                objectCells.Add(new ObjectDetectionFrequencyCell
+                                {
+                                    ObjectNumber = detectedObject.Number,
+                                    Bounds = new Rectangle(
+                                        crop.X + localWindow.X,
+                                        crop.Y + localWindow.Y,
+                                        localWindow.Width,
+                                        localWindow.Height),
+                                    Energy = energy
+                                });
                             }
                         }
                         cellLoopStopwatch.Stop();
@@ -1151,29 +1161,66 @@ namespace IntegratedImageProcessingApp.Forms
             return starts;
         }
 
-        private static double CalculateObjectDetectionFrequencyEnergy(
-            Cv.Mat tile,
-            Cv.Mat mask,
-            int validPixels,
-            ObjectDetectionFrequencyWorkspace workspace)
+        private static unsafe bool TryCalculateObjectDetectionFrequencyEnergy(
+            ObjectDetectionFrequencyWorkspace workspace,
+            int startX,
+            int startY,
+            int windowSize,
+            out double energy)
         {
-            if (tile == null || tile.Empty() || tile.Type() != Cv.MatType.CV_8UC1 ||
-                mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
-                mask.Size() != tile.Size() || validPixels <= 0 || workspace == null ||
-                workspace.HannWindow.Size() != tile.Size())
+            energy = 0.0;
+            if (workspace == null || windowSize <= 0 || startX < 0 || startY < 0 ||
+                startX > workspace.ImageWidth - windowSize ||
+                startY > workspace.ImageHeight - windowSize)
             {
-                throw new ArgumentException("頻域分析需要有效的灰階區塊與檢測範圍遮罩。", "tile");
+                return false;
             }
 
-            double mean = Cv.Cv2.Mean(tile, mask).Val0;
-            tile.ConvertTo(workspace.FloatTile, Cv.MatType.CV_32FC1);
-            Cv.Cv2.Subtract(workspace.FloatTile, Cv.Scalar.All(mean), workspace.Centered);
-            Cv.Cv2.Multiply(workspace.Centered, workspace.HannWindow, workspace.Windowed);
-            Cv.Cv2.Multiply(workspace.Windowed, workspace.Windowed, workspace.SquaredEnergy);
+            byte* image = (byte*)workspace.ImageData.ToPointer();
+            byte* mask = (byte*)workspace.MaskData.ToPointer();
+            byte* hannBytes = (byte*)workspace.HannData.ToPointer();
+            double pixelSum = 0.0;
+            int validPixels = 0;
+            for (int row = 0; row < windowSize; row++)
+            {
+                byte* imageRow = image + (long)(startY + row) * workspace.ImageStep + startX;
+                byte* maskRow = mask + (long)(startY + row) * workspace.MaskStep + startX;
+                for (int column = 0; column < windowSize; column++)
+                {
+                    if (maskRow[column] == 0)
+                    {
+                        continue;
+                    }
+                    pixelSum += imageRow[column];
+                    validPixels++;
+                }
+            }
+            if (validPixels == 0)
+            {
+                return false;
+            }
 
-            // Summing the complete, unscaled DFT power is Parseval-equivalent
-            // to the masked spatial-domain mean square used here.
-            return Cv.Cv2.Mean(workspace.SquaredEnergy, mask).Val0;
+            float mean = (float)(pixelSum / validPixels);
+            double squaredEnergySum = 0.0;
+            for (int row = 0; row < windowSize; row++)
+            {
+                byte* imageRow = image + (long)(startY + row) * workspace.ImageStep + startX;
+                byte* maskRow = mask + (long)(startY + row) * workspace.MaskStep + startX;
+                float* hannRow = (float*)(hannBytes + (long)row * workspace.HannStep);
+                for (int column = 0; column < windowSize; column++)
+                {
+                    if (maskRow[column] == 0)
+                    {
+                        continue;
+                    }
+                    float centered = imageRow[column] - mean;
+                    float windowed = centered * hannRow[column];
+                    squaredEnergySum += windowed * windowed;
+                }
+            }
+
+            energy = squaredEnergySum / validPixels;
+            return true;
         }
 
         private static long ConvertObjectDetectionFrequencyTicksToMilliseconds(long ticks)

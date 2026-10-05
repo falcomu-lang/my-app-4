@@ -8,9 +8,9 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C#、Windows Forms、.NET Framework 4.7.2、OpenCvSharp。
-- 分支：`main`；目前已推送基底為 `6580348 Relax directional line sensitivity thresholds`。本地未提交修改移除方向線分析 UI／運算／參數，並以等價空間域計算取代全頻譜 DFT 能量總和。
+- 分支：`main`；目前已推送基底為 `367f55e Optimize frequency energy analysis`。本地未提交修改進一步以直接記憶體迴圈計算等價區域能量；方向線分析移除已包含於目前基底。
 - 2026-09-28 曾以獨立輸出 `IntegratedImageProcessingApp\bin\Debug-Codex-Sharp\` 建置成功。一般 `bin\Debug` 輸出曾因程式執行中鎖住 EXE 而無法覆寫；未關閉使用者程式。
-- 2026-10-05 頻域區域能量優化版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyEnergyOptimizationValidation\`；尚未啟動 GUI 或用使用者實際大圖量測加速幅度及完成端到端驗收。
+- 2026-10-05 頻域直接記憶體運算版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyEnergyPointerValidation\`；尚未啟動 GUI 或用使用者實際大圖量測加速幅度及完成端到端驗收。
 
 ## 2. 系統流程與責任邊界
 
@@ -94,6 +94,7 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 - 頻域分析來源為平場校正後灰階影像；「啟用對比調整」勾選時，對 ROI 灰階影像套用倍率，左側預覽與能量分析共用處理結果；取消時倍率視為 1.0。舊參數缺少此欄位時預設啟用以維持相容。套用設定後須重新開始分析，舊結果會失效。
 - 掃描依設定高度切成重疊視窗，步距為視窗的一半，並保留邊界覆蓋；每格計算檢測 MASK 內的區域能量，可顯示能量熱圖及異常框。
 - 舊計算對加窗、去均值後的灰階視窗執行未縮放 DFT，再加總完整頻譜功率；因為加總所有頻率依 Parseval 定理等價於空間域平方和，現改為 MASK 內加窗平方平均，避免每格 DFT、頻譜 Split 及重複暫存配置。Hanning 窗及運算 Mat 在每個 ROI 內重用。這保留原本的總能量指標，不代表計算指定頻帶或方向的能量。
+- 直接記憶體核心在每個視窗上以兩趟 row-pointer 迴圈計算 MASK 灰階平均及 Hanning 加窗平方能量；不再逐格建立 tile／MASK Mat 子視圖，也不再對每格多次呼叫 OpenCV 矩陣算子。資料指標只在對應影像與 MASK Mat 存活的 ROI 範圍內使用；專案啟用 `AllowUnsafeBlocks`。結果可能因浮點實作細節有極小差異，需以實圖確認異常格未改變。
 - 掃描狀態記錄來源準備時間、掃描牆鐘時間、掃描格數、有效格數、ROI 格迴圈累計、預覽累計及統計時間。格迴圈／預覽為各 ROI 耗時加總，平行時可大於實際掃描牆鐘；實際 UI 畫面重繪不含在運算總耗時內。
 - 自動方向線分析已按使用者決定從程式移除，包括方向線敏感度、方向線熱圖／異常框、Sobel 方向一致性計算及相關 INI 欄位。舊參數檔中的這些額外欄位會被忽略，保存時只輸出目前支援的欄位。
 - 方向線曾用 Sobel 結構張量作逐格方向估算，敏感度放寬後仍無法可靠檢出背景紋理中的微弱斷續長線；使用者決定目前不需要此功能。若未來重新規劃，應作為獨立線狀檢測器重新設計與驗收，不能視為目前頻域能量功能的一部分。
@@ -182,7 +183,7 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 | `Forms/MainForm.DetectionParameter.DefectCores.cs` | 1,020 | 四核心設定頁、每核心控制項及單核心／全核心命令。 |
 | `Forms/MainForm.DetectionParameter.DefectIntegration.cs` | 604 | 缺陷結果依物件、極性與距離合併的設定、運算協調及結果顯示。 |
 | `Forms/MainForm.DetectionParameter.DefectProcessing.cs` | 1,682 | 缺陷核心運算、篩選、並行工作與結果套用。 |
-| `Forms/MainForm.DetectionParameter.DefectFrequency.cs` | 1,409 | 頻域設定 UI、平場影像來源與對比、重疊視窗掃描、空間域等價能量計算、耗時診斷、結果快取與 overlay 繪製。 |
+| `Forms/MainForm.DetectionParameter.DefectFrequency.cs` | 1,456 | 頻域設定 UI、平場影像來源與對比、重疊視窗掃描、直接記憶體等價能量計算、耗時診斷、結果快取與 overlay 繪製。 |
 | `Forms/MainForm.DetectionParameter.ResultReview.cs` | 1,838 | 唯讀參數結果確認頁；載入同規格圖片、觸發物件／平場／缺陷處理、尺寸量測及結果呈現協調。 |
 | `Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs` | 677 | 結果確認頁的逐物件尺寸良品判定、A／B 規則計算及判定結果呈現。 |
 
@@ -221,6 +222,7 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 
 - 2026-10-05：移除自動方向線分析的 UI、逐格 Sobel 計算、方向線熱圖／異常框和設定模型／INI 欄位；掃描設定版面收回。`git diff --check` 通過，Debug 建置成功，尚未啟動 GUI 驗收。
 - 2026-10-05：頻域完整 DFT 總功率改為 Parseval 等價的遮罩內加窗平方平均，Hanning 視窗與運算 Mat 改為每 ROI 重用；新增來源準備／掃描牆鐘／掃描格數／ROI 格迴圈累計／預覽／統計時間。`git diff --check` 與 Debug 建置通過；尚未以實際大圖比較耗時及新舊異常格結果。
+- 2026-10-05：為改善每格 OpenCV 呼叫／Mat 配置成本，改用直接記憶體 row-pointer 兩趟計算，移除每格子 Mat 與遮罩 `CountNonZero` 呼叫；Debug 建置通過，尚待使用者以同一張大圖確認耗時及異常格結果。
 - 2026-10-05：頻域頁新增影像來源對比開關，倍率欄位依開關啟用／停用；開關與倍率納入參數存讀及分析結果簽章。舊參數預設啟用。MSBuild Debug 建置成功，尚未啟動 GUI 驗收。
 - 歷史（2026-10-02）：頻域預覽與掃描共用對比後影像；方向線逐格 Hough 試作遇到效能及誤標問題，當時移除 Hough 路徑並改採 Sobel 方向一致性。此方向線功能已於 2026-10-05 完全移除，不代表目前功能。
 - 2026-10-02：`5db8df2` 已推送至 `origin/main`；上一版 `12dc365` 的逐格 Hough 搜尋已被取代，不應再作為目前版本使用。
