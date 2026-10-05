@@ -253,7 +253,7 @@ namespace IntegratedImageProcessingApp.Forms
             scanLayout.Controls.Add(objectDetectionFrequencyScanHeightInput, 1, 0);
             scanLayout.Controls.Add(CreateDefectCoreLabel("自動視窗與間距"), 0, 1);
             scanLayout.Controls.Add(objectDetectionFrequencyWindowHint, 1, 1);
-            scanLayout.Controls.Add(CreateDefectCoreLabel("異常敏感度"), 0, 2);
+            scanLayout.Controls.Add(CreateDefectCoreLabel("區域能量敏感度"), 0, 2);
             scanLayout.Controls.Add(objectDetectionFrequencySensitivityInput, 1, 2);
             scanLayout.Controls.Add(baselineInfo, 0, 3);
             scanLayout.SetColumnSpan(baselineInfo, 2);
