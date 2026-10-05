@@ -1024,6 +1024,38 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
+                if (IsObjectDetectionDefectFrequencyIntegrationRequired(parameter))
+                {
+                    ObjectDetectionFrequencyResult frequencyResult;
+                    bool frequencyAlreadyReady = TryGetCurrentObjectDetectionFrequencyResult(
+                        parameter,
+                        out frequencyResult);
+                    if (!frequencyAlreadyReady)
+                    {
+                        objectDetectionResultReviewStatusLabel.Text =
+                            "一般缺陷條件完成，正在執行納入整合的頻域異常分析...";
+                        await RunObjectDetectionFrequencyAnalysisAsync(parameter.Id, true);
+                        if (!IsObjectDetectionResultReviewUiAvailable())
+                        {
+                            return;
+                        }
+                    }
+
+                    if (TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult))
+                    {
+                        if (!frequencyAlreadyReady)
+                        {
+                            objectDetectionResultReviewDefectMilliseconds =
+                                (objectDetectionResultReviewDefectMilliseconds ?? 0) +
+                                frequencyResult.TotalElapsedMilliseconds;
+                            UpdateObjectDetectionResultReviewTimingMemo();
+                        }
+                    }
+                    leftImageTabControl.SelectedTab =
+                        objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
+                    InvalidateObjectDetectionDefectIntegrationDisplay();
+                }
+
                 StopObjectDetectionResultReviewTimingStage();
                 StartObjectDetectionResultReviewTimingStage("尺寸量測計算");
                 objectDetectionResultReviewStatusLabel.Text = "正在計算尺寸量測與良品條件...";
@@ -1621,7 +1653,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             objectDetectionResultReviewDefectsGrid.Rows.Clear();
             EnsureObjectDetectionDefectCores(parameter);
-            bool allCoreResultsReady = true;
+            bool allRequiredResultsReady = true;
             int totalComponents = 0;
             foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4))
             {
@@ -1637,7 +1669,7 @@ namespace IntegratedImageProcessingApp.Forms
                 ObjectDetectionDefectCoreResult result;
                 if (!TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out result))
                 {
-                    allCoreResultsReady = false;
+                    allRequiredResultsReady = false;
                     objectDetectionResultReviewDefectsGrid.Rows.Add(
                         GetObjectDetectionDefectCoreLabel(GetObjectDetectionDefectCoreIndex(core.CoreKey)),
                         "-", "-", "未完成", "請確認檢測範圍與平場校正值");
@@ -1659,7 +1691,42 @@ namespace IntegratedImageProcessingApp.Forms
                     "OpenCV 元件數：" + componentCount.ToString("N0", CultureInfo.CurrentCulture));
             }
 
-            if (allCoreResultsReady)
+            if (parameter.DefectIntegrationIncludeFrequency)
+            {
+                if (!parameter.DefectFrequencyEnabled)
+                {
+                    objectDetectionResultReviewDefectsGrid.Rows.Add(
+                        "頻域異常", "-", "-", "未啟用", "頻域分析已停用，未納入整合");
+                }
+                else
+                {
+                    ObjectDetectionFrequencyResult frequencyResult;
+                    if (TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult))
+                    {
+                        int anomalyCount = frequencyResult.Cells == null
+                            ? 0
+                            : frequencyResult.Cells.Count(cell => cell != null && cell.IsAnomaly &&
+                                (!selectedObjectNumber.HasValue ||
+                                    cell.ObjectNumber == selectedObjectNumber.Value));
+                        objectDetectionResultReviewDefectsGrid.Rows.Add(
+                            "頻域異常",
+                            anomalyCount,
+                            selectedObjectNumber.HasValue
+                                ? (object)"-"
+                                : frequencyResult.TotalElapsedMilliseconds,
+                            anomalyCount > 0 ? "檢出異常格" : "未檢出",
+                            "異常掃描格數；依合併距離轉為整合區域");
+                    }
+                    else
+                    {
+                        allRequiredResultsReady = false;
+                        objectDetectionResultReviewDefectsGrid.Rows.Add(
+                            "頻域異常", "-", "-", "未完成", "目前影像的頻域分析尚未完成或已過期");
+                    }
+                }
+            }
+
+            if (allRequiredResultsReady)
             {
                 IEnumerable<ObjectDetectionDefectIntegrationGroup> groups =
                     GetObjectDetectionDefectIntegrationGroups(parameter);
@@ -1680,7 +1747,7 @@ namespace IntegratedImageProcessingApp.Forms
             else
             {
                 objectDetectionResultReviewDefectsGrid.Rows.Add(
-                    "整合結果", "-", string.Empty, "待確認", "尚有啟用核心未完成");
+                    "整合結果", "-", string.Empty, "待確認", "尚有必要的缺陷檢測尚未完成");
             }
 
             ApplyObjectDetectionResultReviewVerdictStyles();

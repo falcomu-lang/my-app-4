@@ -717,6 +717,11 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectIntegrationMergeDarkBright",
                         false),
+                    DefectIntegrationIncludeFrequency = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectIntegrationIncludeFrequency",
+                        false),
                     DefectIntegrationMergeDistancePixels = GetClampedFiniteDouble(
                         sections,
                         SectionObjectDetection,
@@ -1137,6 +1142,7 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectIntegrationMergeDark={1}", prefix, parameter.DefectIntegrationMergeDark ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeBright={1}", prefix, parameter.DefectIntegrationMergeBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDarkBright={1}", prefix, parameter.DefectIntegrationMergeDarkBright ? "1" : "0");
+                    writer.WriteLine("{0}.DefectIntegrationIncludeFrequency={1}", prefix, parameter.DefectIntegrationIncludeFrequency ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDistancePixels={1}", prefix, parameter.DefectIntegrationMergeDistancePixels.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, parameter.DefectFrequencyEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));

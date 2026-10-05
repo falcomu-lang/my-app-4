@@ -1,6 +1,6 @@
 # Project Handoff：整合式影像處理軟體
 
-文件快照：2026-10-05。程式碼狀態以 `main` 分支 Git 歷史為準；本地未提交工作移除頻域自動方向線分析，並優化保留的區域能量運算與耗時計錄。
+文件快照：2026-10-05。程式碼狀態以 `main` 分支 Git 歷史為準；本地未提交工作將頻域異常候選接入結果整合與參數結果確認。
 
 ## 1. 專案與 Git 狀態
 
@@ -8,9 +8,10 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C#、Windows Forms、.NET Framework 4.7.2、OpenCvSharp。
-- 分支：`main`；目前已推送基底為 `367f55e Optimize frequency energy analysis`。本地未提交修改進一步以直接記憶體迴圈計算等價區域能量；方向線分析移除已包含於目前基底。
+- 分支：`main`；目前已推送基底為 `12a9862 Speed up frequency window energy scan`。頻域直接記憶體運算與方向線分析移除已在基底；本地未提交修改將頻域異常納入結果整合。
 - 2026-09-28 曾以獨立輸出 `IntegratedImageProcessingApp\bin\Debug-Codex-Sharp\` 建置成功。一般 `bin\Debug` 輸出曾因程式執行中鎖住 EXE 而無法覆寫；未關閉使用者程式。
 - 2026-10-05 頻域直接記憶體運算版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyEnergyPointerValidation\`；尚未啟動 GUI 或用使用者實際大圖量測加速幅度及完成端到端驗收。
+- 2026-10-05 頻域結果整合版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyIntegrationValidation\`；尚未啟動 GUI 或用實際影像驗收群組位置及最終判定。
 
 ## 2. 系統流程與責任邊界
 
@@ -95,6 +96,9 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 - 掃描依設定高度切成重疊視窗，步距為視窗的一半，並保留邊界覆蓋；每格計算檢測 MASK 內的區域能量，可顯示能量熱圖及異常框。
 - 舊計算對加窗、去均值後的灰階視窗執行未縮放 DFT，再加總完整頻譜功率；因為加總所有頻率依 Parseval 定理等價於空間域平方和，現改為 MASK 內加窗平方平均，避免每格 DFT、頻譜 Split 及重複暫存配置。Hanning 窗及運算 Mat 在每個 ROI 內重用。這保留原本的總能量指標，不代表計算指定頻帶或方向的能量。
 - 直接記憶體核心在每個視窗上以兩趟 row-pointer 迴圈計算 MASK 灰階平均及 Hanning 加窗平方能量；不再逐格建立 tile／MASK Mat 子視圖，也不再對每格多次呼叫 OpenCV 矩陣算子。資料指標只在對應影像與 MASK Mat 存活的 ROI 範圍內使用；專案啟用 `AllowUnsafeBlocks`。結果可能因浮點實作細節有極小差異，需以實圖確認異常格未改變。
+- 「結果整合」新增「納入頻域異常」參數，舊參數缺少此欄位時預設不納入。納入時只把目前影像／參數簽章有效且標記為異常的掃描格作為中性候選，與暗／亮候選依同一 ROI 和合併距離分群；群組層級檢查保留暗合併、亮合併及亮暗合併規則，避免頻域候選繞過極性限制。
+- 整合表來源會標示「頻域異常」，頻域單獨群組使用青色框，和暗／亮群組合併時使用原本色系的虛線框。頻域掃描格是異常區域候選，不是精確像素輪廓；群組數會納入結果確認的缺陷判定。
+- 結果確認中若勾選納入且頻域分析啟用，執行確認時會重用有效的頻域快取；缺少或過期時才自動分析。仍無有效結果時，頻域列與整合結果顯示待確認，不會判成良品；頻域執行時間計入缺陷檢測時間。
 - 掃描狀態記錄來源準備時間、掃描牆鐘時間、掃描格數、有效格數、ROI 格迴圈累計、預覽累計及統計時間。格迴圈／預覽為各 ROI 耗時加總，平行時可大於實際掃描牆鐘；實際 UI 畫面重繪不含在運算總耗時內。
 - 自動方向線分析已按使用者決定從程式移除，包括方向線敏感度、方向線熱圖／異常框、Sobel 方向一致性計算及相關 INI 欄位。舊參數檔中的這些額外欄位會被忽略，保存時只輸出目前支援的欄位。
 - 方向線曾用 Sobel 結構張量作逐格方向估算，敏感度放寬後仍無法可靠檢出背景紋理中的微弱斷續長線；使用者決定目前不需要此功能。若未來重新規劃，應作為獨立線狀檢測器重新設計與驗收，不能視為目前頻域能量功能的一部分。
@@ -181,10 +185,10 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 | `Forms/MainForm.DetectionParameter.DefectDisplay.cs` | 395 | 缺陷顯示分頁、預覽圖層及顯示狀態。 |
 | `Forms/MainForm.DetectionParameter.DefectRegion.cs` | 1,104 | 缺陷檢測矩形的建立、編輯與 ROI 相對範圍設定。 |
 | `Forms/MainForm.DetectionParameter.DefectCores.cs` | 1,020 | 四核心設定頁、每核心控制項及單核心／全核心命令。 |
-| `Forms/MainForm.DetectionParameter.DefectIntegration.cs` | 604 | 缺陷結果依物件、極性與距離合併的設定、運算協調及結果顯示。 |
+| `Forms/MainForm.DetectionParameter.DefectIntegration.cs` | 722 | 暗／亮／頻域候選依物件與距離合併、群組表格及整合框繪製。 |
 | `Forms/MainForm.DetectionParameter.DefectProcessing.cs` | 1,682 | 缺陷核心運算、篩選、並行工作與結果套用。 |
-| `Forms/MainForm.DetectionParameter.DefectFrequency.cs` | 1,456 | 頻域設定 UI、平場影像來源與對比、重疊視窗掃描、直接記憶體等價能量計算、耗時診斷、結果快取與 overlay 繪製。 |
-| `Forms/MainForm.DetectionParameter.ResultReview.cs` | 1,838 | 唯讀參數結果確認頁；載入同規格圖片、觸發物件／平場／缺陷處理、尺寸量測及結果呈現協調。 |
+| `Forms/MainForm.DetectionParameter.DefectFrequency.cs` | 1,480 | 頻域設定 UI、平場來源、重疊視窗掃描、直接記憶體能量計算、結果快取與頻域分析協調。 |
+| `Forms/MainForm.DetectionParameter.ResultReview.cs` | 2,171 | 唯讀參數結果確認；依序執行物件／平場／一般缺陷／選用頻域分析、尺寸量測及結果呈現。 |
 | `Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs` | 677 | 結果確認頁的逐物件尺寸良品判定、A／B 規則計算及判定結果呈現。 |
 
 ### Services：影像運算、快取、參數
@@ -199,8 +203,8 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 | `Services/LargeImageGrayscaleDecoder.cs` | 96 | 大圖灰階解碼支援。 |
 | `Services/LargeRoiGrayscaleCache.cs` | 141 | 大圖 ROI 灰階資料快取。 |
 | `Services/LargeRoiMaskBuilder.cs` | 210 | 依大型 ROI 建立或裁切對應 MASK。 |
-| `Services/SystemParameterSettings.cs` | 731 | 檢測參數及應用設定的資料模型。 |
-| `Services/SystemParameterIniService.cs` | 2,130 | INI 參數讀寫、預設值與相容性序列化。 |
+| `Services/SystemParameterSettings.cs` | 770 | 檢測參數及應用設定資料模型，含頻域整合開關。 |
+| `Services/SystemParameterIniService.cs` | 2,216 | INI 參數讀寫、預設值與相容性序列化，保存頻域整合設定。 |
 
 `LargeImageMaskCache` 目前只管理影像處理步驟與關聯群組共用的大圖 MASK。物件判定、物件定義、量測和平場校正的快取仍由各自功能管理，因為它們的結果型態、key 和失效時機不同；後續若要共用，需先確認語意和生命週期一致。
 
@@ -224,6 +228,7 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 - 2026-10-05：頻域完整 DFT 總功率改為 Parseval 等價的遮罩內加窗平方平均，Hanning 視窗與運算 Mat 改為每 ROI 重用；新增來源準備／掃描牆鐘／掃描格數／ROI 格迴圈累計／預覽／統計時間。`git diff --check` 與 Debug 建置通過；尚未以實際大圖比較耗時及新舊異常格結果。
 - 2026-10-05：為改善每格 OpenCV 呼叫／Mat 配置成本，改用直接記憶體 row-pointer 兩趟計算，移除每格子 Mat 與遮罩 `CountNonZero` 呼叫；Debug 建置通過，尚待使用者以同一張大圖確認耗時及異常格結果。
 - 2026-10-05：頻域頁新增影像來源對比開關，倍率欄位依開關啟用／停用；開關與倍率納入參數存讀及分析結果簽章。舊參數預設啟用。MSBuild Debug 建置成功，尚未啟動 GUI 驗收。
+- 2026-10-05：結果整合新增頻域異常納入勾選、頻域候選合併與來源顯示；結果確認會重用有效頻域結果，必要時才自動補跑，無有效結果則待確認。新輸出目錄 Debug 建置與 `git diff --check` 通過；尚未以 GUI／實圖驗證框位及 NG 結果。
 - 歷史（2026-10-02）：頻域預覽與掃描共用對比後影像；方向線逐格 Hough 試作遇到效能及誤標問題，當時移除 Hough 路徑並改採 Sobel 方向一致性。此方向線功能已於 2026-10-05 完全移除，不代表目前功能。
 - 2026-10-02：`5db8df2` 已推送至 `origin/main`；上一版 `12dc365` 的逐格 Hough 搜尋已被取代，不應再作為目前版本使用。
 - 2026-09-29 參數結果確認頁與 A 優先／B 備援判定流程 Debug 建置成功；`git diff --check` 通過。尚未以真實影像進行 GUI 端到端驗收或自動化判定測試。

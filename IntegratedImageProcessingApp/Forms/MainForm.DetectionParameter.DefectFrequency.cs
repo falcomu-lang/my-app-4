@@ -452,6 +452,9 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyStatusLabel.Text = "頻域分析已啟用，按「開始分析」更新結果。";
             }
 
+            RefreshObjectDetectionDefectIntegrationResults(parameter);
+            InvalidateObjectDetectionDefectIntegrationDisplay();
+
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                 ObjectDetectionDefectFrequencyDisplayIndex);
             if (display != null)
@@ -508,6 +511,17 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyResults.Remove(parameterId);
                 DisposeObjectDetectionFrequencyResult(previousResult);
             }
+            InvalidateObjectDetectionDefectIntegrationCache(parameterId);
+        }
+
+        private void InvalidateObjectDetectionDefectIntegrationDisplay()
+        {
+            ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
+                ObjectDetectionDefectIntegratedDisplayIndex);
+            if (display != null)
+            {
+                display.InvalidateImageView();
+            }
         }
 
         private void UpdateObjectDetectionFrequencyWindowHint()
@@ -551,6 +565,8 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyShowBoxesCheckBox.Checked;
             SaveSystemParameters();
             RemoveObjectDetectionFrequencyResult(parameter.Id);
+            RefreshObjectDetectionDefectIntegrationResults(parameter);
+            InvalidateObjectDetectionDefectIntegrationDisplay();
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                 ObjectDetectionDefectFrequencyDisplayIndex);
             if (display != null)
@@ -627,7 +643,9 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private async Task RunObjectDetectionFrequencyAnalysisAsync(string parameterId)
+        private async Task RunObjectDetectionFrequencyAnalysisAsync(
+            string parameterId,
+            bool calledFromResultReview = false)
         {
             if (objectDetectionFrequencyAnalysisRunning)
             {
@@ -668,15 +686,15 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             objectDetectionFrequencyAnalysisRunning = true;
-            if (objectDetectionFrequencyRunButton != null)
+            if (!calledFromResultReview && objectDetectionFrequencyRunButton != null)
             {
                 objectDetectionFrequencyRunButton.Enabled = false;
             }
-            if (objectDetectionDefectCoreTabs != null)
+            if (!calledFromResultReview && objectDetectionDefectCoreTabs != null)
             {
                 objectDetectionDefectCoreTabs.Enabled = false;
             }
-            if (leftImageTabControl != null)
+            if (!calledFromResultReview && leftImageTabControl != null)
             {
                 leftImageTabControl.SelectedTab = GetObjectDetectionDefectDisplayTabPage(
                     ObjectDetectionDefectFrequencyDisplayIndex);
@@ -785,6 +803,9 @@ namespace IntegratedImageProcessingApp.Forms
 
                 RemoveObjectDetectionFrequencyResult(parameter.Id);
                 objectDetectionFrequencyResults[parameter.Id] = result;
+                InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
+                RefreshObjectDetectionDefectIntegrationResults(parameter);
+                InvalidateObjectDetectionDefectIntegrationDisplay();
                 ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                     ObjectDetectionDefectFrequencyDisplayIndex);
                 if (display != null)
@@ -818,7 +839,10 @@ namespace IntegratedImageProcessingApp.Forms
                         result.ScannedWindowCount,
                         result.TotalElapsedMilliseconds);
                 }
-                SetObjectDetectionDefectRegionStatus(summary + "結果只作為頻域異常提示，不會納入缺陷整合判定。 ");
+                SetObjectDetectionDefectRegionStatus(summary +
+                    (IsObjectDetectionDefectFrequencyIntegrationRequired(parameter)
+                        ? "頻域異常已納入缺陷整合與結果判定。 "
+                        : "目前未納入缺陷整合判定。 "));
             }
             catch (OutOfMemoryException)
             {
@@ -833,12 +857,12 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyAnalysisRunning = false;
                 if (!IsDisposed)
                 {
-                    if (objectDetectionFrequencyRunButton != null)
+                    if (!calledFromResultReview && objectDetectionFrequencyRunButton != null)
                     {
                         objectDetectionFrequencyRunButton.Enabled =
                             parameter != null && parameter.DefectFrequencyEnabled;
                     }
-                    if (objectDetectionDefectCoreTabs != null &&
+                    if (!calledFromResultReview && objectDetectionDefectCoreTabs != null &&
                         !objectDetectionDefectCoreTabs.IsDisposed)
                     {
                         objectDetectionDefectCoreTabs.Enabled = true;
