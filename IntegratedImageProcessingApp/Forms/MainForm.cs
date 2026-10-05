@@ -274,6 +274,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string DetectionParameterLoadMenuText = "檢測參數讀取";
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
+        private const string FindObjectFlowMenuText = "找尋物件流程";
         private const string ImageProcessingMenuText = "影像處理";
         private const string ObjectJudgementMenuText = "整合成區塊";
         private const string ObjectDefinitionMenuText = "物件定義";
@@ -299,6 +300,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             None,
             Folder,
+            Flow,
             Roi,
             Process,
             Relation,
@@ -379,6 +381,12 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionParameterIndex < 0 ? functionListBox.Items.Count : objectDetectionParameterIndex + 1,
                     ObjectDetectionResultReviewMenuText);
             }
+            MoveFunctionListItemAfter(FindObjectFlowMenuText, RoiMenuText);
+            MoveFunctionListItemAfter(ImagePreprocessingMenuText, FindObjectFlowMenuText);
+            MoveFunctionListItemAfter(ImageProcessingMenuText, ImagePreprocessingMenuText);
+            MoveFunctionListItemAfter(ImageRelationMenuText, ImageProcessingMenuText);
+            MoveFunctionListItemAfter(ObjectJudgementMenuText, ImageRelationMenuText);
+            MoveFunctionListItemAfter(ObjectDefinitionMenuText, ObjectJudgementMenuText);
             RebuildVisibleImageRelations();
             RebuildVisibleObjectJudgements();
             RebuildVisibleObjectDefinitions();
@@ -400,6 +408,21 @@ namespace IntegratedImageProcessingApp.Forms
             string processName = Process.GetCurrentProcess().ProcessName;
             return string.Equals(processName, "devenv", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(processName, "XDesProc", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void MoveFunctionListItemAfter(string itemText, string previousItemText)
+        {
+            int itemIndex = functionListBox.Items.IndexOf(itemText);
+            if (itemIndex >= 0)
+            {
+                functionListBox.Items.RemoveAt(itemIndex);
+            }
+
+            int previousIndex = functionListBox.Items.IndexOf(previousItemText);
+            int insertIndex = previousIndex < 0
+                ? functionListBox.Items.Count
+                : previousIndex + 1;
+            functionListBox.Items.Insert(insertIndex, itemText);
         }
 
         private void InitializeImageDisplayControls()
@@ -2443,18 +2466,24 @@ namespace IntegratedImageProcessingApp.Forms
 
             string menuText = functionListBox.Items[e.Index].ToString();
             FunctionMenuIcon icon = GetFunctionMenuIcon(menuText);
+            bool isFindObjectFlowChild = IsFindObjectFlowMenuItem(menuText);
             if (icon != FunctionMenuIcon.None)
             {
-                Rectangle iconBounds = new Rectangle(e.Bounds.Left + 10, e.Bounds.Top + 7, 16, 16);
+                Rectangle iconBounds = new Rectangle(
+                    e.Bounds.Left + (isFindObjectFlowChild ? 26 : 10),
+                    e.Bounds.Top + 7,
+                    16,
+                    16);
                 DrawFunctionMenuIcon(e.Graphics, icon, iconBounds, selected);
             }
 
+            int textLeft = e.Bounds.Left + (icon == FunctionMenuIcon.None
+                ? GetFunctionMenuIndent(menuText)
+                : isFindObjectFlowChild ? 52 : 36);
             Rectangle textBounds = new Rectangle(
-                e.Bounds.Left + (icon == FunctionMenuIcon.None
-                    ? GetFunctionMenuIndent(menuText)
-                    : 36),
+                textLeft,
                 e.Bounds.Top,
-                e.Bounds.Width - 40,
+                Math.Max(0, e.Bounds.Right - textLeft - 4),
                 e.Bounds.Height);
 
             TextRenderer.DrawText(
@@ -2470,6 +2499,8 @@ namespace IntegratedImageProcessingApp.Forms
         {
             switch (menuText)
             {
+                case FindObjectFlowMenuText:
+                    return FunctionMenuIcon.Flow;
                 case DetectionParameterLoadMenuText:
                     return FunctionMenuIcon.Measure;
                 case LoadImageMenuText:
@@ -2507,6 +2538,15 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private static bool IsFindObjectFlowMenuItem(string menuText)
+        {
+            return menuText == ImagePreprocessingMenuText ||
+                menuText == ImageProcessingMenuText ||
+                menuText == ImageRelationMenuText ||
+                menuText == ObjectJudgementMenuText ||
+                menuText == ObjectDefinitionMenuText;
+        }
+
         private static void DrawFunctionMenuIcon(Graphics graphics, FunctionMenuIcon icon, Rectangle bounds, bool selected)
         {
             Color color = selected ? Color.FromArgb(46, 105, 156) : Color.FromArgb(75, 103, 132);
@@ -2520,6 +2560,13 @@ namespace IntegratedImageProcessingApp.Forms
                         graphics.DrawRectangle(pen, bounds.Left + 1, bounds.Top + 5, 14, 9);
                         graphics.DrawLine(pen, bounds.Left + 2, bounds.Top + 5, bounds.Left + 6, bounds.Top + 5);
                         graphics.DrawLine(pen, bounds.Left + 3, bounds.Top + 3, bounds.Left + 7, bounds.Top + 3);
+                        break;
+                    case FunctionMenuIcon.Flow:
+                        graphics.DrawLine(pen, bounds.Left + 3, bounds.Top + 4, bounds.Left + 12, bounds.Top + 4);
+                        graphics.DrawLine(pen, bounds.Left + 3, bounds.Top + 4, bounds.Left + 3, bounds.Top + 12);
+                        graphics.DrawLine(pen, bounds.Left + 3, bounds.Top + 12, bounds.Left + 12, bounds.Top + 12);
+                        graphics.DrawLine(pen, bounds.Left + 12, bounds.Top + 4, bounds.Left + 12, bounds.Top + 12);
+                        graphics.DrawLine(pen, bounds.Left + 5, bounds.Top + 8, bounds.Left + 10, bounds.Top + 8);
                         break;
                     case FunctionMenuIcon.Roi:
                         graphics.DrawRectangle(pen, bounds.Left + 3, bounds.Top + 3, 10, 10);

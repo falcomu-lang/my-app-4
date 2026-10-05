@@ -556,14 +556,17 @@ namespace IntegratedImageProcessingApp.Forms
             var group = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 92,
+                Height = isFlatFieldCore ? 98 : 123,
                 Text = "影像來源與對比",
                 Padding = new Padding(8, 16, 8, 4)
             };
-            var layout = CreateDefectCoreTable(3, 2);
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            int rowCount = isFlatFieldCore ? 3 : 4;
+            var layout = CreateDefectCoreTable(rowCount, 2);
+            layout.RowStyles.Clear();
+            for (int row = 0; row < rowCount; row++)
+            {
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            }
 
             var source = new Label
             {
@@ -578,7 +581,25 @@ namespace IntegratedImageProcessingApp.Forms
                 0.05m,
                 2,
                 (decimal)Math.Max(0.1, Math.Min(5.0, core.ContrastGain)));
-            gain.Enabled = !isFlatFieldCore;
+            gain.Enabled = !isFlatFieldCore && core.ContrastAdjustmentEnabled;
+            CheckBox contrastEnabled = null;
+            int gainRow = 1;
+            int pivotRow = 2;
+            if (!isFlatFieldCore)
+            {
+                contrastEnabled = new CheckBox
+                {
+                    AutoSize = true,
+                    Anchor = AnchorStyles.Left,
+                    Text = "啟用對比調整",
+                    Checked = core.ContrastAdjustmentEnabled,
+                    Margin = new Padding(0, 2, 0, 0)
+                };
+                layout.Controls.Add(contrastEnabled, 0, 1);
+                layout.SetColumnSpan(contrastEnabled, 2);
+                gainRow = 2;
+                pivotRow = 3;
+            }
             var pivot = new Label
             {
                 Dock = DockStyle.Fill,
@@ -588,12 +609,21 @@ namespace IntegratedImageProcessingApp.Forms
             };
             layout.Controls.Add(source, 0, 0);
             layout.SetColumnSpan(source, 2);
-            layout.Controls.Add(gainLabel, 0, 1);
-            layout.Controls.Add(gain, 1, 1);
-            layout.Controls.Add(pivot, 0, 2);
+            layout.Controls.Add(gainLabel, 0, gainRow);
+            layout.Controls.Add(gain, 1, gainRow);
+            layout.Controls.Add(pivot, 0, pivotRow);
             layout.SetColumnSpan(pivot, 2);
             group.Controls.Add(layout);
 
+            if (contrastEnabled != null)
+            {
+                CheckBox enabledControl = contrastEnabled;
+                contrastEnabled.CheckedChanged += delegate
+                {
+                    core.ContrastAdjustmentEnabled = enabledControl.Checked;
+                    gain.Enabled = enabledControl.Checked;
+                };
+            }
             gain.ValueChanged += delegate
             {
                 core.ContrastGain = Decimal.ToDouble(gain.Value);

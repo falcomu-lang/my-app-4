@@ -758,6 +758,35 @@ namespace IntegratedImageProcessingApp.Services
                         1.0,
                         0.1,
                         5.0),
+                    DefectFrequencyEnhancementMethod = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyEnhancementMethod",
+                        "None"),
+                    DefectFrequencyLocalBackgroundKernelSize = NormalizeOddKernelSize(GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyLocalBackgroundKernelSize",
+                        31), 3),
+                    DefectFrequencyLocalBackgroundGain = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyLocalBackgroundGain",
+                        1.5,
+                        0.1,
+                        10.0),
+                    DefectFrequencyClaheClipLimit = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyClaheClipLimit",
+                        2.0,
+                        0.1,
+                        40.0),
+                    DefectFrequencyClaheTileGridSize = Math.Max(2, Math.Min(32, GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyClaheTileGridSize",
+                        8))),
                     DefectFrequencyShowHeatmap = GetBool(
                         sections,
                         SectionObjectDetection,
@@ -1149,6 +1178,11 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyContrastEnabled={1}", prefix, parameter.DefectFrequencyContrastEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyContrastGain={1}", prefix, parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyEnhancementMethod={1}", prefix, Escape(parameter.DefectFrequencyEnhancementMethod));
+                    writer.WriteLine("{0}.DefectFrequencyLocalBackgroundKernelSize={1}", prefix, parameter.DefectFrequencyLocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyLocalBackgroundGain={1}", prefix, parameter.DefectFrequencyLocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyClaheClipLimit={1}", prefix, parameter.DefectFrequencyClaheClipLimit.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyClaheTileGridSize={1}", prefix, parameter.DefectFrequencyClaheTileGridSize.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, parameter.DefectFrequencyShowHeatmap ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowAnomalyBoxes={1}", prefix, parameter.DefectFrequencyShowAnomalyBoxes ? "1" : "0");
                     List<ObjectDetectionDefectCoreSettings> defectCores =
@@ -1169,6 +1203,7 @@ namespace IntegratedImageProcessingApp.Services
                             (coreIndex + 1).ToString(CultureInfo.InvariantCulture);
                         writer.WriteLine("{0}.Id={1}", corePrefix, Escape(core.Id));
                         writer.WriteLine("{0}.CoreKey={1}", corePrefix, Escape(core.CoreKey));
+                        writer.WriteLine("{0}.ContrastAdjustmentEnabled={1}", corePrefix, core.ContrastAdjustmentEnabled ? "1" : "0");
                         writer.WriteLine("{0}.ContrastGain={1}", corePrefix, core.ContrastGain.ToString("R", CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.PreprocessMethod={1}", corePrefix, Escape(core.PreprocessMethod));
                         writer.WriteLine("{0}.DefectEnhancementMethod={1}", corePrefix, Escape(core.DefectEnhancementMethod));
@@ -1959,6 +1994,11 @@ namespace IntegratedImageProcessingApp.Services
                     (index + 1).ToString(CultureInfo.InvariantCulture);
                 defaults.Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", defaults.Id);
                 defaults.CoreKey = GetValue(sections, SectionObjectDetection, prefix + ".CoreKey", defaults.CoreKey);
+                defaults.ContrastAdjustmentEnabled = GetBool(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".ContrastAdjustmentEnabled",
+                    defaults.ContrastAdjustmentEnabled);
                 defaults.ContrastGain = Math.Max(0.1, Math.Min(5.0, GetPositiveDouble(
                     sections,
                     SectionObjectDetection,

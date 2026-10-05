@@ -748,6 +748,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Id = source.Id,
                 CoreKey = source.CoreKey,
+                ContrastAdjustmentEnabled = source.ContrastAdjustmentEnabled,
                 ContrastGain = source.ContrastGain,
                 PreprocessMethod = source.PreprocessMethod,
                 DefectEnhancementMethod = source.DefectEnhancementMethod,
@@ -806,6 +807,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegionRight.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 core.CoreKey ?? string.Empty,
+                core.ContrastAdjustmentEnabled ? "1" : "0",
                 core.ContrastGain.ToString("R", CultureInfo.InvariantCulture),
                 core.PreprocessMethod ?? string.Empty,
                 core.DefectEnhancementMethod ?? string.Empty,
@@ -920,20 +922,25 @@ namespace IntegratedImageProcessingApp.Forms
                     Bitmap processedBitmap = null;
                      try
                      {
-                        using (var adjusted = new Cv.Mat())
+                        using (Cv.Mat adjusted = core.ContrastAdjustmentEnabled ? new Cv.Mat() : null)
                         {
-                            double gain = double.IsNaN(core.ContrastGain) || double.IsInfinity(core.ContrastGain)
-                                ? 1.0
-                                : Math.Max(0.1, Math.Min(5.0, core.ContrastGain));
-                            double beta = Math.Max(1, Math.Min(255, pivotGray)) * (1.0 - gain);
-                            Stopwatch contrastStopwatch = Stopwatch.StartNew();
-                            gray.ConvertTo(adjusted, Cv.MatType.CV_8UC1, gain, beta);
-                            contrastStopwatch.Stop();
-                            result.ContrastAdjustmentElapsedTicksByCore[coreIndex] =
-                                contrastStopwatch.ElapsedTicks;
+                            Cv.Mat processingInput = gray;
+                            if (adjusted != null)
+                            {
+                                double gain = double.IsNaN(core.ContrastGain) || double.IsInfinity(core.ContrastGain)
+                                    ? 1.0
+                                    : Math.Max(0.1, Math.Min(5.0, core.ContrastGain));
+                                double beta = Math.Max(1, Math.Min(255, pivotGray)) * (1.0 - gain);
+                                Stopwatch contrastStopwatch = Stopwatch.StartNew();
+                                gray.ConvertTo(adjusted, Cv.MatType.CV_8UC1, gain, beta);
+                                contrastStopwatch.Stop();
+                                result.ContrastAdjustmentElapsedTicksByCore[coreIndex] =
+                                    contrastStopwatch.ElapsedTicks;
+                                processingInput = adjusted;
+                            }
 
                             Stopwatch preprocessingStopwatch = Stopwatch.StartNew();
-                            using (Cv.Mat preprocessed = ApplyObjectDetectionDefectPreprocessing(adjusted, core))
+                            using (Cv.Mat preprocessed = ApplyObjectDetectionDefectPreprocessing(processingInput, core))
                             {
                                 preprocessingStopwatch.Stop();
                                 result.PreprocessingElapsedTicksByCore[coreIndex] =

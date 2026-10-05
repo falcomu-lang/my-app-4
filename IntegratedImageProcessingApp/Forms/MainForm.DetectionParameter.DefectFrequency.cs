@@ -49,6 +49,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             public long CellLoopMilliseconds { get; set; }
 
+            public long EnhancementMilliseconds { get; set; }
+
             public long PreviewGenerationMilliseconds { get; set; }
 
             public long StatisticsMilliseconds { get; set; }
@@ -134,6 +136,11 @@ namespace IntegratedImageProcessingApp.Forms
         private NumericUpDown objectDetectionFrequencySensitivityInput;
         private NumericUpDown objectDetectionFrequencyContrastGainInput;
         private CheckBox objectDetectionFrequencyContrastEnabledCheckBox;
+        private ComboBox objectDetectionFrequencyEnhancementMethodInput;
+        private NumericUpDown objectDetectionFrequencyLocalBackgroundKernelInput;
+        private NumericUpDown objectDetectionFrequencyLocalBackgroundGainInput;
+        private NumericUpDown objectDetectionFrequencyClaheClipLimitInput;
+        private NumericUpDown objectDetectionFrequencyClaheTileGridSizeInput;
         private CheckBox objectDetectionFrequencyEnabledCheckBox;
         private CheckBox objectDetectionFrequencyShowHeatmapCheckBox;
         private CheckBox objectDetectionFrequencyShowBoxesCheckBox;
@@ -320,6 +327,8 @@ namespace IntegratedImageProcessingApp.Forms
             scanLayout.SetColumnSpan(baselineInfo, 2);
             scanGroup.Controls.Add(scanLayout);
 
+            Control enhancementGroup = BuildObjectDetectionFrequencyEnhancementGroup(parameter);
+
             var displayOptions = new FlowLayoutPanel
             {
                 Dock = DockStyle.Top,
@@ -416,6 +425,7 @@ namespace IntegratedImageProcessingApp.Forms
             content.Controls.Add(objectDetectionFrequencyStatusLabel);
             content.Controls.Add(displayOptions);
             content.Controls.Add(scanGroup);
+            content.Controls.Add(enhancementGroup);
             content.Controls.Add(sourceContrastGroup);
             content.Controls.Add(sourceInfo);
             content.Controls.Add(enabledPanel);
@@ -423,6 +433,93 @@ namespace IntegratedImageProcessingApp.Forms
             UpdateObjectDetectionFrequencyWindowHint();
             UpdateObjectDetectionFrequencyControlsEnabled(parameter.DefectFrequencyEnabled);
             return page;
+        }
+
+        private Control BuildObjectDetectionFrequencyEnhancementGroup(
+            ObjectDetectionParameterSettings parameter)
+        {
+            var group = new GroupBox
+            {
+                Dock = DockStyle.Top,
+                Height = 178,
+                Text = "淡色缺陷增強",
+                Padding = new Padding(8, 16, 8, 4)
+            };
+            var layout = CreateDefectCoreTable(6, 2);
+            layout.RowStyles.Clear();
+            for (int row = 0; row < 6; row++)
+            {
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            }
+
+            objectDetectionFrequencyEnhancementMethodInput = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            objectDetectionFrequencyEnhancementMethodInput.Items.Add(
+                new DefectCoreEnhancementOption("不處理", "None"));
+            objectDetectionFrequencyEnhancementMethodInput.Items.Add(
+                new DefectCoreEnhancementOption("局部背景差分", "LocalBackgroundDifference"));
+            objectDetectionFrequencyEnhancementMethodInput.Items.Add(
+                new DefectCoreEnhancementOption("CLAHE 局部對比", "CLAHE"));
+            SelectDefectCoreEnhancementOption(
+                objectDetectionFrequencyEnhancementMethodInput,
+                parameter.DefectFrequencyEnhancementMethod);
+
+            objectDetectionFrequencyLocalBackgroundKernelInput = CreateOddDefectCoreNumber(
+                parameter.DefectFrequencyLocalBackgroundKernelSize,
+                3);
+            objectDetectionFrequencyLocalBackgroundGainInput = CreateDefectCoreNumber(
+                0.1m,
+                10m,
+                0.1m,
+                1,
+                (decimal)Math.Max(0.1, Math.Min(10.0,
+                    parameter.DefectFrequencyLocalBackgroundGain)));
+            objectDetectionFrequencyClaheClipLimitInput = CreateDefectCoreNumber(
+                0.1m,
+                40m,
+                0.1m,
+                1,
+                (decimal)Math.Max(0.1, Math.Min(40.0,
+                    parameter.DefectFrequencyClaheClipLimit)));
+            objectDetectionFrequencyClaheTileGridSizeInput = CreateDefectCoreNumber(
+                2m,
+                32m,
+                1m,
+                0,
+                Math.Max(2, Math.Min(32,
+                    parameter.DefectFrequencyClaheTileGridSize)));
+            var hint = CreateDefectCoreLabel(
+                "局部背景差分以平場目標灰階為中心；CLAHE 可提升局部對比，也可能放大雜訊。");
+
+            layout.Controls.Add(CreateDefectCoreLabel("增強方式"), 0, 0);
+            layout.Controls.Add(objectDetectionFrequencyEnhancementMethodInput, 1, 0);
+            layout.Controls.Add(CreateDefectCoreLabel("背景估算核心 (px)"), 0, 1);
+            layout.Controls.Add(objectDetectionFrequencyLocalBackgroundKernelInput, 1, 1);
+            layout.Controls.Add(CreateDefectCoreLabel("缺陷強化倍率"), 0, 2);
+            layout.Controls.Add(objectDetectionFrequencyLocalBackgroundGainInput, 1, 2);
+            layout.Controls.Add(CreateDefectCoreLabel("CLAHE Clip Limit"), 0, 3);
+            layout.Controls.Add(objectDetectionFrequencyClaheClipLimitInput, 1, 3);
+            layout.Controls.Add(CreateDefectCoreLabel("CLAHE Tile Grid (格數)"), 0, 4);
+            layout.Controls.Add(objectDetectionFrequencyClaheTileGridSizeInput, 1, 4);
+            layout.Controls.Add(hint, 0, 5);
+            layout.SetColumnSpan(hint, 2);
+
+            Action updateMode = delegate
+            {
+                UpdateObjectDetectionFrequencyEnhancementControlsEnabled(
+                    parameter.DefectFrequencyEnabled);
+            };
+            objectDetectionFrequencyEnhancementMethodInput.SelectedIndexChanged += delegate
+            {
+                updateMode();
+            };
+            UpdateObjectDetectionFrequencyEnhancementControlsEnabled(
+                parameter.DefectFrequencyEnabled);
+            group.Controls.Add(layout);
+            return group;
         }
 
         private void UpdateObjectDetectionFrequencyEnabled(
@@ -479,6 +576,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencyContrastEnabledCheckBox.Enabled = enabled;
             }
+            UpdateObjectDetectionFrequencyEnhancementControlsEnabled(enabled);
             if (objectDetectionFrequencyScanHeightInput != null)
             {
                 objectDetectionFrequencyScanHeightInput.Enabled = enabled;
@@ -499,6 +597,43 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencyRunButton.Enabled = enabled &&
                     !objectDetectionFrequencyAnalysisRunning;
+            }
+        }
+
+        private void UpdateObjectDetectionFrequencyEnhancementControlsEnabled(bool enabled)
+        {
+            if (objectDetectionFrequencyEnhancementMethodInput == null)
+            {
+                return;
+            }
+
+            objectDetectionFrequencyEnhancementMethodInput.Enabled = enabled;
+            DefectCoreEnhancementOption option =
+                objectDetectionFrequencyEnhancementMethodInput.SelectedItem
+                    as DefectCoreEnhancementOption;
+            bool localBackgroundEnabled = enabled && option != null && string.Equals(
+                option.Value,
+                "LocalBackgroundDifference",
+                StringComparison.Ordinal);
+            bool claheEnabled = enabled && option != null && string.Equals(
+                option.Value,
+                "CLAHE",
+                StringComparison.Ordinal);
+            if (objectDetectionFrequencyLocalBackgroundKernelInput != null)
+            {
+                objectDetectionFrequencyLocalBackgroundKernelInput.Enabled = localBackgroundEnabled;
+            }
+            if (objectDetectionFrequencyLocalBackgroundGainInput != null)
+            {
+                objectDetectionFrequencyLocalBackgroundGainInput.Enabled = localBackgroundEnabled;
+            }
+            if (objectDetectionFrequencyClaheClipLimitInput != null)
+            {
+                objectDetectionFrequencyClaheClipLimitInput.Enabled = claheEnabled;
+            }
+            if (objectDetectionFrequencyClaheTileGridSizeInput != null)
+            {
+                objectDetectionFrequencyClaheTileGridSizeInput.Enabled = claheEnabled;
             }
         }
 
@@ -546,6 +681,11 @@ namespace IntegratedImageProcessingApp.Forms
                     StringComparison.Ordinal) ||
                 objectDetectionFrequencyContrastGainInput == null ||
                 objectDetectionFrequencyContrastEnabledCheckBox == null ||
+                objectDetectionFrequencyEnhancementMethodInput == null ||
+                objectDetectionFrequencyLocalBackgroundKernelInput == null ||
+                objectDetectionFrequencyLocalBackgroundGainInput == null ||
+                objectDetectionFrequencyClaheClipLimitInput == null ||
+                objectDetectionFrequencyClaheTileGridSizeInput == null ||
                 objectDetectionFrequencyScanHeightInput == null ||
                 objectDetectionFrequencySensitivityInput == null)
             {
@@ -559,6 +699,19 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyContrastEnabledCheckBox.Checked;
             parameter.DefectFrequencyContrastGain = Decimal.ToDouble(
                 objectDetectionFrequencyContrastGainInput.Value);
+            DefectCoreEnhancementOption enhancementOption =
+                objectDetectionFrequencyEnhancementMethodInput.SelectedItem
+                    as DefectCoreEnhancementOption;
+            parameter.DefectFrequencyEnhancementMethod =
+                enhancementOption == null ? "None" : enhancementOption.Value;
+            parameter.DefectFrequencyLocalBackgroundKernelSize =
+                (int)objectDetectionFrequencyLocalBackgroundKernelInput.Value;
+            parameter.DefectFrequencyLocalBackgroundGain = Decimal.ToDouble(
+                objectDetectionFrequencyLocalBackgroundGainInput.Value);
+            parameter.DefectFrequencyClaheClipLimit = Decimal.ToDouble(
+                objectDetectionFrequencyClaheClipLimitInput.Value);
+            parameter.DefectFrequencyClaheTileGridSize =
+                (int)objectDetectionFrequencyClaheTileGridSizeInput.Value;
             parameter.DefectFrequencyShowHeatmap =
                 objectDetectionFrequencyShowHeatmapCheckBox.Checked;
             parameter.DefectFrequencyShowAnomalyBoxes =
@@ -608,6 +761,25 @@ namespace IntegratedImageProcessingApp.Forms
                     parameter.DefectFrequencyContrastGain));
             objectDetectionFrequencyContrastEnabledCheckBox.Checked =
                 parameter.DefectFrequencyContrastEnabled;
+            SelectDefectCoreEnhancementOption(
+                objectDetectionFrequencyEnhancementMethodInput,
+                parameter.DefectFrequencyEnhancementMethod);
+            objectDetectionFrequencyLocalBackgroundKernelInput.Value = Math.Max(
+                objectDetectionFrequencyLocalBackgroundKernelInput.Minimum,
+                Math.Min(objectDetectionFrequencyLocalBackgroundKernelInput.Maximum,
+                    parameter.DefectFrequencyLocalBackgroundKernelSize));
+            objectDetectionFrequencyLocalBackgroundGainInput.Value = (decimal)Math.Max(
+                (double)objectDetectionFrequencyLocalBackgroundGainInput.Minimum,
+                Math.Min((double)objectDetectionFrequencyLocalBackgroundGainInput.Maximum,
+                    parameter.DefectFrequencyLocalBackgroundGain));
+            objectDetectionFrequencyClaheClipLimitInput.Value = (decimal)Math.Max(
+                (double)objectDetectionFrequencyClaheClipLimitInput.Minimum,
+                Math.Min((double)objectDetectionFrequencyClaheClipLimitInput.Maximum,
+                    parameter.DefectFrequencyClaheClipLimit));
+            objectDetectionFrequencyClaheTileGridSizeInput.Value = Math.Max(
+                objectDetectionFrequencyClaheTileGridSizeInput.Minimum,
+                Math.Min(objectDetectionFrequencyClaheTileGridSizeInput.Maximum,
+                    parameter.DefectFrequencyClaheTileGridSize));
             objectDetectionFrequencySensitivityInput.Value = (decimal)Math.Max(
                 (double)objectDetectionFrequencySensitivityInput.Minimum,
                 Math.Min((double)objectDetectionFrequencySensitivityInput.Maximum,
@@ -733,6 +905,14 @@ namespace IntegratedImageProcessingApp.Forms
                 double contrastGain = parameter.DefectFrequencyContrastEnabled
                     ? Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain))
                     : 1.0;
+                var enhancementSettings = new ObjectDetectionDefectCoreSettings
+                {
+                    DefectEnhancementMethod = parameter.DefectFrequencyEnhancementMethod,
+                    LocalBackgroundKernelSize = parameter.DefectFrequencyLocalBackgroundKernelSize,
+                    LocalBackgroundGain = parameter.DefectFrequencyLocalBackgroundGain,
+                    ClaheClipLimit = parameter.DefectFrequencyClaheClipLimit,
+                    ClaheTileGridSize = parameter.DefectFrequencyClaheTileGridSize
+                };
                 bool runParallel = parameter.DefectParallelExecutionEnabled;
                 int capturedImageGeneration = imageSourceGeneration;
                 int capturedFlatFieldGeneration = objectDetectionFlatFieldEvaluationGeneration;
@@ -768,6 +948,7 @@ namespace IntegratedImageProcessingApp.Forms
                             sensitivity,
                             contrastGain,
                             parameter.FlatFieldTargetGray,
+                            enhancementSettings,
                             runParallel,
                             progress);
                     }
@@ -815,7 +996,7 @@ namespace IntegratedImageProcessingApp.Forms
                 int anomalyCount = result.Cells.Count(cell => cell.IsAnomaly);
                 string summary = string.Format(
                     CultureInfo.CurrentCulture,
-                    "ROI {0}；掃描 {1:N0} 格（有效 {2:N0}），可疑 {3:N0}\r\n運算總耗時 {4:N0} ms；來源準備 {5:N0} ms，掃描 {6:N0} ms\r\nROI 格迴圈累計 {7:N0} ms；預覽累計 {8:N0} ms；統計 {9:N0} ms",
+                    "ROI {0}；掃描 {1:N0} 格（有效 {2:N0}），可疑 {3:N0}\r\n運算總耗時 {4:N0} ms；來源準備 {5:N0} ms，掃描 {6:N0} ms\r\nROI 格迴圈累計 {7:N0} ms；淡色增強累計 {8:N0} ms；預覽累計 {9:N0} ms；統計 {10:N0} ms",
                     result.CellsByObject.Count,
                     result.ScannedWindowCount,
                     result.Cells.Count,
@@ -824,6 +1005,7 @@ namespace IntegratedImageProcessingApp.Forms
                     result.SourcePreparationMilliseconds,
                     result.ElapsedMilliseconds,
                     result.CellLoopMilliseconds,
+                    result.EnhancementMilliseconds,
                     result.PreviewGenerationMilliseconds,
                     result.StatisticsMilliseconds);
                 if (objectDetectionFrequencyStatusLabel != null)
@@ -942,6 +1124,7 @@ namespace IntegratedImageProcessingApp.Forms
             double sensitivity,
             double contrastGain,
             int pivotGray,
+            ObjectDetectionDefectCoreSettings enhancementSettings,
             bool runParallel,
             IProgress<string> progress)
         {
@@ -949,6 +1132,7 @@ namespace IntegratedImageProcessingApp.Forms
             var polygonsByObjectIndex = new PointF[objects.Count][];
             var processedPatchesByObjectIndex = new ObjectDetectionDefectProcessedPatch[objects.Count];
             long cellLoopElapsedTicks = 0;
+            long enhancementElapsedTicks = 0;
             long previewGenerationElapsedTicks = 0;
             long scannedWindowCount = 0;
             Action<int> scanObject = delegate(int objectIndex)
@@ -987,71 +1171,110 @@ namespace IntegratedImageProcessingApp.Forms
                         : Math.Max(0.1, Math.Min(5.0, contrastGain));
                     double beta = Math.Max(1, Math.Min(255, pivotGray)) * (1.0 - gain);
                     gray.ConvertTo(contrastAdjusted, Cv.MatType.CV_8UC1, gain, beta);
-                    Stopwatch previewStopwatch = Stopwatch.StartNew();
-                    Bitmap processedPreview = CreateObjectDetectionDefectPreviewBitmap(contrastAdjusted);
-                    previewStopwatch.Stop();
-                    Interlocked.Add(
-                        ref previewGenerationElapsedTicks,
-                        previewStopwatch.ElapsedTicks);
-                    processedPatchesByObjectIndex[objectIndex] = new ObjectDetectionDefectProcessedPatch
+                    Cv.Mat enhancedImage = null;
+                    try
                     {
-                        Bounds = crop,
-                        InspectionPolygon = corners.ToArray(),
-                        ProcessedImage = processedPreview
-                    };
-                    Cv.Point[] polygon = corners.Select(point => new Cv.Point(
-                        (int)Math.Round(point.X - crop.X),
-                        (int)Math.Round(point.Y - crop.Y))).ToArray();
-                    Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
-                    int windowSize = Math.Min(
-                        requestedWindowSize,
-                        Math.Min(crop.Width, crop.Height));
-                    if (windowSize < 8)
-                    {
-                        return;
-                    }
-                    int step = Math.Max(1, windowSize / 2);
-                    List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
-                    List<int> yStarts = CreateFrequencyScanStarts(crop.Height, windowSize, step);
-                    using (var workspace = new ObjectDetectionFrequencyWorkspace(
-                        contrastAdjusted,
-                        polygonMask,
-                        windowSize))
-                    {
-                        long objectScannedWindowCount = 0;
-                        Stopwatch cellLoopStopwatch = Stopwatch.StartNew();
-                        foreach (int y in yStarts)
+                        Stopwatch enhancementStopwatch = Stopwatch.StartNew();
+                        if (enhancementSettings != null && string.Equals(
+                            enhancementSettings.DefectEnhancementMethod,
+                            "LocalBackgroundDifference",
+                            StringComparison.OrdinalIgnoreCase))
                         {
-                            foreach (int x in xStarts)
-                            {
-                                objectScannedWindowCount++;
-                                var localWindow = new Rectangle(x, y, windowSize, windowSize);
-                                double energy;
-                                if (!TryCalculateObjectDetectionFrequencyEnergy(
-                                    workspace,
-                                    localWindow.X,
-                                    localWindow.Y,
-                                    windowSize,
-                                    out energy))
-                                {
-                                    continue;
-                                }
-
-                                objectCells.Add(new ObjectDetectionFrequencyCell
-                                {
-                                    ObjectNumber = detectedObject.Number,
-                                    Bounds = new Rectangle(
-                                        crop.X + localWindow.X,
-                                        crop.Y + localWindow.Y,
-                                        localWindow.Width,
-                                        localWindow.Height),
-                                    Energy = energy
-                                });
-                            }
+                            enhancedImage = ApplyObjectDetectionDefectEnhancement(
+                                contrastAdjusted,
+                                enhancementSettings,
+                                pivotGray);
                         }
-                        cellLoopStopwatch.Stop();
-                        Interlocked.Add(ref cellLoopElapsedTicks, cellLoopStopwatch.ElapsedTicks);
-                        Interlocked.Add(ref scannedWindowCount, objectScannedWindowCount);
+                        else if (enhancementSettings != null && string.Equals(
+                            enhancementSettings.DefectEnhancementMethod,
+                            "CLAHE",
+                            StringComparison.OrdinalIgnoreCase))
+                        {
+                            enhancedImage = ApplyObjectDetectionDefectClahe(
+                                contrastAdjusted,
+                                enhancementSettings);
+                        }
+                        enhancementStopwatch.Stop();
+                        if (enhancedImage != null)
+                        {
+                            Interlocked.Add(
+                                ref enhancementElapsedTicks,
+                                enhancementStopwatch.ElapsedTicks);
+                        }
+                        Cv.Mat frequencyImage = enhancedImage ?? contrastAdjusted;
+                        Stopwatch previewStopwatch = Stopwatch.StartNew();
+                        Bitmap processedPreview = CreateObjectDetectionDefectPreviewBitmap(frequencyImage);
+                        previewStopwatch.Stop();
+                        Interlocked.Add(
+                            ref previewGenerationElapsedTicks,
+                            previewStopwatch.ElapsedTicks);
+                        processedPatchesByObjectIndex[objectIndex] = new ObjectDetectionDefectProcessedPatch
+                        {
+                            Bounds = crop,
+                            InspectionPolygon = corners.ToArray(),
+                            ProcessedImage = processedPreview
+                        };
+                        Cv.Point[] polygon = corners.Select(point => new Cv.Point(
+                            (int)Math.Round(point.X - crop.X),
+                            (int)Math.Round(point.Y - crop.Y))).ToArray();
+                        Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
+                        int windowSize = Math.Min(
+                            requestedWindowSize,
+                            Math.Min(crop.Width, crop.Height));
+                        if (windowSize < 8)
+                        {
+                            return;
+                        }
+                        int step = Math.Max(1, windowSize / 2);
+                        List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
+                        List<int> yStarts = CreateFrequencyScanStarts(crop.Height, windowSize, step);
+                        using (var workspace = new ObjectDetectionFrequencyWorkspace(
+                            frequencyImage,
+                            polygonMask,
+                            windowSize))
+                        {
+                            long objectScannedWindowCount = 0;
+                            Stopwatch cellLoopStopwatch = Stopwatch.StartNew();
+                            foreach (int y in yStarts)
+                            {
+                                foreach (int x in xStarts)
+                                {
+                                    objectScannedWindowCount++;
+                                    var localWindow = new Rectangle(x, y, windowSize, windowSize);
+                                    double energy;
+                                    if (!TryCalculateObjectDetectionFrequencyEnergy(
+                                        workspace,
+                                        localWindow.X,
+                                        localWindow.Y,
+                                        windowSize,
+                                        out energy))
+                                    {
+                                        continue;
+                                    }
+
+                                    objectCells.Add(new ObjectDetectionFrequencyCell
+                                    {
+                                        ObjectNumber = detectedObject.Number,
+                                        Bounds = new Rectangle(
+                                            crop.X + localWindow.X,
+                                            crop.Y + localWindow.Y,
+                                            localWindow.Width,
+                                            localWindow.Height),
+                                        Energy = energy
+                                    });
+                                }
+                            }
+                            cellLoopStopwatch.Stop();
+                            Interlocked.Add(ref cellLoopElapsedTicks, cellLoopStopwatch.ElapsedTicks);
+                            Interlocked.Add(ref scannedWindowCount, objectScannedWindowCount);
+                        }
+                    }
+                    finally
+                    {
+                        if (enhancedImage != null)
+                        {
+                            enhancedImage.Dispose();
+                        }
                     }
                 }
                 progress?.Report(
@@ -1106,6 +1329,8 @@ namespace IntegratedImageProcessingApp.Forms
             };
             result.CellLoopMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(
                 cellLoopElapsedTicks);
+            result.EnhancementMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(
+                enhancementElapsedTicks);
             result.PreviewGenerationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(
                 previewGenerationElapsedTicks);
             result.ScannedWindowCount = scannedWindowCount;
@@ -1289,6 +1514,11 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyContrastEnabled ? "1" : "0",
                 parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyEnhancementMethod ?? string.Empty,
+                parameter.DefectFrequencyLocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyLocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyClaheClipLimit.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyClaheTileGridSize.ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,
                 CreateObjectDetectionFlatFieldSettingsSignature(parameter)

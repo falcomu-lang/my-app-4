@@ -201,6 +201,11 @@ namespace IntegratedImageProcessingApp.Forms
                 HideImageProcessingFlowTree();
                 parameterPlaceholderLabel.Text = "展開「指定 ROI」後可新增 ROI。";
             }
+            else if (selectedFunction == FindObjectFlowMenuText)
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "依序設定影像前處理、影像處理、影像關聯、區塊整合與物件定義。";
+            }
             else if (IsRoiMenuItem(selectedFunction))
             {
                 HideImageProcessingFlowTree();

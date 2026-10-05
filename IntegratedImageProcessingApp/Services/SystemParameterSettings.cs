@@ -291,6 +291,7 @@ namespace IntegratedImageProcessingApp.Services
         {
             Id = Guid.NewGuid().ToString("N");
             CoreKey = string.Empty;
+            ContrastAdjustmentEnabled = true;
             ContrastGain = 1.0;
             PreprocessMethod = "None";
             DefectEnhancementMethod = "None";
@@ -327,6 +328,8 @@ namespace IntegratedImageProcessingApp.Services
         public string Id { get; set; }
 
         public string CoreKey { get; set; }
+
+        public bool ContrastAdjustmentEnabled { get; set; }
 
         public double ContrastGain { get; set; }
 
@@ -461,6 +464,11 @@ namespace IntegratedImageProcessingApp.Services
             DefectFrequencySensitivity = 3.0;
             DefectFrequencyContrastEnabled = true;
             DefectFrequencyContrastGain = 1.0;
+            DefectFrequencyEnhancementMethod = "None";
+            DefectFrequencyLocalBackgroundKernelSize = 31;
+            DefectFrequencyLocalBackgroundGain = 1.5;
+            DefectFrequencyClaheClipLimit = 2.0;
+            DefectFrequencyClaheTileGridSize = 8;
             DefectFrequencyShowHeatmap = true;
             DefectFrequencyShowAnomalyBoxes = true;
             DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
@@ -651,6 +659,16 @@ namespace IntegratedImageProcessingApp.Services
         public bool DefectFrequencyContrastEnabled { get; set; }
 
         public double DefectFrequencyContrastGain { get; set; }
+
+        public string DefectFrequencyEnhancementMethod { get; set; }
+
+        public int DefectFrequencyLocalBackgroundKernelSize { get; set; }
+
+        public double DefectFrequencyLocalBackgroundGain { get; set; }
+
+        public double DefectFrequencyClaheClipLimit { get; set; }
+
+        public int DefectFrequencyClaheTileGridSize { get; set; }
 
         public bool DefectFrequencyShowHeatmap { get; set; }
 
