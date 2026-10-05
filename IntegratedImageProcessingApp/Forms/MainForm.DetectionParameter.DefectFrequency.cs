@@ -66,6 +66,7 @@ namespace IntegratedImageProcessingApp.Forms
         private NumericUpDown objectDetectionFrequencyScanHeightInput;
         private NumericUpDown objectDetectionFrequencySensitivityInput;
         private NumericUpDown objectDetectionFrequencyContrastGainInput;
+        private CheckBox objectDetectionFrequencyContrastEnabledCheckBox;
         private CheckBox objectDetectionFrequencyEnabledCheckBox;
         private CheckBox objectDetectionFrequencyDirectionalLineCheckBox;
         private CheckBox objectDetectionFrequencyShowHeatmapCheckBox;
@@ -123,7 +124,7 @@ namespace IntegratedImageProcessingApp.Forms
             var sourceContrastGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 108,
+                Height = 133,
                 Text = "影像來源與對比",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -131,13 +132,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 3,
+                RowCount = 4,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty
             };
             sourceContrastLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
             sourceContrastLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
-            for (int row = 0; row < 3; row++)
+            for (int row = 0; row < 4; row++)
             {
                 sourceContrastLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
             }
@@ -146,6 +147,14 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Fill,
                 Text = "平場校正後影像",
                 TextAlign = ContentAlignment.MiddleLeft
+            };
+            objectDetectionFrequencyContrastEnabledCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "啟用對比調整",
+                Checked = parameter.DefectFrequencyContrastEnabled,
+                Anchor = AnchorStyles.Left,
+                Margin = new Padding(0, 2, 0, 0)
             };
             objectDetectionFrequencyContrastGainInput = new NumericUpDown
             {
@@ -165,11 +174,21 @@ namespace IntegratedImageProcessingApp.Forms
             };
             sourceContrastLayout.Controls.Add(frequencySourceLabel, 0, 0);
             sourceContrastLayout.SetColumnSpan(frequencySourceLabel, 2);
-            sourceContrastLayout.Controls.Add(CreateDefectCoreLabel("對比倍率"), 0, 1);
-            sourceContrastLayout.Controls.Add(objectDetectionFrequencyContrastGainInput, 1, 1);
-            sourceContrastLayout.Controls.Add(pivotGrayLabel, 0, 2);
+            sourceContrastLayout.Controls.Add(objectDetectionFrequencyContrastEnabledCheckBox, 0, 1);
+            sourceContrastLayout.SetColumnSpan(objectDetectionFrequencyContrastEnabledCheckBox, 2);
+            sourceContrastLayout.Controls.Add(CreateDefectCoreLabel("對比倍率"), 0, 2);
+            sourceContrastLayout.Controls.Add(objectDetectionFrequencyContrastGainInput, 1, 2);
+            sourceContrastLayout.Controls.Add(pivotGrayLabel, 0, 3);
             sourceContrastLayout.SetColumnSpan(pivotGrayLabel, 2);
+            objectDetectionFrequencyContrastEnabledCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyControlsEnabled(
+                    objectDetectionFrequencyEnabledCheckBox != null &&
+                    objectDetectionFrequencyEnabledCheckBox.Checked);
+            };
             sourceContrastGroup.Controls.Add(sourceContrastLayout);
+            objectDetectionFrequencyContrastGainInput.Enabled =
+                parameter.DefectFrequencyEnabled && parameter.DefectFrequencyContrastEnabled;
 
             var scanGroup = new GroupBox
             {
@@ -424,7 +443,13 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (objectDetectionFrequencyContrastGainInput != null)
             {
-                objectDetectionFrequencyContrastGainInput.Enabled = enabled;
+                objectDetectionFrequencyContrastGainInput.Enabled = enabled &&
+                    objectDetectionFrequencyContrastEnabledCheckBox != null &&
+                    objectDetectionFrequencyContrastEnabledCheckBox.Checked;
+            }
+            if (objectDetectionFrequencyContrastEnabledCheckBox != null)
+            {
+                objectDetectionFrequencyContrastEnabledCheckBox.Enabled = enabled;
             }
             if (objectDetectionFrequencyScanHeightInput != null)
             {
@@ -502,6 +527,7 @@ namespace IntegratedImageProcessingApp.Forms
                 !string.Equals(objectDetectionFrequencyDraftParameterId, parameter.Id,
                     StringComparison.Ordinal) ||
                 objectDetectionFrequencyContrastGainInput == null ||
+                objectDetectionFrequencyContrastEnabledCheckBox == null ||
                 objectDetectionFrequencyScanHeightInput == null ||
                 objectDetectionFrequencySensitivityInput == null)
             {
@@ -511,6 +537,8 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.DefectFrequencyScanHeight = (int)objectDetectionFrequencyScanHeightInput.Value;
             parameter.DefectFrequencySensitivity = Decimal.ToDouble(
                 objectDetectionFrequencySensitivityInput.Value);
+            parameter.DefectFrequencyContrastEnabled =
+                objectDetectionFrequencyContrastEnabledCheckBox.Checked;
             parameter.DefectFrequencyContrastGain = Decimal.ToDouble(
                 objectDetectionFrequencyContrastGainInput.Value);
             parameter.DefectFrequencyDirectionalLineEnabled =
@@ -534,15 +562,16 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDetectionFrequencyStatusLabel != null)
             {
                 objectDetectionFrequencyStatusLabel.Text =
-                    "設定已套用；按「開始分析」後，左圖會顯示對比後 ROI。";
+                    "設定已套用；按「開始分析」後，左圖會顯示目前影像來源。";
             }
             SetObjectDetectionDefectRegionStatus(
                 "頻域異常設定已套用；掃描高度 " +
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.CurrentCulture) +
                 " px，敏感度 " +
                 parameter.DefectFrequencySensitivity.ToString("0.0", CultureInfo.CurrentCulture) +
-                "，對比倍率 " +
-                parameter.DefectFrequencyContrastGain.ToString("0.00", CultureInfo.CurrentCulture) +
+                (parameter.DefectFrequencyContrastEnabled
+                    ? "，對比倍率 " + parameter.DefectFrequencyContrastGain.ToString("0.00", CultureInfo.CurrentCulture)
+                    : "，未套用對比調整") +
                 "。影像來源為平場校正後影像；設定變更後請重新分析。 ");
         }
 
@@ -563,6 +592,8 @@ namespace IntegratedImageProcessingApp.Forms
                 (double)objectDetectionFrequencyContrastGainInput.Minimum,
                 Math.Min((double)objectDetectionFrequencyContrastGainInput.Maximum,
                     parameter.DefectFrequencyContrastGain));
+            objectDetectionFrequencyContrastEnabledCheckBox.Checked =
+                parameter.DefectFrequencyContrastEnabled;
             objectDetectionFrequencySensitivityInput.Value = (decimal)Math.Max(
                 (double)objectDetectionFrequencySensitivityInput.Minimum,
                 Math.Min((double)objectDetectionFrequencySensitivityInput.Maximum,
@@ -577,6 +608,9 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectFrequencyShowDirectionalLineHeatmap;
             objectDetectionFrequencyShowLineBoxesCheckBox.Checked =
                 parameter.DefectFrequencyShowDirectionalLineBoxes;
+            UpdateObjectDetectionFrequencyControlsEnabled(
+                objectDetectionFrequencyEnabledCheckBox != null &&
+                objectDetectionFrequencyEnabledCheckBox.Checked);
             UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
             SetObjectDetectionDefectRegionStatus("已取消頻域異常設定變更。 ");
         }
@@ -690,7 +724,9 @@ namespace IntegratedImageProcessingApp.Forms
                     ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
                 double sensitivity = Math.Max(1.0, Math.Min(10.0, parameter.DefectFrequencySensitivity));
-                double contrastGain = Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain));
+                double contrastGain = parameter.DefectFrequencyContrastEnabled
+                    ? Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain))
+                    : 1.0;
                 bool analyzeDirectionalLines = parameter.DefectFrequencyDirectionalLineEnabled;
                 bool runParallel = parameter.DefectParallelExecutionEnabled;
                 int capturedImageGeneration = imageSourceGeneration;
@@ -1279,6 +1315,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyContrastEnabled ? "1" : "0",
                 parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyDirectionalLineEnabled ? "1" : "0",

@@ -741,6 +741,11 @@ namespace IntegratedImageProcessingApp.Services
                         3.0,
                         1.0,
                         10.0),
+                    DefectFrequencyContrastEnabled = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyContrastEnabled",
+                        true),
                     DefectFrequencyContrastGain = GetClampedFiniteDouble(
                         sections,
                         SectionObjectDetection,
@@ -1151,6 +1156,7 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, parameter.DefectFrequencyEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyContrastEnabled={1}", prefix, parameter.DefectFrequencyContrastEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyContrastGain={1}", prefix, parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyDirectionalLineEnabled={1}", prefix, parameter.DefectFrequencyDirectionalLineEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, parameter.DefectFrequencyShowHeatmap ? "1" : "0");
