@@ -1244,14 +1244,14 @@ namespace IntegratedImageProcessingApp.Forms
         private static double GetObjectDetectionFrequencyMinimumLineCoherence(double sensitivity)
         {
             double clampedSensitivity = Math.Max(1.0, Math.Min(10.0, sensitivity));
-            return 0.92 - (clampedSensitivity - 1.0) * 0.03;
+            return Math.Max(0.12, 0.92 - (clampedSensitivity - 1.0) * 0.088);
         }
 
         private static double GetObjectDetectionFrequencyDirectionalLineScoreThreshold(
             double sensitivity)
         {
             double clampedSensitivity = Math.Max(1.0, Math.Min(10.0, sensitivity));
-            return Math.Max(0.8, 2.0 - (clampedSensitivity - 1.0) * 0.12);
+            return Math.Max(0.3, 2.0 - (clampedSensitivity - 1.0) * 0.19);
         }
 
         private static void DisposeObjectDetectionFrequencyResult(
