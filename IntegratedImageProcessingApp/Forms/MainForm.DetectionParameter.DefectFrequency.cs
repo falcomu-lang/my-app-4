@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
@@ -26,12 +27,6 @@ namespace IntegratedImageProcessingApp.Forms
             public double Score { get; set; }
 
             public bool IsAnomaly { get; set; }
-
-            public double DirectionalLineStrength { get; set; }
-
-            public double DirectionalLineScore { get; set; }
-
-            public bool IsDirectionalLineAnomaly { get; set; }
         }
 
         private sealed class ObjectDetectionFrequencyResult
@@ -42,15 +37,23 @@ namespace IntegratedImageProcessingApp.Forms
 
             public double Sensitivity { get; set; }
 
-            public double DirectionalLineSensitivity { get; set; }
-
-            public bool DirectionalLineAnalysisEnabled { get; set; }
-
             public double MedianEnergy { get; set; }
 
             public double EnergyScale { get; set; }
 
             public long ElapsedMilliseconds { get; set; }
+
+            public long SourcePreparationMilliseconds { get; set; }
+
+            public long TotalElapsedMilliseconds { get; set; }
+
+            public long CellLoopMilliseconds { get; set; }
+
+            public long PreviewGenerationMilliseconds { get; set; }
+
+            public long StatisticsMilliseconds { get; set; }
+
+            public long ScannedWindowCount { get; set; }
 
             public Dictionary<int, PointF[]> ObjectPolygons { get; set; }
 
@@ -61,21 +64,60 @@ namespace IntegratedImageProcessingApp.Forms
             public List<ObjectDetectionFrequencyCell> Cells { get; set; }
         }
 
+        private sealed class ObjectDetectionFrequencyWorkspace : IDisposable
+        {
+            public ObjectDetectionFrequencyWorkspace(int windowSize)
+            {
+                FloatTile = new Cv.Mat();
+                Centered = new Cv.Mat();
+                Windowed = new Cv.Mat();
+                SquaredEnergy = new Cv.Mat();
+                HannWindow = new Cv.Mat();
+                try
+                {
+                    Cv.Cv2.CreateHanningWindow(
+                        HannWindow,
+                        new Cv.Size(windowSize, windowSize),
+                        Cv.MatType.CV_32FC1);
+                }
+                catch
+                {
+                    Dispose();
+                    throw;
+                }
+            }
+
+            public Cv.Mat FloatTile { get; private set; }
+
+            public Cv.Mat Centered { get; private set; }
+
+            public Cv.Mat Windowed { get; private set; }
+
+            public Cv.Mat SquaredEnergy { get; private set; }
+
+            public Cv.Mat HannWindow { get; private set; }
+
+            public void Dispose()
+            {
+                FloatTile.Dispose();
+                Centered.Dispose();
+                Windowed.Dispose();
+                SquaredEnergy.Dispose();
+                HannWindow.Dispose();
+            }
+        }
+
         private readonly Dictionary<string, ObjectDetectionFrequencyResult>
             objectDetectionFrequencyResults =
                 new Dictionary<string, ObjectDetectionFrequencyResult>(StringComparer.Ordinal);
 
         private NumericUpDown objectDetectionFrequencyScanHeightInput;
         private NumericUpDown objectDetectionFrequencySensitivityInput;
-        private NumericUpDown objectDetectionFrequencyDirectionalLineSensitivityInput;
         private NumericUpDown objectDetectionFrequencyContrastGainInput;
         private CheckBox objectDetectionFrequencyContrastEnabledCheckBox;
         private CheckBox objectDetectionFrequencyEnabledCheckBox;
-        private CheckBox objectDetectionFrequencyDirectionalLineCheckBox;
         private CheckBox objectDetectionFrequencyShowHeatmapCheckBox;
         private CheckBox objectDetectionFrequencyShowBoxesCheckBox;
-        private CheckBox objectDetectionFrequencyShowLineHeatmapCheckBox;
-        private CheckBox objectDetectionFrequencyShowLineBoxesCheckBox;
         private Label objectDetectionFrequencyWindowHint;
         private Label objectDetectionFrequencyStatusLabel;
         private Button objectDetectionFrequencyRunButton;
@@ -196,7 +238,7 @@ namespace IntegratedImageProcessingApp.Forms
             var scanGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 220,
+                Height = 171,
                 Text = "掃描設定",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -204,13 +246,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 7,
+                RowCount = 4,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty
             };
             scanLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
             scanLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
-            for (int row = 0; row < 7; row++)
+            for (int row = 0; row < 4; row++)
             {
                 scanLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
             }
@@ -257,49 +299,12 @@ namespace IntegratedImageProcessingApp.Forms
             scanLayout.Controls.Add(objectDetectionFrequencySensitivityInput, 1, 2);
             scanLayout.Controls.Add(baselineInfo, 0, 3);
             scanLayout.SetColumnSpan(baselineInfo, 2);
-            objectDetectionFrequencyDirectionalLineCheckBox = new CheckBox
-            {
-                AutoSize = true,
-                Text = "自動方向線條分析（不需指定角度）",
-                Checked = parameter.DefectFrequencyDirectionalLineEnabled,
-                Anchor = AnchorStyles.Left,
-                Margin = new Padding(0, 3, 0, 0)
-            };
-            objectDetectionFrequencyDirectionalLineSensitivityInput = new NumericUpDown
-            {
-                Dock = DockStyle.Fill,
-                Minimum = 1.0m,
-                Maximum = 10.0m,
-                DecimalPlaces = 1,
-                Increment = 0.5m,
-                Value = (decimal)Math.Max(
-                    1.0,
-                    Math.Min(10.0, parameter.DefectFrequencyDirectionalLineSensitivity))
-            };
-            var directionalLineSensitivityHint = new Label
-            {
-                Dock = DockStyle.Fill,
-                Text = "數值越高越容易檢出弱線，但誤判可能增加。角度與斷點自動處理。",
-                TextAlign = ContentAlignment.MiddleLeft,
-                AutoEllipsis = true,
-                ForeColor = Color.FromArgb(75, 83, 95)
-            };
-            scanLayout.Controls.Add(objectDetectionFrequencyDirectionalLineCheckBox, 0, 4);
-            scanLayout.SetColumnSpan(objectDetectionFrequencyDirectionalLineCheckBox, 2);
-            scanLayout.Controls.Add(CreateDefectCoreLabel("方向線敏感度"), 0, 5);
-            scanLayout.Controls.Add(objectDetectionFrequencyDirectionalLineSensitivityInput, 1, 5);
-            scanLayout.Controls.Add(directionalLineSensitivityHint, 0, 6);
-            scanLayout.SetColumnSpan(directionalLineSensitivityHint, 2);
-            objectDetectionFrequencyDirectionalLineCheckBox.CheckedChanged += delegate
-            {
-                UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
-            };
             scanGroup.Controls.Add(scanLayout);
 
             var displayOptions = new FlowLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 64,
+                Height = 36,
                 FlowDirection = FlowDirection.LeftToRight,
                 WrapContents = true,
                 Padding = new Padding(5, 6, 0, 0),
@@ -319,20 +324,6 @@ namespace IntegratedImageProcessingApp.Forms
                 Checked = parameter.DefectFrequencyShowAnomalyBoxes,
                 Margin = new Padding(2, 1, 0, 1)
             };
-            objectDetectionFrequencyShowLineHeatmapCheckBox = new CheckBox
-            {
-                AutoSize = true,
-                Text = "顯示線條方向熱圖",
-                Checked = parameter.DefectFrequencyShowDirectionalLineHeatmap,
-                Margin = new Padding(2, 1, 14, 1)
-            };
-            objectDetectionFrequencyShowLineBoxesCheckBox = new CheckBox
-            {
-                AutoSize = true,
-                Text = "顯示線條異常框",
-                Checked = parameter.DefectFrequencyShowDirectionalLineBoxes,
-                Margin = new Padding(2, 1, 0, 1)
-            };
             objectDetectionFrequencyShowHeatmapCheckBox.CheckedChanged += delegate
             {
                 UpdateObjectDetectionFrequencyDisplayOptions(parameter);
@@ -341,23 +332,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 UpdateObjectDetectionFrequencyDisplayOptions(parameter);
             };
-            objectDetectionFrequencyShowLineHeatmapCheckBox.CheckedChanged += delegate
-            {
-                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
-            };
-            objectDetectionFrequencyShowLineBoxesCheckBox.CheckedChanged += delegate
-            {
-                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
-            };
             displayOptions.Controls.Add(objectDetectionFrequencyShowHeatmapCheckBox);
             displayOptions.Controls.Add(objectDetectionFrequencyShowBoxesCheckBox);
-            displayOptions.Controls.Add(objectDetectionFrequencyShowLineHeatmapCheckBox);
-            displayOptions.Controls.Add(objectDetectionFrequencyShowLineBoxesCheckBox);
 
             objectDetectionFrequencyStatusLabel = new Label
             {
                 Dock = DockStyle.Top,
-                Height = 48,
+                Height = 68,
                 Padding = new Padding(8, 4, 8, 2),
                 Text = parameter.DefectFrequencyEnabled
                     ? "尚未執行頻域掃描。"
@@ -422,7 +403,6 @@ namespace IntegratedImageProcessingApp.Forms
             page.Controls.Add(content);
             UpdateObjectDetectionFrequencyWindowHint();
             UpdateObjectDetectionFrequencyControlsEnabled(parameter.DefectFrequencyEnabled);
-            UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
             return page;
         }
 
@@ -485,16 +465,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencySensitivityInput.Enabled = enabled;
             }
-            if (objectDetectionFrequencyDirectionalLineCheckBox != null)
-            {
-                objectDetectionFrequencyDirectionalLineCheckBox.Enabled = enabled;
-            }
-            if (objectDetectionFrequencyDirectionalLineSensitivityInput != null)
-            {
-                objectDetectionFrequencyDirectionalLineSensitivityInput.Enabled = enabled &&
-                    objectDetectionFrequencyDirectionalLineCheckBox != null &&
-                    objectDetectionFrequencyDirectionalLineCheckBox.Checked;
-            }
             if (objectDetectionFrequencyShowHeatmapCheckBox != null)
             {
                 objectDetectionFrequencyShowHeatmapCheckBox.Enabled = enabled;
@@ -503,7 +473,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencyShowBoxesCheckBox.Enabled = enabled;
             }
-            UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
             if (objectDetectionFrequencyRunButton != null)
             {
                 objectDetectionFrequencyRunButton.Enabled = enabled &&
@@ -519,26 +488,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencyResults.Remove(parameterId);
                 DisposeObjectDetectionFrequencyResult(previousResult);
-            }
-        }
-
-        private void UpdateObjectDetectionFrequencyLineDisplayControlsEnabled()
-        {
-            bool enabled = objectDetectionFrequencyEnabledCheckBox != null &&
-                objectDetectionFrequencyEnabledCheckBox.Checked &&
-                objectDetectionFrequencyDirectionalLineCheckBox != null &&
-                objectDetectionFrequencyDirectionalLineCheckBox.Checked;
-            if (objectDetectionFrequencyDirectionalLineSensitivityInput != null)
-            {
-                objectDetectionFrequencyDirectionalLineSensitivityInput.Enabled = enabled;
-            }
-            if (objectDetectionFrequencyShowLineHeatmapCheckBox != null)
-            {
-                objectDetectionFrequencyShowLineHeatmapCheckBox.Enabled = enabled;
-            }
-            if (objectDetectionFrequencyShowLineBoxesCheckBox != null)
-            {
-                objectDetectionFrequencyShowLineBoxesCheckBox.Enabled = enabled;
             }
         }
 
@@ -565,8 +514,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyContrastGainInput == null ||
                 objectDetectionFrequencyContrastEnabledCheckBox == null ||
                 objectDetectionFrequencyScanHeightInput == null ||
-                objectDetectionFrequencySensitivityInput == null ||
-                objectDetectionFrequencyDirectionalLineSensitivityInput == null)
+                objectDetectionFrequencySensitivityInput == null)
             {
                 return;
             }
@@ -574,22 +522,14 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.DefectFrequencyScanHeight = (int)objectDetectionFrequencyScanHeightInput.Value;
             parameter.DefectFrequencySensitivity = Decimal.ToDouble(
                 objectDetectionFrequencySensitivityInput.Value);
-            parameter.DefectFrequencyDirectionalLineSensitivity = Decimal.ToDouble(
-                objectDetectionFrequencyDirectionalLineSensitivityInput.Value);
             parameter.DefectFrequencyContrastEnabled =
                 objectDetectionFrequencyContrastEnabledCheckBox.Checked;
             parameter.DefectFrequencyContrastGain = Decimal.ToDouble(
                 objectDetectionFrequencyContrastGainInput.Value);
-            parameter.DefectFrequencyDirectionalLineEnabled =
-                objectDetectionFrequencyDirectionalLineCheckBox.Checked;
             parameter.DefectFrequencyShowHeatmap =
                 objectDetectionFrequencyShowHeatmapCheckBox.Checked;
             parameter.DefectFrequencyShowAnomalyBoxes =
                 objectDetectionFrequencyShowBoxesCheckBox.Checked;
-            parameter.DefectFrequencyShowDirectionalLineHeatmap =
-                objectDetectionFrequencyShowLineHeatmapCheckBox.Checked;
-            parameter.DefectFrequencyShowDirectionalLineBoxes =
-                objectDetectionFrequencyShowLineBoxesCheckBox.Checked;
             SaveSystemParameters();
             RemoveObjectDetectionFrequencyResult(parameter.Id);
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
@@ -608,7 +548,6 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.CurrentCulture) +
                 " px，敏感度 " +
                 parameter.DefectFrequencySensitivity.ToString("0.0", CultureInfo.CurrentCulture) +
-                "，方向線敏感度 " + parameter.DefectFrequencyDirectionalLineSensitivity.ToString("0.0", CultureInfo.CurrentCulture) +
                 (parameter.DefectFrequencyContrastEnabled
                     ? "，對比倍率 " + parameter.DefectFrequencyContrastGain.ToString("0.00", CultureInfo.CurrentCulture)
                     : "，未套用對比調整") +
@@ -638,24 +577,13 @@ namespace IntegratedImageProcessingApp.Forms
                 (double)objectDetectionFrequencySensitivityInput.Minimum,
                 Math.Min((double)objectDetectionFrequencySensitivityInput.Maximum,
                     parameter.DefectFrequencySensitivity));
-            objectDetectionFrequencyDirectionalLineSensitivityInput.Value = (decimal)Math.Max(
-                (double)objectDetectionFrequencyDirectionalLineSensitivityInput.Minimum,
-                Math.Min((double)objectDetectionFrequencyDirectionalLineSensitivityInput.Maximum,
-                    parameter.DefectFrequencyDirectionalLineSensitivity));
             objectDetectionFrequencyShowHeatmapCheckBox.Checked =
                 parameter.DefectFrequencyShowHeatmap;
             objectDetectionFrequencyShowBoxesCheckBox.Checked =
                 parameter.DefectFrequencyShowAnomalyBoxes;
-            objectDetectionFrequencyDirectionalLineCheckBox.Checked =
-                parameter.DefectFrequencyDirectionalLineEnabled;
-            objectDetectionFrequencyShowLineHeatmapCheckBox.Checked =
-                parameter.DefectFrequencyShowDirectionalLineHeatmap;
-            objectDetectionFrequencyShowLineBoxesCheckBox.Checked =
-                parameter.DefectFrequencyShowDirectionalLineBoxes;
             UpdateObjectDetectionFrequencyControlsEnabled(
                 objectDetectionFrequencyEnabledCheckBox != null &&
                 objectDetectionFrequencyEnabledCheckBox.Checked);
-            UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
             SetObjectDetectionDefectRegionStatus("已取消頻域異常設定變更。 ");
         }
 
@@ -663,9 +591,7 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter)
         {
             if (parameter == null || objectDetectionFrequencyShowHeatmapCheckBox == null ||
-                objectDetectionFrequencyShowBoxesCheckBox == null ||
-                objectDetectionFrequencyShowLineHeatmapCheckBox == null ||
-                objectDetectionFrequencyShowLineBoxesCheckBox == null)
+                objectDetectionFrequencyShowBoxesCheckBox == null)
             {
                 return;
             }
@@ -673,10 +599,6 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyShowHeatmapCheckBox.Checked;
             parameter.DefectFrequencyShowAnomalyBoxes =
                 objectDetectionFrequencyShowBoxesCheckBox.Checked;
-            parameter.DefectFrequencyShowDirectionalLineHeatmap =
-                objectDetectionFrequencyShowLineHeatmapCheckBox.Checked;
-            parameter.DefectFrequencyShowDirectionalLineBoxes =
-                objectDetectionFrequencyShowLineBoxesCheckBox.Checked;
             SaveSystemParameters();
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                 ObjectDetectionDefectFrequencyDisplayIndex);
@@ -744,9 +666,12 @@ namespace IntegratedImageProcessingApp.Forms
 
             try
             {
+                Stopwatch totalStopwatch = Stopwatch.StartNew();
                 SetObjectDetectionDefectRegionStatus("正在準備平場校正影像與 ROI... ");
                 await Task.Yield();
+                Stopwatch sourcePreparationStopwatch = Stopwatch.StartNew();
                 LargeImageSource source = await PrepareObjectDetectionFrequencySourceAsync(parameter);
+                sourcePreparationStopwatch.Stop();
                 if (source == null)
                 {
                     return;
@@ -768,13 +693,9 @@ namespace IntegratedImageProcessingApp.Forms
                     ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
                 double sensitivity = Math.Max(1.0, Math.Min(10.0, parameter.DefectFrequencySensitivity));
-                double directionalLineSensitivity = Math.Max(
-                    1.0,
-                    Math.Min(10.0, parameter.DefectFrequencyDirectionalLineSensitivity));
                 double contrastGain = parameter.DefectFrequencyContrastEnabled
                     ? Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain))
                     : 1.0;
-                bool analyzeDirectionalLines = parameter.DefectFrequencyDirectionalLineEnabled;
                 bool runParallel = parameter.DefectParallelExecutionEnabled;
                 int capturedImageGeneration = imageSourceGeneration;
                 int capturedFlatFieldGeneration = objectDetectionFlatFieldEvaluationGeneration;
@@ -793,7 +714,7 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                 });
 
-                Stopwatch stopwatch = Stopwatch.StartNew();
+                Stopwatch scanStopwatch = Stopwatch.StartNew();
                 SetObjectDetectionDefectRegionStatus(runParallel
                     ? "平行頻域掃描中：各物件 ROI 同時處理... "
                     : "頻域掃描中：各物件 ROI 依序處理... ");
@@ -808,10 +729,8 @@ namespace IntegratedImageProcessingApp.Forms
                             imageBounds,
                             scanHeight,
                             sensitivity,
-                            directionalLineSensitivity,
                             contrastGain,
                             parameter.FlatFieldTargetGray,
-                            analyzeDirectionalLines,
                             runParallel,
                             progress);
                     }
@@ -820,13 +739,14 @@ namespace IntegratedImageProcessingApp.Forms
                         sourceReference.ReleaseReference();
                     }
                 });
-                stopwatch.Stop();
+                scanStopwatch.Stop();
+                totalStopwatch.Stop();
                 result.Signature = signature;
                 result.ScanHeight = scanHeight;
                 result.Sensitivity = sensitivity;
-                result.DirectionalLineSensitivity = directionalLineSensitivity;
-                result.DirectionalLineAnalysisEnabled = analyzeDirectionalLines;
-                result.ElapsedMilliseconds = stopwatch.ElapsedMilliseconds;
+                result.SourcePreparationMilliseconds = sourcePreparationStopwatch.ElapsedMilliseconds;
+                result.ElapsedMilliseconds = scanStopwatch.ElapsedMilliseconds;
+                result.TotalElapsedMilliseconds = totalStopwatch.ElapsedMilliseconds;
 
             if (IsDisposed || capturedImageGeneration != imageSourceGeneration ||
                     capturedFlatFieldGeneration != objectDetectionFlatFieldEvaluationGeneration ||
@@ -853,21 +773,31 @@ namespace IntegratedImageProcessingApp.Forms
                     display.InvalidateImageView();
                 }
                 int anomalyCount = result.Cells.Count(cell => cell.IsAnomaly);
-                int lineAnomalyCount = result.Cells.Count(cell => cell.IsDirectionalLineAnomaly);
-                string summary = "頻域掃描完成：" +
-                    result.Cells.Count.ToString("N0", CultureInfo.CurrentCulture) + " 個區塊；可疑 " +
-                    anomalyCount.ToString("N0", CultureInfo.CurrentCulture) + " 個能量異常" +
-                    (analyzeDirectionalLines
-                        ? "；方向線條 " + lineAnomalyCount.ToString("N0", CultureInfo.CurrentCulture) + " 個"
-                        : string.Empty) + "；耗時 " +
-                    result.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) + " ms；左圖已顯示對比後 ROI。";
+                string summary = string.Format(
+                    CultureInfo.CurrentCulture,
+                    "ROI {0}；掃描 {1:N0} 格（有效 {2:N0}），可疑 {3:N0}\r\n運算總耗時 {4:N0} ms；來源準備 {5:N0} ms，掃描 {6:N0} ms\r\nROI 格迴圈累計 {7:N0} ms；預覽累計 {8:N0} ms；統計 {9:N0} ms",
+                    result.CellsByObject.Count,
+                    result.ScannedWindowCount,
+                    result.Cells.Count,
+                    anomalyCount,
+                    result.TotalElapsedMilliseconds,
+                    result.SourcePreparationMilliseconds,
+                    result.ElapsedMilliseconds,
+                    result.CellLoopMilliseconds,
+                    result.PreviewGenerationMilliseconds,
+                    result.StatisticsMilliseconds);
                 if (objectDetectionFrequencyStatusLabel != null)
                 {
                     objectDetectionFrequencyStatusLabel.Text = summary;
                 }
                 if (statusLabel != null)
                 {
-                    statusLabel.Text = parameter.DisplayName + "：" + summary;
+                    statusLabel.Text = string.Format(
+                        CultureInfo.CurrentCulture,
+                        "{0}：頻域完成，掃描 {1:N0} 格，運算總耗時 {2:N0} ms",
+                        parameter.DisplayName,
+                        result.ScannedWindowCount,
+                        result.TotalElapsedMilliseconds);
                 }
                 SetObjectDetectionDefectRegionStatus(summary + "結果只作為頻域異常提示，不會納入缺陷整合判定。 ");
             }
@@ -967,16 +897,17 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle imageBounds,
             int requestedWindowSize,
             double sensitivity,
-            double directionalLineSensitivity,
             double contrastGain,
             int pivotGray,
-            bool analyzeDirectionalLines,
             bool runParallel,
             IProgress<string> progress)
         {
             var cellsByObjectIndex = new List<ObjectDetectionFrequencyCell>[objects.Count];
             var polygonsByObjectIndex = new PointF[objects.Count][];
             var processedPatchesByObjectIndex = new ObjectDetectionDefectProcessedPatch[objects.Count];
+            long cellLoopElapsedTicks = 0;
+            long previewGenerationElapsedTicks = 0;
+            long scannedWindowCount = 0;
             Action<int> scanObject = delegate(int objectIndex)
             {
                 ObjectDefinitionDetectedObject detectedObject = objects[objectIndex];
@@ -1013,11 +944,17 @@ namespace IntegratedImageProcessingApp.Forms
                         : Math.Max(0.1, Math.Min(5.0, contrastGain));
                     double beta = Math.Max(1, Math.Min(255, pivotGray)) * (1.0 - gain);
                     gray.ConvertTo(contrastAdjusted, Cv.MatType.CV_8UC1, gain, beta);
+                    Stopwatch previewStopwatch = Stopwatch.StartNew();
+                    Bitmap processedPreview = CreateObjectDetectionDefectPreviewBitmap(contrastAdjusted);
+                    previewStopwatch.Stop();
+                    Interlocked.Add(
+                        ref previewGenerationElapsedTicks,
+                        previewStopwatch.ElapsedTicks);
                     processedPatchesByObjectIndex[objectIndex] = new ObjectDetectionDefectProcessedPatch
                     {
                         Bounds = crop,
                         InspectionPolygon = corners.ToArray(),
-                        ProcessedImage = CreateObjectDetectionDefectPreviewBitmap(contrastAdjusted)
+                        ProcessedImage = processedPreview
                     };
                     Cv.Point[] polygon = corners.Select(point => new Cv.Point(
                         (int)Math.Round(point.X - crop.X),
@@ -1033,50 +970,54 @@ namespace IntegratedImageProcessingApp.Forms
                     int step = Math.Max(1, windowSize / 2);
                     List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
                     List<int> yStarts = CreateFrequencyScanStarts(crop.Height, windowSize, step);
-                    foreach (int y in yStarts)
+                    using (var workspace = new ObjectDetectionFrequencyWorkspace(windowSize))
                     {
-                        foreach (int x in xStarts)
+                        long objectScannedWindowCount = 0;
+                        Stopwatch cellLoopStopwatch = Stopwatch.StartNew();
+                        foreach (int y in yStarts)
                         {
-                            var localWindow = new Rectangle(x, y, windowSize, windowSize);
-                            using (Cv.Mat windowMask = polygonMask.SubMat(
-                                new Cv.Rect(localWindow.X, localWindow.Y,
-                                    localWindow.Width, localWindow.Height)))
+                            foreach (int x in xStarts)
                             {
-                                int validPixels = Cv.Cv2.CountNonZero(windowMask);
-                                if (validPixels == 0)
+                                objectScannedWindowCount++;
+                                var localWindow = new Rectangle(x, y, windowSize, windowSize);
+                                using (Cv.Mat windowMask = polygonMask.SubMat(
+                                    new Cv.Rect(localWindow.X, localWindow.Y,
+                                        localWindow.Width, localWindow.Height)))
                                 {
-                                    continue;
-                                }
-
-                                using (Cv.Mat tile = contrastAdjusted.SubMat(new Cv.Rect(
-                                    localWindow.X,
-                                    localWindow.Y,
-                                    localWindow.Width,
-                                    localWindow.Height)))
-                                {
-                                    var cell = new ObjectDetectionFrequencyCell
+                                    int validPixels = Cv.Cv2.CountNonZero(windowMask);
+                                    if (validPixels == 0)
                                     {
-                                        ObjectNumber = detectedObject.Number,
-                                        Bounds = new Rectangle(
-                                            crop.X + localWindow.X,
-                                            crop.Y + localWindow.Y,
-                                            localWindow.Width,
-                                            localWindow.Height),
-                                        Energy = CalculateObjectDetectionFrequencyEnergy(
-                                            tile,
-                                            windowMask,
-                                            validPixels),
-                                        DirectionalLineStrength = analyzeDirectionalLines
-                                            ? CalculateObjectDetectionDirectionalLineStrength(
+                                        continue;
+                                    }
+
+                                    using (Cv.Mat tile = contrastAdjusted.SubMat(new Cv.Rect(
+                                        localWindow.X,
+                                        localWindow.Y,
+                                        localWindow.Width,
+                                        localWindow.Height)))
+                                    {
+                                        var cell = new ObjectDetectionFrequencyCell
+                                        {
+                                            ObjectNumber = detectedObject.Number,
+                                            Bounds = new Rectangle(
+                                                crop.X + localWindow.X,
+                                                crop.Y + localWindow.Y,
+                                                localWindow.Width,
+                                                localWindow.Height),
+                                            Energy = CalculateObjectDetectionFrequencyEnergy(
                                                 tile,
                                                 windowMask,
-                                                validPixels)
-                                            : 0.0
-                                    };
-                                    objectCells.Add(cell);
+                                                validPixels,
+                                                workspace)
+                                        };
+                                        objectCells.Add(cell);
+                                    }
                                 }
                             }
                         }
+                        cellLoopStopwatch.Stop();
+                        Interlocked.Add(ref cellLoopElapsedTicks, cellLoopStopwatch.ElapsedTicks);
+                        Interlocked.Add(ref scannedWindowCount, objectScannedWindowCount);
                     }
                 }
                 progress?.Report(
@@ -1129,6 +1070,11 @@ namespace IntegratedImageProcessingApp.Forms
                 CellsByObject = new Dictionary<int, List<ObjectDetectionFrequencyCell>>(),
                 ProcessedPatches = new List<ObjectDetectionDefectProcessedPatch>()
             };
+            result.CellLoopMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(
+                cellLoopElapsedTicks);
+            result.PreviewGenerationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(
+                previewGenerationElapsedTicks);
+            result.ScannedWindowCount = scannedWindowCount;
             for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
             {
                 List<ObjectDetectionFrequencyCell> objectCells = cellsByObjectIndex[objectIndex];
@@ -1152,6 +1098,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return result;
             }
 
+            Stopwatch statisticsStopwatch = Stopwatch.StartNew();
             double median = CalculateObjectDetectionFrequencyMedian(
                 result.Cells.Select(cell => cell.Energy).ToList());
             double medianAbsoluteDeviation = CalculateObjectDetectionFrequencyMedian(
@@ -1164,94 +1111,11 @@ namespace IntegratedImageProcessingApp.Forms
                 cell.Score = Math.Abs(cell.Energy - median) / scale;
                 cell.IsAnomaly = cell.Score >= sensitivity;
             }
-            if (analyzeDirectionalLines)
-            {
-                foreach (List<ObjectDetectionFrequencyCell> objectCells in result.CellsByObject.Values)
-                {
-                    if (objectCells.Count == 0)
-                    {
-                        continue;
-                    }
-                    double lineMedian = CalculateObjectDetectionFrequencyMedian(
-                        objectCells.Select(cell => cell.DirectionalLineStrength).ToList());
-                    double lineMad = CalculateObjectDetectionFrequencyMedian(
-                        objectCells.Select(cell => Math.Abs(cell.DirectionalLineStrength - lineMedian)).ToList());
-                    double lineScale = Math.Max(0.025, lineMad * 1.4826);
-                    double minimumLineCoherence =
-                        GetObjectDetectionFrequencyMinimumLineCoherence(directionalLineSensitivity);
-                    foreach (ObjectDetectionFrequencyCell cell in objectCells)
-                    {
-                        double relativeCoherenceScore = Math.Max(
-                            0.0,
-                            (cell.DirectionalLineStrength - lineMedian) / lineScale);
-                        bool hasStrongLineDirection =
-                            cell.DirectionalLineStrength >= minimumLineCoherence;
-                        cell.DirectionalLineScore = hasStrongLineDirection
-                            ? relativeCoherenceScore
-                            : 0.0;
-                        cell.IsDirectionalLineAnomaly =
-                            hasStrongLineDirection &&
-                            cell.DirectionalLineScore >=
-                                GetObjectDetectionFrequencyDirectionalLineScoreThreshold(
-                                    directionalLineSensitivity);
-                    }
-                }
-            }
             result.MedianEnergy = median;
             result.EnergyScale = scale;
+            statisticsStopwatch.Stop();
+            result.StatisticsMilliseconds = statisticsStopwatch.ElapsedMilliseconds;
             return result;
-        }
-
-        private static double CalculateObjectDetectionDirectionalLineStrength(
-            Cv.Mat tile,
-            Cv.Mat mask,
-            int validPixels)
-        {
-            if (tile == null || tile.Empty() || tile.Type() != Cv.MatType.CV_8UC1 ||
-                mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
-                mask.Size() != tile.Size() || validPixels <= 0)
-            {
-                throw new ArgumentException("方向線條分析需要有效的灰階區塊與檢測範圍遮罩。", "tile");
-            }
-
-            using (var floatTile = new Cv.Mat())
-            using (var gradientX = new Cv.Mat())
-            using (var gradientY = new Cv.Mat())
-            using (var gradientXX = new Cv.Mat())
-            using (var gradientYY = new Cv.Mat())
-            using (var gradientXY = new Cv.Mat())
-            {
-                tile.ConvertTo(floatTile, Cv.MatType.CV_32FC1);
-                Cv.Cv2.Sobel(floatTile, gradientX, Cv.MatType.CV_32FC1, 1, 0, 3, scale: 0.125);
-                Cv.Cv2.Sobel(floatTile, gradientY, Cv.MatType.CV_32FC1, 0, 1, 3, scale: 0.125);
-                Cv.Cv2.Multiply(gradientX, gradientX, gradientXX);
-                Cv.Cv2.Multiply(gradientY, gradientY, gradientYY);
-                Cv.Cv2.Multiply(gradientX, gradientY, gradientXY);
-
-                double xx = Cv.Cv2.Mean(gradientXX, mask).Val0;
-                double yy = Cv.Cv2.Mean(gradientYY, mask).Val0;
-                double xy = Cv.Cv2.Mean(gradientXY, mask).Val0;
-                double total = xx + yy;
-                if (total <= 1e-9)
-                {
-                    return 0.0;
-                }
-                return Math.Min(1.0, Math.Sqrt(
-                    (xx - yy) * (xx - yy) + 4.0 * xy * xy) / total);
-            }
-        }
-
-        private static double GetObjectDetectionFrequencyMinimumLineCoherence(double sensitivity)
-        {
-            double clampedSensitivity = Math.Max(1.0, Math.Min(10.0, sensitivity));
-            return Math.Max(0.12, 0.92 - (clampedSensitivity - 1.0) * 0.088);
-        }
-
-        private static double GetObjectDetectionFrequencyDirectionalLineScoreThreshold(
-            double sensitivity)
-        {
-            double clampedSensitivity = Math.Max(1.0, Math.Min(10.0, sensitivity));
-            return Math.Max(0.3, 2.0 - (clampedSensitivity - 1.0) * 0.19);
         }
 
         private static void DisposeObjectDetectionFrequencyResult(
@@ -1290,55 +1154,33 @@ namespace IntegratedImageProcessingApp.Forms
         private static double CalculateObjectDetectionFrequencyEnergy(
             Cv.Mat tile,
             Cv.Mat mask,
-            int validPixels)
+            int validPixels,
+            ObjectDetectionFrequencyWorkspace workspace)
         {
             if (tile == null || tile.Empty() || tile.Type() != Cv.MatType.CV_8UC1 ||
                 mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
-                mask.Size() != tile.Size() || validPixels <= 0)
+                mask.Size() != tile.Size() || validPixels <= 0 || workspace == null ||
+                workspace.HannWindow.Size() != tile.Size())
             {
                 throw new ArgumentException("頻域分析需要有效的灰階區塊與檢測範圍遮罩。", "tile");
             }
 
-            using (var floatTile = new Cv.Mat())
-            using (var centered = new Cv.Mat())
-            using (var hann = new Cv.Mat())
-            using (var maskFloat = new Cv.Mat())
-            using (var windowed = new Cv.Mat())
-            using (var spectrum = new Cv.Mat())
-            {
-                double mean = Cv.Cv2.Mean(tile, mask).Val0;
-                tile.ConvertTo(floatTile, Cv.MatType.CV_32FC1);
-                Cv.Cv2.Subtract(floatTile, Cv.Scalar.All(mean), centered);
-                mask.ConvertTo(maskFloat, Cv.MatType.CV_32FC1, 1.0 / 255.0);
-                Cv.Cv2.CreateHanningWindow(
-                    hann,
-                    new Cv.Size(tile.Width, tile.Height),
-                    Cv.MatType.CV_32FC1);
-                Cv.Cv2.Multiply(centered, hann, windowed);
-                Cv.Cv2.Multiply(windowed, maskFloat, windowed);
-                Cv.Cv2.Dft(windowed, spectrum, Cv.DftFlags.ComplexOutput);
-                Cv.Mat[] planes = Cv.Cv2.Split(spectrum);
-                try
-                {
-                    using (var realPower = new Cv.Mat())
-                    using (var imaginaryPower = new Cv.Mat())
-                    using (var power = new Cv.Mat())
-                    {
-                        Cv.Cv2.Multiply(planes[0], planes[0], realPower);
-                        Cv.Cv2.Multiply(planes[1], planes[1], imaginaryPower);
-                        Cv.Cv2.Add(realPower, imaginaryPower, power);
-                        double pixelCount = (double)tile.Width * tile.Height;
-                        return Cv.Cv2.Sum(power).Val0 / (pixelCount * validPixels);
-                    }
-                }
-                finally
-                {
-                    foreach (Cv.Mat plane in planes)
-                    {
-                        plane.Dispose();
-                    }
-                }
-            }
+            double mean = Cv.Cv2.Mean(tile, mask).Val0;
+            tile.ConvertTo(workspace.FloatTile, Cv.MatType.CV_32FC1);
+            Cv.Cv2.Subtract(workspace.FloatTile, Cv.Scalar.All(mean), workspace.Centered);
+            Cv.Cv2.Multiply(workspace.Centered, workspace.HannWindow, workspace.Windowed);
+            Cv.Cv2.Multiply(workspace.Windowed, workspace.Windowed, workspace.SquaredEnergy);
+
+            // Summing the complete, unscaled DFT power is Parseval-equivalent
+            // to the masked spatial-domain mean square used here.
+            return Cv.Cv2.Mean(workspace.SquaredEnergy, mask).Val0;
+        }
+
+        private static long ConvertObjectDetectionFrequencyTicksToMilliseconds(long ticks)
+        {
+            return ticks <= 0
+                ? 0
+                : (long)(ticks * 1000.0 / Stopwatch.Frequency);
         }
 
         private static double CalculateObjectDetectionFrequencyMedian(List<double> values)
@@ -1374,11 +1216,9 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture),
-                parameter.DefectFrequencyDirectionalLineSensitivity.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyContrastEnabled ? "1" : "0",
                 parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
-                parameter.DefectFrequencyDirectionalLineEnabled ? "1" : "0",
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,
                 CreateObjectDetectionFlatFieldSettingsSignature(parameter)
             });
@@ -1478,25 +1318,17 @@ namespace IntegratedImageProcessingApp.Forms
 
             bool showHeatmap = parameter.DefectFrequencyShowHeatmap;
             bool showBoxes = parameter.DefectFrequencyShowAnomalyBoxes;
-            bool showLineHeatmap = result.DirectionalLineAnalysisEnabled &&
-                parameter.DefectFrequencyShowDirectionalLineHeatmap;
-            bool showLineBoxes = result.DirectionalLineAnalysisEnabled &&
-                parameter.DefectFrequencyShowDirectionalLineBoxes;
             int[] heatmapAlpha = { 16, 24, 32, 40, 48 };
             var highEnergyBrushes = new SolidBrush[heatmapAlpha.Length];
             var lowEnergyBrushes = new SolidBrush[heatmapAlpha.Length];
-            var lineBrushes = new SolidBrush[heatmapAlpha.Length];
             for (int index = 0; index < heatmapAlpha.Length; index++)
             {
                 highEnergyBrushes[index] = new SolidBrush(
                     Color.FromArgb(heatmapAlpha[index], 255, 190, 0));
                 lowEnergyBrushes[index] = new SolidBrush(
                     Color.FromArgb(heatmapAlpha[index], 50, 145, 255));
-                lineBrushes[index] = new SolidBrush(
-                    Color.FromArgb(heatmapAlpha[index], 220, 50, 160));
             }
             using (var anomalyOutline = new Pen(Color.OrangeRed, Math.Max(1.0f, Math.Min(3.0f, zoom * 1.5f))))
-            using (var lineAnomalyOutline = new Pen(Color.Magenta, Math.Max(1.0f, Math.Min(3.0f, zoom * 1.5f))))
             {
                 try
                 {
@@ -1551,24 +1383,6 @@ namespace IntegratedImageProcessingApp.Forms
                                             destination.Width,
                                             destination.Height);
                                     }
-                                    if (showLineHeatmap && cell.DirectionalLineScore > 0.0)
-                                    {
-                                        int level = (int)Math.Floor(
-                                            cell.DirectionalLineScore /
-                                                GetObjectDetectionFrequencyDirectionalLineScoreThreshold(
-                                                    result.DirectionalLineSensitivity) * heatmapAlpha.Length);
-                                        level = Math.Max(0, Math.Min(heatmapAlpha.Length - 1, level));
-                                        graphics.FillRectangle(lineBrushes[level], destination);
-                                    }
-                                    if (showLineBoxes && cell.IsDirectionalLineAnomaly)
-                                    {
-                                        graphics.DrawRectangle(
-                                            lineAnomalyOutline,
-                                            destination.X,
-                                            destination.Y,
-                                            destination.Width,
-                                            destination.Height);
-                                    }
                                 }
                             }
                             finally
@@ -1585,10 +1399,6 @@ namespace IntegratedImageProcessingApp.Forms
                         brush.Dispose();
                     }
                     foreach (SolidBrush brush in lowEnergyBrushes)
-                    {
-                        brush.Dispose();
-                    }
-                    foreach (SolidBrush brush in lineBrushes)
                     {
                         brush.Dispose();
                     }

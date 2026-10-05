@@ -458,14 +458,10 @@ namespace IntegratedImageProcessingApp.Services
             DefectFrequencyEnabled = true;
             DefectFrequencyScanHeight = 50;
             DefectFrequencySensitivity = 3.0;
-            DefectFrequencyDirectionalLineSensitivity = 5.0;
             DefectFrequencyContrastEnabled = true;
             DefectFrequencyContrastGain = 1.0;
-            DefectFrequencyDirectionalLineEnabled = false;
             DefectFrequencyShowHeatmap = true;
             DefectFrequencyShowAnomalyBoxes = true;
-            DefectFrequencyShowDirectionalLineHeatmap = true;
-            DefectFrequencyShowDirectionalLineBoxes = true;
             DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
             {
                 new ObjectDetectionDefectCoreSettings { CoreKey = "FlatField" },
@@ -649,21 +645,13 @@ namespace IntegratedImageProcessingApp.Services
 
         public double DefectFrequencySensitivity { get; set; }
 
-        public double DefectFrequencyDirectionalLineSensitivity { get; set; }
-
         public bool DefectFrequencyContrastEnabled { get; set; }
 
         public double DefectFrequencyContrastGain { get; set; }
 
-        public bool DefectFrequencyDirectionalLineEnabled { get; set; }
-
         public bool DefectFrequencyShowHeatmap { get; set; }
 
         public bool DefectFrequencyShowAnomalyBoxes { get; set; }
-
-        public bool DefectFrequencyShowDirectionalLineHeatmap { get; set; }
-
-        public bool DefectFrequencyShowDirectionalLineBoxes { get; set; }
 
         public List<ObjectDetectionDefectCoreSettings> DefectDetectionCores { get; set; }
     }
