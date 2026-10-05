@@ -42,6 +42,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             public double Sensitivity { get; set; }
 
+            public double DirectionalLineSensitivity { get; set; }
+
             public bool DirectionalLineAnalysisEnabled { get; set; }
 
             public double MedianEnergy { get; set; }
@@ -65,6 +67,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private NumericUpDown objectDetectionFrequencyScanHeightInput;
         private NumericUpDown objectDetectionFrequencySensitivityInput;
+        private NumericUpDown objectDetectionFrequencyDirectionalLineSensitivityInput;
         private NumericUpDown objectDetectionFrequencyContrastGainInput;
         private CheckBox objectDetectionFrequencyContrastEnabledCheckBox;
         private CheckBox objectDetectionFrequencyEnabledCheckBox;
@@ -193,7 +196,7 @@ namespace IntegratedImageProcessingApp.Forms
             var scanGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 171,
+                Height = 220,
                 Text = "掃描設定",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -201,13 +204,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 5,
+                RowCount = 7,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty
             };
             scanLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
             scanLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
-            for (int row = 0; row < 5; row++)
+            for (int row = 0; row < 7; row++)
             {
                 scanLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
             }
@@ -262,8 +265,31 @@ namespace IntegratedImageProcessingApp.Forms
                 Anchor = AnchorStyles.Left,
                 Margin = new Padding(0, 3, 0, 0)
             };
+            objectDetectionFrequencyDirectionalLineSensitivityInput = new NumericUpDown
+            {
+                Dock = DockStyle.Fill,
+                Minimum = 1.0m,
+                Maximum = 10.0m,
+                DecimalPlaces = 1,
+                Increment = 0.5m,
+                Value = (decimal)Math.Max(
+                    1.0,
+                    Math.Min(10.0, parameter.DefectFrequencyDirectionalLineSensitivity))
+            };
+            var directionalLineSensitivityHint = new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "數值越高越容易檢出弱線，但誤判可能增加。角度與斷點自動處理。",
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true,
+                ForeColor = Color.FromArgb(75, 83, 95)
+            };
             scanLayout.Controls.Add(objectDetectionFrequencyDirectionalLineCheckBox, 0, 4);
             scanLayout.SetColumnSpan(objectDetectionFrequencyDirectionalLineCheckBox, 2);
+            scanLayout.Controls.Add(CreateDefectCoreLabel("方向線敏感度"), 0, 5);
+            scanLayout.Controls.Add(objectDetectionFrequencyDirectionalLineSensitivityInput, 1, 5);
+            scanLayout.Controls.Add(directionalLineSensitivityHint, 0, 6);
+            scanLayout.SetColumnSpan(directionalLineSensitivityHint, 2);
             objectDetectionFrequencyDirectionalLineCheckBox.CheckedChanged += delegate
             {
                 UpdateObjectDetectionFrequencyLineDisplayControlsEnabled();
@@ -463,6 +489,12 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionFrequencyDirectionalLineCheckBox.Enabled = enabled;
             }
+            if (objectDetectionFrequencyDirectionalLineSensitivityInput != null)
+            {
+                objectDetectionFrequencyDirectionalLineSensitivityInput.Enabled = enabled &&
+                    objectDetectionFrequencyDirectionalLineCheckBox != null &&
+                    objectDetectionFrequencyDirectionalLineCheckBox.Checked;
+            }
             if (objectDetectionFrequencyShowHeatmapCheckBox != null)
             {
                 objectDetectionFrequencyShowHeatmapCheckBox.Enabled = enabled;
@@ -496,6 +528,10 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyEnabledCheckBox.Checked &&
                 objectDetectionFrequencyDirectionalLineCheckBox != null &&
                 objectDetectionFrequencyDirectionalLineCheckBox.Checked;
+            if (objectDetectionFrequencyDirectionalLineSensitivityInput != null)
+            {
+                objectDetectionFrequencyDirectionalLineSensitivityInput.Enabled = enabled;
+            }
             if (objectDetectionFrequencyShowLineHeatmapCheckBox != null)
             {
                 objectDetectionFrequencyShowLineHeatmapCheckBox.Enabled = enabled;
@@ -529,7 +565,8 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyContrastGainInput == null ||
                 objectDetectionFrequencyContrastEnabledCheckBox == null ||
                 objectDetectionFrequencyScanHeightInput == null ||
-                objectDetectionFrequencySensitivityInput == null)
+                objectDetectionFrequencySensitivityInput == null ||
+                objectDetectionFrequencyDirectionalLineSensitivityInput == null)
             {
                 return;
             }
@@ -537,6 +574,8 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.DefectFrequencyScanHeight = (int)objectDetectionFrequencyScanHeightInput.Value;
             parameter.DefectFrequencySensitivity = Decimal.ToDouble(
                 objectDetectionFrequencySensitivityInput.Value);
+            parameter.DefectFrequencyDirectionalLineSensitivity = Decimal.ToDouble(
+                objectDetectionFrequencyDirectionalLineSensitivityInput.Value);
             parameter.DefectFrequencyContrastEnabled =
                 objectDetectionFrequencyContrastEnabledCheckBox.Checked;
             parameter.DefectFrequencyContrastGain = Decimal.ToDouble(
@@ -569,6 +608,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.CurrentCulture) +
                 " px，敏感度 " +
                 parameter.DefectFrequencySensitivity.ToString("0.0", CultureInfo.CurrentCulture) +
+                "，方向線敏感度 " + parameter.DefectFrequencyDirectionalLineSensitivity.ToString("0.0", CultureInfo.CurrentCulture) +
                 (parameter.DefectFrequencyContrastEnabled
                     ? "，對比倍率 " + parameter.DefectFrequencyContrastGain.ToString("0.00", CultureInfo.CurrentCulture)
                     : "，未套用對比調整") +
@@ -598,6 +638,10 @@ namespace IntegratedImageProcessingApp.Forms
                 (double)objectDetectionFrequencySensitivityInput.Minimum,
                 Math.Min((double)objectDetectionFrequencySensitivityInput.Maximum,
                     parameter.DefectFrequencySensitivity));
+            objectDetectionFrequencyDirectionalLineSensitivityInput.Value = (decimal)Math.Max(
+                (double)objectDetectionFrequencyDirectionalLineSensitivityInput.Minimum,
+                Math.Min((double)objectDetectionFrequencyDirectionalLineSensitivityInput.Maximum,
+                    parameter.DefectFrequencyDirectionalLineSensitivity));
             objectDetectionFrequencyShowHeatmapCheckBox.Checked =
                 parameter.DefectFrequencyShowHeatmap;
             objectDetectionFrequencyShowBoxesCheckBox.Checked =
@@ -724,6 +768,9 @@ namespace IntegratedImageProcessingApp.Forms
                     ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
                 double sensitivity = Math.Max(1.0, Math.Min(10.0, parameter.DefectFrequencySensitivity));
+                double directionalLineSensitivity = Math.Max(
+                    1.0,
+                    Math.Min(10.0, parameter.DefectFrequencyDirectionalLineSensitivity));
                 double contrastGain = parameter.DefectFrequencyContrastEnabled
                     ? Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain))
                     : 1.0;
@@ -761,6 +808,7 @@ namespace IntegratedImageProcessingApp.Forms
                             imageBounds,
                             scanHeight,
                             sensitivity,
+                            directionalLineSensitivity,
                             contrastGain,
                             parameter.FlatFieldTargetGray,
                             analyzeDirectionalLines,
@@ -776,6 +824,7 @@ namespace IntegratedImageProcessingApp.Forms
                 result.Signature = signature;
                 result.ScanHeight = scanHeight;
                 result.Sensitivity = sensitivity;
+                result.DirectionalLineSensitivity = directionalLineSensitivity;
                 result.DirectionalLineAnalysisEnabled = analyzeDirectionalLines;
                 result.ElapsedMilliseconds = stopwatch.ElapsedMilliseconds;
 
@@ -918,6 +967,7 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle imageBounds,
             int requestedWindowSize,
             double sensitivity,
+            double directionalLineSensitivity,
             double contrastGain,
             int pivotGray,
             bool analyzeDirectionalLines,
@@ -1128,7 +1178,7 @@ namespace IntegratedImageProcessingApp.Forms
                         objectCells.Select(cell => Math.Abs(cell.DirectionalLineStrength - lineMedian)).ToList());
                     double lineScale = Math.Max(0.025, lineMad * 1.4826);
                     double minimumLineCoherence =
-                        GetObjectDetectionFrequencyMinimumLineCoherence(sensitivity);
+                        GetObjectDetectionFrequencyMinimumLineCoherence(directionalLineSensitivity);
                     foreach (ObjectDetectionFrequencyCell cell in objectCells)
                     {
                         double relativeCoherenceScore = Math.Max(
@@ -1141,7 +1191,9 @@ namespace IntegratedImageProcessingApp.Forms
                             : 0.0;
                         cell.IsDirectionalLineAnomaly =
                             hasStrongLineDirection &&
-                            cell.DirectionalLineScore >= Math.Max(1.0, sensitivity * 0.65);
+                            cell.DirectionalLineScore >=
+                                GetObjectDetectionFrequencyDirectionalLineScoreThreshold(
+                                    directionalLineSensitivity);
                     }
                 }
             }
@@ -1192,7 +1244,14 @@ namespace IntegratedImageProcessingApp.Forms
         private static double GetObjectDetectionFrequencyMinimumLineCoherence(double sensitivity)
         {
             double clampedSensitivity = Math.Max(1.0, Math.Min(10.0, sensitivity));
-            return 0.65 + (clampedSensitivity - 1.0) * 0.03;
+            return 0.92 - (clampedSensitivity - 1.0) * 0.03;
+        }
+
+        private static double GetObjectDetectionFrequencyDirectionalLineScoreThreshold(
+            double sensitivity)
+        {
+            double clampedSensitivity = Math.Max(1.0, Math.Min(10.0, sensitivity));
+            return Math.Max(0.8, 2.0 - (clampedSensitivity - 1.0) * 0.12);
         }
 
         private static void DisposeObjectDetectionFrequencyResult(
@@ -1315,6 +1374,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyDirectionalLineSensitivity.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyContrastEnabled ? "1" : "0",
                 parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
@@ -1494,7 +1554,9 @@ namespace IntegratedImageProcessingApp.Forms
                                     if (showLineHeatmap && cell.DirectionalLineScore > 0.0)
                                     {
                                         int level = (int)Math.Floor(
-                                            cell.DirectionalLineScore / Math.Max(1.0, result.Sensitivity) * heatmapAlpha.Length);
+                                            cell.DirectionalLineScore /
+                                                GetObjectDetectionFrequencyDirectionalLineScoreThreshold(
+                                                    result.DirectionalLineSensitivity) * heatmapAlpha.Length);
                                         level = Math.Max(0, Math.Min(heatmapAlpha.Length - 1, level));
                                         graphics.FillRectangle(lineBrushes[level], destination);
                                     }

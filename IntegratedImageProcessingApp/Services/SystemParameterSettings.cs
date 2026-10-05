@@ -458,6 +458,7 @@ namespace IntegratedImageProcessingApp.Services
             DefectFrequencyEnabled = true;
             DefectFrequencyScanHeight = 50;
             DefectFrequencySensitivity = 3.0;
+            DefectFrequencyDirectionalLineSensitivity = 5.0;
             DefectFrequencyContrastEnabled = true;
             DefectFrequencyContrastGain = 1.0;
             DefectFrequencyDirectionalLineEnabled = false;
@@ -647,6 +648,8 @@ namespace IntegratedImageProcessingApp.Services
         public int DefectFrequencyScanHeight { get; set; }
 
         public double DefectFrequencySensitivity { get; set; }
+
+        public double DefectFrequencyDirectionalLineSensitivity { get; set; }
 
         public bool DefectFrequencyContrastEnabled { get; set; }
 
