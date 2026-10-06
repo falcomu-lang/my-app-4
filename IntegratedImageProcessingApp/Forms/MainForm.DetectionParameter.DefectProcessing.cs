@@ -206,10 +206,21 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 runDisplayIndex = ObjectDetectionDefectIntegratedDisplayIndex;
             }
-            else if (runAllCores && runDisplayIndex > 0 &&
+            else if (runAllCores &&
                 !parameter.DefectDetectionCores[runDisplayIndex].Enabled)
             {
-                runDisplayIndex = 0;
+                int firstEnabledCoreIndex = -1;
+                for (int index = 0; index < Math.Min(4, parameter.DefectDetectionCores.Count); index++)
+                {
+                    if (parameter.DefectDetectionCores[index].Enabled)
+                    {
+                        firstEnabledCoreIndex = index;
+                        break;
+                    }
+                }
+                runDisplayIndex = firstEnabledCoreIndex >= 0
+                    ? firstEnabledCoreIndex
+                    : ObjectDetectionDefectIntegratedDisplayIndex;
             }
             if (isObjectDetectionParameterImageLayout &&
                 leftImageTabControl != null &&
@@ -324,9 +335,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             else
             {
-                configuredCores = configuredCores.Where(core =>
-                    string.Equals(core.CoreKey, "FlatField", StringComparison.Ordinal) ||
-                    core.Enabled);
+                configuredCores = configuredCores.Where(core => core.Enabled);
             }
             var coreSettings = configuredCores
                 .Select(CloneObjectDetectionDefectCoreSettings)
@@ -357,15 +366,15 @@ namespace IntegratedImageProcessingApp.Forms
                 RemoveObjectDetectionDefectCoreResult(parameter.Id, core.CoreKey);
             }
             string processingScope = runAllCores
-                ? "平場核心與已啟用條件"
+                ? "已啟用的缺陷核心"
                 : GetObjectDetectionDefectCoreLabel(GetObjectDetectionDefectCoreIndex(coreKey));
             statusLabel.Text = parameter.DisplayName + "：" + processingScope + "缺陷檢測運算中...";
             SetObjectDetectionDefectRegionStatus(runParallel
                 ? runAllCores
-                    ? "所有物件 ROI 同時排程；平場核心與已啟用條件同時運算..."
+                    ? "所有物件 ROI 同時排程；已啟用的缺陷核心同時運算..."
                     : "所有物件 ROI 的「" + processingScope + "」同時運算..."
                 : runAllCores
-                    ? "每個物件 ROI 的平場核心與已啟用條件依序運算..."
+                    ? "每個物件 ROI 的已啟用缺陷核心依序運算..."
                     : "所有物件 ROI 的「" + processingScope + "」依序運算...");
 
             Dictionary<string, ObjectDetectionDefectCoreResult> results = null;
@@ -453,7 +462,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                             int completed = System.Threading.Interlocked.Increment(ref completedRois);
                             string coreProgress = runAllCores
-                                ? "平場核心與已啟用條件"
+                                ? "已啟用的缺陷核心"
                                 : "「" + processingScope + "」核心";
                             progress.Report(
                                 "物件 ROI 完成 " +

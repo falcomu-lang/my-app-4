@@ -1063,7 +1063,7 @@ namespace IntegratedImageProcessingApp.Forms
                     if (!lineTextureAlreadyReady)
                     {
                         objectDetectionResultReviewStatusLabel.Text =
-                            "一般缺陷條件完成，正在執行納入整合的線狀紋理分析...";
+                            "一般缺陷條件完成，正在執行納入整合的紋理異常分析...";
                         await RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true);
                         if (!IsObjectDetectionResultReviewUiAvailable())
                         {
@@ -1687,7 +1687,7 @@ namespace IntegratedImageProcessingApp.Forms
             int totalComponents = 0;
             foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4))
             {
-                bool required = string.Equals(core.CoreKey, "FlatField", StringComparison.Ordinal) || core.Enabled;
+                bool required = core.Enabled;
                 if (!required)
                 {
                     objectDetectionResultReviewDefectsGrid.Rows.Add(
@@ -1761,32 +1761,32 @@ namespace IntegratedImageProcessingApp.Forms
                 if (!parameter.DefectLineTextureEnabled)
                 {
                     objectDetectionResultReviewDefectsGrid.Rows.Add(
-                        "線狀紋理異常", "-", "-", "未啟用", "線狀紋理分析已停用，未納入整合");
+                        "紋理異常", "-", "-", "未啟用", "紋理異常分析已停用，未納入整合");
                 }
                 else
                 {
                     ObjectDetectionLineTextureResult lineTextureResult;
                     if (TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult))
                     {
-                        int anomalyCount = lineTextureResult.Lines == null
+                        int anomalyCount = lineTextureResult.Regions == null
                             ? 0
-                            : lineTextureResult.Lines.Count(line => line != null && line.IsAnomaly &&
+                            : lineTextureResult.Regions.Count(region => region != null && region.IsAnomaly &&
                                 (!selectedObjectNumber.HasValue ||
-                                    line.ObjectNumber == selectedObjectNumber.Value));
+                                    region.ObjectNumber == selectedObjectNumber.Value));
                         objectDetectionResultReviewDefectsGrid.Rows.Add(
-                            "線狀紋理異常",
+                            "紋理異常",
                             anomalyCount,
                             selectedObjectNumber.HasValue
                                 ? (object)"-"
                                 : lineTextureResult.TotalElapsedMilliseconds,
-                            anomalyCount > 0 ? "檢出線段" : "未檢出",
-                            "離散紋理線段數；依合併距離轉為整合區域");
+                            anomalyCount > 0 ? "檢出異常區域" : "未檢出",
+                            "以多數穩定紋理作為基準，標示偏離紋理的區域");
                     }
                     else
                     {
                         allRequiredResultsReady = false;
                         objectDetectionResultReviewDefectsGrid.Rows.Add(
-                            "線狀紋理異常", "-", "-", "未完成", "目前影像的線狀紋理分析尚未完成或已過期");
+                            "紋理異常", "-", "-", "未完成", "目前影像的紋理異常分析尚未完成或已過期");
                     }
                 }
             }
@@ -1839,7 +1839,7 @@ namespace IntegratedImageProcessingApp.Forms
             int total = 0;
             foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4))
             {
-                if (!string.Equals(core.CoreKey, "FlatField", StringComparison.Ordinal) && !core.Enabled)
+                if (!core.Enabled)
                 {
                     continue;
                 }

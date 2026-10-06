@@ -474,10 +474,8 @@ namespace IntegratedImageProcessingApp.Services
             DefectFrequencyShowAnomalyBoxes = true;
             DefectLineTextureEnabled = false;
             DefectLineTextureTileSizePixels = 8;
-            DefectLineTextureMinimumLengthPixels = 96;
-            DefectLineTextureMaximumGapPixels = 24;
+            DefectLineTextureMinimumAreaPixels = 0;
             DefectLineTextureSensitivity = 2.0;
-            DefectLineTextureMinimumSupportRatio = 0.18;
             DefectLineTextureShowHeatmap = true;
             DefectLineTextureShowAnomalyLines = true;
             DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
@@ -689,13 +687,9 @@ namespace IntegratedImageProcessingApp.Services
 
         public int DefectLineTextureTileSizePixels { get; set; }
 
-        public int DefectLineTextureMinimumLengthPixels { get; set; }
-
-        public int DefectLineTextureMaximumGapPixels { get; set; }
+        public int DefectLineTextureMinimumAreaPixels { get; set; }
 
         public double DefectLineTextureSensitivity { get; set; }
-
-        public double DefectLineTextureMinimumSupportRatio { get; set; }
 
         public bool DefectLineTextureShowHeatmap { get; set; }
 

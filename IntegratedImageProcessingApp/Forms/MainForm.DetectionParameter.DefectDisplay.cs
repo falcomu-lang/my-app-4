@@ -21,7 +21,7 @@ namespace IntegratedImageProcessingApp.Forms
         private static readonly string[] ObjectDetectionDefectDisplayNames =
         {
             "缺陷顯示-平場校正", "缺陷顯示-條件一", "缺陷顯示-條件二",
-            "缺陷顯示-條件三", "缺陷顯示-頻域異常", "缺陷顯示-線狀紋理異常", "缺陷顯示-綜合"
+            "缺陷顯示-條件三", "缺陷顯示-頻域異常", "缺陷顯示-紋理異常", "缺陷顯示-綜合"
         };
 
         private TabPage[] objectDetectionDefectDisplayTabPages;

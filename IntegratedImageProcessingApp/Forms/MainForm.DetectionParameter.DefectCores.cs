@@ -135,11 +135,8 @@ namespace IntegratedImageProcessingApp.Forms
                 scrollPanel.Controls.Add(enhancementGroup);
                 scrollPanel.Controls.Add(preprocessingGroup);
                 scrollPanel.Controls.Add(contrastGroup);
-                if (index > 0)
-                {
-                    scrollPanel.Controls.Add(
-                        BuildDefectCoreEnabledPanel(parameter, index, core));
-                }
+                scrollPanel.Controls.Add(
+                    BuildDefectCoreEnabledPanel(parameter, index, core));
                 scrollPanel.Controls.Add(commandBar);
                 page.Controls.Add(scrollPanel);
                 tabs.TabPages.Add(page);
@@ -307,7 +304,7 @@ namespace IntegratedImageProcessingApp.Forms
             int coreIndex,
             bool enabled)
         {
-            if (parameter == null || coreIndex < 1 || coreIndex >= 4)
+            if (parameter == null || coreIndex < 0 || coreIndex >= 4)
             {
                 return;
             }
@@ -316,6 +313,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDefectCoreDrafts[coreIndex].Enabled = enabled;
             parameter.DefectDetectionCores[coreIndex].Enabled = enabled;
             SaveSystemParameters();
+            InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
             if (!enabled)
             {
                 RemoveObjectDetectionDefectCoreResult(
@@ -334,6 +332,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 combinedDisplay.InvalidateImageView();
             }
+            RefreshObjectDetectionDefectIntegrationResults(parameter);
             SetObjectDetectionDefectRegionStatus(
                 GetObjectDetectionDefectCoreLabel(coreIndex) +
                 (enabled
