@@ -101,7 +101,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Top,
                 Height = 54,
                 Padding = new Padding(8, 7, 8, 2),
-                Text = "分析來源：平場校正後的灰階影像，不追加對比或淡色缺陷增強。\r\n比較各格紋理強度與方向分布，找出偏離多數穩定紋理的區域。",
+                Text = "分析來源：平場校正後的灰階影像，不追加對比或淡色缺陷增強。\r\n比較局部紋理排列、強度與方向，找出偏離物件內多數正常紋理的區域。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true,
                 ForeColor = Color.FromArgb(55, 63, 76)
@@ -145,7 +145,7 @@ namespace IntegratedImageProcessingApp.Forms
             var scanHint = new Label
             {
                 Dock = DockStyle.Fill,
-                Text = "以中位數與 MAD 建立穩定紋理基準；相鄰異常格會合併，最小面積為 0 表示不限制。",
+                Text = "每枚物件以有效 MASK 內的多數格建立中位數/MAD 基準；相鄰異常格會合併，最小面積為 0 表示不限制。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(75, 83, 95),
                 AutoEllipsis = true
@@ -574,6 +574,8 @@ namespace IntegratedImageProcessingApp.Forms
                     var tileActivity = new float[tileCount];
                     var tileOrientationCos = new float[tileCount];
                     var tileOrientationSin = new float[tileCount];
+                    var tilePatternUniformRatio = new float[tileCount];
+                    var tilePatternTransitionMean = new float[tileCount];
                     var tileValidPixelCounts = new int[tileCount];
                     var validTiles = new bool[tileCount];
                     using (var activityMap = new Cv.Mat(rows, columns, Cv.MatType.CV_32FC1, Cv.Scalar.All(0)))
@@ -585,12 +587,14 @@ namespace IntegratedImageProcessingApp.Forms
                         float* gradient = (float*)gradientMagnitude.Data.ToPointer();
                         float* gradientXData = (float*)gradientX.Data.ToPointer();
                         float* gradientYData = (float*)gradientY.Data.ToPointer();
+                        byte* grayData = (byte*)gray.Data.ToPointer();
                         byte* mask = (byte*)textureMask.Data.ToPointer();
                         float* activity = (float*)activityMap.Data.ToPointer();
                         float* valid = (float*)validMap.Data.ToPointer();
                         long gradientStep = gradientMagnitude.Step() / sizeof(float);
                         long gradientXStep = gradientX.Step() / sizeof(float);
                         long gradientYStep = gradientY.Step() / sizeof(float);
+                        long grayStep = gray.Step();
                         long maskStep = textureMask.Step();
                         long activityStep = activityMap.Step() / sizeof(float);
                         long validStep = validMap.Step() / sizeof(float);
@@ -607,6 +611,9 @@ namespace IntegratedImageProcessingApp.Forms
                                 double orientationCos = 0;
                                 double orientationSin = 0;
                                 double orientationEnergy = 0;
+                                double transitionSum = 0;
+                                int uniformPatternCount = 0;
+                                int patternPixelCount = 0;
                                 int count = 0;
                                 int tileArea = (x1 - x0) * (y1 - y0);
                                 for (int y = y0; y < y1; y++)
@@ -615,6 +622,9 @@ namespace IntegratedImageProcessingApp.Forms
                                     float* gradientXRow = gradientXData + ((long)y * gradientXStep);
                                     float* gradientYRow = gradientYData + ((long)y * gradientYStep);
                                     float* gradientRow = gradient + ((long)y * gradientStep);
+                                    byte* grayRow = grayData + ((long)y * grayStep);
+                                    byte* grayAbove = y > 0 ? grayData + ((long)(y - 1) * grayStep) : null;
+                                    byte* grayBelow = y + 1 < crop.Height ? grayData + ((long)(y + 1) * grayStep) : null;
                                     for (int x = x0; x < x1; x++)
                                     {
                                         if (maskRow[x] == 0) continue;
@@ -623,6 +633,26 @@ namespace IntegratedImageProcessingApp.Forms
                                         double gy = gradientYRow[x];
                                         sum += magnitude;
                                         count++;
+                                        if (x > 0 && x + 1 < crop.Width && grayAbove != null && grayBelow != null)
+                                        {
+                                            byte center = grayRow[x];
+                                            int patternCode = 0;
+                                            if (grayAbove[x - 1] >= center) patternCode |= 1 << 0;
+                                            if (grayAbove[x] >= center) patternCode |= 1 << 1;
+                                            if (grayAbove[x + 1] >= center) patternCode |= 1 << 2;
+                                            if (grayRow[x + 1] >= center) patternCode |= 1 << 3;
+                                            if (grayBelow[x + 1] >= center) patternCode |= 1 << 4;
+                                            if (grayBelow[x] >= center) patternCode |= 1 << 5;
+                                            if (grayBelow[x - 1] >= center) patternCode |= 1 << 6;
+                                            if (grayRow[x - 1] >= center) patternCode |= 1 << 7;
+                                            int transitionBits = (patternCode ^ ((patternCode << 1) | (patternCode >> 7))) & 0xFF;
+                                            transitionBits -= (transitionBits >> 1) & 0x55;
+                                            transitionBits = (transitionBits & 0x33) + ((transitionBits >> 2) & 0x33);
+                                            int transitions = (transitionBits + (transitionBits >> 4)) & 0x0F;
+                                            transitionSum += transitions;
+                                            if (transitions <= 2) uniformPatternCount++;
+                                            patternPixelCount++;
+                                        }
                                         if (magnitude <= 0.0001f) continue;
                                         orientationCos += gx * gx - gy * gy;
                                         orientationSin += 2 * gx * gy;
@@ -638,6 +668,11 @@ namespace IntegratedImageProcessingApp.Forms
                                     tileOrientationSin[index] = (float)(orientationSin / orientationEnergy);
                                 }
                                 tileActivity[index] = mean;
+                                if (patternPixelCount > 0)
+                                {
+                                    tilePatternUniformRatio[index] = (float)uniformPatternCount / patternPixelCount;
+                                    tilePatternTransitionMean[index] = (float)(transitionSum / patternPixelCount);
+                                }
                                 tileValidPixelCounts[index] = count;
                                 validTiles[index] = true;
                                 activity[tileY * activityStep + tileX] = mean;
@@ -697,6 +732,18 @@ namespace IntegratedImageProcessingApp.Forms
                         double orientationMad = CalculateObjectDetectionFrequencyMedian(
                             orientationDistances.Select(value => Math.Abs(value - orientationMedian)).ToList());
                         double orientationScale = Math.Max(0.025, orientationMad * 1.4826);
+                        var patternUniformRatios = validIndices
+                            .Select(index => (double)tilePatternUniformRatio[index]).ToList();
+                        double patternUniformMedian = CalculateObjectDetectionFrequencyMedian(patternUniformRatios);
+                        double patternUniformMad = CalculateObjectDetectionFrequencyMedian(
+                            patternUniformRatios.Select(value => Math.Abs(value - patternUniformMedian)).ToList());
+                        double patternUniformScale = Math.Max(0.04, patternUniformMad * 1.4826);
+                        var patternTransitions = validIndices
+                            .Select(index => (double)tilePatternTransitionMean[index]).ToList();
+                        double patternTransitionMedian = CalculateObjectDetectionFrequencyMedian(patternTransitions);
+                        double patternTransitionMad = CalculateObjectDetectionFrequencyMedian(
+                            patternTransitions.Select(value => Math.Abs(value - patternTransitionMedian)).ToList());
+                        double patternTransitionScale = Math.Max(0.75, patternTransitionMad * 1.4826);
                         var scores = new double[tileCount];
                         for (int tileY = 0; tileY < rows; tileY++)
                         {
@@ -708,7 +755,13 @@ namespace IntegratedImageProcessingApp.Forms
                                 double activityScore = Math.Max(0, residualByTile[index] - median) / activityScale;
                                 double orientationScore = Math.Max(0, orientationDistanceByTile[index] - orientationMedian) /
                                     orientationScale;
-                                double score = Math.Max(activityScore, orientationScore);
+                                double patternUniformScore = Math.Abs(tilePatternUniformRatio[index] - patternUniformMedian) /
+                                    patternUniformScale;
+                                double patternTransitionScore = Math.Abs(tilePatternTransitionMean[index] - patternTransitionMedian) /
+                                    patternTransitionScale;
+                                double score = Math.Max(
+                                    Math.Max(activityScore, orientationScore),
+                                    Math.Max(patternUniformScore, patternTransitionScore));
                                 scores[index] = score;
                                 if (score >= parameter.DefectLineTextureSensitivity)
                                 {
