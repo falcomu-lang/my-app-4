@@ -722,10 +722,10 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectIntegrationIncludeFrequency",
                         false),
-                    DefectIntegrationIncludeDft = GetBool(
+                    DefectIntegrationIncludeLineTexture = GetBool(
                         sections,
                         SectionObjectDetection,
-                        prefix + ".DefectIntegrationIncludeDft",
+                        prefix + ".DefectIntegrationIncludeLineTexture",
                         false),
                     DefectIntegrationMergeDistancePixels = GetClampedFiniteDouble(
                         sections,
@@ -802,90 +802,49 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectFrequencyShowAnomalyBoxes",
                         true),
-                    DefectDftEnabled = GetBool(
+                    DefectLineTextureEnabled = GetBool(
                         sections,
                         SectionObjectDetection,
-                        prefix + ".DefectDftEnabled",
+                        prefix + ".DefectLineTextureEnabled",
                         false),
-                    DefectDftWindowSize = Math.Max(32, Math.Min(1024, GetInt(
+                    DefectLineTextureTileSizePixels = Math.Max(4, Math.Min(128, GetInt(
                         sections,
                         SectionObjectDetection,
-                        prefix + ".DefectDftWindowSize",
-                        128))),
-                    DefectDftMinimumPeriodPixels = Math.Max(2, Math.Min(512, GetInt(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftMinimumPeriodPixels",
-                        2))),
-                    DefectDftMaximumPeriodPixels = Math.Max(2, Math.Min(512, GetInt(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftMaximumPeriodPixels",
-                        32))),
-                    DefectDftSensitivity = GetClampedFiniteDouble(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftSensitivity",
-                        3.0,
-                        1.0,
-                        10.0),
-                    DefectDftDirectionalityThreshold = GetClampedFiniteDouble(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftDirectionalityThreshold",
-                        1.25,
-                        1.0,
-                        10.0),
-                    DefectDftContrastEnabled = GetBool(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftContrastEnabled",
-                        true),
-                    DefectDftContrastGain = GetClampedFiniteDouble(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftContrastGain",
-                        1.0,
-                        0.1,
-                        5.0),
-                    DefectDftEnhancementMethod = GetValue(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftEnhancementMethod",
-                        "None"),
-                    DefectDftLocalBackgroundKernelSize = NormalizeOddKernelSize(GetInt(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftLocalBackgroundKernelSize",
-                        31), 3),
-                    DefectDftLocalBackgroundGain = GetClampedFiniteDouble(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftLocalBackgroundGain",
-                        1.5,
-                        0.1,
-                        10.0),
-                    DefectDftClaheClipLimit = GetClampedFiniteDouble(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftClaheClipLimit",
-                        2.0,
-                        0.1,
-                        40.0),
-                    DefectDftClaheTileGridSize = Math.Max(2, Math.Min(32, GetInt(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectDftClaheTileGridSize",
+                        prefix + ".DefectLineTextureTileSizePixels",
                         8))),
-                    DefectDftShowHeatmap = GetBool(
+                    DefectLineTextureMinimumLengthPixels = Math.Max(16, Math.Min(5000, GetInt(
                         sections,
                         SectionObjectDetection,
-                        prefix + ".DefectDftShowHeatmap",
+                        prefix + ".DefectLineTextureMinimumLengthPixels",
+                        96))),
+                    DefectLineTextureMaximumGapPixels = Math.Max(0, Math.Min(2048, GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectLineTextureMaximumGapPixels",
+                        24))),
+                    DefectLineTextureSensitivity = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectLineTextureSensitivity",
+                        2.0,
+                        0.5,
+                        8.0),
+                    DefectLineTextureMinimumSupportRatio = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectLineTextureMinimumSupportRatio",
+                        0.18,
+                        0.05,
+                        0.8),
+                    DefectLineTextureShowHeatmap = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectLineTextureShowHeatmap",
                         true),
-                    DefectDftShowAnomalyBoxes = GetBool(
+                    DefectLineTextureShowAnomalyLines = GetBool(
                         sections,
                         SectionObjectDetection,
-                        prefix + ".DefectDftShowAnomalyBoxes",
+                        prefix + ".DefectLineTextureShowAnomalyLines",
                         true),
                     DefectDetectionCores = ReadObjectDetectionDefectCores(
                         sections,
@@ -1262,7 +1221,6 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectIntegrationMergeBright={1}", prefix, parameter.DefectIntegrationMergeBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDarkBright={1}", prefix, parameter.DefectIntegrationMergeDarkBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationIncludeFrequency={1}", prefix, parameter.DefectIntegrationIncludeFrequency ? "1" : "0");
-                    writer.WriteLine("{0}.DefectIntegrationIncludeDft={1}", prefix, parameter.DefectIntegrationIncludeDft ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDistancePixels={1}", prefix, parameter.DefectIntegrationMergeDistancePixels.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, parameter.DefectFrequencyEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));
@@ -1276,21 +1234,15 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencyClaheTileGridSize={1}", prefix, parameter.DefectFrequencyClaheTileGridSize.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, parameter.DefectFrequencyShowHeatmap ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowAnomalyBoxes={1}", prefix, parameter.DefectFrequencyShowAnomalyBoxes ? "1" : "0");
-                    writer.WriteLine("{0}.DefectDftEnabled={1}", prefix, parameter.DefectDftEnabled ? "1" : "0");
-                    writer.WriteLine("{0}.DefectDftWindowSize={1}", prefix, parameter.DefectDftWindowSize.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftMinimumPeriodPixels={1}", prefix, parameter.DefectDftMinimumPeriodPixels.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftMaximumPeriodPixels={1}", prefix, parameter.DefectDftMaximumPeriodPixels.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftSensitivity={1}", prefix, parameter.DefectDftSensitivity.ToString("R", CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftDirectionalityThreshold={1}", prefix, parameter.DefectDftDirectionalityThreshold.ToString("R", CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftContrastEnabled={1}", prefix, parameter.DefectDftContrastEnabled ? "1" : "0");
-                    writer.WriteLine("{0}.DefectDftContrastGain={1}", prefix, parameter.DefectDftContrastGain.ToString("R", CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftEnhancementMethod={1}", prefix, Escape(parameter.DefectDftEnhancementMethod));
-                    writer.WriteLine("{0}.DefectDftLocalBackgroundKernelSize={1}", prefix, parameter.DefectDftLocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftLocalBackgroundGain={1}", prefix, parameter.DefectDftLocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftClaheClipLimit={1}", prefix, parameter.DefectDftClaheClipLimit.ToString("R", CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftClaheTileGridSize={1}", prefix, parameter.DefectDftClaheTileGridSize.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectDftShowHeatmap={1}", prefix, parameter.DefectDftShowHeatmap ? "1" : "0");
-                    writer.WriteLine("{0}.DefectDftShowAnomalyBoxes={1}", prefix, parameter.DefectDftShowAnomalyBoxes ? "1" : "0");
+                    writer.WriteLine("{0}.DefectIntegrationIncludeLineTexture={1}", prefix, parameter.DefectIntegrationIncludeLineTexture ? "1" : "0");
+                    writer.WriteLine("{0}.DefectLineTextureEnabled={1}", prefix, parameter.DefectLineTextureEnabled ? "1" : "0");
+                    writer.WriteLine("{0}.DefectLineTextureTileSizePixels={1}", prefix, parameter.DefectLineTextureTileSizePixels.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectLineTextureMinimumLengthPixels={1}", prefix, parameter.DefectLineTextureMinimumLengthPixels.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectLineTextureMaximumGapPixels={1}", prefix, parameter.DefectLineTextureMaximumGapPixels.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectLineTextureSensitivity={1}", prefix, parameter.DefectLineTextureSensitivity.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectLineTextureMinimumSupportRatio={1}", prefix, parameter.DefectLineTextureMinimumSupportRatio.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectLineTextureShowHeatmap={1}", prefix, parameter.DefectLineTextureShowHeatmap ? "1" : "0");
+                    writer.WriteLine("{0}.DefectLineTextureShowAnomalyLines={1}", prefix, parameter.DefectLineTextureShowAnomalyLines ? "1" : "0");
                     List<ObjectDetectionDefectCoreSettings> defectCores =
                         parameter.DefectDetectionCores ?? new List<ObjectDetectionDefectCoreSettings>();
                     writer.WriteLine(

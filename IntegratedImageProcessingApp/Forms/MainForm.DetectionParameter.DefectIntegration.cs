@@ -27,13 +27,19 @@ namespace IntegratedImageProcessingApp.Forms
 
             public bool IsFrequency { get; set; }
 
-            public bool IsDft { get; set; }
+            public bool IsLineTexture { get; set; }
+
+            public bool HasLineSegment { get; set; }
+
+            public PointF LineStart { get; set; }
+
+            public PointF LineEnd { get; set; }
         }
 
         private const byte ObjectDetectionDefectIntegrationDarkFlag = 1;
         private const byte ObjectDetectionDefectIntegrationBrightFlag = 2;
         private const byte ObjectDetectionDefectIntegrationFrequencyFlag = 4;
-        private const byte ObjectDetectionDefectIntegrationDftFlag = 8;
+        private const byte ObjectDetectionDefectIntegrationLineTextureFlag = 8;
 
         private sealed class ObjectDetectionDefectIntegrationGroup
         {
@@ -52,7 +58,7 @@ namespace IntegratedImageProcessingApp.Forms
         private CheckBox objectDetectionDefectIntegrationBrightCheckBox;
         private CheckBox objectDetectionDefectIntegrationMixedCheckBox;
         private CheckBox objectDetectionDefectIntegrationFrequencyCheckBox;
-        private CheckBox objectDetectionDefectIntegrationDftCheckBox;
+        private CheckBox objectDetectionDefectIntegrationLineTextureCheckBox;
         private NumericUpDown objectDetectionDefectIntegrationDistanceInput;
         private DataGridView objectDetectionDefectIntegrationResultsGrid;
         private Label objectDetectionDefectIntegrationResultsStatus;
@@ -113,18 +119,18 @@ namespace IntegratedImageProcessingApp.Forms
                 Checked = parameter.DefectIntegrationIncludeFrequency,
                 Margin = new Padding(2, 1, 0, 1)
             };
-            objectDetectionDefectIntegrationDftCheckBox = new CheckBox
+            objectDetectionDefectIntegrationLineTextureCheckBox = new CheckBox
             {
                 AutoSize = true,
-                Text = "納入 DFT",
-                Checked = parameter.DefectIntegrationIncludeDft,
+                Text = "納入線狀紋理異常",
+                Checked = parameter.DefectIntegrationIncludeLineTexture,
                 Margin = new Padding(2, 1, 0, 1)
             };
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationDarkCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationBrightCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationMixedCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationFrequencyCheckBox);
-            mergeOptions.Controls.Add(objectDetectionDefectIntegrationDftCheckBox);
+            mergeOptions.Controls.Add(objectDetectionDefectIntegrationLineTextureCheckBox);
             mergeGroup.Controls.Add(mergeOptions);
 
             var distanceGroup = new GroupBox
@@ -257,7 +263,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionDefectIntegrationBrightCheckBox == null ||
                 objectDetectionDefectIntegrationMixedCheckBox == null ||
                 objectDetectionDefectIntegrationFrequencyCheckBox == null ||
-                objectDetectionDefectIntegrationDftCheckBox == null ||
+                objectDetectionDefectIntegrationLineTextureCheckBox == null ||
                 objectDetectionDefectIntegrationDistanceInput == null)
             {
                 return;
@@ -271,8 +277,8 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionDefectIntegrationMixedCheckBox.Checked;
             parameter.DefectIntegrationIncludeFrequency =
                 objectDetectionDefectIntegrationFrequencyCheckBox.Checked;
-            parameter.DefectIntegrationIncludeDft =
-                objectDetectionDefectIntegrationDftCheckBox.Checked;
+            parameter.DefectIntegrationIncludeLineTexture =
+                objectDetectionDefectIntegrationLineTextureCheckBox.Checked;
             parameter.DefectIntegrationMergeDistancePixels =
                 (double)objectDetectionDefectIntegrationDistanceInput.Value;
             InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
@@ -305,8 +311,8 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectIntegrationMergeDarkBright;
             objectDetectionDefectIntegrationFrequencyCheckBox.Checked =
                 parameter.DefectIntegrationIncludeFrequency;
-            objectDetectionDefectIntegrationDftCheckBox.Checked =
-                parameter.DefectIntegrationIncludeDft;
+            objectDetectionDefectIntegrationLineTextureCheckBox.Checked =
+                parameter.DefectIntegrationIncludeLineTexture;
             objectDetectionDefectIntegrationDistanceInput.Value =
                 (decimal)Math.Max(0, Math.Min(
                     1000000,
@@ -351,19 +357,19 @@ namespace IntegratedImageProcessingApp.Forms
                 bool hasDark = group.Candidates.Any(item => item.IsBright == false);
                 bool hasBright = group.Candidates.Any(item => item.IsBright == true);
                 bool hasFrequency = group.Candidates.Any(item => item.IsFrequency);
-                bool hasDft = group.Candidates.Any(item => item.IsDft);
+                bool hasLineTexture = group.Candidates.Any(item => item.IsLineTexture);
                 var typeParts = new List<string>();
                 if (hasDark && hasBright) typeParts.Add("亮暗");
                 else if (hasBright) typeParts.Add("亮");
                 else if (hasDark) typeParts.Add("暗");
                 if (hasFrequency) typeParts.Add("頻域");
-                if (hasDft) typeParts.Add("DFT");
+                if (hasLineTexture) typeParts.Add("線狀紋理");
                 string type = string.Join("+", typeParts);
                 string sources = string.Join("、", group.Candidates
                     .Select(item => item.IsFrequency
                         ? "頻域異常"
-                        : item.IsDft
-                            ? "DFT"
+                        : item.IsLineTexture
+                        ? "線狀紋理異常"
                             : GetObjectDetectionDefectCoreLabel(
                                 GetObjectDetectionDefectCoreIndex(item.CoreKey)))
                     .Distinct(StringComparer.Ordinal));
@@ -383,23 +389,23 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionFrequencyResult frequencyResult;
             bool frequencyReady = !frequencyRequired ||
                 TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult);
-            bool dftRequired = IsObjectDetectionDefectDftIntegrationRequired(parameter);
-            ObjectDetectionDftResult dftResult;
-            bool dftReady = !dftRequired || TryGetCurrentObjectDetectionDftResult(parameter, out dftResult);
-            string pendingAnalysisMessage = !frequencyReady && !dftReady
-                ? "頻域異常與 DFT 分析尚未完成；整合判定待確認。"
+            bool lineTextureRequired = IsObjectDetectionDefectLineTextureIntegrationRequired(parameter);
+            ObjectDetectionLineTextureResult lineTextureResult;
+            bool lineTextureReady = !lineTextureRequired || TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
+            string pendingAnalysisMessage = !frequencyReady && !lineTextureReady
+                ? "頻域異常與線狀紋理分析尚未完成；整合判定待確認。"
                 : !frequencyReady
                     ? "已勾選納入頻域異常，但目前影像的頻域分析尚未完成；整合判定待確認。"
-                    : !dftReady
-                        ? "已勾選納入 DFT，但目前影像的 DFT 分析尚未完成；整合判定待確認。"
+                    : !lineTextureReady
+                        ? "已勾選納入線狀紋理異常，但目前影像的分析尚未完成；整合判定待確認。"
                         : null;
             SetObjectDetectionDefectIntegrationResultsStatus(
                 pendingAnalysisMessage != null
                     ? pendingAnalysisMessage
                     : parameter.DefectIntegrationIncludeFrequency && !parameter.DefectFrequencyEnabled
                     ? "已勾選納入頻域異常，但頻域分析目前停用；本次僅整合其他缺陷來源。"
-                    : parameter.DefectIntegrationIncludeDft && !parameter.DefectDftEnabled
-                    ? "已勾選納入 DFT，但 DFT 分析目前停用；本次僅整合其他缺陷來源。"
+                    : parameter.DefectIntegrationIncludeLineTexture && !parameter.DefectLineTextureEnabled
+                    ? "已勾選納入線狀紋理異常，但該分析目前停用；本次僅整合其他缺陷來源。"
                     : groups.Count == 0
                     ? selectedObjectDetectionNumber > 0
                         ? "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
@@ -493,26 +499,29 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             CoreKey = "Frequency",
                             ObjectNumber = cell.ObjectNumber,
-                            Bounds = cell.Bounds,
+                            Bounds = cell.ValidBounds,
                             IsFrequency = true
-                    }));
+                        }));
                 }
             }
 
-            bool includeDft = IsObjectDetectionDefectDftIntegrationRequired(parameter);
-            ObjectDetectionDftResult dftResult = null;
-            bool dftResultAvailable = includeDft &&
-                TryGetCurrentObjectDetectionDftResult(parameter, out dftResult);
-            if (dftResultAvailable && dftResult.Cells != null)
+            bool includeLineTexture = IsObjectDetectionDefectLineTextureIntegrationRequired(parameter);
+            ObjectDetectionLineTextureResult lineTextureResult = null;
+            bool lineTextureResultAvailable = includeLineTexture &&
+                TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
+            if (lineTextureResultAvailable && lineTextureResult.Lines != null)
             {
-                candidates.AddRange(dftResult.Cells
-                    .Where(cell => cell != null && cell.IsAnomaly && cell.ObjectNumber > 0)
-                    .Select(cell => new ObjectDetectionDefectIntegrationCandidate
+                candidates.AddRange(lineTextureResult.Lines
+                    .Where(line => line != null && line.IsAnomaly && line.ObjectNumber > 0)
+                    .Select(line => new ObjectDetectionDefectIntegrationCandidate
                     {
-                        CoreKey = "DFT",
-                        ObjectNumber = cell.ObjectNumber,
-                        Bounds = cell.Bounds,
-                        IsDft = true
+                        CoreKey = "LineTexture",
+                        ObjectNumber = line.ObjectNumber,
+                        Bounds = line.Bounds,
+                        IsLineTexture = true,
+                        HasLineSegment = true,
+                        LineStart = line.Start,
+                        LineEnd = line.End
                     }));
             }
 
@@ -540,8 +549,8 @@ namespace IntegratedImageProcessingApp.Forms
                 ObjectDetectionDefectIntegrationCandidate candidate = candidates[index];
                 sourceFlags[index] = candidate.IsFrequency
                     ? ObjectDetectionDefectIntegrationFrequencyFlag
-                    : candidate.IsDft
-                        ? ObjectDetectionDefectIntegrationDftFlag
+                    : candidate.IsLineTexture
+                        ? ObjectDetectionDefectIntegrationLineTextureFlag
                     : candidate.IsBright == true
                         ? ObjectDetectionDefectIntegrationBrightFlag
                         : ObjectDetectionDefectIntegrationDarkFlag;
@@ -586,9 +595,9 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             continue;
                         }
-                        if (GetObjectDetectionDefectBoundsGapSquared(
-                            candidates[previousIndex].Bounds,
-                            currentBounds) <= distanceSquared)
+                        if (GetObjectDetectionDefectCandidateGapSquared(
+                            candidates[previousIndex],
+                            candidates[currentIndex]) <= distanceSquared)
                         {
                             byte mergedFlags = (byte)(sourceFlags[previousRoot] |
                                 sourceFlags[currentRoot]);
@@ -671,6 +680,130 @@ namespace IntegratedImageProcessingApp.Forms
             return (dx * dx) + (dy * dy);
         }
 
+        private static double GetObjectDetectionDefectCandidateGapSquared(
+            ObjectDetectionDefectIntegrationCandidate first,
+            ObjectDetectionDefectIntegrationCandidate second)
+        {
+            if (first.HasLineSegment && second.HasLineSegment)
+            {
+                return GetObjectDetectionLineSegmentGapSquared(
+                    first.LineStart, first.LineEnd, second.LineStart, second.LineEnd);
+            }
+            if (first.HasLineSegment)
+            {
+                return GetObjectDetectionLineRectangleGapSquared(
+                    first.LineStart, first.LineEnd, second.Bounds);
+            }
+            if (second.HasLineSegment)
+            {
+                return GetObjectDetectionLineRectangleGapSquared(
+                    second.LineStart, second.LineEnd, first.Bounds);
+            }
+            return GetObjectDetectionDefectBoundsGapSquared(first.Bounds, second.Bounds);
+        }
+
+        private static double GetObjectDetectionLineSegmentGapSquared(
+            PointF firstStart,
+            PointF firstEnd,
+            PointF secondStart,
+            PointF secondEnd)
+        {
+            if (DoObjectDetectionLineSegmentsIntersect(firstStart, firstEnd, secondStart, secondEnd)) return 0;
+            return Math.Min(
+                Math.Min(GetObjectDetectionPointSegmentDistanceSquared(firstStart, secondStart, secondEnd),
+                    GetObjectDetectionPointSegmentDistanceSquared(firstEnd, secondStart, secondEnd)),
+                Math.Min(GetObjectDetectionPointSegmentDistanceSquared(secondStart, firstStart, firstEnd),
+                    GetObjectDetectionPointSegmentDistanceSquared(secondEnd, firstStart, firstEnd)));
+        }
+
+        private static double GetObjectDetectionLineRectangleGapSquared(
+            PointF start,
+            PointF end,
+            RectangleF rectangle)
+        {
+            if (rectangle.Contains(start) || rectangle.Contains(end)) return 0;
+            PointF topLeft = new PointF(rectangle.Left, rectangle.Top);
+            PointF topRight = new PointF(rectangle.Right, rectangle.Top);
+            PointF bottomLeft = new PointF(rectangle.Left, rectangle.Bottom);
+            PointF bottomRight = new PointF(rectangle.Right, rectangle.Bottom);
+            if (DoObjectDetectionLineSegmentsIntersect(start, end, topLeft, topRight) ||
+                DoObjectDetectionLineSegmentsIntersect(start, end, topRight, bottomRight) ||
+                DoObjectDetectionLineSegmentsIntersect(start, end, bottomRight, bottomLeft) ||
+                DoObjectDetectionLineSegmentsIntersect(start, end, bottomLeft, topLeft)) return 0;
+
+            double best = Math.Min(GetObjectDetectionPointRectangleDistanceSquared(start, rectangle),
+                GetObjectDetectionPointRectangleDistanceSquared(end, rectangle));
+            best = Math.Min(best, GetObjectDetectionPointSegmentDistanceSquared(topLeft, start, end));
+            best = Math.Min(best, GetObjectDetectionPointSegmentDistanceSquared(topRight, start, end));
+            best = Math.Min(best, GetObjectDetectionPointSegmentDistanceSquared(bottomLeft, start, end));
+            return Math.Min(best, GetObjectDetectionPointSegmentDistanceSquared(bottomRight, start, end));
+        }
+
+        private static double GetObjectDetectionPointRectangleDistanceSquared(PointF point, RectangleF rectangle)
+        {
+            double dx = point.X < rectangle.Left ? rectangle.Left - point.X
+                : point.X > rectangle.Right ? point.X - rectangle.Right : 0;
+            double dy = point.Y < rectangle.Top ? rectangle.Top - point.Y
+                : point.Y > rectangle.Bottom ? point.Y - rectangle.Bottom : 0;
+            return dx * dx + dy * dy;
+        }
+
+        private static double GetObjectDetectionPointSegmentDistanceSquared(
+            PointF point,
+            PointF start,
+            PointF end)
+        {
+            double dx = end.X - start.X;
+            double dy = end.Y - start.Y;
+            double lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared < 1e-12)
+            {
+                double px = point.X - start.X;
+                double py = point.Y - start.Y;
+                return px * px + py * py;
+            }
+            double amount = ((point.X - start.X) * dx + (point.Y - start.Y) * dy) / lengthSquared;
+            amount = Math.Max(0, Math.Min(1, amount));
+            double distanceX = point.X - (start.X + amount * dx);
+            double distanceY = point.Y - (start.Y + amount * dy);
+            return distanceX * distanceX + distanceY * distanceY;
+        }
+
+        private static bool DoObjectDetectionLineSegmentsIntersect(
+            PointF firstStart,
+            PointF firstEnd,
+            PointF secondStart,
+            PointF secondEnd)
+        {
+            double first = GetObjectDetectionCrossProduct(firstStart, firstEnd, secondStart);
+            double second = GetObjectDetectionCrossProduct(firstStart, firstEnd, secondEnd);
+            double third = GetObjectDetectionCrossProduct(secondStart, secondEnd, firstStart);
+            double fourth = GetObjectDetectionCrossProduct(secondStart, secondEnd, firstEnd);
+            const double epsilon = 1e-6;
+            if (Math.Abs(first) <= epsilon && IsObjectDetectionPointOnSegment(secondStart, firstStart, firstEnd)) return true;
+            if (Math.Abs(second) <= epsilon && IsObjectDetectionPointOnSegment(secondEnd, firstStart, firstEnd)) return true;
+            if (Math.Abs(third) <= epsilon && IsObjectDetectionPointOnSegment(firstStart, secondStart, secondEnd)) return true;
+            if (Math.Abs(fourth) <= epsilon && IsObjectDetectionPointOnSegment(firstEnd, secondStart, secondEnd)) return true;
+            bool firstCrosses = first > epsilon && second < -epsilon || first < -epsilon && second > epsilon;
+            bool secondCrosses = third > epsilon && fourth < -epsilon || third < -epsilon && fourth > epsilon;
+            return firstCrosses && secondCrosses;
+        }
+
+        private static double GetObjectDetectionCrossProduct(PointF origin, PointF end, PointF point)
+        {
+            return (end.X - origin.X) * (point.Y - origin.Y) -
+                (end.Y - origin.Y) * (point.X - origin.X);
+        }
+
+        private static bool IsObjectDetectionPointOnSegment(PointF point, PointF start, PointF end)
+        {
+            const double epsilon = 1e-6;
+            return point.X >= Math.Min(start.X, end.X) - epsilon &&
+                point.X <= Math.Max(start.X, end.X) + epsilon &&
+                point.Y >= Math.Min(start.Y, end.Y) - epsilon &&
+                point.Y <= Math.Max(start.Y, end.Y) + epsilon;
+        }
+
         private static int FindObjectDetectionDefectIntegrationParent(int[] parents, int index)
         {
             int root = index;
@@ -735,11 +868,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 DashStyle = DashStyle.Dash
             })
-            using (var dftPen = new Pen(Color.LimeGreen, Math.Max(1f, 2f * zoom))
+            using (var lineTexturePen = new Pen(Color.LimeGreen, Math.Max(1f, 2f * zoom))
             {
                 DashStyle = DashStyle.DashDot
             })
-            using (var dftPolarityPen = new Pen(Color.Magenta, Math.Max(1f, 2f * zoom))
+            using (var lineTexturePolarityPen = new Pen(Color.Magenta, Math.Max(1f, 2f * zoom))
             {
                 DashStyle = DashStyle.DashDot
             })
@@ -759,23 +892,32 @@ namespace IntegratedImageProcessingApp.Forms
                         candidate.IsBright == true && candidate.Core != null &&
                         candidate.Core.ShowOrangeBoxes);
                     bool showFrequency = group.Candidates.Any(candidate => candidate.IsFrequency);
-                    bool showDft = group.Candidates.Any(candidate => candidate.IsDft);
-                    if (!showDark && !showBright && !showFrequency && !showDft)
+                    bool showLineTexture = group.Candidates.Any(candidate => candidate.IsLineTexture);
+                    if (!showDark && !showBright && !showFrequency && !showLineTexture)
                     {
                         continue;
                     }
 
                     Pen pen = showDark && showBright
-                        ? showDft ? dftPolarityPen : showFrequency ? mixedFrequencyPen : mixedPen
-                        : showDark ? showDft ? dftPolarityPen : showFrequency ? darkFrequencyPen : darkPen
-                        : showBright ? showDft ? dftPolarityPen : showFrequency ? brightFrequencyPen : brightPen
-                        : showDft ? dftPen : frequencyPen;
+                        ? showLineTexture ? lineTexturePolarityPen : showFrequency ? mixedFrequencyPen : mixedPen
+                        : showDark ? showLineTexture ? lineTexturePolarityPen : showFrequency ? darkFrequencyPen : darkPen
+                        : showBright ? showLineTexture ? lineTexturePolarityPen : showFrequency ? brightFrequencyPen : brightPen
+                        : showLineTexture ? lineTexturePen : frequencyPen;
                     graphics.DrawRectangle(
                         pen,
                         offset.X + group.Bounds.X * zoom,
                         offset.Y + group.Bounds.Y * zoom,
                         Math.Max(1f, group.Bounds.Width * zoom),
                         Math.Max(1f, group.Bounds.Height * zoom));
+                    foreach (ObjectDetectionDefectIntegrationCandidate candidate in group.Candidates.Where(item => item.HasLineSegment))
+                    {
+                        graphics.DrawLine(
+                            pen,
+                            offset.X + candidate.LineStart.X * zoom,
+                            offset.Y + candidate.LineStart.Y * zoom,
+                            offset.X + candidate.LineEnd.X * zoom,
+                            offset.Y + candidate.LineEnd.Y * zoom);
+                    }
                 }
             }
         }

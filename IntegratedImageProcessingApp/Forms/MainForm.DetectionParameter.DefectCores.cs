@@ -145,7 +145,7 @@ namespace IntegratedImageProcessingApp.Forms
                 tabs.TabPages.Add(page);
             }
             tabs.TabPages.Add(BuildObjectDetectionDefectFrequencyTab(parameter));
-            tabs.TabPages.Add(BuildObjectDetectionDftTab(parameter));
+            tabs.TabPages.Add(BuildObjectDetectionLineTextureTab(parameter));
             tabs.TabPages.Add(BuildObjectDetectionDefectIntegrationTab(parameter));
             ResizeObjectDetectionDefectCoreTabsToContent();
         }

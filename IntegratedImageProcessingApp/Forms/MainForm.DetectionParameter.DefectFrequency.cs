@@ -22,6 +22,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             public Rectangle Bounds { get; set; }
 
+            public Rectangle ValidBounds { get; set; }
+
             public double Energy { get; set; }
 
             public double Score { get; set; }
@@ -917,12 +919,14 @@ namespace IntegratedImageProcessingApp.Forms
                                 objectScannedWindowCount++;
                                 var localWindow = new Rectangle(x, y, windowSize, windowSize);
                                 double energy;
+                                Rectangle validLocalBounds;
                                 if (!TryCalculateObjectDetectionFrequencyEnergy(
                                     workspace,
                                     localWindow.X,
                                     localWindow.Y,
                                     windowSize,
-                                    out energy))
+                                    out energy,
+                                    out validLocalBounds))
                                 {
                                     continue;
                                 }
@@ -935,6 +939,11 @@ namespace IntegratedImageProcessingApp.Forms
                                         crop.Y + localWindow.Y,
                                         localWindow.Width,
                                         localWindow.Height),
+                                    ValidBounds = new Rectangle(
+                                        crop.X + validLocalBounds.X,
+                                        crop.Y + validLocalBounds.Y,
+                                        validLocalBounds.Width,
+                                        validLocalBounds.Height),
                                     Energy = energy
                                 });
                             }
@@ -1080,9 +1089,11 @@ namespace IntegratedImageProcessingApp.Forms
             int startX,
             int startY,
             int windowSize,
-            out double energy)
+            out double energy,
+            out Rectangle validBounds)
         {
             energy = 0.0;
+            validBounds = Rectangle.Empty;
             if (workspace == null || windowSize <= 0 || startX < 0 || startY < 0 ||
                 startX > workspace.ImageWidth - windowSize ||
                 startY > workspace.ImageHeight - windowSize)
@@ -1095,6 +1106,10 @@ namespace IntegratedImageProcessingApp.Forms
             byte* hannBytes = (byte*)workspace.HannData.ToPointer();
             double pixelSum = 0.0;
             int validPixels = 0;
+            int minX = windowSize;
+            int minY = windowSize;
+            int maxX = -1;
+            int maxY = -1;
             for (int row = 0; row < windowSize; row++)
             {
                 byte* imageRow = image + (long)(startY + row) * workspace.ImageStep + startX;
@@ -1107,6 +1122,10 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     pixelSum += imageRow[column];
                     validPixels++;
+                    minX = Math.Min(minX, column);
+                    minY = Math.Min(minY, row);
+                    maxX = Math.Max(maxX, column);
+                    maxY = Math.Max(maxY, row);
                 }
             }
             if (validPixels == 0)
@@ -1114,6 +1133,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return false;
             }
 
+            validBounds = Rectangle.FromLTRB(minX, minY, maxX + 1, maxY + 1);
             float mean = (float)(pixelSum / validPixels);
             double squaredEnergySum = 0.0;
             for (int row = 0; row < windowSize; row++)

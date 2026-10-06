@@ -1056,28 +1056,28 @@ namespace IntegratedImageProcessingApp.Forms
                     InvalidateObjectDetectionDefectIntegrationDisplay();
                 }
 
-                if (IsObjectDetectionDefectDftIntegrationRequired(parameter))
+                if (IsObjectDetectionDefectLineTextureIntegrationRequired(parameter))
                 {
-                    ObjectDetectionDftResult dftResult;
-                    bool dftAlreadyReady = TryGetCurrentObjectDetectionDftResult(parameter, out dftResult);
-                    if (!dftAlreadyReady)
+                    ObjectDetectionLineTextureResult lineTextureResult;
+                    bool lineTextureAlreadyReady = TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
+                    if (!lineTextureAlreadyReady)
                     {
                         objectDetectionResultReviewStatusLabel.Text =
-                            "一般缺陷條件完成，正在執行納入整合的 DFT 分析...";
-                        await RunObjectDetectionDftAnalysisAsync(parameter.Id, true);
+                            "一般缺陷條件完成，正在執行納入整合的線狀紋理分析...";
+                        await RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true);
                         if (!IsObjectDetectionResultReviewUiAvailable())
                         {
                             return;
                         }
                     }
 
-                    if (TryGetCurrentObjectDetectionDftResult(parameter, out dftResult))
+                    if (TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult))
                     {
-                        if (!dftAlreadyReady)
+                        if (!lineTextureAlreadyReady)
                         {
                             objectDetectionResultReviewDefectMilliseconds =
                                 (objectDetectionResultReviewDefectMilliseconds ?? 0) +
-                                dftResult.TotalElapsedMilliseconds;
+                                lineTextureResult.TotalElapsedMilliseconds;
                             UpdateObjectDetectionResultReviewTimingMemo();
                         }
                     }
@@ -1756,37 +1756,37 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            if (parameter.DefectIntegrationIncludeDft)
+            if (parameter.DefectIntegrationIncludeLineTexture)
             {
-                if (!parameter.DefectDftEnabled)
+                if (!parameter.DefectLineTextureEnabled)
                 {
                     objectDetectionResultReviewDefectsGrid.Rows.Add(
-                        "DFT", "-", "-", "未啟用", "DFT 分析已停用，未納入整合");
+                        "線狀紋理異常", "-", "-", "未啟用", "線狀紋理分析已停用，未納入整合");
                 }
                 else
                 {
-                    ObjectDetectionDftResult dftResult;
-                    if (TryGetCurrentObjectDetectionDftResult(parameter, out dftResult))
+                    ObjectDetectionLineTextureResult lineTextureResult;
+                    if (TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult))
                     {
-                        int anomalyCount = dftResult.Cells == null
+                        int anomalyCount = lineTextureResult.Lines == null
                             ? 0
-                            : dftResult.Cells.Count(cell => cell != null && cell.IsAnomaly &&
+                            : lineTextureResult.Lines.Count(line => line != null && line.IsAnomaly &&
                                 (!selectedObjectNumber.HasValue ||
-                                    cell.ObjectNumber == selectedObjectNumber.Value));
+                                    line.ObjectNumber == selectedObjectNumber.Value));
                         objectDetectionResultReviewDefectsGrid.Rows.Add(
-                            "DFT",
+                            "線狀紋理異常",
                             anomalyCount,
                             selectedObjectNumber.HasValue
                                 ? (object)"-"
-                                : dftResult.TotalElapsedMilliseconds,
-                            anomalyCount > 0 ? "檢出異常格" : "未檢出",
-                            "方向能量異常格數；依合併距離轉為整合區域");
+                                : lineTextureResult.TotalElapsedMilliseconds,
+                            anomalyCount > 0 ? "檢出線段" : "未檢出",
+                            "離散紋理線段數；依合併距離轉為整合區域");
                     }
                     else
                     {
                         allRequiredResultsReady = false;
                         objectDetectionResultReviewDefectsGrid.Rows.Add(
-                            "DFT", "-", "-", "未完成", "目前影像的 DFT 分析尚未完成或已過期");
+                            "線狀紋理異常", "-", "-", "未完成", "目前影像的線狀紋理分析尚未完成或已過期");
                     }
                 }
             }
