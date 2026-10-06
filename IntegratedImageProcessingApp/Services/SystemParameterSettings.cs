@@ -458,6 +458,7 @@ namespace IntegratedImageProcessingApp.Services
             DefectIntegrationMergeBright = false;
             DefectIntegrationMergeDarkBright = false;
             DefectIntegrationIncludeFrequency = false;
+            DefectIntegrationIncludeDft = false;
             DefectIntegrationMergeDistancePixels = 0;
             DefectFrequencyEnabled = true;
             DefectFrequencyScanHeight = 50;
@@ -471,6 +472,21 @@ namespace IntegratedImageProcessingApp.Services
             DefectFrequencyClaheTileGridSize = 8;
             DefectFrequencyShowHeatmap = true;
             DefectFrequencyShowAnomalyBoxes = true;
+            DefectDftEnabled = false;
+            DefectDftWindowSize = 128;
+            DefectDftMinimumPeriodPixels = 2;
+            DefectDftMaximumPeriodPixels = 32;
+            DefectDftSensitivity = 3.0;
+            DefectDftDirectionalityThreshold = 1.25;
+            DefectDftContrastEnabled = true;
+            DefectDftContrastGain = 1.0;
+            DefectDftEnhancementMethod = "None";
+            DefectDftLocalBackgroundKernelSize = 31;
+            DefectDftLocalBackgroundGain = 1.5;
+            DefectDftClaheClipLimit = 2.0;
+            DefectDftClaheTileGridSize = 8;
+            DefectDftShowHeatmap = true;
+            DefectDftShowAnomalyBoxes = true;
             DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
             {
                 new ObjectDetectionDefectCoreSettings { CoreKey = "FlatField" },
@@ -648,6 +664,8 @@ namespace IntegratedImageProcessingApp.Services
 
         public bool DefectIntegrationIncludeFrequency { get; set; }
 
+        public bool DefectIntegrationIncludeDft { get; set; }
+
         public double DefectIntegrationMergeDistancePixels { get; set; }
 
         public bool DefectFrequencyEnabled { get; set; }
@@ -673,6 +691,36 @@ namespace IntegratedImageProcessingApp.Services
         public bool DefectFrequencyShowHeatmap { get; set; }
 
         public bool DefectFrequencyShowAnomalyBoxes { get; set; }
+
+        public bool DefectDftEnabled { get; set; }
+
+        public int DefectDftWindowSize { get; set; }
+
+        public int DefectDftMinimumPeriodPixels { get; set; }
+
+        public int DefectDftMaximumPeriodPixels { get; set; }
+
+        public double DefectDftSensitivity { get; set; }
+
+        public double DefectDftDirectionalityThreshold { get; set; }
+
+        public bool DefectDftContrastEnabled { get; set; }
+
+        public double DefectDftContrastGain { get; set; }
+
+        public string DefectDftEnhancementMethod { get; set; }
+
+        public int DefectDftLocalBackgroundKernelSize { get; set; }
+
+        public double DefectDftLocalBackgroundGain { get; set; }
+
+        public double DefectDftClaheClipLimit { get; set; }
+
+        public int DefectDftClaheTileGridSize { get; set; }
+
+        public bool DefectDftShowHeatmap { get; set; }
+
+        public bool DefectDftShowAnomalyBoxes { get; set; }
 
         public List<ObjectDetectionDefectCoreSettings> DefectDetectionCores { get; set; }
     }

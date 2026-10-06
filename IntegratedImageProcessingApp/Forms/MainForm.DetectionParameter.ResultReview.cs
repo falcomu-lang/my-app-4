@@ -1056,6 +1056,36 @@ namespace IntegratedImageProcessingApp.Forms
                     InvalidateObjectDetectionDefectIntegrationDisplay();
                 }
 
+                if (IsObjectDetectionDefectDftIntegrationRequired(parameter))
+                {
+                    ObjectDetectionDftResult dftResult;
+                    bool dftAlreadyReady = TryGetCurrentObjectDetectionDftResult(parameter, out dftResult);
+                    if (!dftAlreadyReady)
+                    {
+                        objectDetectionResultReviewStatusLabel.Text =
+                            "一般缺陷條件完成，正在執行納入整合的 DFT 分析...";
+                        await RunObjectDetectionDftAnalysisAsync(parameter.Id, true);
+                        if (!IsObjectDetectionResultReviewUiAvailable())
+                        {
+                            return;
+                        }
+                    }
+
+                    if (TryGetCurrentObjectDetectionDftResult(parameter, out dftResult))
+                    {
+                        if (!dftAlreadyReady)
+                        {
+                            objectDetectionResultReviewDefectMilliseconds =
+                                (objectDetectionResultReviewDefectMilliseconds ?? 0) +
+                                dftResult.TotalElapsedMilliseconds;
+                            UpdateObjectDetectionResultReviewTimingMemo();
+                        }
+                    }
+                    leftImageTabControl.SelectedTab =
+                        objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
+                    InvalidateObjectDetectionDefectIntegrationDisplay();
+                }
+
                 StopObjectDetectionResultReviewTimingStage();
                 StartObjectDetectionResultReviewTimingStage("尺寸量測計算");
                 objectDetectionResultReviewStatusLabel.Text = "正在計算尺寸量測與良品條件...";
@@ -1722,6 +1752,41 @@ namespace IntegratedImageProcessingApp.Forms
                         allRequiredResultsReady = false;
                         objectDetectionResultReviewDefectsGrid.Rows.Add(
                             "頻域異常", "-", "-", "未完成", "目前影像的頻域分析尚未完成或已過期");
+                    }
+                }
+            }
+
+            if (parameter.DefectIntegrationIncludeDft)
+            {
+                if (!parameter.DefectDftEnabled)
+                {
+                    objectDetectionResultReviewDefectsGrid.Rows.Add(
+                        "DFT", "-", "-", "未啟用", "DFT 分析已停用，未納入整合");
+                }
+                else
+                {
+                    ObjectDetectionDftResult dftResult;
+                    if (TryGetCurrentObjectDetectionDftResult(parameter, out dftResult))
+                    {
+                        int anomalyCount = dftResult.Cells == null
+                            ? 0
+                            : dftResult.Cells.Count(cell => cell != null && cell.IsAnomaly &&
+                                (!selectedObjectNumber.HasValue ||
+                                    cell.ObjectNumber == selectedObjectNumber.Value));
+                        objectDetectionResultReviewDefectsGrid.Rows.Add(
+                            "DFT",
+                            anomalyCount,
+                            selectedObjectNumber.HasValue
+                                ? (object)"-"
+                                : dftResult.TotalElapsedMilliseconds,
+                            anomalyCount > 0 ? "檢出異常格" : "未檢出",
+                            "方向能量異常格數；依合併距離轉為整合區域");
+                    }
+                    else
+                    {
+                        allRequiredResultsReady = false;
+                        objectDetectionResultReviewDefectsGrid.Rows.Add(
+                            "DFT", "-", "-", "未完成", "目前影像的 DFT 分析尚未完成或已過期");
                     }
                 }
             }

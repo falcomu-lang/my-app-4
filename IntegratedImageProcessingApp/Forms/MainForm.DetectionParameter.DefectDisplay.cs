@@ -15,12 +15,13 @@ namespace IntegratedImageProcessingApp.Forms
         };
 
         private const int ObjectDetectionDefectFrequencyDisplayIndex = 4;
-        private const int ObjectDetectionDefectIntegratedDisplayIndex = 5;
+        private const int ObjectDetectionDefectDftDisplayIndex = 5;
+        private const int ObjectDetectionDefectIntegratedDisplayIndex = 6;
 
         private static readonly string[] ObjectDetectionDefectDisplayNames =
         {
             "缺陷顯示-平場校正", "缺陷顯示-條件一", "缺陷顯示-條件二",
-            "缺陷顯示-條件三", "缺陷顯示-頻域異常", "缺陷顯示-綜合"
+            "缺陷顯示-條件三", "缺陷顯示-頻域異常", "缺陷顯示-DFT", "缺陷顯示-綜合"
         };
 
         private TabPage[] objectDetectionDefectDisplayTabPages;
