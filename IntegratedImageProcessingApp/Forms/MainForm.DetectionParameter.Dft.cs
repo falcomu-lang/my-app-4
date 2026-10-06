@@ -64,6 +64,13 @@ namespace IntegratedImageProcessingApp.Forms
             public List<ObjectDetectionDefectProcessedPatch> ProcessedPatches { get; set; }
         }
 
+        private sealed class ObjectDetectionDftSpectrumLayout
+        {
+            public byte[] SectorByBin { get; set; }
+
+            public int[] BinCountBySector { get; set; }
+        }
+
         private readonly Dictionary<string, ObjectDetectionDftResult> objectDetectionDftResults =
             new Dictionary<string, ObjectDetectionDftResult>(StringComparer.Ordinal);
 
@@ -582,6 +589,8 @@ namespace IntegratedImageProcessingApp.Forms
             long transformTicks = 0;
             long previewTicks = 0;
             long windowsScanned = 0;
+            var spectrumLayouts = new Dictionary<int, ObjectDetectionDftSpectrumLayout>();
+            var spectrumLayoutLock = new object();
             Action<int> scanObject = objectIndex =>
             {
                 ObjectDefinitionDetectedObject detected = objects[objectIndex];
@@ -619,12 +628,26 @@ namespace IntegratedImageProcessingApp.Forms
                     int step = Math.Max(1, windowSize / 2);
                     List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
                     List<int> yStarts = CreateFrequencyScanStarts(crop.Height, windowSize, step);
+                    ObjectDetectionDftSpectrumLayout spectrumLayout;
+                    lock (spectrumLayoutLock)
+                    {
+                        if (!spectrumLayouts.TryGetValue(windowSize, out spectrumLayout))
+                        {
+                            spectrumLayout = CreateObjectDetectionDftSpectrumLayout(
+                                windowSize,
+                                parameter.DefectDftMinimumPeriodPixels,
+                                parameter.DefectDftMaximumPeriodPixels);
+                            spectrumLayouts.Add(windowSize, spectrumLayout);
+                        }
+                    }
+                    var sectorPower = new double[8];
+                    var sectorAverages = new double[8];
                     using (var workspace = new ObjectDetectionFrequencyWorkspace(gray, polygonMask, windowSize))
                     using (var input = new Cv.Mat(windowSize, windowSize, Cv.MatType.CV_32FC1))
                     using (var spectrum = new Cv.Mat())
                     {
                         long objectWindowCount = 0;
-                        Stopwatch scanLoop = Stopwatch.StartNew();
+                        long objectTransformTicks = 0;
                         foreach (int y in yStarts)
                         {
                             foreach (int x in xStarts)
@@ -632,20 +655,20 @@ namespace IntegratedImageProcessingApp.Forms
                                 objectWindowCount++;
                                 double directionality;
                                 double angle;
-                                Stopwatch transform = Stopwatch.StartNew();
+                                long transformStarted = Stopwatch.GetTimestamp();
                                 bool valid = TryCalculateObjectDetectionDftDirectionality(
                                     workspace,
                                     input,
                                     spectrum,
+                                    spectrumLayout,
+                                    sectorPower,
+                                    sectorAverages,
                                     x,
                                     y,
                                     windowSize,
-                                    parameter.DefectDftMinimumPeriodPixels,
-                                    parameter.DefectDftMaximumPeriodPixels,
                                     out directionality,
                                     out angle);
-                                transform.Stop();
-                                Interlocked.Add(ref transformTicks, transform.ElapsedTicks);
+                                objectTransformTicks += Stopwatch.GetTimestamp() - transformStarted;
                                 if (!valid) continue;
                                 objectCells.Add(new ObjectDetectionDftCell
                                 {
@@ -656,7 +679,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 });
                             }
                         }
-                        scanLoop.Stop();
+                        Interlocked.Add(ref transformTicks, objectTransformTicks);
                         Interlocked.Add(ref windowsScanned, objectWindowCount);
                     }
                 }
@@ -738,11 +761,12 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionFrequencyWorkspace workspace,
             Cv.Mat input,
             Cv.Mat spectrum,
+            ObjectDetectionDftSpectrumLayout spectrumLayout,
+            double[] sectorPower,
+            double[] sectorAverages,
             int startX,
             int startY,
             int windowSize,
-            int minimumPeriodPixels,
-            int maximumPeriodPixels,
             out double directionality,
             out double dominantLineAngleDegrees)
         {
@@ -786,15 +810,79 @@ namespace IntegratedImageProcessingApp.Forms
 
             Cv.Cv2.Dft(input, spectrum, Cv.DftFlags.ComplexOutput);
             const int sectorCount = 8;
-            var sectorPower = new double[sectorCount];
-            var sectorCountByBin = new int[sectorCount];
+            Array.Clear(sectorPower, 0, sectorCount);
             float* spectrumData = (float*)spectrum.Data.ToPointer();
             long spectrumStep = spectrum.Step() / sizeof(float);
+            byte[] sectorByBin = spectrumLayout.SectorByBin;
+            double totalPower = 0;
+            int populatedCount = 0;
+            int dominantSector = -1;
+            double largestAverage = 0;
+            for (int row = 0; row < windowSize; row++)
+            {
+                float* spectrumRow = spectrumData + (long)row * spectrumStep;
+                for (int column = 0; column < windowSize; column++)
+                {
+                    int sector = sectorByBin[(row * windowSize) + column];
+                    if (sector == byte.MaxValue) continue;
+                    float real = spectrumRow[column * 2];
+                    float imaginary = spectrumRow[(column * 2) + 1];
+                    double power = (real * real) + (imaginary * imaginary);
+                    sectorPower[sector] += power;
+                }
+            }
+
+            for (int sector = 0; sector < sectorCount; sector++)
+            {
+                int binCount = spectrumLayout.BinCountBySector[sector];
+                if (binCount == 0) continue;
+                double average = sectorPower[sector] / binCount;
+                sectorAverages[populatedCount++] = average;
+                totalPower += average;
+                if (average > largestAverage)
+                {
+                    largestAverage = average;
+                    dominantSector = sector;
+                }
+            }
+            if (populatedCount < sectorCount - 1 || dominantSector < 0) return false;
+            for (int index = 1; index < populatedCount; index++)
+            {
+                double value = sectorAverages[index];
+                int insertAt = index - 1;
+                while (insertAt >= 0 && sectorAverages[insertAt] > value)
+                {
+                    sectorAverages[insertAt + 1] = sectorAverages[insertAt];
+                    insertAt--;
+                }
+                sectorAverages[insertAt + 1] = value;
+            }
+            int middle = populatedCount / 2;
+            double baseline = populatedCount % 2 == 0
+                ? (sectorAverages[middle - 1] + sectorAverages[middle]) * 0.5
+                : sectorAverages[middle];
+            double floor = Math.Max(1e-12, totalPower / populatedCount * 1e-6);
+            directionality = largestAverage / Math.Max(floor, baseline);
+            dominantLineAngleDegrees = (((dominantSector + 0.5) * 180.0 / sectorCount) + 90.0) % 180.0;
+            return !double.IsNaN(directionality) && !double.IsInfinity(directionality);
+        }
+
+        private static ObjectDetectionDftSpectrumLayout CreateObjectDetectionDftSpectrumLayout(
+            int windowSize,
+            int minimumPeriodPixels,
+            int maximumPeriodPixels)
+        {
+            const int sectorCount = 8;
+            var sectorByBin = new byte[windowSize * windowSize];
+            for (int index = 0; index < sectorByBin.Length; index++)
+            {
+                sectorByBin[index] = byte.MaxValue;
+            }
+            var binCountBySector = new int[sectorCount];
             int minPeriod = Math.Max(2, Math.Min(windowSize - 1, minimumPeriodPixels));
             int maxPeriod = Math.Max(minPeriod + 1, Math.Min(windowSize, maximumPeriodPixels));
             for (int row = 0; row < windowSize; row++)
             {
-                float* spectrumRow = spectrumData + (long)row * spectrumStep;
                 int fy = row <= windowSize / 2 ? row : row - windowSize;
                 for (int column = 0; column < windowSize; column++)
                 {
@@ -807,35 +895,15 @@ namespace IntegratedImageProcessingApp.Forms
                     if (angle < 0) angle += Math.PI;
                     if (angle >= Math.PI) angle -= Math.PI;
                     int sector = Math.Min(sectorCount - 1, (int)(angle * sectorCount / Math.PI));
-                    float real = spectrumRow[column * 2];
-                    float imaginary = spectrumRow[(column * 2) + 1];
-                    double power = (real * real) + (imaginary * imaginary);
-                    sectorPower[sector] += power;
-                    sectorCountByBin[sector]++;
+                    sectorByBin[(row * windowSize) + column] = (byte)sector;
+                    binCountBySector[sector]++;
                 }
             }
-
-            var populated = new List<double>();
-            int dominantSector = -1;
-            double largestAverage = 0;
-            for (int sector = 0; sector < sectorCount; sector++)
+            return new ObjectDetectionDftSpectrumLayout
             {
-                if (sectorCountByBin[sector] == 0) continue;
-                double average = sectorPower[sector] / sectorCountByBin[sector];
-                populated.Add(average);
-                if (average > largestAverage)
-                {
-                    largestAverage = average;
-                    dominantSector = sector;
-                }
-            }
-            if (populated.Count < sectorCount - 1 || dominantSector < 0) return false;
-            double baseline = CalculateObjectDetectionFrequencyMedian(populated);
-            double totalPower = populated.Sum();
-            double floor = Math.Max(1e-12, totalPower / populated.Count * 1e-6);
-            directionality = largestAverage / Math.Max(floor, baseline);
-            dominantLineAngleDegrees = (((dominantSector + 0.5) * 180.0 / sectorCount) + 90.0) % 180.0;
-            return !double.IsNaN(directionality) && !double.IsInfinity(directionality);
+                SectorByBin = sectorByBin,
+                BinCountBySector = binCountBySector
+            };
         }
 
         private string CreateObjectDetectionDftSignature(
