@@ -145,7 +145,7 @@ namespace IntegratedImageProcessingApp.Forms
             var scanHint = new Label
             {
                 Dock = DockStyle.Fill,
-                Text = "每枚物件以有效 MASK 內的多數格建立中位數/MAD 基準；相鄰異常格會合併，最小面積為 0 表示不限制。",
+                Text = "需多項紋理特徵共同偏離，且鄰格方向連續才判異常。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(75, 83, 95),
                 AutoEllipsis = true
@@ -574,6 +574,7 @@ namespace IntegratedImageProcessingApp.Forms
                     var tileActivity = new float[tileCount];
                     var tileOrientationCos = new float[tileCount];
                     var tileOrientationSin = new float[tileCount];
+                    var tileDirectionalSupport = new float[tileCount];
                     var tilePatternUniformRatio = new float[tileCount];
                     var tilePatternTransitionMean = new float[tileCount];
                     var tileValidPixelCounts = new int[tileCount];
@@ -709,6 +710,41 @@ namespace IntegratedImageProcessingApp.Forms
                         }
                         if (residuals.Count < 8) return;
 
+                        const int directionSupportRadius = 2;
+                        foreach (int index in validIndices)
+                        {
+                            int tileX = index % columns;
+                            int tileY = index / columns;
+                            double directionCos = 0;
+                            double directionSin = 0;
+                            double directionEnergy = 0;
+                            int directionNeighborCount = 0;
+                            for (int neighborY = Math.Max(0, tileY - directionSupportRadius);
+                                neighborY <= Math.Min(rows - 1, tileY + directionSupportRadius); neighborY++)
+                            {
+                                for (int neighborX = Math.Max(0, tileX - directionSupportRadius);
+                                    neighborX <= Math.Min(columns - 1, tileX + directionSupportRadius); neighborX++)
+                                {
+                                    if (neighborX == tileX && neighborY == tileY) continue;
+                                    int neighborIndex = neighborY * columns + neighborX;
+                                    if (!validTiles[neighborIndex]) continue;
+                                    double neighborCos = tileOrientationCos[neighborIndex];
+                                    double neighborSin = tileOrientationSin[neighborIndex];
+                                    double neighborEnergy = Math.Sqrt(neighborCos * neighborCos + neighborSin * neighborSin);
+                                    if (neighborEnergy < 0.04) continue;
+                                    directionCos += neighborCos;
+                                    directionSin += neighborSin;
+                                    directionEnergy += neighborEnergy;
+                                    directionNeighborCount++;
+                                }
+                            }
+                            if (directionNeighborCount >= 2 && directionEnergy > 0)
+                            {
+                                tileDirectionalSupport[index] = (float)(Math.Sqrt(
+                                    directionCos * directionCos + directionSin * directionSin) / directionEnergy);
+                            }
+                        }
+
                         double majorityOrientationCos = CalculateObjectDetectionFrequencyMedian(
                             validIndices.Select(index => (double)tileOrientationCos[index]).ToList());
                         double majorityOrientationSin = CalculateObjectDetectionFrequencyMedian(
@@ -744,6 +780,12 @@ namespace IntegratedImageProcessingApp.Forms
                         double patternTransitionMad = CalculateObjectDetectionFrequencyMedian(
                             patternTransitions.Select(value => Math.Abs(value - patternTransitionMedian)).ToList());
                         double patternTransitionScale = Math.Max(0.75, patternTransitionMad * 1.4826);
+                        var directionalSupports = validIndices
+                            .Select(index => (double)tileDirectionalSupport[index]).ToList();
+                        double directionalSupportMedian = CalculateObjectDetectionFrequencyMedian(directionalSupports);
+                        double directionalSupportMad = CalculateObjectDetectionFrequencyMedian(
+                            directionalSupports.Select(value => Math.Abs(value - directionalSupportMedian)).ToList());
+                        double directionalSupportScale = Math.Max(0.05, directionalSupportMad * 1.4826);
                         var scores = new double[tileCount];
                         for (int tileY = 0; tileY < rows; tileY++)
                         {
@@ -759,9 +801,42 @@ namespace IntegratedImageProcessingApp.Forms
                                     patternUniformScale;
                                 double patternTransitionScore = Math.Abs(tilePatternTransitionMean[index] - patternTransitionMedian) /
                                     patternTransitionScale;
-                                double score = Math.Max(
-                                    Math.Max(activityScore, orientationScore),
-                                    Math.Max(patternUniformScore, patternTransitionScore));
+                                double patternScore = Math.Max(patternUniformScore, patternTransitionScore);
+                                double directionalSupportScore = Math.Max(0,
+                                    tileDirectionalSupport[index] - directionalSupportMedian) / directionalSupportScale;
+                                // Local speckle is suppressed unless several features and neighboring directions agree.
+                                double strongest = 0;
+                                double secondStrongest = 0;
+                                double contributionLimit = parameter.DefectLineTextureSensitivity * 1.5;
+                                double activityContribution = Math.Min(activityScore, contributionLimit);
+                                double orientationContribution = Math.Min(orientationScore, contributionLimit);
+                                double patternContribution = Math.Min(patternScore, contributionLimit);
+                                double directionContribution = Math.Min(directionalSupportScore, contributionLimit);
+                                if (activityContribution >= strongest)
+                                {
+                                    secondStrongest = strongest;
+                                    strongest = activityContribution;
+                                }
+                                else if (activityContribution > secondStrongest) secondStrongest = activityContribution;
+                                if (orientationContribution >= strongest)
+                                {
+                                    secondStrongest = strongest;
+                                    strongest = orientationContribution;
+                                }
+                                else if (orientationContribution > secondStrongest) secondStrongest = orientationContribution;
+                                if (patternContribution >= strongest)
+                                {
+                                    secondStrongest = strongest;
+                                    strongest = patternContribution;
+                                }
+                                else if (patternContribution > secondStrongest) secondStrongest = patternContribution;
+                                if (directionContribution >= strongest)
+                                {
+                                    secondStrongest = strongest;
+                                    strongest = directionContribution;
+                                }
+                                else if (directionContribution > secondStrongest) secondStrongest = directionContribution;
+                                double score = strongest * 0.65 + secondStrongest * 0.35;
                                 scores[index] = score;
                                 if (score >= parameter.DefectLineTextureSensitivity)
                                 {
