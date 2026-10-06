@@ -42,6 +42,19 @@ namespace IntegratedImageProcessingApp.Forms
             public bool IsAnomaly { get; set; }
         }
 
+        private sealed class ObjectDetectionLineTextureCandidate
+        {
+            public double AngleDegrees { get; set; }
+
+            public double AngleRadians { get; set; }
+
+            public double RhoTiles { get; set; }
+
+            public double Score { get; set; }
+
+            public double Contrast { get; set; }
+        }
+
         private sealed class ObjectDetectionLineTextureResult
         {
             public string Signature { get; set; }
@@ -101,7 +114,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Top,
                 Height = 54,
                 Padding = new Padding(8, 7, 8, 2),
-                Text = "分析來源：平場校正後的灰階影像，不追加對比或淡色缺陷增強。\r\n比較局部紋理排列、強度與方向，找出偏離物件內多數正常紋理的區域。",
+                Text = "分析來源：平場校正後的灰階影像，不追加對比或淡色缺陷增強。\r\n累積多方向的局部暗紋密度，尋找比兩側背景更密集的異常路徑。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true,
                 ForeColor = Color.FromArgb(55, 63, 76)
@@ -145,7 +158,7 @@ namespace IntegratedImageProcessingApp.Forms
             var scanHint = new Label
             {
                 Dock = DockStyle.Fill,
-                Text = "需多項紋理特徵共同偏離，且鄰格方向連續才判異常。",
+                Text = "以多方向長距離累積暗紋密度，並和路徑兩側比較；檢測範圍外不參與計算。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(75, 83, 95),
                 AutoEllipsis = true
@@ -541,10 +554,12 @@ namespace IntegratedImageProcessingApp.Forms
                 using (Cv.Mat gray = CreateObjectDetectionDefectGrayRegionMat(source, crop))
                 using (var polygonMask = new Cv.Mat(crop.Height, crop.Width, Cv.MatType.CV_8UC1, Cv.Scalar.Black))
                 using (var textureMask = new Cv.Mat())
+                using (var localMean = new Cv.Mat())
+                using (var darkResponse = new Cv.Mat())
                 using (var erosionKernel = Cv.Cv2.GetStructuringElement(Cv.MorphShapes.Rect, new Cv.Size(3, 3)))
-                using (var gradientX = new Cv.Mat())
-                using (var gradientY = new Cv.Mat())
-                using (var gradientMagnitude = new Cv.Mat())
+                using (var closeKernel = Cv.Cv2.GetStructuringElement(Cv.MorphShapes.Ellipse, new Cv.Size(3, 3)))
+                using (var thresholdMap = new Cv.Mat())
+                using (var closedMap = new Cv.Mat())
                 {
                     Stopwatch preview = Stopwatch.StartNew();
                     Bitmap previewBitmap = CreateObjectDetectionDefectPreviewBitmap(gray);
@@ -561,288 +576,128 @@ namespace IntegratedImageProcessingApp.Forms
                         (int)Math.Round(point.X - crop.X), (int)Math.Round(point.Y - crop.Y))).ToArray();
                     Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
                     Cv.Cv2.Erode(polygonMask, textureMask, erosionKernel, iterations: 1);
+
                     Stopwatch textureCalculation = Stopwatch.StartNew();
-                    Cv.Cv2.Sobel(gray, gradientX, Cv.MatType.CV_32FC1, 1, 0, 3);
-                    Cv.Cv2.Sobel(gray, gradientY, Cv.MatType.CV_32FC1, 0, 1, 3);
-                    Cv.Cv2.Magnitude(gradientX, gradientY, gradientMagnitude);
+                    Cv.Cv2.GaussianBlur(gray, localMean, new Cv.Size(9, 9), 0);
+                    Cv.Cv2.Subtract(localMean, gray, darkResponse);
+                    Cv.Cv2.Threshold(darkResponse, darkResponse, 3, 255, Cv.ThresholdTypes.Binary);
 
                     int columns = (crop.Width + tileSize - 1) / tileSize;
                     int rows = (crop.Height + tileSize - 1) / tileSize;
                     if (columns < 3 || rows < 3) return;
                     int tileCount = rows * columns;
                     Interlocked.Add(ref scannedTiles, tileCount);
-                    var tileActivity = new float[tileCount];
-                    var tileOrientationCos = new float[tileCount];
-                    var tileOrientationSin = new float[tileCount];
-                    var tileDirectionalSupport = new float[tileCount];
-                    var tilePatternUniformRatio = new float[tileCount];
-                    var tilePatternTransitionMean = new float[tileCount];
+                    var tileDarkDensity = new float[tileCount];
                     var tileValidPixelCounts = new int[tileCount];
                     var validTiles = new bool[tileCount];
-                    using (var activityMap = new Cv.Mat(rows, columns, Cv.MatType.CV_32FC1, Cv.Scalar.All(0)))
-                    using (var validMap = new Cv.Mat(rows, columns, Cv.MatType.CV_32FC1, Cv.Scalar.All(0)))
-                    using (var localActivity = new Cv.Mat())
-                    using (var localWeight = new Cv.Mat())
-                    using (var thresholdMap = new Cv.Mat(rows, columns, Cv.MatType.CV_8UC1, Cv.Scalar.All(0)))
+                    byte* response = (byte*)darkResponse.Data.ToPointer();
+                    byte* mask = (byte*)textureMask.Data.ToPointer();
+                    long responseStep = darkResponse.Step();
+                    long maskStep = textureMask.Step();
+                    var validIndices = new List<int>();
+                    for (int tileY = 0; tileY < rows; tileY++)
                     {
-                        float* gradient = (float*)gradientMagnitude.Data.ToPointer();
-                        float* gradientXData = (float*)gradientX.Data.ToPointer();
-                        float* gradientYData = (float*)gradientY.Data.ToPointer();
-                        byte* grayData = (byte*)gray.Data.ToPointer();
-                        byte* mask = (byte*)textureMask.Data.ToPointer();
-                        float* activity = (float*)activityMap.Data.ToPointer();
-                        float* valid = (float*)validMap.Data.ToPointer();
-                        long gradientStep = gradientMagnitude.Step() / sizeof(float);
-                        long gradientXStep = gradientX.Step() / sizeof(float);
-                        long gradientYStep = gradientY.Step() / sizeof(float);
-                        long grayStep = gray.Step();
-                        long maskStep = textureMask.Step();
-                        long activityStep = activityMap.Step() / sizeof(float);
-                        long validStep = validMap.Step() / sizeof(float);
-                        for (int tileY = 0; tileY < rows; tileY++)
+                        int y0 = tileY * tileSize;
+                        int y1 = Math.Min(crop.Height, y0 + tileSize);
+                        for (int tileX = 0; tileX < columns; tileX++)
                         {
-                            int y0 = tileY * tileSize;
-                            int y1 = Math.Min(crop.Height, y0 + tileSize);
-                            for (int tileX = 0; tileX < columns; tileX++)
+                            int x0 = tileX * tileSize;
+                            int x1 = Math.Min(crop.Width, x0 + tileSize);
+                            double densitySum = 0;
+                            int count = 0;
+                            int tileArea = (x1 - x0) * (y1 - y0);
+                            for (int y = y0; y < y1; y++)
                             {
-                                int x0 = tileX * tileSize;
-                                int x1 = Math.Min(crop.Width, x0 + tileSize);
-                                double sum = 0;
-                                // Doubled-angle gradient moments compare texture axes without treating opposite edges as different directions.
-                                double orientationCos = 0;
-                                double orientationSin = 0;
-                                double orientationEnergy = 0;
-                                double transitionSum = 0;
-                                int uniformPatternCount = 0;
-                                int patternPixelCount = 0;
-                                int count = 0;
-                                int tileArea = (x1 - x0) * (y1 - y0);
-                                for (int y = y0; y < y1; y++)
+                                byte* maskRow = mask + ((long)y * maskStep);
+                                byte* responseRow = response + ((long)y * responseStep);
+                                for (int x = x0; x < x1; x++)
                                 {
-                                    byte* maskRow = mask + ((long)y * maskStep);
-                                    float* gradientXRow = gradientXData + ((long)y * gradientXStep);
-                                    float* gradientYRow = gradientYData + ((long)y * gradientYStep);
-                                    float* gradientRow = gradient + ((long)y * gradientStep);
-                                    byte* grayRow = grayData + ((long)y * grayStep);
-                                    byte* grayAbove = y > 0 ? grayData + ((long)(y - 1) * grayStep) : null;
-                                    byte* grayBelow = y + 1 < crop.Height ? grayData + ((long)(y + 1) * grayStep) : null;
-                                    for (int x = x0; x < x1; x++)
-                                    {
-                                        if (maskRow[x] == 0) continue;
-                                        float magnitude = gradientRow[x];
-                                        double gx = gradientXRow[x];
-                                        double gy = gradientYRow[x];
-                                        sum += magnitude;
-                                        count++;
-                                        if (x > 0 && x + 1 < crop.Width && grayAbove != null && grayBelow != null)
-                                        {
-                                            byte center = grayRow[x];
-                                            int patternCode = 0;
-                                            if (grayAbove[x - 1] >= center) patternCode |= 1 << 0;
-                                            if (grayAbove[x] >= center) patternCode |= 1 << 1;
-                                            if (grayAbove[x + 1] >= center) patternCode |= 1 << 2;
-                                            if (grayRow[x + 1] >= center) patternCode |= 1 << 3;
-                                            if (grayBelow[x + 1] >= center) patternCode |= 1 << 4;
-                                            if (grayBelow[x] >= center) patternCode |= 1 << 5;
-                                            if (grayBelow[x - 1] >= center) patternCode |= 1 << 6;
-                                            if (grayRow[x - 1] >= center) patternCode |= 1 << 7;
-                                            int transitionBits = (patternCode ^ ((patternCode << 1) | (patternCode >> 7))) & 0xFF;
-                                            transitionBits -= (transitionBits >> 1) & 0x55;
-                                            transitionBits = (transitionBits & 0x33) + ((transitionBits >> 2) & 0x33);
-                                            int transitions = (transitionBits + (transitionBits >> 4)) & 0x0F;
-                                            transitionSum += transitions;
-                                            if (transitions <= 2) uniformPatternCount++;
-                                            patternPixelCount++;
-                                        }
-                                        if (magnitude <= 0.0001f) continue;
-                                        orientationCos += gx * gx - gy * gy;
-                                        orientationSin += 2 * gx * gy;
-                                        orientationEnergy += gx * gx + gy * gy;
-                                    }
+                                    if (maskRow[x] == 0) continue;
+                                    if (responseRow[x] != 0) densitySum++;
+                                    count++;
                                 }
-                                int index = tileY * columns + tileX;
-                                if (count < Math.Max(4, tileArea * 0.35)) continue;
-                                float mean = (float)(sum / count);
-                                if (orientationEnergy > 0)
-                                {
-                                    tileOrientationCos[index] = (float)(orientationCos / orientationEnergy);
-                                    tileOrientationSin[index] = (float)(orientationSin / orientationEnergy);
-                                }
-                                tileActivity[index] = mean;
-                                if (patternPixelCount > 0)
-                                {
-                                    tilePatternUniformRatio[index] = (float)uniformPatternCount / patternPixelCount;
-                                    tilePatternTransitionMean[index] = (float)(transitionSum / patternPixelCount);
-                                }
-                                tileValidPixelCounts[index] = count;
-                                validTiles[index] = true;
-                                activity[tileY * activityStep + tileX] = mean;
-                                valid[tileY * validStep + tileX] = 1;
                             }
+                            int index = tileY * columns + tileX;
+                            if (count < Math.Max(4, tileArea * 0.35)) continue;
+                            tileDarkDensity[index] = (float)(densitySum / count);
+                            tileValidPixelCounts[index] = count;
+                            validTiles[index] = true;
+                            validIndices.Add(index);
                         }
+                    }
+                    if (validIndices.Count < 8) return;
 
-                        Cv.Cv2.GaussianBlur(activityMap, localActivity, new Cv.Size(9, 9), 0);
-                        Cv.Cv2.GaussianBlur(validMap, localWeight, new Cv.Size(9, 9), 0);
-                        float* local = (float*)localActivity.Data.ToPointer();
-                        float* weight = (float*)localWeight.Data.ToPointer();
-                        byte* binary = (byte*)thresholdMap.Data.ToPointer();
-                        long localStep = localActivity.Step() / sizeof(float);
-                        long weightStep = localWeight.Step() / sizeof(float);
-                        long binaryStep = thresholdMap.Step();
-                        var residuals = new List<double>();
-                        var residualByTile = new float[tileCount];
-                        var validIndices = new List<int>();
-                        for (int tileY = 0; tileY < rows; tileY++)
+                    List<ObjectDetectionLineTextureCandidate> candidates = FindObjectDetectionLineTextureCandidates(
+                        tileDarkDensity, validTiles, rows, columns, tileSize,
+                        parameter.DefectLineTextureSensitivity);
+                    thresholdMap.Create(rows, columns, Cv.MatType.CV_8UC1);
+                    thresholdMap.SetTo(Cv.Scalar.Black);
+                    byte* anomalyData = (byte*)thresholdMap.Data.ToPointer();
+                    long anomalyStep = thresholdMap.Step();
+                    var scores = new double[tileCount];
+                    double sensitivity = Math.Max(0.5, Math.Min(8.0, parameter.DefectLineTextureSensitivity));
+                    double lineHalfWidth = Math.Max(1.0, 6.0 / tileSize);
+                    double flankOffset = Math.Max(3.0, 24.0 / tileSize);
+                    foreach (ObjectDetectionLineTextureCandidate candidate in candidates)
+                    {
+                        double cosine = Math.Cos(candidate.AngleRadians);
+                        double sine = Math.Sin(candidate.AngleRadians);
+                        double localThreshold = Math.Max(
+                            0.005,
+                            candidate.Contrast * Math.Max(0.25, Math.Min(0.65, 0.20 + sensitivity * 0.045)));
+                        for (int index = 0; index < tileCount; index++)
                         {
-                            for (int tileX = 0; tileX < columns; tileX++)
-                            {
-                                int index = tileY * columns + tileX;
-                                if (!validTiles[index]) continue;
-                                float localCoverage = weight[tileY * weightStep + tileX];
-                                float background = localCoverage > 0.01f
-                                    ? local[tileY * localStep + tileX] / localCoverage
-                                    : tileActivity[index];
-                                float residual = Math.Abs(tileActivity[index] - background);
-                                residualByTile[index] = residual;
-                                residuals.Add(residual);
-                                validIndices.Add(index);
-                            }
-                        }
-                        if (residuals.Count < 8) return;
-
-                        const int directionSupportRadius = 2;
-                        foreach (int index in validIndices)
-                        {
+                            if (!validTiles[index]) continue;
                             int tileX = index % columns;
                             int tileY = index / columns;
-                            double directionCos = 0;
-                            double directionSin = 0;
-                            double directionEnergy = 0;
-                            int directionNeighborCount = 0;
-                            for (int neighborY = Math.Max(0, tileY - directionSupportRadius);
-                                neighborY <= Math.Min(rows - 1, tileY + directionSupportRadius); neighborY++)
+                            double rho = (tileX + 0.5) * cosine + (tileY + 0.5) * sine;
+                            if (Math.Abs(rho - candidate.RhoTiles) > lineHalfWidth) continue;
+
+                            double localContrast;
+                            if (!TryCalculateObjectDetectionLineTextureLocalContrast(
+                                tileDarkDensity, validTiles, columns, rows,
+                                tileX, tileY, cosine, sine, flankOffset, out localContrast)) continue;
+                            if (localContrast <= 0) continue;
+                            double score = candidate.Score * localContrast / Math.Max(0.08, candidate.Contrast);
+                            if (score <= scores[index]) continue;
+                            scores[index] = score;
+                            if (localContrast >= localThreshold)
                             {
-                                for (int neighborX = Math.Max(0, tileX - directionSupportRadius);
-                                    neighborX <= Math.Min(columns - 1, tileX + directionSupportRadius); neighborX++)
-                                {
-                                    if (neighborX == tileX && neighborY == tileY) continue;
-                                    int neighborIndex = neighborY * columns + neighborX;
-                                    if (!validTiles[neighborIndex]) continue;
-                                    double neighborCos = tileOrientationCos[neighborIndex];
-                                    double neighborSin = tileOrientationSin[neighborIndex];
-                                    double neighborEnergy = Math.Sqrt(neighborCos * neighborCos + neighborSin * neighborSin);
-                                    if (neighborEnergy < 0.04) continue;
-                                    directionCos += neighborCos;
-                                    directionSin += neighborSin;
-                                    directionEnergy += neighborEnergy;
-                                    directionNeighborCount++;
-                                }
-                            }
-                            if (directionNeighborCount >= 2 && directionEnergy > 0)
-                            {
-                                tileDirectionalSupport[index] = (float)(Math.Sqrt(
-                                    directionCos * directionCos + directionSin * directionSin) / directionEnergy);
+                                byte* row = anomalyData + ((long)tileY * anomalyStep);
+                                row[tileX] = 255;
                             }
                         }
+                    }
 
-                        double majorityOrientationCos = CalculateObjectDetectionFrequencyMedian(
-                            validIndices.Select(index => (double)tileOrientationCos[index]).ToList());
-                        double majorityOrientationSin = CalculateObjectDetectionFrequencyMedian(
-                            validIndices.Select(index => (double)tileOrientationSin[index]).ToList());
-                        var orientationDistances = new List<double>(validIndices.Count);
-                        var orientationDistanceByTile = new float[tileCount];
-                        foreach (int index in validIndices)
-                        {
-                            double deltaCos = tileOrientationCos[index] - majorityOrientationCos;
-                            double deltaSin = tileOrientationSin[index] - majorityOrientationSin;
-                            double distance = Math.Sqrt(deltaCos * deltaCos + deltaSin * deltaSin);
-                            orientationDistanceByTile[index] = (float)distance;
-                            orientationDistances.Add(distance);
-                        }
-
-                        double median = CalculateObjectDetectionFrequencyMedian(residuals);
-                        double mad = CalculateObjectDetectionFrequencyMedian(
-                            residuals.Select(value => Math.Abs(value - median)).ToList());
-                        double activityScale = Math.Max(0.25, mad * 1.4826);
-                        double orientationMedian = CalculateObjectDetectionFrequencyMedian(orientationDistances);
-                        double orientationMad = CalculateObjectDetectionFrequencyMedian(
-                            orientationDistances.Select(value => Math.Abs(value - orientationMedian)).ToList());
-                        double orientationScale = Math.Max(0.025, orientationMad * 1.4826);
-                        var patternUniformRatios = validIndices
-                            .Select(index => (double)tilePatternUniformRatio[index]).ToList();
-                        double patternUniformMedian = CalculateObjectDetectionFrequencyMedian(patternUniformRatios);
-                        double patternUniformMad = CalculateObjectDetectionFrequencyMedian(
-                            patternUniformRatios.Select(value => Math.Abs(value - patternUniformMedian)).ToList());
-                        double patternUniformScale = Math.Max(0.04, patternUniformMad * 1.4826);
-                        var patternTransitions = validIndices
-                            .Select(index => (double)tilePatternTransitionMean[index]).ToList();
-                        double patternTransitionMedian = CalculateObjectDetectionFrequencyMedian(patternTransitions);
-                        double patternTransitionMad = CalculateObjectDetectionFrequencyMedian(
-                            patternTransitions.Select(value => Math.Abs(value - patternTransitionMedian)).ToList());
-                        double patternTransitionScale = Math.Max(0.75, patternTransitionMad * 1.4826);
-                        var directionalSupports = validIndices
-                            .Select(index => (double)tileDirectionalSupport[index]).ToList();
-                        double directionalSupportMedian = CalculateObjectDetectionFrequencyMedian(directionalSupports);
-                        double directionalSupportMad = CalculateObjectDetectionFrequencyMedian(
-                            directionalSupports.Select(value => Math.Abs(value - directionalSupportMedian)).ToList());
-                        double directionalSupportScale = Math.Max(0.05, directionalSupportMad * 1.4826);
-                        var scores = new double[tileCount];
+                    Cv.Cv2.MorphologyEx(thresholdMap, closedMap, Cv.MorphTypes.Close, closeKernel);
+                    using (var labels = new Cv.Mat())
+                    using (var stats = new Cv.Mat())
+                    using (var centroids = new Cv.Mat())
+                    {
+                        int componentCount = Cv.Cv2.ConnectedComponentsWithStats(
+                            closedMap,
+                            labels,
+                            stats,
+                            centroids,
+                            Cv.PixelConnectivity.Connectivity8,
+                            Cv.MatType.CV_32SC1);
+                        var componentTileCounts = new int[componentCount];
+                        var componentPixelCounts = new long[componentCount];
+                        var componentScoreSums = new double[componentCount];
+                        int* labelData = (int*)labels.Data.ToPointer();
+                        long labelStep = labels.Step() / sizeof(int);
                         for (int tileY = 0; tileY < rows; tileY++)
                         {
-                            byte* binaryRow = binary + ((long)tileY * binaryStep);
+                            int* labelRow = labelData + ((long)tileY * labelStep);
                             for (int tileX = 0; tileX < columns; tileX++)
                             {
                                 int index = tileY * columns + tileX;
-                                if (!validTiles[index]) continue;
-                                double activityScore = Math.Max(0, residualByTile[index] - median) / activityScale;
-                                double orientationScore = Math.Max(0, orientationDistanceByTile[index] - orientationMedian) /
-                                    orientationScale;
-                                double patternUniformScore = Math.Abs(tilePatternUniformRatio[index] - patternUniformMedian) /
-                                    patternUniformScale;
-                                double patternTransitionScore = Math.Abs(tilePatternTransitionMean[index] - patternTransitionMedian) /
-                                    patternTransitionScale;
-                                double patternScore = Math.Max(patternUniformScore, patternTransitionScore);
-                                double directionalSupportScore = Math.Max(0,
-                                    tileDirectionalSupport[index] - directionalSupportMedian) / directionalSupportScale;
-                                // Local speckle is suppressed unless several features and neighboring directions agree.
-                                double strongest = 0;
-                                double secondStrongest = 0;
-                                double contributionLimit = parameter.DefectLineTextureSensitivity * 1.5;
-                                double activityContribution = Math.Min(activityScore, contributionLimit);
-                                double orientationContribution = Math.Min(orientationScore, contributionLimit);
-                                double patternContribution = Math.Min(patternScore, contributionLimit);
-                                double directionContribution = Math.Min(directionalSupportScore, contributionLimit);
-                                if (activityContribution >= strongest)
-                                {
-                                    secondStrongest = strongest;
-                                    strongest = activityContribution;
-                                }
-                                else if (activityContribution > secondStrongest) secondStrongest = activityContribution;
-                                if (orientationContribution >= strongest)
-                                {
-                                    secondStrongest = strongest;
-                                    strongest = orientationContribution;
-                                }
-                                else if (orientationContribution > secondStrongest) secondStrongest = orientationContribution;
-                                if (patternContribution >= strongest)
-                                {
-                                    secondStrongest = strongest;
-                                    strongest = patternContribution;
-                                }
-                                else if (patternContribution > secondStrongest) secondStrongest = patternContribution;
-                                if (directionContribution >= strongest)
-                                {
-                                    secondStrongest = strongest;
-                                    strongest = directionContribution;
-                                }
-                                else if (directionContribution > secondStrongest) secondStrongest = directionContribution;
-                                double score = strongest * 0.65 + secondStrongest * 0.35;
-                                scores[index] = score;
-                                if (score >= parameter.DefectLineTextureSensitivity)
-                                {
-                                    binaryRow[tileX] = 255;
-                                }
-                                if (score >= parameter.DefectLineTextureSensitivity * 0.45)
+                                int label = labelRow[tileX];
+                                if (label <= 0 || !validTiles[index]) continue;
+                                componentTileCounts[label]++;
+                                componentPixelCounts[label] += tileValidPixelCounts[index];
+                                componentScoreSums[label] += scores[index];
+                                if (scores[index] >= Math.Max(1.0, sensitivity * 0.45))
                                 {
                                     cells.Add(new ObjectDetectionLineTextureCell
                                     {
@@ -850,71 +705,40 @@ namespace IntegratedImageProcessingApp.Forms
                                         Bounds = new Rectangle(crop.X + tileX * tileSize, crop.Y + tileY * tileSize,
                                             Math.Min(tileSize, crop.Width - tileX * tileSize),
                                             Math.Min(tileSize, crop.Height - tileY * tileSize)),
-                                        Score = score,
-                                        IsAnomaly = score >= parameter.DefectLineTextureSensitivity
+                                        Score = scores[index],
+                                        IsAnomaly = true
                                     });
                                 }
                             }
                         }
 
-                        using (var labels = new Cv.Mat())
-                        using (var stats = new Cv.Mat())
-                        using (var centroids = new Cv.Mat())
+                        long minimumArea = Math.Max(0, parameter.DefectLineTextureMinimumAreaPixels);
+                        for (int label = 1; label < componentCount; label++)
                         {
-                            int componentCount = Cv.Cv2.ConnectedComponentsWithStats(
-                                thresholdMap,
-                                labels,
-                                stats,
-                                centroids,
-                                Cv.PixelConnectivity.Connectivity8,
-                                Cv.MatType.CV_32SC1);
-                            var componentTileCounts = new int[componentCount];
-                            var componentPixelCounts = new long[componentCount];
-                            var componentScoreSums = new double[componentCount];
-                            int* labelData = (int*)labels.Data.ToPointer();
-                            long labelStep = labels.Step() / sizeof(int);
-                            for (int tileY = 0; tileY < rows; tileY++)
+                            long areaPixels = componentPixelCounts[label];
+                            if (componentTileCounts[label] == 0 || areaPixels < minimumArea) continue;
+                            int tileLeft = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
+                            int tileTop = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Top);
+                            int componentWidth = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Width);
+                            int componentHeight = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Height);
+                            Rectangle bounds = Rectangle.Intersect(
+                                new Rectangle(crop.X + tileLeft * tileSize, crop.Y + tileTop * tileSize,
+                                    componentWidth * tileSize, componentHeight * tileSize), crop);
+                            regions.Add(new ObjectDetectionTextureAnomalyRegion
                             {
-                                int* labelRow = labelData + ((long)tileY * labelStep);
-                                for (int tileX = 0; tileX < columns; tileX++)
-                                {
-                                    int index = tileY * columns + tileX;
-                                    int label = labelRow[tileX];
-                                    if (label <= 0 || !validTiles[index]) continue;
-                                    componentTileCounts[label]++;
-                                    componentPixelCounts[label] += tileValidPixelCounts[index];
-                                    componentScoreSums[label] += scores[index];
-                                }
-                            }
-
-                            long minimumArea = Math.Max(0, parameter.DefectLineTextureMinimumAreaPixels);
-                            for (int label = 1; label < componentCount; label++)
-                            {
-                                long areaPixels = componentPixelCounts[label];
-                                if (componentTileCounts[label] == 0 || areaPixels < minimumArea) continue;
-                                int tileLeft = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Left);
-                                int tileTop = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Top);
-                                int componentWidth = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Width);
-                                int componentHeight = stats.At<int>(label, (int)Cv.ConnectedComponentsTypes.Height);
-                                Rectangle bounds = Rectangle.Intersect(
-                                    new Rectangle(crop.X + tileLeft * tileSize, crop.Y + tileTop * tileSize,
-                                        componentWidth * tileSize, componentHeight * tileSize), crop);
-                                regions.Add(new ObjectDetectionTextureAnomalyRegion
-                                {
-                                    ObjectNumber = detected.Number,
-                                    Bounds = bounds,
-                                    Score = componentScoreSums[label] / componentTileCounts[label],
-                                    TileCount = componentTileCounts[label],
-                                    AreaPixels = areaPixels,
-                                    IsAnomaly = true
-                                });
-                            }
+                                ObjectNumber = detected.Number,
+                                Bounds = bounds,
+                                Score = componentScoreSums[label] / componentTileCounts[label],
+                                TileCount = componentTileCounts[label],
+                                AreaPixels = areaPixels,
+                                IsAnomaly = true
+                            });
                         }
                     }
                     textureCalculation.Stop();
                     Interlocked.Add(ref textureTicks, textureCalculation.ElapsedTicks);
                 }
-                progress?.Report("紋理異常掃描 ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
+                progress?.Report("紋理暗紋密度掃描 ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
                     objects.Count.ToString(CultureInfo.CurrentCulture) + " 完成... ");
             };
 
@@ -972,6 +796,234 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
             return result;
+        }
+
+        private static List<ObjectDetectionLineTextureCandidate> FindObjectDetectionLineTextureCandidates(
+            float[] density,
+            bool[] validTiles,
+            int rows,
+            int columns,
+            int tileSize,
+            double sensitivity)
+        {
+            var candidates = new List<ObjectDetectionLineTextureCandidate>();
+            const int rhoBinsPerTile = 2;
+            const int centerRadiusBins = 1;
+            const double angleStepDegrees = 0.5;
+            int rhoOffset = (rows + columns + 8) * rhoBinsPerTile;
+            int rhoBinCount = rhoOffset * 2 + 1;
+            double candidateThreshold = 3.5 + Math.Max(0.5, Math.Min(8.0, sensitivity));
+            for (int angleIndex = 0; angleIndex < 180.0 / angleStepDegrees; angleIndex++)
+            {
+                double angleDegrees = angleIndex * angleStepDegrees;
+                double angleRadians = angleDegrees * Math.PI / 180.0;
+                double cosine = Math.Cos(angleRadians);
+                double sine = Math.Sin(angleRadians);
+                var sums = new double[rhoBinCount];
+                var counts = new double[rhoBinCount];
+                for (int tileY = 0; tileY < rows; tileY++)
+                {
+                    for (int tileX = 0; tileX < columns; tileX++)
+                    {
+                        int tileIndex = tileY * columns + tileX;
+                        if (!validTiles[tileIndex]) continue;
+                        double rho = (tileX + 0.5) * cosine + (tileY + 0.5) * sine;
+                        int bin = (int)Math.Round(rho * rhoBinsPerTile) + rhoOffset;
+                        if (bin < 0 || bin >= rhoBinCount) continue;
+                        sums[bin] += density[tileIndex];
+                        counts[bin] += 1;
+                    }
+                }
+
+                var contrasts = new List<double>();
+                var validBins = new List<int>();
+                var centerCounts = new double[rhoBinCount];
+                var contrastByBin = new double[rhoBinCount];
+                var countByBin = new double[rhoBinCount];
+                int flankOffset = Math.Max(3,
+                    (int)Math.Round((24.0 / tileSize) * rhoBinsPerTile));
+                for (int bin = flankOffset + centerRadiusBins;
+                    bin < rhoBinCount - flankOffset - centerRadiusBins; bin++)
+                {
+                    double centerSum = 0;
+                    double centerCount = 0;
+                    double leftSum = 0;
+                    double leftCount = 0;
+                    double rightSum = 0;
+                    double rightCount = 0;
+                    for (int offset = -centerRadiusBins; offset <= centerRadiusBins; offset++)
+                    {
+                        centerSum += sums[bin + offset];
+                        centerCount += counts[bin + offset];
+                        leftSum += sums[bin - flankOffset + offset];
+                        leftCount += counts[bin - flankOffset + offset];
+                        rightSum += sums[bin + flankOffset + offset];
+                        rightCount += counts[bin + flankOffset + offset];
+                    }
+                    centerCount /= (centerRadiusBins * 2 + 1);
+                    leftCount /= (centerRadiusBins * 2 + 1);
+                    rightCount /= (centerRadiusBins * 2 + 1);
+                    if (centerCount < 8 || leftCount < centerCount * 0.65 || rightCount < centerCount * 0.65) continue;
+                    double centerMean = centerSum / Math.Max(1, centerCount * (centerRadiusBins * 2 + 1));
+                    double leftMean = leftSum / Math.Max(1, leftCount * (centerRadiusBins * 2 + 1));
+                    double rightMean = rightSum / Math.Max(1, rightCount * (centerRadiusBins * 2 + 1));
+                    double contrast = centerMean - (leftMean + rightMean) * 0.5;
+                    centerCounts[bin] = centerCount;
+                    contrastByBin[bin] = contrast;
+                    countByBin[bin] = centerCount;
+                    contrasts.Add(contrast);
+                    validBins.Add(bin);
+                }
+                if (validBins.Count < 8) continue;
+
+                double median = CalculateObjectDetectionFrequencyMedian(contrasts);
+                double mad = CalculateObjectDetectionFrequencyMedian(
+                    contrasts.Select(value => Math.Abs(value - median)).ToList());
+                double scale = Math.Max(0.002, mad * 1.4826);
+                double maximumSupport = validBins.Max(bin => centerCounts[bin]);
+                double minimumSupport = Math.Max(8, maximumSupport * 0.20);
+                foreach (int bin in validBins)
+                {
+                    double support = countByBin[bin];
+                    if (support < minimumSupport) continue;
+                    double score = Math.Max(0, contrastByBin[bin] - median) / scale *
+                        Math.Sqrt(Math.Min(1.0, support / Math.Max(1.0, maximumSupport)));
+                    if (score < candidateThreshold) continue;
+                    bool localMaximum = true;
+                    for (int offset = -2; offset <= 2; offset++)
+                    {
+                        if (offset == 0) continue;
+                        int neighborBin = bin + offset;
+                        if (neighborBin >= 0 && neighborBin < rhoBinCount &&
+                            contrastByBin[neighborBin] > contrastByBin[bin])
+                        {
+                            localMaximum = false;
+                            break;
+                        }
+                    }
+                    if (!localMaximum) continue;
+                    candidates.Add(new ObjectDetectionLineTextureCandidate
+                    {
+                        AngleDegrees = angleDegrees,
+                        AngleRadians = angleRadians,
+                        RhoTiles = (bin - rhoOffset) / (double)rhoBinsPerTile,
+                        Score = score,
+                        Contrast = contrastByBin[bin]
+                    });
+                }
+            }
+
+            candidates.Sort((first, second) => second.Score.CompareTo(first.Score));
+            var selected = new List<ObjectDetectionLineTextureCandidate>();
+            foreach (ObjectDetectionLineTextureCandidate candidate in candidates)
+            {
+                bool duplicate = selected.Any(existing =>
+                {
+                    double difference = Math.Abs(candidate.AngleDegrees - existing.AngleDegrees);
+                    difference = Math.Min(difference, 180.0 - difference);
+                    return difference <= 2.0 && Math.Abs(candidate.RhoTiles - existing.RhoTiles) <= 2.5;
+                });
+                if (duplicate) continue;
+                selected.Add(candidate);
+                if (selected.Count >= 24) break;
+            }
+            return selected;
+        }
+
+        private static bool TryCalculateObjectDetectionLineTextureLocalContrast(
+            float[] density,
+            bool[] validTiles,
+            int columns,
+            int rows,
+            int tileX,
+            int tileY,
+            double cosine,
+            double sine,
+            double flankOffset,
+            out double contrast)
+        {
+            double centerSum = 0;
+            double leftSum = 0;
+            double rightSum = 0;
+            int sampleCount = 0;
+            double tangentX = -sine;
+            double tangentY = cosine;
+            for (int step = -2; step <= 2; step++)
+            {
+                double centerX = tileX + tangentX * step;
+                double centerY = tileY + tangentY * step;
+                float center;
+                float left;
+                float right;
+                if (!TrySampleObjectDetectionLineTextureGrid(
+                    density, validTiles, columns, rows, centerX, centerY, out center) ||
+                    !TrySampleObjectDetectionLineTextureGrid(
+                    density, validTiles, columns, rows,
+                    centerX - cosine * flankOffset, centerY - sine * flankOffset, out left) ||
+                    !TrySampleObjectDetectionLineTextureGrid(
+                    density, validTiles, columns, rows,
+                    centerX + cosine * flankOffset, centerY + sine * flankOffset, out right))
+                {
+                    continue;
+                }
+                centerSum += center;
+                leftSum += left;
+                rightSum += right;
+                sampleCount++;
+            }
+            contrast = 0;
+            if (sampleCount < 3) return false;
+            contrast = centerSum / sampleCount - (leftSum + rightSum) / (2.0 * sampleCount);
+            return true;
+        }
+
+        private static bool TrySampleObjectDetectionLineTextureGrid(
+            float[] values,
+            bool[] validTiles,
+            int columns,
+            int rows,
+            double x,
+            double y,
+            out float value)
+        {
+            value = 0;
+            if (x < 0 || y < 0 || x > columns - 1 || y > rows - 1) return false;
+            int x0 = (int)Math.Floor(x);
+            int y0 = (int)Math.Floor(y);
+            int x1 = Math.Min(columns - 1, x0 + 1);
+            int y1 = Math.Min(rows - 1, y0 + 1);
+            double fx = x - x0;
+            double fy = y - y0;
+            double weightedSum = 0;
+            double validWeight = 0;
+            AddObjectDetectionLineTextureSample(values, validTiles, columns, x0, y0,
+                (1 - fx) * (1 - fy), ref weightedSum, ref validWeight);
+            AddObjectDetectionLineTextureSample(values, validTiles, columns, x1, y0,
+                fx * (1 - fy), ref weightedSum, ref validWeight);
+            AddObjectDetectionLineTextureSample(values, validTiles, columns, x0, y1,
+                (1 - fx) * fy, ref weightedSum, ref validWeight);
+            AddObjectDetectionLineTextureSample(values, validTiles, columns, x1, y1,
+                fx * fy, ref weightedSum, ref validWeight);
+            if (validWeight < 0.65) return false;
+            value = (float)(weightedSum / validWeight);
+            return true;
+        }
+
+        private static void AddObjectDetectionLineTextureSample(
+            float[] values,
+            bool[] validTiles,
+            int columns,
+            int x,
+            int y,
+            double weight,
+            ref double weightedSum,
+            ref double validWeight)
+        {
+            if (weight <= 0) return;
+            int index = y * columns + x;
+            if (!validTiles[index]) return;
+            weightedSum += values[index] * weight;
+            validWeight += weight;
         }
 
         private string CreateObjectDetectionLineTextureSignature(
