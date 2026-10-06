@@ -180,7 +180,7 @@ namespace IntegratedImageProcessingApp.Forms
             var bar = new Panel
             {
                 Dock = DockStyle.Bottom,
-                Height = 118,
+                Height = 108,
                 Padding = new Padding(2, 2, 2, 2)
             };
             var layout = new TableLayoutPanel
@@ -557,7 +557,7 @@ namespace IntegratedImageProcessingApp.Forms
             var group = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = isFlatFieldCore ? 98 : 123,
+                Height = isFlatFieldCore ? 108 : 133,
                 Text = "影像來源與對比",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -726,7 +726,7 @@ namespace IntegratedImageProcessingApp.Forms
             var group = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 178,
+                Height = 190,
                 Text = "淡色缺陷增強",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -834,7 +834,7 @@ namespace IntegratedImageProcessingApp.Forms
             var group = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 91,
+                Height = 100,
                 Text = "暗部／亮部門檻",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -888,7 +888,7 @@ namespace IntegratedImageProcessingApp.Forms
             var group = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 112,
+                Height = 122,
                 Text = "MASK 侵蝕／膨脹",
                 Padding = new Padding(8, 16, 8, 4)
             };

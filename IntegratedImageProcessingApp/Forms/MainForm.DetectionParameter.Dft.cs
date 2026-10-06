@@ -68,13 +68,6 @@ namespace IntegratedImageProcessingApp.Forms
             new Dictionary<string, ObjectDetectionDftResult>(StringComparer.Ordinal);
 
         private CheckBox objectDetectionDftEnabledCheckBox;
-        private CheckBox objectDetectionDftContrastEnabledCheckBox;
-        private NumericUpDown objectDetectionDftContrastGainInput;
-        private ComboBox objectDetectionDftEnhancementMethodInput;
-        private NumericUpDown objectDetectionDftLocalBackgroundKernelInput;
-        private NumericUpDown objectDetectionDftLocalBackgroundGainInput;
-        private NumericUpDown objectDetectionDftClaheClipLimitInput;
-        private NumericUpDown objectDetectionDftClaheTileGridSizeInput;
         private NumericUpDown objectDetectionDftWindowSizeInput;
         private NumericUpDown objectDetectionDftMinimumPeriodInput;
         private NumericUpDown objectDetectionDftMaximumPeriodInput;
@@ -103,7 +96,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Top,
                 Height = 48,
                 Padding = new Padding(8, 7, 8, 2),
-                Text = "分析來源：平場校正後灰階影像\r\n以局部 2D DFT 比較各方向頻譜能量，檢出方向性異常。",
+                Text = "分析來源：直接使用平場校正後灰階影像，不追加對比或淡色缺陷增強。\r\n以局部 2D DFT 比較各方向頻譜能量，檢出方向性異常。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true,
                 ForeColor = Color.FromArgb(55, 63, 76)
@@ -122,121 +115,6 @@ namespace IntegratedImageProcessingApp.Forms
                 UpdateObjectDetectionDftEnabled(parameter, objectDetectionDftEnabledCheckBox.Checked);
             };
             enabledPanel.Controls.Add(objectDetectionDftEnabledCheckBox);
-
-            var sourceGroup = new GroupBox
-            {
-                Dock = DockStyle.Top,
-                Height = 130,
-                Text = "影像來源與對比",
-                Padding = new Padding(8, 16, 8, 4)
-            };
-            var sourceLayout = CreateDefectCoreTable(4, 2);
-            sourceLayout.RowStyles.Clear();
-            for (int row = 0; row < 4; row++)
-            {
-                sourceLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
-            }
-            sourceLayout.Controls.Add(new Label
-            {
-                Dock = DockStyle.Fill,
-                Text = "平場校正後影像",
-                TextAlign = ContentAlignment.MiddleLeft
-            }, 0, 0);
-            sourceLayout.SetColumnSpan(sourceLayout.GetControlFromPosition(0, 0), 2);
-            objectDetectionDftContrastEnabledCheckBox = new CheckBox
-            {
-                AutoSize = true,
-                Text = "啟用對比調整",
-                Checked = parameter.DefectDftContrastEnabled,
-                Anchor = AnchorStyles.Left,
-                Margin = new Padding(0, 2, 0, 0)
-            };
-            sourceLayout.Controls.Add(objectDetectionDftContrastEnabledCheckBox, 0, 1);
-            sourceLayout.SetColumnSpan(objectDetectionDftContrastEnabledCheckBox, 2);
-            sourceLayout.Controls.Add(CreateDefectCoreLabel("對比倍率"), 0, 2);
-            objectDetectionDftContrastGainInput = new NumericUpDown
-            {
-                Dock = DockStyle.Fill,
-                Minimum = 0.1m,
-                Maximum = 5.0m,
-                Increment = 0.05m,
-                DecimalPlaces = 2,
-                Value = (decimal)Math.Max(0.1, Math.Min(5.0, parameter.DefectDftContrastGain))
-            };
-            sourceLayout.Controls.Add(objectDetectionDftContrastGainInput, 1, 2);
-            sourceGroup.Controls.Add(sourceLayout);
-
-            var enhancementGroup = new GroupBox
-            {
-                Dock = DockStyle.Top,
-                Height = 155,
-                Text = "淡色缺陷增強",
-                Padding = new Padding(8, 16, 8, 4)
-            };
-            var enhancementLayout = CreateDefectCoreTable(5, 2);
-            enhancementLayout.RowStyles.Clear();
-            for (int row = 0; row < 5; row++)
-            {
-                enhancementLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-            }
-            objectDetectionDftEnhancementMethodInput = new ComboBox
-            {
-                Dock = DockStyle.Fill,
-                DropDownStyle = ComboBoxStyle.DropDownList
-            };
-            objectDetectionDftEnhancementMethodInput.Items.Add(new DefectCoreEnhancementOption("不處理", "None"));
-            objectDetectionDftEnhancementMethodInput.Items.Add(new DefectCoreEnhancementOption("局部背景差異", "LocalBackgroundDifference"));
-            objectDetectionDftEnhancementMethodInput.Items.Add(new DefectCoreEnhancementOption("CLAHE", "CLAHE"));
-            SelectDftEnhancementMethod(parameter.DefectDftEnhancementMethod);
-            enhancementLayout.Controls.Add(CreateDefectCoreLabel("處理方式"), 0, 0);
-            enhancementLayout.Controls.Add(objectDetectionDftEnhancementMethodInput, 1, 0);
-            enhancementLayout.Controls.Add(CreateDefectCoreLabel("局部背景核心 / 增益"), 0, 1);
-            var localSettings = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                WrapContents = false,
-                Margin = Padding.Empty,
-                Padding = Padding.Empty
-            };
-            objectDetectionDftLocalBackgroundKernelInput = CreateDftNumeric(3, 501, 2, 31, 0);
-            objectDetectionDftLocalBackgroundGainInput = CreateDftNumeric(0.1m, 10m, 0.1m, 1.5m, 2);
-            localSettings.Controls.Add(objectDetectionDftLocalBackgroundKernelInput);
-            localSettings.Controls.Add(new Label { AutoSize = true, Text = " px  ", Padding = new Padding(0, 7, 0, 0) });
-            localSettings.Controls.Add(objectDetectionDftLocalBackgroundGainInput);
-            enhancementLayout.Controls.Add(localSettings, 1, 1);
-            enhancementLayout.Controls.Add(CreateDefectCoreLabel("CLAHE Clip / 格數"), 0, 2);
-            var claheSettings = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                WrapContents = false,
-                Margin = Padding.Empty,
-                Padding = Padding.Empty
-            };
-            objectDetectionDftClaheClipLimitInput = CreateDftNumeric(0.1m, 40m, 0.1m, 2m, 2);
-            objectDetectionDftClaheTileGridSizeInput = CreateDftNumeric(2, 32, 1, 8, 0);
-            claheSettings.Controls.Add(objectDetectionDftClaheClipLimitInput);
-            claheSettings.Controls.Add(new Label { AutoSize = true, Text = " / ", Padding = new Padding(0, 7, 0, 0) });
-            claheSettings.Controls.Add(objectDetectionDftClaheTileGridSizeInput);
-            enhancementLayout.Controls.Add(claheSettings, 1, 2);
-            var enhancementHint = new Label
-            {
-                Dock = DockStyle.Fill,
-                Text = "前處理只作用於 DFT，不會改變其他條件影像。",
-                TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = Color.FromArgb(75, 83, 95)
-            };
-            enhancementLayout.Controls.Add(enhancementHint, 0, 3);
-            enhancementLayout.SetColumnSpan(enhancementHint, 2);
-            enhancementLayout.Controls.Add(new Label
-            {
-                Dock = DockStyle.Fill,
-                Text = "局部背景差異使用核心大小與增益；CLAHE 使用 Clip Limit 與格數。",
-                TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = Color.FromArgb(75, 83, 95),
-                AutoEllipsis = true
-            }, 0, 4);
-            enhancementLayout.SetColumnSpan(enhancementLayout.GetControlFromPosition(0, 4), 2);
-            enhancementGroup.Controls.Add(enhancementLayout);
 
             var scanGroup = new GroupBox
             {
@@ -349,30 +227,10 @@ namespace IntegratedImageProcessingApp.Forms
             actionBar.Controls.Add(applyButton);
             actionBar.Controls.Add(objectDetectionDftRunButton);
 
-            var pivotLabel = new Label
-            {
-                Dock = DockStyle.Fill,
-                Text = "基準灰階：平場目標值 " + parameter.FlatFieldTargetGray.ToString(CultureInfo.CurrentCulture),
-                TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = Color.FromArgb(75, 83, 95)
-            };
-            sourceLayout.Controls.Add(pivotLabel, 0, 3);
-            sourceLayout.SetColumnSpan(pivotLabel, 2);
-            objectDetectionDftContrastEnabledCheckBox.CheckedChanged += delegate
-            {
-                UpdateObjectDetectionDftControlsEnabled(parameter.DefectDftEnabled);
-            };
-            objectDetectionDftEnhancementMethodInput.SelectedIndexChanged += delegate
-            {
-                UpdateObjectDetectionDftControlsEnabled(parameter.DefectDftEnabled);
-            };
-
             content.Controls.Add(actionBar);
             content.Controls.Add(objectDetectionDftStatusLabel);
             content.Controls.Add(displayOptions);
             content.Controls.Add(scanGroup);
-            content.Controls.Add(enhancementGroup);
-            content.Controls.Add(sourceGroup);
             content.Controls.Add(sourceInfo);
             content.Controls.Add(enabledPanel);
             page.Controls.Add(content);
@@ -423,50 +281,8 @@ namespace IntegratedImageProcessingApp.Forms
             return panel;
         }
 
-        private void SelectDftEnhancementMethod(string method)
-        {
-            if (objectDetectionDftEnhancementMethodInput == null)
-            {
-                return;
-            }
-            for (int index = 0; index < objectDetectionDftEnhancementMethodInput.Items.Count; index++)
-            {
-                DefectCoreEnhancementOption option =
-                    objectDetectionDftEnhancementMethodInput.Items[index] as DefectCoreEnhancementOption;
-                if (option != null && string.Equals(option.Value, method, StringComparison.OrdinalIgnoreCase))
-                {
-                    objectDetectionDftEnhancementMethodInput.SelectedIndex = index;
-                    return;
-                }
-            }
-            objectDetectionDftEnhancementMethodInput.SelectedIndex = 0;
-        }
-
         private void UpdateObjectDetectionDftControlsEnabled(bool enabled)
         {
-            bool contrastOn = enabled && objectDetectionDftContrastEnabledCheckBox != null &&
-                objectDetectionDftContrastEnabledCheckBox.Checked;
-            if (objectDetectionDftContrastEnabledCheckBox != null)
-            {
-                objectDetectionDftContrastEnabledCheckBox.Enabled = enabled;
-            }
-            if (objectDetectionDftContrastGainInput != null)
-            {
-                objectDetectionDftContrastGainInput.Enabled = contrastOn;
-            }
-            if (objectDetectionDftEnhancementMethodInput != null)
-            {
-                objectDetectionDftEnhancementMethodInput.Enabled = enabled;
-            }
-            DefectCoreEnhancementOption selected = objectDetectionDftEnhancementMethodInput == null
-                ? null
-                : objectDetectionDftEnhancementMethodInput.SelectedItem as DefectCoreEnhancementOption;
-            bool local = enabled && selected != null && selected.Value == "LocalBackgroundDifference";
-            bool clahe = enabled && selected != null && selected.Value == "CLAHE";
-            if (objectDetectionDftLocalBackgroundKernelInput != null) objectDetectionDftLocalBackgroundKernelInput.Enabled = local;
-            if (objectDetectionDftLocalBackgroundGainInput != null) objectDetectionDftLocalBackgroundGainInput.Enabled = local;
-            if (objectDetectionDftClaheClipLimitInput != null) objectDetectionDftClaheClipLimitInput.Enabled = clahe;
-            if (objectDetectionDftClaheTileGridSizeInput != null) objectDetectionDftClaheTileGridSizeInput.Enabled = clahe;
             foreach (Control input in new Control[]
             {
                 objectDetectionDftWindowSizeInput,
@@ -528,14 +344,6 @@ namespace IntegratedImageProcessingApp.Forms
             parameter.DefectDftMaximumPeriodPixels = (int)objectDetectionDftMaximumPeriodInput.Value;
             parameter.DefectDftSensitivity = Decimal.ToDouble(objectDetectionDftSensitivityInput.Value);
             parameter.DefectDftDirectionalityThreshold = Decimal.ToDouble(objectDetectionDftDirectionalityThresholdInput.Value);
-            parameter.DefectDftContrastEnabled = objectDetectionDftContrastEnabledCheckBox.Checked;
-            parameter.DefectDftContrastGain = Decimal.ToDouble(objectDetectionDftContrastGainInput.Value);
-            DefectCoreEnhancementOption selected = objectDetectionDftEnhancementMethodInput.SelectedItem as DefectCoreEnhancementOption;
-            parameter.DefectDftEnhancementMethod = selected == null ? "None" : selected.Value;
-            parameter.DefectDftLocalBackgroundKernelSize = (int)objectDetectionDftLocalBackgroundKernelInput.Value;
-            parameter.DefectDftLocalBackgroundGain = Decimal.ToDouble(objectDetectionDftLocalBackgroundGainInput.Value);
-            parameter.DefectDftClaheClipLimit = Decimal.ToDouble(objectDetectionDftClaheClipLimitInput.Value);
-            parameter.DefectDftClaheTileGridSize = (int)objectDetectionDftClaheTileGridSizeInput.Value;
             parameter.DefectDftShowHeatmap = objectDetectionDftShowHeatmapCheckBox.Checked;
             parameter.DefectDftShowAnomalyBoxes = objectDetectionDftShowBoxesCheckBox.Checked;
             RemoveObjectDetectionDftResult(parameter.Id);
@@ -573,13 +381,6 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDftMaximumPeriodInput.Value = Math.Max(2, Math.Min(512, parameter.DefectDftMaximumPeriodPixels));
             objectDetectionDftSensitivityInput.Value = (decimal)Math.Max(1, Math.Min(10, parameter.DefectDftSensitivity));
             objectDetectionDftDirectionalityThresholdInput.Value = (decimal)Math.Max(1, Math.Min(10, parameter.DefectDftDirectionalityThreshold));
-            objectDetectionDftContrastEnabledCheckBox.Checked = parameter.DefectDftContrastEnabled;
-            objectDetectionDftContrastGainInput.Value = (decimal)Math.Max(0.1, Math.Min(5, parameter.DefectDftContrastGain));
-            SelectDftEnhancementMethod(parameter.DefectDftEnhancementMethod);
-            objectDetectionDftLocalBackgroundKernelInput.Value = Math.Max(3, Math.Min(501, parameter.DefectDftLocalBackgroundKernelSize | 1));
-            objectDetectionDftLocalBackgroundGainInput.Value = (decimal)Math.Max(0.1, Math.Min(10, parameter.DefectDftLocalBackgroundGain));
-            objectDetectionDftClaheClipLimitInput.Value = (decimal)Math.Max(0.1, Math.Min(40, parameter.DefectDftClaheClipLimit));
-            objectDetectionDftClaheTileGridSizeInput.Value = Math.Max(2, Math.Min(32, parameter.DefectDftClaheTileGridSize));
             objectDetectionDftShowHeatmapCheckBox.Checked = parameter.DefectDftShowHeatmap;
             objectDetectionDftShowBoxesCheckBox.Checked = parameter.DefectDftShowAnomalyBoxes;
             UpdateObjectDetectionDftControlsEnabled(parameter.DefectDftEnabled);
@@ -692,7 +493,6 @@ namespace IntegratedImageProcessingApp.Forms
                             normalizedRegion,
                             imageBounds,
                             parameter,
-                            parameter.FlatFieldTargetGray,
                             parameter.DefectParallelExecutionEnabled,
                             progress);
                     }
@@ -773,7 +573,6 @@ namespace IntegratedImageProcessingApp.Forms
             RectangleF normalizedRegion,
             Rectangle imageBounds,
             ObjectDetectionParameterSettings parameter,
-            int pivotGray,
             bool runParallel,
             IProgress<string> progress)
         {
@@ -799,99 +598,66 @@ namespace IntegratedImageProcessingApp.Forms
                 if (crop.Width < 32 || crop.Height < 32) return;
 
                 using (Cv.Mat gray = CreateObjectDetectionDefectGrayRegionMat(source, crop))
-                using (var contrasted = new Cv.Mat())
                 using (var polygonMask = new Cv.Mat(crop.Height, crop.Width, Cv.MatType.CV_8UC1, Cv.Scalar.Black))
                 {
-                    double gain = parameter.DefectDftContrastEnabled
-                        ? Math.Max(0.1, Math.Min(5.0, parameter.DefectDftContrastGain)) : 1.0;
-                    double beta = Math.Max(1, Math.Min(255, pivotGray)) * (1.0 - gain);
-                    gray.ConvertTo(contrasted, Cv.MatType.CV_8UC1, gain, beta);
-                    Cv.Mat enhanced = null;
-                    try
+                    Stopwatch preview = Stopwatch.StartNew();
+                    Bitmap previewBitmap = CreateObjectDetectionDefectPreviewBitmap(gray);
+                    preview.Stop();
+                    Interlocked.Add(ref previewTicks, preview.ElapsedTicks);
+                    patchesByObject[objectIndex] = new ObjectDetectionDefectProcessedPatch
                     {
-                        Stopwatch enhancement = Stopwatch.StartNew();
-                        var enhancementSettings = new ObjectDetectionDefectCoreSettings
-                        {
-                            DefectEnhancementMethod = parameter.DefectDftEnhancementMethod,
-                            LocalBackgroundKernelSize = parameter.DefectDftLocalBackgroundKernelSize,
-                            LocalBackgroundGain = parameter.DefectDftLocalBackgroundGain,
-                            ClaheClipLimit = parameter.DefectDftClaheClipLimit,
-                            ClaheTileGridSize = parameter.DefectDftClaheTileGridSize
-                        };
-                        if (string.Equals(parameter.DefectDftEnhancementMethod, "LocalBackgroundDifference", StringComparison.OrdinalIgnoreCase))
-                        {
-                            enhanced = ApplyObjectDetectionDefectEnhancement(contrasted, enhancementSettings, pivotGray);
-                        }
-                        else if (string.Equals(parameter.DefectDftEnhancementMethod, "CLAHE", StringComparison.OrdinalIgnoreCase))
-                        {
-                            enhanced = ApplyObjectDetectionDefectClahe(contrasted, enhancementSettings);
-                        }
-                        enhancement.Stop();
+                        Bounds = crop,
+                        InspectionPolygon = corners.ToArray(),
+                        ProcessedImage = previewBitmap
+                    };
 
-                        Cv.Mat dftImage = enhanced ?? contrasted;
-                        Stopwatch preview = Stopwatch.StartNew();
-                        Bitmap previewBitmap = CreateObjectDetectionDefectPreviewBitmap(dftImage);
-                        preview.Stop();
-                        Interlocked.Add(ref previewTicks, preview.ElapsedTicks);
-                        patchesByObject[objectIndex] = new ObjectDetectionDefectProcessedPatch
+                    Cv.Point[] polygon = corners.Select(point => new Cv.Point(
+                        (int)Math.Round(point.X - crop.X), (int)Math.Round(point.Y - crop.Y))).ToArray();
+                    Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
+                    int windowSize = Math.Min(parameter.DefectDftWindowSize, Math.Min(crop.Width, crop.Height));
+                    if (windowSize < 32) return;
+                    int step = Math.Max(1, windowSize / 2);
+                    List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
+                    List<int> yStarts = CreateFrequencyScanStarts(crop.Height, windowSize, step);
+                    using (var workspace = new ObjectDetectionFrequencyWorkspace(gray, polygonMask, windowSize))
+                    using (var input = new Cv.Mat(windowSize, windowSize, Cv.MatType.CV_32FC1))
+                    using (var spectrum = new Cv.Mat())
+                    {
+                        long objectWindowCount = 0;
+                        Stopwatch scanLoop = Stopwatch.StartNew();
+                        foreach (int y in yStarts)
                         {
-                            Bounds = crop,
-                            InspectionPolygon = corners.ToArray(),
-                            ProcessedImage = previewBitmap
-                        };
-
-                        Cv.Point[] polygon = corners.Select(point => new Cv.Point(
-                            (int)Math.Round(point.X - crop.X), (int)Math.Round(point.Y - crop.Y))).ToArray();
-                        Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
-                        int windowSize = Math.Min(parameter.DefectDftWindowSize, Math.Min(crop.Width, crop.Height));
-                        if (windowSize < 32) return;
-                        int step = Math.Max(1, windowSize / 2);
-                        List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
-                        List<int> yStarts = CreateFrequencyScanStarts(crop.Height, windowSize, step);
-                        using (var workspace = new ObjectDetectionFrequencyWorkspace(dftImage, polygonMask, windowSize))
-                        using (var input = new Cv.Mat(windowSize, windowSize, Cv.MatType.CV_32FC1))
-                        using (var spectrum = new Cv.Mat())
-                        {
-                            long objectWindowCount = 0;
-                            Stopwatch scanLoop = Stopwatch.StartNew();
-                            foreach (int y in yStarts)
+                            foreach (int x in xStarts)
                             {
-                                foreach (int x in xStarts)
+                                objectWindowCount++;
+                                double directionality;
+                                double angle;
+                                Stopwatch transform = Stopwatch.StartNew();
+                                bool valid = TryCalculateObjectDetectionDftDirectionality(
+                                    workspace,
+                                    input,
+                                    spectrum,
+                                    x,
+                                    y,
+                                    windowSize,
+                                    parameter.DefectDftMinimumPeriodPixels,
+                                    parameter.DefectDftMaximumPeriodPixels,
+                                    out directionality,
+                                    out angle);
+                                transform.Stop();
+                                Interlocked.Add(ref transformTicks, transform.ElapsedTicks);
+                                if (!valid) continue;
+                                objectCells.Add(new ObjectDetectionDftCell
                                 {
-                                    objectWindowCount++;
-                                    double directionality;
-                                    double angle;
-                                    Stopwatch transform = Stopwatch.StartNew();
-                                    bool valid = TryCalculateObjectDetectionDftDirectionality(
-                                        workspace,
-                                        input,
-                                        spectrum,
-                                        x,
-                                        y,
-                                        windowSize,
-                                        parameter.DefectDftMinimumPeriodPixels,
-                                        parameter.DefectDftMaximumPeriodPixels,
-                                        out directionality,
-                                        out angle);
-                                    transform.Stop();
-                                    Interlocked.Add(ref transformTicks, transform.ElapsedTicks);
-                                    if (!valid) continue;
-                                    objectCells.Add(new ObjectDetectionDftCell
-                                    {
-                                        ObjectNumber = detected.Number,
-                                        Bounds = new Rectangle(crop.X + x, crop.Y + y, windowSize, windowSize),
-                                        Directionality = directionality,
-                                        DominantLineAngleDegrees = angle
-                                    });
-                                }
+                                    ObjectNumber = detected.Number,
+                                    Bounds = new Rectangle(crop.X + x, crop.Y + y, windowSize, windowSize),
+                                    Directionality = directionality,
+                                    DominantLineAngleDegrees = angle
+                                });
                             }
-                            scanLoop.Stop();
-                            Interlocked.Add(ref windowsScanned, objectWindowCount);
                         }
-                    }
-                    finally
-                    {
-                        if (enhanced != null) enhanced.Dispose();
+                        scanLoop.Stop();
+                        Interlocked.Add(ref windowsScanned, objectWindowCount);
                     }
                 }
                 progress?.Report("DFT 掃描 ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
@@ -1095,13 +861,6 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectDftMaximumPeriodPixels.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectDftSensitivity.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectDftDirectionalityThreshold.ToString("R", CultureInfo.InvariantCulture),
-                parameter.DefectDftContrastEnabled ? "1" : "0",
-                parameter.DefectDftContrastGain.ToString("R", CultureInfo.InvariantCulture),
-                parameter.DefectDftEnhancementMethod ?? string.Empty,
-                parameter.DefectDftLocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture),
-                parameter.DefectDftLocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture),
-                parameter.DefectDftClaheClipLimit.ToString("R", CultureInfo.InvariantCulture),
-                parameter.DefectDftClaheTileGridSize.ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,
                 CreateObjectDetectionFlatFieldSettingsSignature(parameter)
