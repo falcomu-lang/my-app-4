@@ -441,7 +441,23 @@ namespace IntegratedImageProcessingApp.Forms
                 RefreshObjectDetectionDefectDisplay();
             }
 
-            FocusObjectDetectionImage(Rectangle.Ceiling(group.Bounds));
+            Rectangle focusBounds = Rectangle.Ceiling(group.Bounds);
+            ObjectDetectionParameterSettings parameter =
+                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDefinitionSettings definition = parameter == null ||
+                string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId)
+                ? null
+                : FindObjectDefinition(parameter.ObjectDefinitionId);
+            ObjectDefinitionDetectedObject detectedObject;
+            if (definition != null && TryGetCompletedObjectDefinitionObject(
+                definition,
+                group.ObjectNumber,
+                out detectedObject))
+            {
+                focusBounds = detectedObject.Bounds;
+            }
+
+            FocusObjectDetectionImage(focusBounds);
             ImageDisplayControl integratedDisplay = GetObjectDetectionDefectDisplayControl(
                 ObjectDetectionDefectIntegratedDisplayIndex);
             if (integratedDisplay != null)
@@ -450,8 +466,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             SetObjectDetectionDefectRegionStatus(
-                "已聚焦 ROI " + group.ObjectNumber.ToString(CultureInfo.InvariantCulture) +
-                " 的整合缺陷位置。 ");
+                "已顯示 ROI " + group.ObjectNumber.ToString(CultureInfo.InvariantCulture) +
+                " 範圍，並聚焦該整合缺陷位置。 ");
         }
 
         private void SetObjectDetectionDefectIntegrationResultsStatus(string text)
