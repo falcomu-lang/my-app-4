@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -55,6 +56,22 @@ namespace IntegratedImageProcessingApp.Forms
             public double Contrast { get; set; }
         }
 
+        private enum ObjectDetectionLineTextureDiagnosticLayer
+        {
+            FinalCandidates,
+            RawDarkDensity,
+            DirectionScore
+        }
+
+        private sealed class ObjectDetectionLineTextureDiagnosticPatch
+        {
+            public Rectangle Bounds { get; set; }
+
+            public PointF[] InspectionPolygon { get; set; }
+
+            public Bitmap Heatmap { get; set; }
+        }
+
         private sealed class ObjectDetectionLineTextureResult
         {
             public string Signature { get; set; }
@@ -82,6 +99,10 @@ namespace IntegratedImageProcessingApp.Forms
             public List<ObjectDetectionTextureAnomalyRegion> Regions { get; set; }
 
             public List<ObjectDetectionDefectProcessedPatch> ProcessedPatches { get; set; }
+
+            public ObjectDetectionLineTextureDiagnosticLayer DiagnosticLayer { get; set; }
+
+            public Dictionary<int, ObjectDetectionLineTextureDiagnosticPatch> DiagnosticPatchesByObject { get; set; }
         }
 
         private readonly Dictionary<string, ObjectDetectionLineTextureResult> objectDetectionLineTextureResults =
@@ -93,6 +114,7 @@ namespace IntegratedImageProcessingApp.Forms
         private NumericUpDown objectDetectionLineTextureSensitivityInput;
         private CheckBox objectDetectionLineTextureShowHeatmapCheckBox;
         private CheckBox objectDetectionLineTextureShowRegionsCheckBox;
+        private ComboBox objectDetectionLineTextureDiagnosticLayerComboBox;
         private Label objectDetectionLineTextureStatusLabel;
         private Button objectDetectionLineTextureRunButton;
         private string objectDetectionLineTextureDraftParameterId;
@@ -114,7 +136,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Top,
                 Height = 54,
                 Padding = new Padding(8, 7, 8, 2),
-                Text = "分析來源：平場校正後的灰階影像，不追加對比或淡色缺陷增強。\r\n累積多方向的局部暗紋密度，尋找比兩側背景更密集的異常路徑。",
+                Text = "分析來源：平場校正後的灰階影像，不追加對比或淡色缺陷增強。\r\n熱圖圖層只供診斷；切換後請重新分析，診斷色階不影響最終判定。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 AutoEllipsis = true,
                 ForeColor = Color.FromArgb(55, 63, 76)
@@ -170,9 +192,9 @@ namespace IntegratedImageProcessingApp.Forms
             var displayOptions = new FlowLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 34,
+                Height = 38,
                 FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = true,
+                WrapContents = false,
                 Padding = new Padding(5, 5, 0, 0),
                 Margin = Padding.Empty
             };
@@ -190,6 +212,20 @@ namespace IntegratedImageProcessingApp.Forms
                 Checked = parameter.DefectLineTextureShowAnomalyLines,
                 Margin = new Padding(2, 1, 0, 1)
             };
+            objectDetectionLineTextureDiagnosticLayerComboBox = new ComboBox
+            {
+                Width = 142,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                IntegralHeight = false,
+                Margin = new Padding(2, 0, 0, 0)
+            };
+            objectDetectionLineTextureDiagnosticLayerComboBox.Items.AddRange(new object[]
+            {
+                "最終檢出分數",
+                "局部暗像素密度",
+                "方向候選分數"
+            });
+            objectDetectionLineTextureDiagnosticLayerComboBox.SelectedIndex = 0;
             objectDetectionLineTextureShowHeatmapCheckBox.CheckedChanged += delegate
             {
                 UpdateObjectDetectionLineTextureDisplayOptions(parameter);
@@ -198,8 +234,28 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 UpdateObjectDetectionLineTextureDisplayOptions(parameter);
             };
+            objectDetectionLineTextureDiagnosticLayerComboBox.SelectedIndexChanged += delegate
+            {
+                ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
+                    ObjectDetectionDefectLineTextureDisplayIndex);
+                if (display != null) display.InvalidateImageView();
+                ObjectDetectionLineTextureResult current;
+                if (TryGetCurrentObjectDetectionLineTextureResult(parameter, out current) &&
+                    current.DiagnosticLayer != GetSelectedObjectDetectionLineTextureDiagnosticLayer())
+                {
+                    objectDetectionLineTextureStatusLabel.Text =
+                        "診斷圖層已變更；請重新執行分析。診斷熱圖按每個物件分別拉伸色階，檢出框仍為目前有效結果。";
+                }
+            };
             displayOptions.Controls.Add(objectDetectionLineTextureShowHeatmapCheckBox);
             displayOptions.Controls.Add(objectDetectionLineTextureShowRegionsCheckBox);
+            displayOptions.Controls.Add(new Label
+            {
+                AutoSize = true,
+                Text = "熱圖來源",
+                Margin = new Padding(10, 5, 1, 0)
+            });
+            displayOptions.Controls.Add(objectDetectionLineTextureDiagnosticLayerComboBox);
 
             objectDetectionLineTextureStatusLabel = new Label
             {
@@ -282,7 +338,8 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionLineTextureMinimumAreaInput,
                 objectDetectionLineTextureSensitivityInput,
                 objectDetectionLineTextureShowHeatmapCheckBox,
-                objectDetectionLineTextureShowRegionsCheckBox
+                objectDetectionLineTextureShowRegionsCheckBox,
+                objectDetectionLineTextureDiagnosticLayerComboBox
             })
             {
                 if (input != null) input.Enabled = enabled;
@@ -291,6 +348,31 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionLineTextureRunButton.Enabled = enabled && !objectDetectionLineTextureAnalysisRunning;
             }
+        }
+
+        private ObjectDetectionLineTextureDiagnosticLayer GetSelectedObjectDetectionLineTextureDiagnosticLayer()
+        {
+            if (objectDetectionLineTextureDiagnosticLayerComboBox == null)
+            {
+                return ObjectDetectionLineTextureDiagnosticLayer.FinalCandidates;
+            }
+
+            switch (objectDetectionLineTextureDiagnosticLayerComboBox.SelectedIndex)
+            {
+                case 1:
+                    return ObjectDetectionLineTextureDiagnosticLayer.RawDarkDensity;
+                case 2:
+                    return ObjectDetectionLineTextureDiagnosticLayer.DirectionScore;
+                default:
+                    return ObjectDetectionLineTextureDiagnosticLayer.FinalCandidates;
+            }
+        }
+
+        private ObjectDetectionLineTextureDiagnosticLayer GetCurrentObjectDetectionLineTextureDisplayLayer()
+        {
+            return isObjectDetectionResultReviewMode
+                ? ObjectDetectionLineTextureDiagnosticLayer.FinalCandidates
+                : GetSelectedObjectDetectionLineTextureDiagnosticLayer();
         }
 
         private void UpdateObjectDetectionLineTextureEnabled(ObjectDetectionParameterSettings parameter, bool enabled)
@@ -445,13 +527,16 @@ namespace IntegratedImageProcessingApp.Forms
                     ? "紋理異常分析中：各物件 ROI 同時處理... "
                     : "紋理異常分析中：各物件 ROI 依序處理... ");
                 Stopwatch scan = Stopwatch.StartNew();
+                ObjectDetectionLineTextureDiagnosticLayer diagnosticLayer = calledFromResultReview
+                    ? ObjectDetectionLineTextureDiagnosticLayer.FinalCandidates
+                    : GetSelectedObjectDetectionLineTextureDiagnosticLayer();
                 ObjectDetectionLineTextureResult result = await Task.Run(delegate
                 {
                     try
                     {
                         return ScanObjectDetectionLineTextureRegions(
                             sourceReference, objects, normalizedRegion, imageBounds, parameter,
-                            parameter.DefectParallelExecutionEnabled, progress);
+                            diagnosticLayer, parameter.DefectParallelExecutionEnabled, progress);
                     }
                     finally { sourceReference.ReleaseReference(); }
                 });
@@ -523,6 +608,7 @@ namespace IntegratedImageProcessingApp.Forms
             RectangleF normalizedRegion,
             Rectangle imageBounds,
             ObjectDetectionParameterSettings parameter,
+            ObjectDetectionLineTextureDiagnosticLayer diagnosticLayer,
             bool runParallel,
             IProgress<string> progress)
         {
@@ -530,6 +616,7 @@ namespace IntegratedImageProcessingApp.Forms
             var regionsByObject = new List<ObjectDetectionTextureAnomalyRegion>[objects.Count];
             var polygonsByObject = new PointF[objects.Count][];
             var patchesByObject = new ObjectDetectionDefectProcessedPatch[objects.Count];
+            var diagnosticPatchesByObject = new ObjectDetectionLineTextureDiagnosticPatch[objects.Count];
             long textureTicks = 0;
             long previewTicks = 0;
             long scannedTiles = 0;
@@ -625,6 +712,16 @@ namespace IntegratedImageProcessingApp.Forms
                             validIndices.Add(index);
                         }
                     }
+                    if (diagnosticLayer == ObjectDetectionLineTextureDiagnosticLayer.RawDarkDensity)
+                    {
+                        diagnosticPatchesByObject[objectIndex] = new ObjectDetectionLineTextureDiagnosticPatch
+                        {
+                            Bounds = crop,
+                            InspectionPolygon = corners.ToArray(),
+                            Heatmap = CreateObjectDetectionLineTextureDiagnosticBitmap(
+                                tileDarkDensity, null, validTiles, rows, columns)
+                        };
+                    }
                     if (validIndices.Count < 8) return;
 
                     List<ObjectDetectionLineTextureCandidate> candidates = FindObjectDetectionLineTextureCandidates(
@@ -667,6 +764,17 @@ namespace IntegratedImageProcessingApp.Forms
                                 row[tileX] = 255;
                             }
                         }
+                    }
+
+                    if (diagnosticLayer == ObjectDetectionLineTextureDiagnosticLayer.DirectionScore)
+                    {
+                        diagnosticPatchesByObject[objectIndex] = new ObjectDetectionLineTextureDiagnosticPatch
+                        {
+                            Bounds = crop,
+                            InspectionPolygon = corners.ToArray(),
+                            Heatmap = CreateObjectDetectionLineTextureDiagnosticBitmap(
+                                null, scores, validTiles, rows, columns)
+                        };
                     }
 
                     Cv.Cv2.MorphologyEx(thresholdMap, closedMap, Cv.MorphTypes.Close, closeKernel);
@@ -752,6 +860,10 @@ namespace IntegratedImageProcessingApp.Forms
                 catch
                 {
                     foreach (ObjectDetectionDefectProcessedPatch patch in patchesByObject) DisposeObjectDetectionDefectProcessedPatch(patch);
+                    foreach (ObjectDetectionLineTextureDiagnosticPatch patch in diagnosticPatchesByObject)
+                    {
+                        DisposeObjectDetectionLineTextureDiagnosticPatch(patch);
+                    }
                     throw;
                 }
             }
@@ -764,6 +876,10 @@ namespace IntegratedImageProcessingApp.Forms
                 catch
                 {
                     foreach (ObjectDetectionDefectProcessedPatch patch in patchesByObject) DisposeObjectDetectionDefectProcessedPatch(patch);
+                    foreach (ObjectDetectionLineTextureDiagnosticPatch patch in diagnosticPatchesByObject)
+                    {
+                        DisposeObjectDetectionLineTextureDiagnosticPatch(patch);
+                    }
                     throw;
                 }
             }
@@ -776,6 +892,8 @@ namespace IntegratedImageProcessingApp.Forms
                 RegionsByObject = new Dictionary<int, List<ObjectDetectionTextureAnomalyRegion>>(),
                 ObjectPolygons = new Dictionary<int, PointF[]>(),
                 ProcessedPatches = new List<ObjectDetectionDefectProcessedPatch>(),
+                DiagnosticLayer = diagnosticLayer,
+                DiagnosticPatchesByObject = new Dictionary<int, ObjectDetectionLineTextureDiagnosticPatch>(),
                 ScannedTileCount = scannedTiles,
                 TextureCalculationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(textureTicks),
                 PreviewGenerationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(previewTicks)
@@ -789,6 +907,10 @@ namespace IntegratedImageProcessingApp.Forms
                 result.ObjectPolygons[number] = polygonsByObject[index];
                 result.Cells.AddRange(cellsByObject[index]);
                 result.Regions.AddRange(result.RegionsByObject[number]);
+                if (diagnosticPatchesByObject[index] != null)
+                {
+                    result.DiagnosticPatchesByObject[number] = diagnosticPatchesByObject[index];
+                }
                 if (patchesByObject[index] != null)
                 {
                     result.ProcessedPatches.Add(patchesByObject[index]);
@@ -977,6 +1099,111 @@ namespace IntegratedImageProcessingApp.Forms
             return true;
         }
 
+        private static unsafe Bitmap CreateObjectDetectionLineTextureDiagnosticBitmap(
+            float[] floatValues,
+            double[] doubleValues,
+            bool[] validTiles,
+            int rows,
+            int columns)
+        {
+            const int maximumOutputPixels = 1500000;
+            int scale = 1;
+            while (((long)(rows + scale - 1) / scale) * ((long)(columns + scale - 1) / scale) > maximumOutputPixels)
+            {
+                scale++;
+            }
+
+            int outputRows = (rows + scale - 1) / scale;
+            int outputColumns = (columns + scale - 1) / scale;
+            int outputCount = checked(outputRows * outputColumns);
+            var outputValues = new float[outputCount];
+            var outputValid = new bool[outputCount];
+            float minimum = float.MaxValue;
+            float maximum = float.MinValue;
+
+            for (int outputY = 0; outputY < outputRows; outputY++)
+            {
+                int sourceY0 = outputY * scale;
+                int sourceY1 = Math.Min(rows, sourceY0 + scale);
+                for (int outputX = 0; outputX < outputColumns; outputX++)
+                {
+                    int sourceX0 = outputX * scale;
+                    int sourceX1 = Math.Min(columns, sourceX0 + scale);
+                    double sum = 0;
+                    int count = 0;
+                    for (int sourceY = sourceY0; sourceY < sourceY1; sourceY++)
+                    {
+                        for (int sourceX = sourceX0; sourceX < sourceX1; sourceX++)
+                        {
+                            int sourceIndex = sourceY * columns + sourceX;
+                            if (!validTiles[sourceIndex]) continue;
+                            sum += doubleValues == null ? floatValues[sourceIndex] : doubleValues[sourceIndex];
+                            count++;
+                        }
+                    }
+
+                    if (count == 0) continue;
+                    float value = (float)(sum / count);
+                    int outputIndex = outputY * outputColumns + outputX;
+                    outputValues[outputIndex] = value;
+                    outputValid[outputIndex] = true;
+                    minimum = Math.Min(minimum, value);
+                    maximum = Math.Max(maximum, value);
+                }
+            }
+
+            var bitmap = new Bitmap(outputColumns, outputRows, PixelFormat.Format32bppArgb);
+            BitmapData bitmapData = null;
+            try
+            {
+                bitmapData = bitmap.LockBits(
+                    new Rectangle(0, 0, outputColumns, outputRows),
+                    ImageLockMode.WriteOnly,
+                    PixelFormat.Format32bppArgb);
+                for (int y = 0; y < outputRows; y++)
+                {
+                    long rowOffset = bitmapData.Stride >= 0
+                        ? (long)y * bitmapData.Stride
+                        : (long)(outputRows - 1 - y) * Math.Abs(bitmapData.Stride);
+                    byte* destination = (byte*)bitmapData.Scan0.ToPointer() + rowOffset;
+                    for (int x = 0; x < outputColumns; x++)
+                    {
+                        int index = y * outputColumns + x;
+                        byte* pixel = destination + (x * 4);
+                        if (!outputValid[index])
+                        {
+                            pixel[0] = pixel[1] = pixel[2] = pixel[3] = 0;
+                            continue;
+                        }
+
+                        double normalized = maximum > minimum
+                            ? Math.Max(0, Math.Min(1, (outputValues[index] - minimum) / (maximum - minimum)))
+                            : 0;
+                        double blue = Math.Max(0, Math.Min(1, 1.5 - Math.Abs(4 * normalized - 1)));
+                        double green = Math.Max(0, Math.Min(1, 1.5 - Math.Abs(4 * normalized - 2)));
+                        double red = Math.Max(0, Math.Min(1, 1.5 - Math.Abs(4 * normalized - 3)));
+                        pixel[0] = (byte)Math.Round(blue * 255);
+                        pixel[1] = (byte)Math.Round(green * 255);
+                        pixel[2] = (byte)Math.Round(red * 255);
+                        pixel[3] = (byte)(48 + Math.Round(normalized * 132));
+                    }
+                }
+                bitmap.UnlockBits(bitmapData);
+                bitmapData = null;
+                return bitmap;
+            }
+            catch
+            {
+                if (bitmapData != null)
+                {
+                    bitmap.UnlockBits(bitmapData);
+                    bitmapData = null;
+                }
+                bitmap.Dispose();
+                throw;
+            }
+        }
+
         private static bool TrySampleObjectDetectionLineTextureGrid(
             float[] values,
             bool[] validTiles,
@@ -1144,17 +1371,43 @@ namespace IntegratedImageProcessingApp.Forms
                         }
                         if (parameter.DefectLineTextureShowHeatmap)
                         {
-                            foreach (ObjectDetectionLineTextureCell cell in entry.Value)
+                            if (result.DiagnosticLayer != ObjectDetectionLineTextureDiagnosticLayer.FinalCandidates &&
+                                result.DiagnosticLayer == GetCurrentObjectDetectionLineTextureDisplayLayer())
                             {
-                                if (!cell.Bounds.IntersectsWith(visible)) continue;
-                                int alpha = Math.Max(12, Math.Min(100, 16 + (int)(cell.Score * 8)));
-                                using (var fill = new SolidBrush(Color.FromArgb(alpha, 255, 188, 55)))
+                                ObjectDetectionLineTextureDiagnosticPatch diagnosticPatch;
+                                if (result.DiagnosticPatchesByObject.TryGetValue(entry.Key, out diagnosticPatch) &&
+                                    diagnosticPatch != null && diagnosticPatch.Heatmap != null &&
+                                    diagnosticPatch.Bounds.IntersectsWith(visible))
                                 {
-                                    graphics.FillRectangle(fill, new RectangleF(
-                                        offset.X + cell.Bounds.X * zoom,
-                                        offset.Y + cell.Bounds.Y * zoom,
-                                        Math.Max(1, cell.Bounds.Width * zoom),
-                                        Math.Max(1, cell.Bounds.Height * zoom)));
+                                    GraphicsState heatmapState = graphics.Save();
+                                    try
+                                    {
+                                        graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
+                                        graphics.PixelOffsetMode = PixelOffsetMode.Half;
+                                        graphics.DrawImage(diagnosticPatch.Heatmap, new RectangleF(
+                                            offset.X + diagnosticPatch.Bounds.X * zoom,
+                                            offset.Y + diagnosticPatch.Bounds.Y * zoom,
+                                            diagnosticPatch.Bounds.Width * zoom,
+                                            diagnosticPatch.Bounds.Height * zoom));
+                                    }
+                                    finally { graphics.Restore(heatmapState); }
+                                }
+                            }
+                            else if (result.DiagnosticLayer == ObjectDetectionLineTextureDiagnosticLayer.FinalCandidates &&
+                                GetCurrentObjectDetectionLineTextureDisplayLayer() == ObjectDetectionLineTextureDiagnosticLayer.FinalCandidates)
+                            {
+                                foreach (ObjectDetectionLineTextureCell cell in entry.Value)
+                                {
+                                    if (!cell.Bounds.IntersectsWith(visible)) continue;
+                                    int alpha = Math.Max(12, Math.Min(100, 16 + (int)(cell.Score * 8)));
+                                    using (var fill = new SolidBrush(Color.FromArgb(alpha, 255, 188, 55)))
+                                    {
+                                        graphics.FillRectangle(fill, new RectangleF(
+                                            offset.X + cell.Bounds.X * zoom,
+                                            offset.Y + cell.Bounds.Y * zoom,
+                                            Math.Max(1, cell.Bounds.Width * zoom),
+                                            Math.Max(1, cell.Bounds.Height * zoom)));
+                                    }
                                 }
                             }
                         }
@@ -1185,12 +1438,31 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static void DisposeObjectDetectionLineTextureResult(ObjectDetectionLineTextureResult result)
         {
-            if (result == null || result.ProcessedPatches == null) return;
-            foreach (ObjectDetectionDefectProcessedPatch patch in result.ProcessedPatches)
+            if (result == null) return;
+            if (result.ProcessedPatches != null)
             {
-                DisposeObjectDetectionDefectProcessedPatch(patch);
+                foreach (ObjectDetectionDefectProcessedPatch patch in result.ProcessedPatches)
+                {
+                    DisposeObjectDetectionDefectProcessedPatch(patch);
+                }
+                result.ProcessedPatches.Clear();
             }
-            result.ProcessedPatches.Clear();
+            if (result.DiagnosticPatchesByObject != null)
+            {
+                foreach (ObjectDetectionLineTextureDiagnosticPatch patch in result.DiagnosticPatchesByObject.Values)
+                {
+                    DisposeObjectDetectionLineTextureDiagnosticPatch(patch);
+                }
+                result.DiagnosticPatchesByObject.Clear();
+            }
+        }
+
+        private static void DisposeObjectDetectionLineTextureDiagnosticPatch(
+            ObjectDetectionLineTextureDiagnosticPatch patch)
+        {
+            if (patch == null || patch.Heatmap == null) return;
+            patch.Heatmap.Dispose();
+            patch.Heatmap = null;
         }
     }
 }
