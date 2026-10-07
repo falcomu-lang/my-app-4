@@ -551,7 +551,9 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             CoreKey = "Frequency",
                             ObjectNumber = cell.ObjectNumber,
-                            Bounds = cell.Bounds,
+                            Bounds = cell.ValidBounds.Width > 0 && cell.ValidBounds.Height > 0
+                                ? cell.ValidBounds
+                                : cell.Bounds,
                             IsFrequency = true
                         }));
                 }
@@ -784,6 +786,10 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             RectangleF visibleBounds = visibleSourceRect;
+            ObjectDetectionFrequencyResult frequencyResult;
+            bool hasFrequencyResult = TryGetCurrentObjectDetectionFrequencyResult(
+                parameter,
+                out frequencyResult);
             using (var darkPen = new Pen(Color.Red, Math.Max(1f, 2f * zoom)))
             using (var brightPen = new Pen(Color.DarkOrange, Math.Max(1f, 2f * zoom)))
             using (var mixedPen = new Pen(Color.Magenta, Math.Max(1f, 2f * zoom)))
@@ -835,12 +841,38 @@ namespace IntegratedImageProcessingApp.Forms
                         : showDark ? showLineTexture ? lineTexturePolarityPen : showFrequency ? darkFrequencyPen : darkPen
                         : showBright ? showLineTexture ? lineTexturePolarityPen : showFrequency ? brightFrequencyPen : brightPen
                         : showLineTexture ? lineTexturePen : frequencyPen;
-                    graphics.DrawRectangle(
-                        pen,
-                        offset.X + group.Bounds.X * zoom,
-                        offset.Y + group.Bounds.Y * zoom,
-                        Math.Max(1f, group.Bounds.Width * zoom),
-                        Math.Max(1f, group.Bounds.Height * zoom));
+                    GraphicsState state = graphics.Save();
+                    try
+                    {
+                        PointF[] imagePolygon;
+                        if (showFrequency && hasFrequencyResult &&
+                            frequencyResult.ObjectPolygons != null &&
+                            frequencyResult.ObjectPolygons.TryGetValue(
+                                group.ObjectNumber,
+                                out imagePolygon) &&
+                            imagePolygon != null && imagePolygon.Length >= 3)
+                        {
+                            PointF[] screenPolygon = imagePolygon.Select(point => new PointF(
+                                offset.X + point.X * zoom,
+                                offset.Y + point.Y * zoom)).ToArray();
+                            using (var clipPath = new GraphicsPath())
+                            {
+                                clipPath.AddPolygon(screenPolygon);
+                                graphics.SetClip(clipPath, CombineMode.Intersect);
+                            }
+                        }
+
+                        graphics.DrawRectangle(
+                            pen,
+                            offset.X + group.Bounds.X * zoom,
+                            offset.Y + group.Bounds.Y * zoom,
+                            Math.Max(1f, group.Bounds.Width * zoom),
+                            Math.Max(1f, group.Bounds.Height * zoom));
+                    }
+                    finally
+                    {
+                        graphics.Restore(state);
+                    }
                 }
             }
         }

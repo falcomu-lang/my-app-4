@@ -163,7 +163,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDefectParallelExecutionCheckBox = new CheckBox
             {
                 AutoSize = true,
-                Text = "平行運算（物件 x 已啟用核心）",
+                Text = "平行運算（物件 x 啟用項目）",
                 Checked = parameter.DefectParallelExecutionEnabled,
                 TextAlign = ContentAlignment.MiddleLeft,
                 Margin = new Padding(0, 6, 8, 0)

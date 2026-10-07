@@ -24,6 +24,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             public Rectangle ValidBounds { get; set; }
 
+            public PointF[] ImageCorners { get; set; }
+
             public double Energy { get; set; }
 
             public double Score { get; set; }
@@ -550,7 +552,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task RunObjectDetectionFrequencyAnalysisAsync(
             string parameterId,
-            bool calledFromResultReview = false)
+            bool isCoordinatedRun = false)
         {
             if (objectDetectionFrequencyAnalysisRunning)
             {
@@ -591,15 +593,15 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             objectDetectionFrequencyAnalysisRunning = true;
-            if (!calledFromResultReview && objectDetectionFrequencyRunButton != null)
+            if (!isCoordinatedRun && objectDetectionFrequencyRunButton != null)
             {
                 objectDetectionFrequencyRunButton.Enabled = false;
             }
-            if (!calledFromResultReview && objectDetectionDefectCoreTabs != null)
+            if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null)
             {
                 objectDetectionDefectCoreTabs.Enabled = false;
             }
-            if (!calledFromResultReview && leftImageTabControl != null)
+            if (!isCoordinatedRun && leftImageTabControl != null)
             {
                 leftImageTabControl.SelectedTab = GetObjectDetectionDefectDisplayTabPage(
                     ObjectDetectionDefectFrequencyDisplayIndex);
@@ -634,6 +636,39 @@ namespace IntegratedImageProcessingApp.Forms
                     ClampUnit((float)parameter.DefectInspectionRegionRight),
                     ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
+                var undersizedObjects = objects
+                    .Select(detectedObject => new
+                    {
+                        Object = detectedObject,
+                        RegionSize = GetObjectDetectionFrequencyRegionSize(
+                            detectedObject,
+                            normalizedRegion)
+                    })
+                    .Where(item => item.RegionSize.Width < scanHeight ||
+                        item.RegionSize.Height < scanHeight)
+                    .ToList();
+                if (undersizedObjects.Count > 0)
+                {
+                    string objectList = string.Join("、", undersizedObjects
+                        .Take(5)
+                        .Select(item => "ROI " + item.Object.Number.ToString(CultureInfo.CurrentCulture) +
+                            " (" + item.RegionSize.Width.ToString(CultureInfo.CurrentCulture) + " × " +
+                            item.RegionSize.Height.ToString(CultureInfo.CurrentCulture) + " px)"));
+                    string message = objectList + " 的檢測範圍小於完整掃描格 " +
+                        scanHeight.ToString(CultureInfo.CurrentCulture) + " × " +
+                        scanHeight.ToString(CultureInfo.CurrentCulture) +
+                        " px；本次未執行。請降低掃描高度或擴大檢測範圍。";
+                    if (objectDetectionFrequencyStatusLabel != null)
+                    {
+                        objectDetectionFrequencyStatusLabel.Text = message;
+                    }
+                    if (statusLabel != null)
+                    {
+                        statusLabel.Text = parameter.DisplayName + "：" + message;
+                    }
+                    SetObjectDetectionDefectRegionStatus(message + " ");
+                    return;
+                }
                 double sensitivity = Math.Max(1.0, Math.Min(10.0, parameter.DefectFrequencySensitivity));
                 bool runParallel = parameter.DefectParallelExecutionEnabled;
                 int capturedImageGeneration = imageSourceGeneration;
@@ -678,6 +713,13 @@ namespace IntegratedImageProcessingApp.Forms
                 });
                 scanStopwatch.Stop();
                 totalStopwatch.Stop();
+                if (result.Cells == null || result.Cells.Count == 0)
+                {
+                    DisposeObjectDetectionFrequencyResult(result);
+                    SetObjectDetectionDefectRegionStatus(
+                        "檢測範圍內找不到完整且有效的掃描格；請確認ROI位置，或降低掃描高度。 ");
+                    return;
+                }
                 result.Signature = signature;
                 result.ScanHeight = scanHeight;
                 result.Sensitivity = sensitivity;
@@ -757,12 +799,12 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyAnalysisRunning = false;
                 if (!IsDisposed)
                 {
-                    if (!calledFromResultReview && objectDetectionFrequencyRunButton != null)
+                    if (!isCoordinatedRun && objectDetectionFrequencyRunButton != null)
                     {
                         objectDetectionFrequencyRunButton.Enabled =
                             parameter != null && parameter.DefectFrequencyEnabled;
                     }
-                    if (!calledFromResultReview && objectDetectionDefectCoreTabs != null &&
+                    if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null &&
                         !objectDetectionDefectCoreTabs.IsDisposed)
                     {
                         objectDetectionDefectCoreTabs.Enabled = true;
@@ -852,6 +894,12 @@ namespace IntegratedImageProcessingApp.Forms
             Action<int> scanObject = delegate(int objectIndex)
             {
                 ObjectDefinitionDetectedObject detectedObject = objects[objectIndex];
+                ObjectDetectionMeasurementFrame frame =
+                    CreateObjectDetectionMeasurementFrame(detectedObject);
+                float localRegionLeft = (normalizedRegion.Left - 0.5f) * frame.Width;
+                float localRegionTop = (normalizedRegion.Top - 0.5f) * frame.Height;
+                int regionWidth = Math.Max(0, (int)Math.Floor(normalizedRegion.Width * frame.Width));
+                int regionHeight = Math.Max(0, (int)Math.Floor(normalizedRegion.Height * frame.Height));
                 PointF[] corners = CreateObjectDetectionDefectRegionImageCorners(
                     detectedObject,
                     normalizedRegion);
@@ -863,11 +911,10 @@ namespace IntegratedImageProcessingApp.Forms
                 int right = (int)Math.Ceiling(corners.Max(point => point.X));
                 int bottom = (int)Math.Ceiling(corners.Max(point => point.Y));
                 Rectangle crop = Rectangle.Intersect(
-                    Rectangle.Intersect(
-                        Rectangle.FromLTRB(left, top, right, bottom),
-                        detectedObject.Bounds),
+                    Rectangle.FromLTRB(left, top, right, bottom),
                     imageBounds);
-                if (crop.Width < 8 || crop.Height < 8)
+                if (crop.Width < 1 || crop.Height < 1 || regionWidth < requestedWindowSize ||
+                    regionHeight < requestedWindowSize)
                 {
                     return;
                 }
@@ -878,6 +925,13 @@ namespace IntegratedImageProcessingApp.Forms
                     crop.Width,
                     Cv.MatType.CV_8UC1,
                     Cv.Scalar.Black))
+                using (var rectifiedGray = new Cv.Mat())
+                using (var rectifiedMask = new Cv.Mat())
+                using (Cv.Mat transform = CreateObjectDetectionFrequencyAffineTransform(
+                    frame,
+                    crop,
+                    localRegionLeft,
+                    localRegionTop))
                 {
                     Stopwatch previewStopwatch = Stopwatch.StartNew();
                     Bitmap processedPreview = CreateObjectDetectionDefectPreviewBitmap(gray);
@@ -895,55 +949,77 @@ namespace IntegratedImageProcessingApp.Forms
                         (int)Math.Round(point.X - crop.X),
                         (int)Math.Round(point.Y - crop.Y))).ToArray();
                     Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
-                    int windowSize = Math.Min(
-                        requestedWindowSize,
-                        Math.Min(crop.Width, crop.Height));
-                    if (windowSize < 8)
-                    {
-                        return;
-                    }
-                    int step = Math.Max(1, windowSize / 2);
-                    List<int> xStarts = CreateFrequencyScanStarts(crop.Width, windowSize, step);
-                    List<int> yStarts = CreateFrequencyScanStarts(crop.Height, windowSize, step);
-                    using (var workspace = new ObjectDetectionFrequencyWorkspace(
+                    Cv.Cv2.WarpAffine(
                         gray,
+                        rectifiedGray,
+                        transform,
+                        new Cv.Size(regionWidth, regionHeight),
+                        Cv.InterpolationFlags.Nearest,
+                        Cv.BorderTypes.Constant,
+                        Cv.Scalar.Black);
+                    Cv.Cv2.WarpAffine(
                         polygonMask,
+                        rectifiedMask,
+                        transform,
+                        new Cv.Size(regionWidth, regionHeight),
+                        Cv.InterpolationFlags.Nearest,
+                        Cv.BorderTypes.Constant,
+                        Cv.Scalar.Black);
+                    int windowSize = requestedWindowSize;
+                    int step = Math.Max(1, windowSize / 2);
+                    List<int> xStarts = CreateFrequencyScanStarts(regionWidth, windowSize, step);
+                    List<int> yStarts = CreateFrequencyScanStarts(regionHeight, windowSize, step);
+                    using (var workspace = new ObjectDetectionFrequencyWorkspace(
+                        rectifiedGray,
+                        rectifiedMask,
                         windowSize))
                     {
                         long objectScannedWindowCount = 0;
+                        var usedWindows = new HashSet<long>();
                         Stopwatch cellLoopStopwatch = Stopwatch.StartNew();
                         foreach (int y in yStarts)
                         {
                             foreach (int x in xStarts)
                             {
                                 objectScannedWindowCount++;
-                                var localWindow = new Rectangle(x, y, windowSize, windowSize);
+                                int windowX;
+                                int windowY;
                                 double energy;
-                                Rectangle validLocalBounds;
-                                if (!TryCalculateObjectDetectionFrequencyEnergy(
+                                if (!TryFindObjectDetectionFrequencyWindow(
                                     workspace,
-                                    localWindow.X,
-                                    localWindow.Y,
+                                    x,
+                                    y,
                                     windowSize,
-                                    out energy,
-                                    out validLocalBounds))
+                                    step,
+                                    usedWindows,
+                                    out windowX,
+                                    out windowY,
+                                    out energy))
                                 {
                                     continue;
                                 }
 
+                                float localLeft = localRegionLeft + windowX;
+                                float localTop = localRegionTop + windowY;
+                                PointF[] cellCorners =
+                                {
+                                    frame.ToImage(localLeft, localTop),
+                                    frame.ToImage(localLeft + windowSize, localTop),
+                                    frame.ToImage(localLeft + windowSize, localTop + windowSize),
+                                    frame.ToImage(localLeft, localTop + windowSize)
+                                };
+                                Rectangle cellBounds = GetObjectDetectionFrequencyBounds(cellCorners);
+                                Rectangle validBounds = Rectangle.Intersect(cellBounds, imageBounds);
+                                if (validBounds.Width <= 0 || validBounds.Height <= 0)
+                                {
+                                    continue;
+                                }
                                 objectCells.Add(new ObjectDetectionFrequencyCell
                                 {
                                     ObjectNumber = detectedObject.Number,
-                                    Bounds = new Rectangle(
-                                        crop.X + localWindow.X,
-                                        crop.Y + localWindow.Y,
-                                        localWindow.Width,
-                                        localWindow.Height),
-                                    ValidBounds = new Rectangle(
-                                        crop.X + validLocalBounds.X,
-                                        crop.Y + validLocalBounds.Y,
-                                        validLocalBounds.Width,
-                                        validLocalBounds.Height),
+                                    Bounds = cellBounds,
+                                    ValidBounds = validBounds,
+                                    ImageCorners = cellCorners,
                                     Energy = energy
                                 });
                             }
@@ -1084,16 +1160,144 @@ namespace IntegratedImageProcessingApp.Forms
             return starts;
         }
 
+        private static Size GetObjectDetectionFrequencyRegionSize(
+            ObjectDefinitionDetectedObject detectedObject,
+            RectangleF normalizedRegion)
+        {
+            ObjectDetectionMeasurementFrame frame =
+                CreateObjectDetectionMeasurementFrame(detectedObject);
+            return new Size(
+                Math.Max(0, (int)Math.Floor(normalizedRegion.Width * frame.Width)),
+                Math.Max(0, (int)Math.Floor(normalizedRegion.Height * frame.Height)));
+        }
+
+        private static Cv.Mat CreateObjectDetectionFrequencyAffineTransform(
+            ObjectDetectionMeasurementFrame frame,
+            Rectangle crop,
+            float localRegionLeft,
+            float localRegionTop)
+        {
+            PointF origin = frame.ToLocal(crop.X + 0.5f, crop.Y + 0.5f);
+            PointF xStep = frame.ToLocal(crop.X + 1.5f, crop.Y + 0.5f);
+            PointF yStep = frame.ToLocal(crop.X + 0.5f, crop.Y + 1.5f);
+            Cv.Point2f[] sourcePoints =
+            {
+                new Cv.Point2f(0, 0),
+                new Cv.Point2f(1, 0),
+                new Cv.Point2f(0, 1)
+            };
+            Cv.Point2f[] destinationPoints =
+            {
+                ToDestinationPoint(origin, localRegionLeft, localRegionTop),
+                ToDestinationPoint(xStep, localRegionLeft, localRegionTop),
+                ToDestinationPoint(yStep, localRegionLeft, localRegionTop)
+            };
+            return Cv.Cv2.GetAffineTransform(sourcePoints, destinationPoints);
+        }
+
+        private static Cv.Point2f ToDestinationPoint(
+            PointF localPoint,
+            float localRegionLeft,
+            float localRegionTop)
+        {
+            return new Cv.Point2f(
+                localPoint.X - localRegionLeft - 0.5f,
+                localPoint.Y - localRegionTop - 0.5f);
+        }
+
+        private static Rectangle GetObjectDetectionFrequencyBounds(PointF[] corners)
+        {
+            if (corners == null || corners.Length == 0)
+            {
+                return Rectangle.Empty;
+            }
+            return Rectangle.FromLTRB(
+                (int)Math.Floor(corners.Min(point => point.X)),
+                (int)Math.Floor(corners.Min(point => point.Y)),
+                (int)Math.Ceiling(corners.Max(point => point.X)),
+                (int)Math.Ceiling(corners.Max(point => point.Y)));
+        }
+
+        private static bool TryFindObjectDetectionFrequencyWindow(
+            ObjectDetectionFrequencyWorkspace workspace,
+            int preferredX,
+            int preferredY,
+            int windowSize,
+            int searchRadius,
+            HashSet<long> usedWindows,
+            out int windowX,
+            out int windowY,
+            out double energy)
+        {
+            windowX = 0;
+            windowY = 0;
+            energy = 0.0;
+            if (workspace == null || usedWindows == null)
+            {
+                return false;
+            }
+
+            int maxX = workspace.ImageWidth - windowSize;
+            int maxY = workspace.ImageHeight - windowSize;
+            int centerX = maxX / 2;
+            int centerY = maxY / 2;
+            int directionX = Math.Sign(centerX - preferredX);
+            int directionY = Math.Sign(centerY - preferredY);
+            for (int radius = 0; radius <= Math.Max(0, searchRadius); radius++)
+            {
+                var candidates = new List<Point>(3);
+                if (radius == 0)
+                {
+                    candidates.Add(new Point(preferredX, preferredY));
+                }
+                else
+                {
+                    int inwardX = preferredX + (directionX * radius);
+                    int inwardY = preferredY + (directionY * radius);
+                    candidates.Add(new Point(inwardX, preferredY));
+                    candidates.Add(new Point(preferredX, inwardY));
+                    candidates.Add(new Point(inwardX, inwardY));
+                }
+
+                foreach (Point candidate in candidates)
+                {
+                    if (candidate.X < 0 || candidate.Y < 0 || candidate.X > maxX ||
+                        candidate.Y > maxY)
+                    {
+                        continue;
+                    }
+                    long key = ((long)candidate.Y << 32) | (uint)candidate.X;
+                    if (usedWindows.Contains(key))
+                    {
+                        continue;
+                    }
+                    if (!TryCalculateObjectDetectionFrequencyEnergy(
+                        workspace,
+                        candidate.X,
+                        candidate.Y,
+                        windowSize,
+                        out energy))
+                    {
+                        continue;
+                    }
+
+                    usedWindows.Add(key);
+                    windowX = candidate.X;
+                    windowY = candidate.Y;
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static unsafe bool TryCalculateObjectDetectionFrequencyEnergy(
             ObjectDetectionFrequencyWorkspace workspace,
             int startX,
             int startY,
             int windowSize,
-            out double energy,
-            out Rectangle validBounds)
+            out double energy)
         {
             energy = 0.0;
-            validBounds = Rectangle.Empty;
             if (workspace == null || windowSize <= 0 || startX < 0 || startY < 0 ||
                 startX > workspace.ImageWidth - windowSize ||
                 startY > workspace.ImageHeight - windowSize)
@@ -1106,10 +1310,6 @@ namespace IntegratedImageProcessingApp.Forms
             byte* hannBytes = (byte*)workspace.HannData.ToPointer();
             double pixelSum = 0.0;
             int validPixels = 0;
-            int minX = windowSize;
-            int minY = windowSize;
-            int maxX = -1;
-            int maxY = -1;
             for (int row = 0; row < windowSize; row++)
             {
                 byte* imageRow = image + (long)(startY + row) * workspace.ImageStep + startX;
@@ -1118,35 +1318,25 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     if (maskRow[column] == 0)
                     {
-                        continue;
+                        return false;
                     }
                     pixelSum += imageRow[column];
                     validPixels++;
-                    minX = Math.Min(minX, column);
-                    minY = Math.Min(minY, row);
-                    maxX = Math.Max(maxX, column);
-                    maxY = Math.Max(maxY, row);
                 }
             }
-            if (validPixels == 0)
+            if (validPixels != windowSize * windowSize)
             {
                 return false;
             }
 
-            validBounds = Rectangle.FromLTRB(minX, minY, maxX + 1, maxY + 1);
             float mean = (float)(pixelSum / validPixels);
             double squaredEnergySum = 0.0;
             for (int row = 0; row < windowSize; row++)
             {
                 byte* imageRow = image + (long)(startY + row) * workspace.ImageStep + startX;
-                byte* maskRow = mask + (long)(startY + row) * workspace.MaskStep + startX;
                 float* hannRow = (float*)(hannBytes + (long)row * workspace.HannStep);
                 for (int column = 0; column < windowSize; column++)
                 {
-                    if (maskRow[column] == 0)
-                    {
-                        continue;
-                    }
                     float centered = imageRow[column] - mean;
                     float windowed = centered * hannRow[column];
                     squaredEnergySum += windowed * windowed;
@@ -1338,11 +1528,19 @@ namespace IntegratedImageProcessingApp.Forms
                                     {
                                         continue;
                                     }
-                                    var destination = new RectangleF(
-                                        offset.X + cell.Bounds.X * zoom,
-                                        offset.Y + cell.Bounds.Y * zoom,
-                                        Math.Max(1f, cell.Bounds.Width * zoom),
-                                        Math.Max(1f, cell.Bounds.Height * zoom));
+                                    PointF[] cellPolygon = cell.ImageCorners == null ||
+                                        cell.ImageCorners.Length < 3
+                                        ? new[]
+                                        {
+                                            new PointF(cell.Bounds.Left, cell.Bounds.Top),
+                                            new PointF(cell.Bounds.Right, cell.Bounds.Top),
+                                            new PointF(cell.Bounds.Right, cell.Bounds.Bottom),
+                                            new PointF(cell.Bounds.Left, cell.Bounds.Bottom)
+                                        }
+                                        : cell.ImageCorners;
+                                    PointF[] screenCellPolygon = cellPolygon.Select(point => new PointF(
+                                        offset.X + point.X * zoom,
+                                        offset.Y + point.Y * zoom)).ToArray();
                                     if (showHeatmap)
                                     {
                                         int level = (int)Math.Floor(
@@ -1351,16 +1549,11 @@ namespace IntegratedImageProcessingApp.Forms
                                         SolidBrush fill = cell.Energy >= result.MedianEnergy
                                             ? highEnergyBrushes[level]
                                             : lowEnergyBrushes[level];
-                                        graphics.FillRectangle(fill, destination);
+                                        graphics.FillPolygon(fill, screenCellPolygon);
                                     }
                                     if (showBoxes && cell.IsAnomaly)
                                     {
-                                        graphics.DrawRectangle(
-                                            anomalyOutline,
-                                            destination.X,
-                                            destination.Y,
-                                            destination.Width,
-                                            destination.Height);
+                                        graphics.DrawPolygon(anomalyOutline, screenCellPolygon);
                                     }
                                 }
                             }

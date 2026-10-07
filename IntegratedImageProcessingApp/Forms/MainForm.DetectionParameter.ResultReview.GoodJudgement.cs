@@ -67,7 +67,6 @@ namespace IntegratedImageProcessingApp.Forms
         private List<ResultReviewGoodJudgementObject> objectDetectionResultReviewGoodJudgementResults =
             new List<ResultReviewGoodJudgementObject>();
         private int? objectDetectionResultReviewSelectedGoodJudgementObjectNumber;
-        private int objectDetectionResultReviewOverviewObjectNumber;
 
         private Control CreateObjectDetectionResultReviewGoodJudgementContent(DataGridView grid)
         {
@@ -151,9 +150,6 @@ namespace IntegratedImageProcessingApp.Forms
                 .ToList();
             objectDetectionResultReviewGoodJudgementResults = new List<ResultReviewGoodJudgementObject>();
             objectDetectionResultReviewSelectedGoodJudgementObjectNumber = null;
-            objectDetectionResultReviewOverviewObjectNumber = objects != null && objects.Count > 0
-                ? objects[0].Number
-                : 0;
             Dictionary<int, Point> gridPositions =
                 CreateObjectDetectionResultReviewObjectGridPositions(objects);
 
@@ -557,11 +553,9 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDetectionResultReviewSelectedGoodJudgementObjectNumber == objectNumber)
             {
                 objectDetectionResultReviewSelectedGoodJudgementObjectNumber = null;
-                if (objectDetectionResultReviewOverviewObjectNumber > 0)
-                {
-                    selectedObjectDetectionNumber = objectDetectionResultReviewOverviewObjectNumber;
-                    RefreshObjectDetectionResultReviewSelectedObjectDisplays();
-                }
+                selectedObjectDetectionNumber = -1;
+                ClearObjectDetectionResultReviewMeasurementHighlight();
+                RefreshObjectDetectionResultReviewSelectedObjectDisplays();
             }
             else
             {
@@ -585,6 +579,10 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             RefreshObjectDetectionResultReviewGoodJudgementView();
+            if (objectDetectionResultReviewSelectedGoodJudgementObjectNumber.HasValue)
+            {
+                FocusObjectDetectionResultReviewObject(objectNumber);
+            }
         }
 
         private void ClearObjectDetectionResultReviewMeasurementHighlight()
@@ -837,7 +835,6 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionResultReviewGoodJudgementResults =
                 new List<ResultReviewGoodJudgementObject>();
             objectDetectionResultReviewSelectedGoodJudgementObjectNumber = null;
-            objectDetectionResultReviewOverviewObjectNumber = 0;
             if (objectDetectionResultReviewGoodJudgementObjectButtonsPanel != null)
             {
                 foreach (Control control in objectDetectionResultReviewGoodJudgementObjectButtonsPanel.Controls

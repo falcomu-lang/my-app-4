@@ -454,7 +454,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private async Task RunObjectDetectionLineTextureAnalysisAsync(string parameterId, bool calledFromResultReview = false)
+        private async Task RunObjectDetectionLineTextureAnalysisAsync(string parameterId, bool isCoordinatedRun = false)
         {
             if (objectDetectionLineTextureAnalysisRunning) return;
             ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(parameterId);
@@ -485,8 +485,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             objectDetectionLineTextureAnalysisRunning = true;
             UpdateObjectDetectionLineTextureControlsEnabled(parameter.DefectLineTextureEnabled);
-            if (!calledFromResultReview && objectDetectionDefectCoreTabs != null) objectDetectionDefectCoreTabs.Enabled = false;
-            if (!calledFromResultReview && leftImageTabControl != null)
+            if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null) objectDetectionDefectCoreTabs.Enabled = false;
+            if (!isCoordinatedRun && leftImageTabControl != null)
             {
                 leftImageTabControl.SelectedTab = GetObjectDetectionDefectDisplayTabPage(ObjectDetectionDefectLineTextureDisplayIndex);
                 RefreshObjectDetectionDefectDisplay();
@@ -527,7 +527,7 @@ namespace IntegratedImageProcessingApp.Forms
                     ? "紋理異常分析中：各物件 ROI 同時處理... "
                     : "紋理異常分析中：各物件 ROI 依序處理... ");
                 Stopwatch scan = Stopwatch.StartNew();
-                ObjectDetectionLineTextureDiagnosticLayer diagnosticLayer = calledFromResultReview
+                ObjectDetectionLineTextureDiagnosticLayer diagnosticLayer = isCoordinatedRun
                     ? ObjectDetectionLineTextureDiagnosticLayer.FinalCandidates
                     : GetSelectedObjectDetectionLineTextureDiagnosticLayer();
                 ObjectDetectionLineTextureResult result = await Task.Run(delegate
@@ -594,7 +594,7 @@ namespace IntegratedImageProcessingApp.Forms
                 if (!IsDisposed)
                 {
                     UpdateObjectDetectionLineTextureControlsEnabled(parameter != null && parameter.DefectLineTextureEnabled);
-                    if (!calledFromResultReview && objectDetectionDefectCoreTabs != null && !objectDetectionDefectCoreTabs.IsDisposed)
+                    if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null && !objectDetectionDefectCoreTabs.IsDisposed)
                     {
                         objectDetectionDefectCoreTabs.Enabled = true;
                     }

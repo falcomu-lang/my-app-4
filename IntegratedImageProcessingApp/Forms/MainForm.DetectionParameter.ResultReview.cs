@@ -240,9 +240,9 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 selectedObjectDetectionNumber = selectedGoodJudgementObject.ObjectNumber;
             }
-            else if (objectDetectionResultReviewOverviewObjectNumber > 0)
+            else
             {
-                selectedObjectDetectionNumber = objectDetectionResultReviewOverviewObjectNumber;
+                selectedObjectDetectionNumber = -1;
             }
             if (leftImageTabControl != null &&
                 IsObjectDetectionDefectDisplayTab(leftImageTabControl.SelectedTab))
@@ -927,7 +927,7 @@ namespace IntegratedImageProcessingApp.Forms
                     throw new InvalidOperationException("物件定義沒有找到可檢測的物件。");
                 }
 
-                selectedObjectDetectionNumber = objects[0].Number;
+                selectedObjectDetectionNumber = -1;
                 Stopwatch measurementDisplayStopwatch = Stopwatch.StartNew();
                 RefreshObjectDetectionMeasurementDisplay();
                 measurementDisplayStopwatch.Stop();
@@ -1018,7 +1018,8 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         objectDetectionResultReviewDefectDisplayMilliseconds = elapsed;
                         UpdateObjectDetectionResultReviewTimingMemo();
-                    });
+                    },
+                    true);
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
                     return;
@@ -1652,14 +1653,13 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             int objectNumber = (int)button.Tag;
-            if (objectDetectionResultReviewSelectedDefectObjectNumber == objectNumber)
+            bool clearSelection = objectDetectionResultReviewSelectedDefectObjectNumber == objectNumber;
+            if (clearSelection)
             {
                 objectDetectionResultReviewSelectedDefectObjectNumber = null;
                 objectDetectionResultReviewSelectedGoodJudgementObjectNumber = null;
-                if (objectDetectionResultReviewOverviewObjectNumber > 0)
-                {
-                    selectedObjectDetectionNumber = objectDetectionResultReviewOverviewObjectNumber;
-                }
+                selectedObjectDetectionNumber = -1;
+                ClearObjectDetectionResultReviewMeasurementHighlight();
             }
             else
             {
@@ -1675,6 +1675,30 @@ namespace IntegratedImageProcessingApp.Forms
                 choice.Parameter,
                 objectDetectionResultReviewSelectedDefectObjectNumber);
             RefreshObjectDetectionResultReviewSelectedObjectDisplays();
+            if (!clearSelection)
+            {
+                FocusObjectDetectionResultReviewObject(objectNumber);
+            }
+        }
+
+        private void FocusObjectDetectionResultReviewObject(int objectNumber)
+        {
+            var choice = objectDetectionResultReviewParameterComboBox == null
+                ? null
+                : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+            ObjectDefinitionSettings definition = choice == null || choice.Parameter == null ||
+                string.IsNullOrWhiteSpace(choice.Parameter.ObjectDefinitionId)
+                ? null
+                : FindObjectDefinition(choice.Parameter.ObjectDefinitionId);
+            ObjectDefinitionDetectedObject detectedObject;
+            if (definition != null && TryGetCompletedObjectDefinitionObject(
+                definition,
+                objectNumber,
+                out detectedObject) &&
+                detectedObject.Bounds.Width > 0 && detectedObject.Bounds.Height > 0)
+            {
+                FocusObjectDetectionImage(detectedObject.Bounds);
+            }
         }
 
         private void RenderObjectDetectionResultReviewDefectRows(

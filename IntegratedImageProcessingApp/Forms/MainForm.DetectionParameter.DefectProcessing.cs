@@ -99,7 +99,8 @@ namespace IntegratedImageProcessingApp.Forms
             string parameterId,
             string coreKey,
             Action<long> computationCompleted = null,
-            Action<long> displayCompleted = null)
+            Action<long> displayCompleted = null,
+            bool isResultReviewRun = false)
         {
             if (objectDetectionDefectProcessingRequested)
             {
@@ -130,6 +131,10 @@ namespace IntegratedImageProcessingApp.Forms
                 await Task.Yield();
                 await RunObjectDetectionDefectProcessingCoreAsync(
                     parameterId, coreKey, computationCompleted, displayCompleted);
+                if (coreKey == null && !isResultReviewRun)
+                {
+                    await RunObjectDetectionSupplementaryAnalysesAsync(parameterId);
+                }
             }
             finally
             {
@@ -148,6 +153,66 @@ namespace IntegratedImageProcessingApp.Forms
                         objectDetectionDefectLastRunCompleted = false;
                         UpdateObjectDetectionDefectProcessingStatus();
                     }
+                }
+            }
+        }
+
+        private async Task RunObjectDetectionSupplementaryAnalysesAsync(string parameterId)
+        {
+            ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(parameterId);
+            if (parameter == null)
+            {
+                return;
+            }
+
+            bool runFrequency = parameter.DefectFrequencyEnabled;
+            bool runLineTexture = parameter.DefectLineTextureEnabled;
+            if (!runFrequency && !runLineTexture)
+            {
+                return;
+            }
+
+            if (parameter.DefectParallelExecutionEnabled && runFrequency && runLineTexture)
+            {
+                SetObjectDetectionDefectRegionStatus(
+                    "四核心完成；頻域異常與紋理異常正平行執行，各自依 ROI 平行處理...");
+                try
+                {
+                    await Task.WhenAll(
+                        RunObjectDetectionFrequencyAnalysisAsync(parameterId, true),
+                        RunObjectDetectionLineTextureAnalysisAsync(parameterId, true));
+                }
+                catch (Exception exception)
+                {
+                    SetObjectDetectionDefectRegionStatus(
+                        "頻域／紋理附加分析失敗：" + exception.Message);
+                }
+                return;
+            }
+
+            if (runFrequency)
+            {
+                try
+                {
+                    await RunObjectDetectionFrequencyAnalysisAsync(parameterId, true);
+                }
+                catch (Exception exception)
+                {
+                    SetObjectDetectionDefectRegionStatus(
+                        "頻域附加分析失敗：" + exception.Message);
+                }
+            }
+
+            if (runLineTexture)
+            {
+                try
+                {
+                    await RunObjectDetectionLineTextureAnalysisAsync(parameterId, true);
+                }
+                catch (Exception exception)
+                {
+                    SetObjectDetectionDefectRegionStatus(
+                        "紋理附加分析失敗：" + exception.Message);
                 }
             }
         }
