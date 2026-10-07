@@ -1006,85 +1006,128 @@ namespace IntegratedImageProcessingApp.Forms
 
                 leftImageTabControl.SelectedTab =
                     objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
-                await RunObjectDetectionDefectProcessingAsync(
-                    parameter.Id,
-                    null,
-                    elapsed =>
-                    {
-                        objectDetectionResultReviewDefectMilliseconds = elapsed;
-                        UpdateObjectDetectionResultReviewTimingMemo();
-                    },
-                    elapsed =>
-                    {
-                        objectDetectionResultReviewDefectDisplayMilliseconds = elapsed;
-                        UpdateObjectDetectionResultReviewTimingMemo();
-                    },
-                    true);
-                if (!IsObjectDetectionResultReviewUiAvailable())
-                {
-                    return;
-                }
+                bool includeFrequency = IsObjectDetectionDefectFrequencyIntegrationRequired(parameter);
+                bool includeLineTexture = IsObjectDetectionDefectLineTextureIntegrationRequired(parameter);
+                ObjectDetectionFrequencyResult frequencyResult;
+                bool frequencyAlreadyReady = !includeFrequency ||
+                    TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult);
+                ObjectDetectionLineTextureResult lineTextureResult;
+                bool lineTextureAlreadyReady = !includeLineTexture ||
+                    TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
 
-                if (IsObjectDetectionDefectFrequencyIntegrationRequired(parameter))
+                if (parameter.DefectParallelExecutionEnabled)
                 {
-                    ObjectDetectionFrequencyResult frequencyResult;
-                    bool frequencyAlreadyReady = TryGetCurrentObjectDetectionFrequencyResult(
-                        parameter,
-                        out frequencyResult);
-                    if (!frequencyAlreadyReady)
+                    objectDetectionResultReviewStatusLabel.Text =
+                        "正在平行執行一般缺陷條件" +
+                        (includeFrequency && !frequencyAlreadyReady ? "、頻域異常" : string.Empty) +
+                        (includeLineTexture && !lineTextureAlreadyReady ? "、紋理異常" : string.Empty) +
+                        "...";
+                    Stopwatch parallelDefectStopwatch = Stopwatch.StartNew();
+                    var defectTasks = new List<Task>
                     {
-                        objectDetectionResultReviewStatusLabel.Text =
-                            "一般缺陷條件完成，正在執行納入整合的頻域異常分析...";
-                        await RunObjectDetectionFrequencyAnalysisAsync(parameter.Id, true);
-                        if (!IsObjectDetectionResultReviewUiAvailable())
+                        RunObjectDetectionDefectProcessingAsync(
+                            parameter.Id,
+                            null,
+                            null,
+                            elapsed =>
+                            {
+                                objectDetectionResultReviewDefectDisplayMilliseconds = elapsed;
+                                UpdateObjectDetectionResultReviewTimingMemo();
+                            },
+                            true)
+                    };
+                    if (includeFrequency && !frequencyAlreadyReady)
+                    {
+                        defectTasks.Add(RunObjectDetectionFrequencyAnalysisAsync(parameter.Id, true));
+                    }
+                    if (includeLineTexture && !lineTextureAlreadyReady)
+                    {
+                        defectTasks.Add(RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true));
+                    }
+                    await Task.WhenAll(defectTasks);
+                    parallelDefectStopwatch.Stop();
+                    if (!IsObjectDetectionResultReviewUiAvailable())
+                    {
+                        return;
+                    }
+                    objectDetectionResultReviewDefectMilliseconds =
+                        parallelDefectStopwatch.ElapsedMilliseconds;
+                    UpdateObjectDetectionResultReviewTimingMemo();
+                    if (includeFrequency || includeLineTexture)
+                    {
+                        leftImageTabControl.SelectedTab =
+                            objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
+                        InvalidateObjectDetectionDefectIntegrationDisplay();
+                    }
+                }
+                else
+                {
+                    await RunObjectDetectionDefectProcessingAsync(
+                        parameter.Id,
+                        null,
+                        elapsed =>
                         {
-                            return;
-                        }
+                            objectDetectionResultReviewDefectMilliseconds = elapsed;
+                            UpdateObjectDetectionResultReviewTimingMemo();
+                        },
+                        elapsed =>
+                        {
+                            objectDetectionResultReviewDefectDisplayMilliseconds = elapsed;
+                            UpdateObjectDetectionResultReviewTimingMemo();
+                        },
+                        true);
+                    if (!IsObjectDetectionResultReviewUiAvailable())
+                    {
+                        return;
                     }
 
-                    if (TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult))
+                    if (includeFrequency)
                     {
                         if (!frequencyAlreadyReady)
                         {
-                            objectDetectionResultReviewDefectMilliseconds =
-                                (objectDetectionResultReviewDefectMilliseconds ?? 0) +
-                                frequencyResult.TotalElapsedMilliseconds;
-                            UpdateObjectDetectionResultReviewTimingMemo();
+                            objectDetectionResultReviewStatusLabel.Text =
+                                "一般缺陷條件完成，正在執行納入整合的頻域異常分析...";
+                            await RunObjectDetectionFrequencyAnalysisAsync(parameter.Id, true);
+                            if (!IsObjectDetectionResultReviewUiAvailable())
+                            {
+                                return;
+                            }
+                            if (TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult))
+                            {
+                                objectDetectionResultReviewDefectMilliseconds =
+                                    (objectDetectionResultReviewDefectMilliseconds ?? 0) +
+                                    frequencyResult.TotalElapsedMilliseconds;
+                                UpdateObjectDetectionResultReviewTimingMemo();
+                            }
                         }
-                    }
-                    leftImageTabControl.SelectedTab =
-                        objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
-                    InvalidateObjectDetectionDefectIntegrationDisplay();
-                }
-
-                if (IsObjectDetectionDefectLineTextureIntegrationRequired(parameter))
-                {
-                    ObjectDetectionLineTextureResult lineTextureResult;
-                    bool lineTextureAlreadyReady = TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
-                    if (!lineTextureAlreadyReady)
-                    {
-                        objectDetectionResultReviewStatusLabel.Text =
-                            "一般缺陷條件完成，正在執行納入整合的紋理異常分析...";
-                        await RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true);
-                        if (!IsObjectDetectionResultReviewUiAvailable())
-                        {
-                            return;
-                        }
+                        leftImageTabControl.SelectedTab =
+                            objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
+                        InvalidateObjectDetectionDefectIntegrationDisplay();
                     }
 
-                    if (TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult))
+                    if (includeLineTexture)
                     {
                         if (!lineTextureAlreadyReady)
                         {
-                            objectDetectionResultReviewDefectMilliseconds =
-                                (objectDetectionResultReviewDefectMilliseconds ?? 0) +
-                                lineTextureResult.TotalElapsedMilliseconds;
-                            UpdateObjectDetectionResultReviewTimingMemo();
+                            objectDetectionResultReviewStatusLabel.Text =
+                                "一般缺陷條件完成，正在執行納入整合的紋理異常分析...";
+                            await RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true);
+                            if (!IsObjectDetectionResultReviewUiAvailable())
+                            {
+                                return;
+                            }
+                            if (TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult))
+                            {
+                                objectDetectionResultReviewDefectMilliseconds =
+                                    (objectDetectionResultReviewDefectMilliseconds ?? 0) +
+                                    lineTextureResult.TotalElapsedMilliseconds;
+                                UpdateObjectDetectionResultReviewTimingMemo();
+                            }
                         }
+                        leftImageTabControl.SelectedTab =
+                            objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
+                        InvalidateObjectDetectionDefectIntegrationDisplay();
                     }
-                    leftImageTabControl.SelectedTab =
-                        objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
-                    InvalidateObjectDetectionDefectIntegrationDisplay();
                 }
 
                 StopObjectDetectionResultReviewTimingStage();
