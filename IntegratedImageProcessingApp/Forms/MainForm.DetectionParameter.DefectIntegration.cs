@@ -164,6 +164,8 @@ namespace IntegratedImageProcessingApp.Forms
                 Padding = new Padding(6, 16, 6, 6)
             };
             objectDetectionDefectIntegrationResultsGrid = CreateObjectDetectionDefectIntegrationResultsGrid();
+            objectDetectionDefectIntegrationResultsGrid.CellDoubleClick +=
+                ObjectDetectionDefectIntegrationResultsGrid_CellDoubleClick;
             objectDetectionDefectIntegrationResultsStatus = new Label
             {
                 Dock = DockStyle.Bottom,
@@ -368,7 +370,7 @@ namespace IntegratedImageProcessingApp.Forms
                             : GetObjectDetectionDefectCoreLabel(
                                 GetObjectDetectionDefectCoreIndex(item.CoreKey)))
                     .Distinct(StringComparer.Ordinal));
-                grid.Rows.Add(
+                int rowIndex = grid.Rows.Add(
                     (index + 1).ToString(CultureInfo.InvariantCulture),
                     group.ObjectNumber.ToString(CultureInfo.InvariantCulture),
                     type,
@@ -378,6 +380,7 @@ namespace IntegratedImageProcessingApp.Forms
                     Math.Round(group.Bounds.Top).ToString(CultureInfo.InvariantCulture),
                     Math.Round(group.Bounds.Width).ToString(CultureInfo.InvariantCulture),
                     Math.Round(group.Bounds.Height).ToString(CultureInfo.InvariantCulture));
+                grid.Rows[rowIndex].Tag = group;
             }
 
             bool frequencyRequired = IsObjectDetectionDefectFrequencyIntegrationRequired(parameter);
@@ -410,6 +413,45 @@ namespace IntegratedImageProcessingApp.Forms
                         ? "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
                             " 整合出 " + groups.Count.ToString("N0", CultureInfo.CurrentCulture) + " 組缺陷"
                         : "全部 ROI 共整合出 " + groups.Count.ToString("N0", CultureInfo.CurrentCulture) + " 組缺陷");
+        }
+
+        private void ObjectDetectionDefectIntegrationResultsGrid_CellDoubleClick(
+            object sender,
+            DataGridViewCellEventArgs e)
+        {
+            DataGridView grid = sender as DataGridView;
+            if (grid == null || e.RowIndex < 0 || e.RowIndex >= grid.Rows.Count)
+            {
+                return;
+            }
+
+            ObjectDetectionDefectIntegrationGroup group =
+                grid.Rows[e.RowIndex].Tag as ObjectDetectionDefectIntegrationGroup;
+            if (group == null || group.Bounds.Width <= 0 || group.Bounds.Height <= 0)
+            {
+                return;
+            }
+
+            TabPage integratedPage = GetObjectDetectionDefectDisplayTabPage(
+                ObjectDetectionDefectIntegratedDisplayIndex);
+            if (leftImageTabControl != null && integratedPage != null &&
+                leftImageTabControl.TabPages.Contains(integratedPage))
+            {
+                leftImageTabControl.SelectedTab = integratedPage;
+                RefreshObjectDetectionDefectDisplay();
+            }
+
+            FocusObjectDetectionImage(Rectangle.Ceiling(group.Bounds));
+            ImageDisplayControl integratedDisplay = GetObjectDetectionDefectDisplayControl(
+                ObjectDetectionDefectIntegratedDisplayIndex);
+            if (integratedDisplay != null)
+            {
+                integratedDisplay.InvalidateImageView();
+            }
+
+            SetObjectDetectionDefectRegionStatus(
+                "已聚焦 ROI " + group.ObjectNumber.ToString(CultureInfo.InvariantCulture) +
+                " 的整合缺陷位置。 ");
         }
 
         private void SetObjectDetectionDefectIntegrationResultsStatus(string text)
@@ -493,7 +535,7 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             CoreKey = "Frequency",
                             ObjectNumber = cell.ObjectNumber,
-                            Bounds = cell.ValidBounds,
+                            Bounds = cell.Bounds,
                             IsFrequency = true
                         }));
                 }
