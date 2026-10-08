@@ -146,7 +146,7 @@ namespace IntegratedImageProcessingApp.Forms
             };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 142));
             Controls.Add(layout);
             layout.Controls.Add(new Label
             {
@@ -206,44 +206,39 @@ namespace IntegratedImageProcessingApp.Forms
                 Left = 0,
                 Top = 0,
                 Width = ClientSize.Width - 28,
-                Height = 80,
+                Height = 88,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 ColumnCount = 2,
-                RowCount = 1
+                RowCount = 2
             };
             detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 286));
+            detailsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            detailsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             footer.Controls.Add(detailsLayout);
 
-            var descriptionPanel = new Panel { Dock = DockStyle.Fill };
-            detailsLayout.Controls.Add(descriptionPanel, 0, 0);
-            descriptionPanel.Controls.Add(new Label
+            detailsLayout.Controls.Add(new Label
             {
                 Text = "參數說明",
-                Left = 0,
-                Top = 4,
-                Width = 100,
-                Height = 22
-            });
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft
+            }, 0, 0);
             descriptionTextBox = new TextBox
             {
-                Left = 0,
-                Top = 26,
-                Width = descriptionPanel.ClientSize.Width,
-                Height = 50,
-                Dock = DockStyle.Bottom,
+                Dock = DockStyle.Fill,
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical
             };
-            descriptionPanel.Controls.Add(descriptionTextBox);
+            detailsLayout.Controls.Add(descriptionTextBox, 0, 1);
+            detailsLayout.SetColumnSpan(descriptionTextBox, 2);
 
             var orderButtons = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 FlowDirection = FlowDirection.LeftToRight,
                 WrapContents = false,
-                Padding = new Padding(0, 25, 0, 0)
+                Padding = Padding.Empty
             };
             moveUpButton = new Button { Text = "↑ 上移", Width = 66, Height = 28, Enabled = false };
             moveDownButton = new Button { Text = "↓ 下移", Width = 66, Height = 28, Enabled = false };
