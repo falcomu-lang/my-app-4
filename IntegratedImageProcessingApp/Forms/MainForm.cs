@@ -306,12 +306,8 @@ namespace IntegratedImageProcessingApp.Forms
             Process,
             Relation,
             Object,
-            Brightness,
             Filter,
-            Edge,
-            Geometry,
-            Measure,
-            Save
+            Measure
         }
 
         public MainForm()
@@ -2612,18 +2608,6 @@ namespace IntegratedImageProcessingApp.Forms
                     return FunctionMenuIcon.Measure;
                 case ObjectDetectionResultReviewMenuText:
                     return FunctionMenuIcon.Measure;
-                case "亮度 / 對比":
-                    return FunctionMenuIcon.Brightness;
-                case "濾波與銳化":
-                    return FunctionMenuIcon.Filter;
-                case "邊緣偵測":
-                    return FunctionMenuIcon.Edge;
-                case "幾何校正":
-                    return FunctionMenuIcon.Geometry;
-                case "量測工具":
-                    return FunctionMenuIcon.Measure;
-                case "輸出設定":
-                    return FunctionMenuIcon.Save;
                 default:
                     return FunctionMenuIcon.None;
             }
@@ -2683,13 +2667,6 @@ namespace IntegratedImageProcessingApp.Forms
                         graphics.DrawLine(pen, bounds.Left + 8, bounds.Top, bounds.Left + 8, bounds.Top + 2);
                         graphics.DrawLine(pen, bounds.Left + 8, bounds.Bottom - 2, bounds.Left + 8, bounds.Bottom);
                         break;
-                    case FunctionMenuIcon.Brightness:
-                        graphics.DrawEllipse(pen, bounds.Left + 5, bounds.Top + 5, 6, 6);
-                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Top, bounds.Left + 8, bounds.Top + 3);
-                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Bottom - 3, bounds.Left + 8, bounds.Bottom);
-                        graphics.DrawLine(pen, bounds.Left, bounds.Top + 8, bounds.Left + 3, bounds.Top + 8);
-                        graphics.DrawLine(pen, bounds.Right - 3, bounds.Top + 8, bounds.Right, bounds.Top + 8);
-                        break;
                     case FunctionMenuIcon.Filter:
                         graphics.DrawLine(pen, bounds.Left + 1, bounds.Top + 2, bounds.Right - 1, bounds.Top + 2);
                         graphics.DrawLine(pen, bounds.Left + 1, bounds.Top + 2, bounds.Left + 6, bounds.Top + 8);
@@ -2697,26 +2674,10 @@ namespace IntegratedImageProcessingApp.Forms
                         graphics.DrawLine(pen, bounds.Left + 8, bounds.Top + 8, bounds.Left + 8, bounds.Bottom - 1);
                         graphics.DrawLine(pen, bounds.Left + 8, bounds.Bottom - 1, bounds.Left + 11, bounds.Bottom - 3);
                         break;
-                    case FunctionMenuIcon.Edge:
-                        graphics.DrawLine(pen, bounds.Left + 2, bounds.Bottom - 2, bounds.Left + 7, bounds.Top + 2);
-                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Bottom - 2, bounds.Left + 14, bounds.Top + 2);
-                        break;
-                    case FunctionMenuIcon.Geometry:
-                        graphics.DrawPolygon(pen, new[]
-                        {
-                            new Point(bounds.Left + 4, bounds.Top + 1), new Point(bounds.Right - 2, bounds.Top + 5),
-                            new Point(bounds.Right - 5, bounds.Bottom - 1), new Point(bounds.Left + 1, bounds.Bottom - 5)
-                        });
-                        break;
                     case FunctionMenuIcon.Measure:
                         graphics.DrawLine(pen, bounds.Left + 1, bounds.Bottom - 3, bounds.Right - 1, bounds.Top + 3);
                         graphics.DrawLine(pen, bounds.Left + 4, bounds.Bottom - 5, bounds.Left + 6, bounds.Bottom - 2);
                         graphics.DrawLine(pen, bounds.Left + 8, bounds.Top + 5, bounds.Left + 10, bounds.Top + 8);
-                        break;
-                    case FunctionMenuIcon.Save:
-                        graphics.DrawRectangle(pen, bounds.Left + 2, bounds.Top + 1, 12, 14);
-                        graphics.DrawRectangle(pen, bounds.Left + 5, bounds.Top + 9, 6, 5);
-                        graphics.DrawLine(pen, bounds.Left + 5, bounds.Top + 2, bounds.Left + 11, bounds.Top + 2);
                         break;
                 }
             }
