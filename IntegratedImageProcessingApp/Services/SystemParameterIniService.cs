@@ -31,6 +31,11 @@ namespace IntegratedImageProcessingApp.Services
             Dictionary<string, Dictionary<string, string>> sections = ReadSections();
 
             settings.LastImagePath = GetValue(sections, SectionSystem, "LastImagePath", string.Empty);
+            settings.ActiveDetectionRecipeId = GetValue(
+                sections,
+                SectionSystem,
+                "ActiveDetectionRecipeId",
+                string.Empty);
             settings.RoiEnabled = GetBool(sections, SectionRoi, "Enabled", false);
             settings.Roi = new Rectangle(
                 GetInt(sections, SectionRoi, "X", 0),
@@ -882,6 +887,7 @@ namespace IntegratedImageProcessingApp.Services
             {
                 writer.WriteLine("[System]");
                 writer.WriteLine("LastImagePath={0}", Escape(settings.LastImagePath));
+                writer.WriteLine("ActiveDetectionRecipeId={0}", Escape(settings.ActiveDetectionRecipeId));
                 writer.WriteLine();
                 writer.WriteLine("[ROI]");
                 writer.WriteLine("Enabled={0}", settings.RoiEnabled ? "true" : "false");

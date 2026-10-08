@@ -184,6 +184,134 @@ namespace IntegratedImageProcessingApp.Services
             SaveParameterList(entries);
         }
 
+        public void SaveParameterOrder(IEnumerable<string> orderedRecipeIds)
+        {
+            if (orderedRecipeIds == null)
+            {
+                throw new ArgumentNullException("orderedRecipeIds");
+            }
+
+            IList<DetectionRecipeCatalogEntry> entries = LoadParameterList();
+            List<string> ids = orderedRecipeIds.ToList();
+            if (ids.Count != entries.Count ||
+                ids.Distinct(StringComparer.Ordinal).Count() != entries.Count ||
+                ids.Any(id => !entries.Any(entry => string.Equals(entry.Id, id, StringComparison.Ordinal))))
+            {
+                throw new InvalidOperationException("參數清單已變更，請重新開啟清單後再保存順序。");
+            }
+
+            Dictionary<string, DetectionRecipeCatalogEntry> entriesById = entries.ToDictionary(
+                entry => entry.Id,
+                StringComparer.Ordinal);
+            SaveParameterList(ids.Select(id => entriesById[id]).ToList());
+        }
+
+        public void DeleteRecipe(string id, IEnumerable<string> inUseRecipeIds)
+        {
+            if (!IsValidId(id))
+            {
+                throw new InvalidDataException("要刪除的參數識別碼無效。");
+            }
+
+            if ((inUseRecipeIds ?? Enumerable.Empty<string>()).Contains(id, StringComparer.Ordinal))
+            {
+                throw new InvalidOperationException("此參數目前正在使用，無法刪除。請先套用其他檢測參數。");
+            }
+
+            IList<DetectionRecipeCatalogEntry> entries = LoadParameterList();
+            DetectionRecipeCatalogEntry entry = entries.FirstOrDefault(
+                item => string.Equals(item.Id, id, StringComparison.Ordinal));
+            if (entry == null)
+            {
+                throw new InvalidOperationException("找不到要刪除的參數資料。");
+            }
+
+            string parameterPath = GetParameterFilePath(entry);
+            string stagedPath = parameterPath + ".delete-" + Guid.NewGuid().ToString("N");
+            bool parameterFileStaged = false;
+            try
+            {
+                if (File.Exists(parameterPath))
+                {
+                    File.Move(parameterPath, stagedPath);
+                    parameterFileStaged = true;
+                }
+
+                entries.Remove(entry);
+                SaveParameterList(entries);
+            }
+            catch
+            {
+                if (parameterFileStaged && File.Exists(stagedPath) && !File.Exists(parameterPath))
+                {
+                    File.Move(stagedPath, parameterPath);
+                }
+                throw;
+            }
+
+            if (parameterFileStaged)
+            {
+                try { File.Delete(stagedPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+
+        public IList<DetectionRecipeCatalogEntry> FindRecipesMatchingSettings(
+            SystemParameterSettings activeSettings)
+        {
+            if (activeSettings == null)
+            {
+                return new List<DetectionRecipeCatalogEntry>();
+            }
+
+            IList<DetectionRecipeCatalogEntry> entries = LoadParameterList();
+            string activeTemporaryPath = Path.Combine(
+                Path.GetTempPath(), "active-recipe-" + Guid.NewGuid().ToString("N") + ".ini");
+            string candidateTemporaryPath = Path.Combine(
+                Path.GetTempPath(), "candidate-recipe-" + Guid.NewGuid().ToString("N") + ".ini");
+            string originalImagePath = activeSettings.LastImagePath;
+            string originalRecipeId = activeSettings.ActiveDetectionRecipeId;
+            var matchingEntries = new List<DetectionRecipeCatalogEntry>();
+
+            try
+            {
+                activeSettings.LastImagePath = string.Empty;
+                activeSettings.ActiveDetectionRecipeId = string.Empty;
+                new SystemParameterIniService(activeTemporaryPath).Save(activeSettings);
+                SystemParameterSettings normalizedActiveSettings =
+                    new SystemParameterIniService(activeTemporaryPath).Load();
+                normalizedActiveSettings.LastImagePath = string.Empty;
+                normalizedActiveSettings.ActiveDetectionRecipeId = string.Empty;
+                new SystemParameterIniService(activeTemporaryPath).Save(normalizedActiveSettings);
+                byte[] activeBytes = File.ReadAllBytes(activeTemporaryPath);
+
+                foreach (DetectionRecipeCatalogEntry entry in entries)
+                {
+                    if (!ParameterFileExists(entry)) continue;
+
+                    SystemParameterSettings candidate =
+                        new SystemParameterIniService(GetParameterFilePath(entry)).Load();
+                    candidate.LastImagePath = string.Empty;
+                    candidate.ActiveDetectionRecipeId = string.Empty;
+                    new SystemParameterIniService(candidateTemporaryPath).Save(candidate);
+                    if (activeBytes.SequenceEqual(File.ReadAllBytes(candidateTemporaryPath)))
+                    {
+                        matchingEntries.Add(entry);
+                    }
+                }
+            }
+            finally
+            {
+                activeSettings.LastImagePath = originalImagePath;
+                activeSettings.ActiveDetectionRecipeId = originalRecipeId;
+                TryDeleteTemporaryFile(activeTemporaryPath);
+                TryDeleteTemporaryFile(candidateTemporaryPath);
+            }
+
+            return matchingEntries;
+        }
+
         public string GetParameterFilePath(DetectionRecipeCatalogEntry entry)
         {
             if (entry == null || !IsValidId(entry.Id))
@@ -273,6 +401,16 @@ namespace IntegratedImageProcessingApp.Services
         {
             Guid parsed;
             return !string.IsNullOrWhiteSpace(id) && Guid.TryParseExact(id, "N", out parsed);
+        }
+
+        private static void TryDeleteTemporaryFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
         }
     }
 }

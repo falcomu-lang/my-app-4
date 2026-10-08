@@ -426,6 +426,14 @@ namespace IntegratedImageProcessingApp.Forms
             bool succeeded,
             string errorMessage)
         {
+            if (detectionRecipeDefinitionCompletion != null &&
+                string.Equals(detectionRecipePendingDefinitionId, definitionId,
+                    StringComparison.Ordinal))
+            {
+                detectionRecipeDefinitionCompletion.TrySetResult(
+                    succeeded ? string.Empty : errorMessage ?? "物件定義處理失敗。");
+            }
+
             if (objectDetectionResultReviewDefinitionCompletion != null &&
                 string.Equals(objectDetectionResultReviewPendingDefinitionId, definitionId,
                     StringComparison.Ordinal))
@@ -452,7 +460,10 @@ namespace IntegratedImageProcessingApp.Forms
                 RefreshObjectDetectionParameterQuantityStatus(parameter);
                 AppendObjectDetectionParameterQuantityToStatusLabel(definitionId);
                 RefreshObjectDetectionMeasurementDisplay();
-                TryApplySavedObjectDetectionFlatFieldCalibration(parameter);
+                if (!isDetectionRecipeAutoRunActive)
+                {
+                    TryApplySavedObjectDetectionFlatFieldCalibration(parameter);
+                }
             }
             else
             {

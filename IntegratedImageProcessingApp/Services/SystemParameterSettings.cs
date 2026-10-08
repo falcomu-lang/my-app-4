@@ -23,6 +23,8 @@ namespace IntegratedImageProcessingApp.Services
 
         public string LastImagePath { get; set; }
 
+        public string ActiveDetectionRecipeId { get; set; }
+
         public bool RoiEnabled { get; set; }
 
         public Rectangle Roi { get; set; }

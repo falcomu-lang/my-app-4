@@ -301,12 +301,21 @@ namespace IntegratedImageProcessingApp.Forms
                             targetGray, generation, maskGeneration);
                         return decoded;
                     }
+                    catch (OperationCanceledException)
+                    {
+                        decoded.Dispose();
+                        return null;
+                    }
                     catch
                     {
                         decoded.Dispose();
                         throw;
                     }
                 });
+                if (result == null)
+                {
+                    return;
+                }
                 if (IsDisposed || resultLabel.IsDisposed ||
                     !isObjectDetectionParameterImageLayout ||
                     generation != Interlocked.CompareExchange(
@@ -364,9 +373,19 @@ namespace IntegratedImageProcessingApp.Forms
                     "，補值 " + filledColumnCount.ToString("N0", CultureInfo.CurrentCulture) + " 欄）";
                 objectDetectionFlatFieldPreviewDisplayControl.InvalidateImageView();
             }
+            catch (OperationCanceledException)
+            {
+                // A newer MASK or calibration request superseded this preview.
+            }
             catch (Exception exception)
             {
-                if (!IsDisposed && !resultLabel.IsDisposed)
+                bool isCurrentOperation = generation == Interlocked.CompareExchange(
+                        ref objectDetectionFlatFieldCalibrationGeneration, 0, 0) &&
+                    maskGeneration == Interlocked.CompareExchange(
+                        ref objectDetectionFlatFieldEvaluationGeneration, 0, 0) &&
+                    capturedImageGeneration == imageSourceGeneration &&
+                    string.Equals(activeObjectDetectionParameterId, parameterId, StringComparison.Ordinal);
+                if (!IsDisposed && !resultLabel.IsDisposed && isCurrentOperation)
                 {
                     resultLabel.Text = "顯示平場校正結果失敗：" + exception.Message;
                     if (objectDetectionFlatFieldCorrectionTimingLabel != null &&

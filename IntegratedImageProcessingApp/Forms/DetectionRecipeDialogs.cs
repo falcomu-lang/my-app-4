@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
+using System.Linq;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Services;
 
@@ -108,16 +109,26 @@ namespace IntegratedImageProcessingApp.Forms
     internal sealed class DetectionRecipeSelectionDialog : Form
     {
         private readonly DetectionRecipeCatalogService catalogService;
+        private readonly HashSet<string> inUseRecipeIds;
         private readonly DataGridView recipeGrid;
         private readonly TextBox descriptionTextBox;
         private readonly Button editButton;
         private readonly Button useButton;
+        private readonly Button moveUpButton;
+        private readonly Button moveDownButton;
+        private readonly Button saveOrderButton;
+        private readonly ContextMenuStrip recipeContextMenu;
+        private bool orderChanged;
 
         public DetectionRecipeSelectionDialog(
             DetectionRecipeCatalogService catalogService,
-            IList<DetectionRecipeCatalogEntry> entries)
+            IList<DetectionRecipeCatalogEntry> entries,
+            IEnumerable<string> inUseRecipeIds)
         {
             this.catalogService = catalogService ?? throw new ArgumentNullException("catalogService");
+            this.inUseRecipeIds = new HashSet<string>(
+                inUseRecipeIds ?? Enumerable.Empty<string>(),
+                StringComparer.Ordinal);
             Text = "檢測參數選擇";
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.Sizable;
@@ -180,13 +191,33 @@ namespace IntegratedImageProcessingApp.Forms
                 HeaderText = "檔案狀態",
                 Width = 100
             });
+            recipeContextMenu = new ContextMenuStrip();
+            recipeContextMenu.Items.Add("刪除", null, delegate { DeleteSelectedRecipe(); });
+            recipeGrid.ContextMenuStrip = recipeContextMenu;
+            recipeGrid.CellMouseDown += RecipeGrid_CellMouseDown;
             recipeGrid.SelectionChanged += RecipeGrid_SelectionChanged;
             recipeGrid.CellDoubleClick += delegate { UseSelectedRecipe(); };
             layout.Controls.Add(recipeGrid, 0, 1);
 
             var footer = new Panel { Dock = DockStyle.Fill };
             layout.Controls.Add(footer, 0, 2);
-            footer.Controls.Add(new Label
+            var detailsLayout = new TableLayoutPanel
+            {
+                Left = 0,
+                Top = 0,
+                Width = ClientSize.Width - 28,
+                Height = 80,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                ColumnCount = 2,
+                RowCount = 1
+            };
+            detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            detailsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 286));
+            footer.Controls.Add(detailsLayout);
+
+            var descriptionPanel = new Panel { Dock = DockStyle.Fill };
+            detailsLayout.Controls.Add(descriptionPanel, 0, 0);
+            descriptionPanel.Controls.Add(new Label
             {
                 Text = "參數說明",
                 Left = 0,
@@ -198,14 +229,32 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Left = 0,
                 Top = 26,
-                Width = ClientSize.Width - 28,
+                Width = descriptionPanel.ClientSize.Width,
                 Height = 50,
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Dock = DockStyle.Bottom,
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical
             };
-            footer.Controls.Add(descriptionTextBox);
+            descriptionPanel.Controls.Add(descriptionTextBox);
+
+            var orderButtons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Padding = new Padding(0, 25, 0, 0)
+            };
+            moveUpButton = new Button { Text = "↑ 上移", Width = 66, Height = 28, Enabled = false };
+            moveDownButton = new Button { Text = "↓ 下移", Width = 66, Height = 28, Enabled = false };
+            saveOrderButton = new Button { Text = "保存清單順序", Width = 122, Height = 28, Enabled = false };
+            moveUpButton.Click += delegate { MoveSelectedRecipe(-1); };
+            moveDownButton.Click += delegate { MoveSelectedRecipe(1); };
+            saveOrderButton.Click += delegate { SaveRecipeOrder(); };
+            orderButtons.Controls.Add(moveUpButton);
+            orderButtons.Controls.Add(moveDownButton);
+            orderButtons.Controls.Add(saveOrderButton);
+            detailsLayout.Controls.Add(orderButtons, 1, 0);
 
             var buttons = new FlowLayoutPanel
             {
@@ -232,7 +281,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         public string SelectedRecipeId { get; private set; }
 
-        private void Populate(IList<DetectionRecipeCatalogEntry> entries)
+        private void Populate(IList<DetectionRecipeCatalogEntry> entries, string selectedRecipeId = null)
         {
             recipeGrid.Rows.Clear();
             foreach (DetectionRecipeCatalogEntry entry in entries ?? new List<DetectionRecipeCatalogEntry>())
@@ -249,7 +298,9 @@ namespace IntegratedImageProcessingApp.Forms
                 int index = recipeGrid.Rows.Add(
                     entry.DisplayName,
                     addedText,
-                    exists ? "可用" : "檔案缺失");
+                    !exists
+                        ? "檔案缺失"
+                        : inUseRecipeIds.Contains(entry.Id) ? "使用中" : "可用");
                 recipeGrid.Rows[index].Tag = entry;
                 if (!exists)
                 {
@@ -257,7 +308,11 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            if (recipeGrid.Rows.Count > 0)
+            if (!string.IsNullOrWhiteSpace(selectedRecipeId))
+            {
+                SelectRecipeRow(selectedRecipeId);
+            }
+            if (recipeGrid.SelectedRows.Count == 0 && recipeGrid.Rows.Count > 0)
             {
                 recipeGrid.Rows[0].Selected = true;
                 recipeGrid.CurrentCell = recipeGrid.Rows[0].Cells[0];
@@ -268,6 +323,22 @@ namespace IntegratedImageProcessingApp.Forms
         private void RecipeGrid_SelectionChanged(object sender, EventArgs e)
         {
             UpdateSelectionDetails();
+        }
+
+        private void RecipeGrid_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right) return;
+            if (e.RowIndex >= 0 && e.ColumnIndex == 0)
+            {
+                recipeGrid.ClearSelection();
+                recipeGrid.Rows[e.RowIndex].Selected = true;
+                recipeGrid.CurrentCell = recipeGrid.Rows[e.RowIndex].Cells[0];
+                recipeGrid.ContextMenuStrip = recipeContextMenu;
+            }
+            else
+            {
+                recipeGrid.ContextMenuStrip = null;
+            }
         }
 
         private DetectionRecipeCatalogEntry GetSelectedEntry()
@@ -284,6 +355,70 @@ namespace IntegratedImageProcessingApp.Forms
             bool selected = entry != null;
             editButton.Enabled = selected;
             useButton.Enabled = selected && catalogService.ParameterFileExists(entry);
+            int selectedIndex = recipeGrid.SelectedRows.Count == 0 ? -1 : recipeGrid.SelectedRows[0].Index;
+            moveUpButton.Enabled = selectedIndex > 0;
+            moveDownButton.Enabled = selectedIndex >= 0 && selectedIndex < recipeGrid.Rows.Count - 1;
+            saveOrderButton.Enabled = orderChanged;
+        }
+
+        private void MoveSelectedRecipe(int offset)
+        {
+            int currentIndex = recipeGrid.SelectedRows.Count == 0 ? -1 : recipeGrid.SelectedRows[0].Index;
+            int targetIndex = currentIndex + offset;
+            if (currentIndex < 0 || targetIndex < 0 || targetIndex >= recipeGrid.Rows.Count) return;
+
+            List<DetectionRecipeCatalogEntry> orderedEntries = recipeGrid.Rows
+                .Cast<DataGridViewRow>()
+                .Select(row => row.Tag as DetectionRecipeCatalogEntry)
+                .ToList();
+            DetectionRecipeCatalogEntry selectedEntry = orderedEntries[currentIndex];
+            DetectionRecipeCatalogEntry otherEntry = orderedEntries[targetIndex];
+            orderedEntries[currentIndex] = otherEntry;
+            orderedEntries[targetIndex] = selectedEntry;
+
+            orderChanged = true;
+            Populate(orderedEntries, selectedEntry.Id);
+        }
+
+        private void SaveRecipeOrder()
+        {
+            if (!orderChanged) return;
+
+            try
+            {
+                List<string> orderedIds = recipeGrid.Rows
+                    .Cast<DataGridViewRow>()
+                    .Select(row => row.Tag as DetectionRecipeCatalogEntry)
+                    .Where(entry => entry != null)
+                    .Select(entry => entry.Id)
+                    .ToList();
+                catalogService.SaveParameterOrder(orderedIds);
+                orderChanged = false;
+                UpdateSelectionDetails();
+                MessageBox.Show(this, "參數清單順序已保存。", "保存完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, "無法保存清單順序：\r\n" + exception.Message, "保存失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private IList<DetectionRecipeCatalogEntry> OrderEntriesByVisibleRows(
+            IList<DetectionRecipeCatalogEntry> entries)
+        {
+            List<string> visibleOrder = recipeGrid.Rows
+                .Cast<DataGridViewRow>()
+                .Select(row => row.Tag as DetectionRecipeCatalogEntry)
+                .Where(entry => entry != null)
+                .Select(entry => entry.Id)
+                .ToList();
+            var positionById = visibleOrder
+                .Select((id, index) => new { id, index })
+                .ToDictionary(item => item.id, item => item.index, StringComparer.Ordinal);
+
+            return entries
+                .OrderBy(entry => positionById.ContainsKey(entry.Id) ? positionById[entry.Id] : int.MaxValue)
+                .ToList();
         }
 
         private void EditSelectedRecipe()
@@ -300,13 +435,57 @@ namespace IntegratedImageProcessingApp.Forms
                 try
                 {
                     catalogService.UpdateMetadata(entry.Id, editor.DisplayName, editor.Description);
-                    Populate(catalogService.LoadParameterList());
-                    SelectRecipeRow(entry.Id);
+                    Populate(OrderEntriesByVisibleRows(catalogService.LoadParameterList()), entry.Id);
                 }
                 catch (Exception exception)
                 {
                     MessageBox.Show(this, exception.Message, "無法保存說明", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
+            }
+        }
+
+        private void DeleteSelectedRecipe()
+        {
+            DetectionRecipeCatalogEntry entry = GetSelectedEntry();
+            if (entry == null) return;
+
+            if (inUseRecipeIds.Contains(entry.Id))
+            {
+                MessageBox.Show(
+                    this,
+                    "參數「" + entry.DisplayName + "」目前正在使用，無法刪除。\r\n" +
+                    "請先套用其他檢測參數，再刪除此參數。",
+                    "參數使用中",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (MessageBox.Show(
+                    this,
+                    "確定要刪除參數「" + entry.DisplayName + "」嗎？\r\n" +
+                    "此操作會從清單移除並刪除參數檔。",
+                    "刪除檢測參數",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                catalogService.DeleteRecipe(entry.Id, inUseRecipeIds);
+                Populate(OrderEntriesByVisibleRows(catalogService.LoadParameterList()));
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(
+                    this,
+                    "無法刪除檢測參數：\r\n" + exception.Message,
+                    "刪除失敗",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 
