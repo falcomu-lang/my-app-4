@@ -190,7 +190,7 @@ namespace IntegratedImageProcessingApp.Forms
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
             if (selectedFunction == DetectionParameterLoadMenuText)
             {
-                parameterPlaceholderLabel.Text = "一次選取兩個檢測參數設定檔，插入後可分別選用。";
+                parameterPlaceholderLabel.Text = "選取已保存的檢測參數設定檔，覆蓋目前流程設定。";
             }
             else if (selectedFunction == LoadImageMenuText)
             {

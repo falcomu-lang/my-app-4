@@ -31,16 +31,6 @@ namespace IntegratedImageProcessingApp.Services
             Dictionary<string, Dictionary<string, string>> sections = ReadSections();
 
             settings.LastImagePath = GetValue(sections, SectionSystem, "LastImagePath", string.Empty);
-            settings.ActiveObjectDetectionParameterId = GetValue(
-                sections,
-                SectionSystem,
-                "ActiveObjectDetectionParameterId",
-                string.Empty);
-            settings.DetectionParameterBaselineData = GetValue(
-                sections,
-                SectionSystem,
-                "DetectionParameterBaselineData",
-                string.Empty);
             settings.RoiEnabled = GetBool(sections, SectionRoi, "Enabled", false);
             settings.Roi = new Rectangle(
                 GetInt(sections, SectionRoi, "X", 0),
@@ -368,11 +358,6 @@ namespace IntegratedImageProcessingApp.Services
                     Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", string.Empty),
                     DisplayName = GetValue(sections, SectionObjectDetection, prefix + ".DisplayName", string.Empty),
                     Parameters = GetValue(sections, SectionObjectDetection, prefix + ".Parameters", string.Empty),
-                    ProfileSettingsData = GetValue(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".ProfileSettingsData",
-                        string.Empty),
                     ObjectDefinitionId = GetValue(
                         sections,
                         SectionObjectDetection,
@@ -897,12 +882,6 @@ namespace IntegratedImageProcessingApp.Services
             {
                 writer.WriteLine("[System]");
                 writer.WriteLine("LastImagePath={0}", Escape(settings.LastImagePath));
-                writer.WriteLine(
-                    "ActiveObjectDetectionParameterId={0}",
-                    Escape(settings.ActiveObjectDetectionParameterId));
-                writer.WriteLine(
-                    "DetectionParameterBaselineData={0}",
-                    Escape(settings.DetectionParameterBaselineData));
                 writer.WriteLine();
                 writer.WriteLine("[ROI]");
                 writer.WriteLine("Enabled={0}", settings.RoiEnabled ? "true" : "false");
@@ -1093,10 +1072,6 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.Id={1}", prefix, Escape(parameter.Id));
                     writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(parameter.DisplayName));
                     writer.WriteLine("{0}.Parameters={1}", prefix, Escape(parameter.Parameters));
-                    writer.WriteLine(
-                        "{0}.ProfileSettingsData={1}",
-                        prefix,
-                        Escape(parameter.ProfileSettingsData));
                     writer.WriteLine(
                         "{0}.ObjectDefinitionId={1}",
                         prefix,

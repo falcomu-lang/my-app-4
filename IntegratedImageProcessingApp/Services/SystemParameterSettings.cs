@@ -23,10 +23,6 @@ namespace IntegratedImageProcessingApp.Services
 
         public string LastImagePath { get; set; }
 
-        public string ActiveObjectDetectionParameterId { get; set; }
-
-        public string DetectionParameterBaselineData { get; set; }
-
         public bool RoiEnabled { get; set; }
 
         public Rectangle Roi { get; set; }
@@ -496,8 +492,6 @@ namespace IntegratedImageProcessingApp.Services
         public string DisplayName { get; set; }
 
         public string Parameters { get; set; }
-
-        public string ProfileSettingsData { get; set; }
 
         public string ObjectDefinitionId { get; set; }
 
