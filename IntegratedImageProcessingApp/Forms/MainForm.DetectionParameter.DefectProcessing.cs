@@ -7,6 +7,7 @@ using System.Drawing.Imaging;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
@@ -106,6 +107,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return;
             }
+            int capturedRecipeGeneration = Interlocked.CompareExchange(
+                ref detectionRecipeGeneration, 0, 0);
+            CancellationToken operationCancellationToken =
+                detectionRecipeCancellationTokenSource.Token;
+            operationCancellationToken.ThrowIfCancellationRequested();
             objectDetectionDefectProcessingRequested = true;
             objectDetectionDefectLastRunCompleted = false;
             if (objectDetectionDefectRunButton != null)
@@ -129,11 +135,32 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 SetObjectDetectionDefectRegionStatus("正在準備缺陷檢測；請稍候...");
                 await Task.Yield();
+                EnsureDetectionRecipeGenerationIsCurrent(
+                    capturedRecipeGeneration,
+                    operationCancellationToken);
                 await RunObjectDetectionDefectProcessingCoreAsync(
-                    parameterId, coreKey, computationCompleted, displayCompleted);
-                if (coreKey == null && !isResultReviewRun)
+                    parameterId,
+                    coreKey,
+                    computationCompleted,
+                    displayCompleted,
+                    capturedRecipeGeneration,
+                    operationCancellationToken);
+                if (coreKey == null && !isResultReviewRun &&
+                    !operationCancellationToken.IsCancellationRequested &&
+                    capturedRecipeGeneration == Interlocked.CompareExchange(
+                        ref detectionRecipeGeneration, 0, 0))
                 {
-                    await RunObjectDetectionSupplementaryAnalysesAsync(parameterId);
+                    await RunObjectDetectionSupplementaryAnalysesAsync(
+                        parameterId,
+                        capturedRecipeGeneration,
+                        operationCancellationToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                if (!operationCancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
             }
             finally
@@ -157,8 +184,12 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private async Task RunObjectDetectionSupplementaryAnalysesAsync(string parameterId)
+        private async Task RunObjectDetectionSupplementaryAnalysesAsync(
+            string parameterId,
+            int capturedRecipeGeneration,
+            CancellationToken cancellationToken)
         {
+            EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
             ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(parameterId);
             if (parameter == null)
             {
@@ -179,13 +210,18 @@ namespace IntegratedImageProcessingApp.Forms
                 try
                 {
                     await Task.WhenAll(
-                        RunObjectDetectionFrequencyAnalysisAsync(parameterId, true),
-                        RunObjectDetectionLineTextureAnalysisAsync(parameterId, true));
+                        RunObjectDetectionFrequencyAnalysisAsync(
+                            parameterId, true, cancellationToken, capturedRecipeGeneration),
+                        RunObjectDetectionLineTextureAnalysisAsync(
+                            parameterId, true, cancellationToken, capturedRecipeGeneration));
                 }
                 catch (Exception exception)
                 {
-                    SetObjectDetectionDefectRegionStatus(
-                        "頻域／紋理附加分析失敗：" + exception.Message);
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        SetObjectDetectionDefectRegionStatus(
+                            "頻域／紋理附加分析失敗：" + exception.Message);
+                    }
                 }
                 return;
             }
@@ -194,12 +230,16 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 try
                 {
-                    await RunObjectDetectionFrequencyAnalysisAsync(parameterId, true);
+                    await RunObjectDetectionFrequencyAnalysisAsync(
+                        parameterId, true, cancellationToken, capturedRecipeGeneration);
                 }
                 catch (Exception exception)
                 {
-                    SetObjectDetectionDefectRegionStatus(
-                        "頻域附加分析失敗：" + exception.Message);
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        SetObjectDetectionDefectRegionStatus(
+                            "頻域附加分析失敗：" + exception.Message);
+                    }
                 }
             }
 
@@ -207,12 +247,16 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 try
                 {
-                    await RunObjectDetectionLineTextureAnalysisAsync(parameterId, true);
+                    await RunObjectDetectionLineTextureAnalysisAsync(
+                        parameterId, true, cancellationToken, capturedRecipeGeneration);
                 }
                 catch (Exception exception)
                 {
-                    SetObjectDetectionDefectRegionStatus(
-                        "紋理附加分析失敗：" + exception.Message);
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        SetObjectDetectionDefectRegionStatus(
+                            "紋理附加分析失敗：" + exception.Message);
+                    }
                 }
             }
         }
@@ -221,8 +265,13 @@ namespace IntegratedImageProcessingApp.Forms
             string parameterId,
             string coreKey,
             Action<long> computationCompleted = null,
-            Action<long> displayCompleted = null)
+            Action<long> displayCompleted = null,
+            int capturedRecipeGeneration = 0,
+            CancellationToken operationCancellationToken = default(CancellationToken))
         {
+            EnsureDetectionRecipeGenerationIsCurrent(
+                capturedRecipeGeneration,
+                operationCancellationToken);
 
             ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(parameterId);
             if (parameter == null)
@@ -331,6 +380,9 @@ namespace IntegratedImageProcessingApp.Forms
                     int waitCount = 0;
                     while (objectDetectionDefectBasePreparationPending && waitCount++ < 1800)
                     {
+                        EnsureDetectionRecipeGenerationIsCurrent(
+                            capturedRecipeGeneration,
+                            operationCancellationToken);
                         await Task.Delay(100);
                     }
                 }
@@ -342,6 +394,9 @@ namespace IntegratedImageProcessingApp.Forms
                         null,
                         hasCurrentProfile);
                 }
+                EnsureDetectionRecipeGenerationIsCurrent(
+                    capturedRecipeGeneration,
+                    operationCancellationToken);
             }
 
             LargeImageSource correctedSource = objectDetectionFlatFieldCorrectedLargeSource;
@@ -448,7 +503,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 IProgress<string> progress = new Progress<string>(message =>
                 {
-                    if (!IsDisposed && string.Equals(activeObjectDetectionParameterId,
+                    if (!IsDisposed && !operationCancellationToken.IsCancellationRequested &&
+                        capturedRecipeGeneration == Interlocked.CompareExchange(
+                            ref detectionRecipeGeneration, 0, 0) &&
+                        string.Equals(activeObjectDetectionParameterId,
                         parameter.Id, StringComparison.Ordinal))
                     {
                         SetObjectDetectionDefectRegionStatus(message);
@@ -482,6 +540,7 @@ namespace IntegratedImageProcessingApp.Forms
                         int completedRois = 0;
                         Action<int> processRoi = delegate(int objectIndex)
                         {
+                            operationCancellationToken.ThrowIfCancellationRequested();
                             ObjectDetectionDefectPerObjectResult objectResult =
                                 ProcessObjectDetectionDefectObject(
                                     correctedSource,
@@ -546,7 +605,8 @@ namespace IntegratedImageProcessingApp.Forms
                                     objects.Count,
                                     new ParallelOptions
                                     {
-                                        MaxDegreeOfParallelism = objects.Count
+                                        MaxDegreeOfParallelism = objects.Count,
+                                        CancellationToken = operationCancellationToken
                                     },
                                     processRoi);
                             }
@@ -554,6 +614,7 @@ namespace IntegratedImageProcessingApp.Forms
                             {
                                 for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
                                 {
+                                    operationCancellationToken.ThrowIfCancellationRequested();
                                     processRoi(objectIndex);
                                 }
                             }
@@ -618,7 +679,10 @@ namespace IntegratedImageProcessingApp.Forms
                     coreResult.TotalElapsedMilliseconds = totalElapsedMilliseconds;
                 }
 
-                if (IsDisposed || capturedImageGeneration != imageSourceGeneration ||
+                if (IsDisposed || operationCancellationToken.IsCancellationRequested ||
+                    capturedRecipeGeneration != Interlocked.CompareExchange(
+                        ref detectionRecipeGeneration, 0, 0) ||
+                    capturedImageGeneration != imageSourceGeneration ||
                     capturedFlatFieldGeneration != objectDetectionFlatFieldEvaluationGeneration ||
                     capturedCalibrationGeneration != objectDetectionFlatFieldCalibrationGeneration ||
                     !string.Equals(CreateObjectDefinitionProcessingSignature(definition),
@@ -692,7 +756,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             catch (OutOfMemoryException)
             {
-                if (!IsDisposed)
+                if (!IsDisposed && !operationCancellationToken.IsCancellationRequested)
                 {
                     statusLabel.Text = "缺陷檢測失敗：可用記憶體不足，無法完成目前的檢測範圍。";
                     SetObjectDetectionDefectRegionStatus(
@@ -701,7 +765,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             catch (Exception exception)
             {
-                if (!IsDisposed)
+                if (!IsDisposed && !operationCancellationToken.IsCancellationRequested)
                 {
                     AggregateException aggregate = exception as AggregateException;
                     Exception reported = aggregate == null

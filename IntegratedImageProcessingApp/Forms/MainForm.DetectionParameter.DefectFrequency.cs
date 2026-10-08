@@ -552,7 +552,9 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task RunObjectDetectionFrequencyAnalysisAsync(
             string parameterId,
-            bool isCoordinatedRun = false)
+            bool isCoordinatedRun = false,
+            CancellationToken cancellationToken = default(CancellationToken),
+            int capturedRecipeGeneration = -1)
         {
             if (objectDetectionFrequencyAnalysisRunning)
             {
@@ -592,6 +594,17 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (!cancellationToken.CanBeCanceled)
+            {
+                cancellationToken = detectionRecipeCancellationTokenSource.Token;
+            }
+            if (capturedRecipeGeneration < 0)
+            {
+                capturedRecipeGeneration = Interlocked.CompareExchange(
+                    ref detectionRecipeGeneration, 0, 0);
+            }
+            EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
+
             objectDetectionFrequencyAnalysisRunning = true;
             if (!isCoordinatedRun && objectDetectionFrequencyRunButton != null)
             {
@@ -613,9 +626,11 @@ namespace IntegratedImageProcessingApp.Forms
                 Stopwatch totalStopwatch = Stopwatch.StartNew();
                 SetObjectDetectionDefectRegionStatus("正在準備平場校正影像與 ROI... ");
                 await Task.Yield();
+                EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
                 Stopwatch sourcePreparationStopwatch = Stopwatch.StartNew();
                 LargeImageSource source = await PrepareObjectDetectionFrequencySourceAsync(parameter);
                 sourcePreparationStopwatch.Stop();
+                EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
                 if (source == null)
                 {
                     return;
@@ -681,7 +696,10 @@ namespace IntegratedImageProcessingApp.Forms
                 LargeImageSource sourceReference = source.AddReference();
                 var progress = new Progress<string>(message =>
                 {
-                    if (!IsDisposed && string.Equals(activeObjectDetectionParameterId,
+                    if (!IsDisposed && !cancellationToken.IsCancellationRequested &&
+                        capturedRecipeGeneration == Interlocked.CompareExchange(
+                            ref detectionRecipeGeneration, 0, 0) &&
+                        string.Equals(activeObjectDetectionParameterId,
                         parameter.Id, StringComparison.Ordinal))
                     {
                         SetObjectDetectionDefectRegionStatus(message);
@@ -704,7 +722,8 @@ namespace IntegratedImageProcessingApp.Forms
                             scanHeight,
                             sensitivity,
                             runParallel,
-                            progress);
+                            progress,
+                            cancellationToken);
                     }
                     finally
                     {
@@ -727,7 +746,10 @@ namespace IntegratedImageProcessingApp.Forms
                 result.ElapsedMilliseconds = scanStopwatch.ElapsedMilliseconds;
                 result.TotalElapsedMilliseconds = totalStopwatch.ElapsedMilliseconds;
 
-            if (IsDisposed || capturedImageGeneration != imageSourceGeneration ||
+            if (IsDisposed || cancellationToken.IsCancellationRequested ||
+                    capturedRecipeGeneration != Interlocked.CompareExchange(
+                        ref detectionRecipeGeneration, 0, 0) ||
+                    capturedImageGeneration != imageSourceGeneration ||
                     capturedFlatFieldGeneration != objectDetectionFlatFieldEvaluationGeneration ||
                     !string.Equals(activeObjectDetectionParameterId, parameter.Id, StringComparison.Ordinal) ||
                     !string.Equals(CreateObjectDefinitionProcessingSignature(definition),
@@ -788,21 +810,30 @@ namespace IntegratedImageProcessingApp.Forms
             }
             catch (OutOfMemoryException)
             {
-                SetObjectDetectionDefectRegionStatus("頻域掃描記憶體不足；請提高掃描高度以減少掃描區塊。 ");
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    SetObjectDetectionDefectRegionStatus("頻域掃描記憶體不足；請提高掃描高度以減少掃描區塊。 ");
+                }
             }
             catch (Exception exception)
             {
-                SetObjectDetectionDefectRegionStatus("頻域掃描失敗：" + exception.Message);
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    SetObjectDetectionDefectRegionStatus("頻域掃描失敗：" + exception.Message);
+                }
             }
             finally
             {
                 objectDetectionFrequencyAnalysisRunning = false;
                 if (!IsDisposed)
                 {
-                    if (!isCoordinatedRun && objectDetectionFrequencyRunButton != null)
+                    if (!isCoordinatedRun && objectDetectionFrequencyRunButton != null &&
+                        !objectDetectionFrequencyRunButton.IsDisposed)
                     {
+                        ObjectDetectionParameterSettings currentParameter =
+                            FindObjectDetectionParameter(activeObjectDetectionParameterId);
                         objectDetectionFrequencyRunButton.Enabled =
-                            parameter != null && parameter.DefectFrequencyEnabled;
+                            currentParameter != null && currentParameter.DefectFrequencyEnabled;
                     }
                     if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null &&
                         !objectDetectionDefectCoreTabs.IsDisposed)
@@ -883,7 +914,8 @@ namespace IntegratedImageProcessingApp.Forms
             int requestedWindowSize,
             double sensitivity,
             bool runParallel,
-            IProgress<string> progress)
+            IProgress<string> progress,
+            CancellationToken cancellationToken)
         {
             var cellsByObjectIndex = new List<ObjectDetectionFrequencyCell>[objects.Count];
             var polygonsByObjectIndex = new PointF[objects.Count][];
@@ -893,6 +925,7 @@ namespace IntegratedImageProcessingApp.Forms
             long scannedWindowCount = 0;
             Action<int> scanObject = delegate(int objectIndex)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 ObjectDefinitionDetectedObject detectedObject = objects[objectIndex];
                 ObjectDetectionMeasurementFrame frame =
                     CreateObjectDetectionMeasurementFrame(detectedObject);
@@ -979,8 +1012,10 @@ namespace IntegratedImageProcessingApp.Forms
                         Stopwatch cellLoopStopwatch = Stopwatch.StartNew();
                         foreach (int y in yStarts)
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
                             foreach (int x in xStarts)
                             {
+                                cancellationToken.ThrowIfCancellationRequested();
                                 objectScannedWindowCount++;
                                 int windowX;
                                 int windowY;
@@ -1041,7 +1076,11 @@ namespace IntegratedImageProcessingApp.Forms
                     Parallel.For(
                         0,
                         objects.Count,
-                        new ParallelOptions { MaxDegreeOfParallelism = objects.Count },
+                        new ParallelOptions
+                        {
+                            MaxDegreeOfParallelism = objects.Count,
+                            CancellationToken = cancellationToken
+                        },
                         scanObject);
                 }
                 catch

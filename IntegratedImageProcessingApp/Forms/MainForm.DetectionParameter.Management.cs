@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
@@ -231,130 +232,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private void ImportDetectionParameterSettings()
-        {
-            if (isLoadingImage || parameterApplyInProgress || isPreparingPreprocessedImage ||
-                imageProcessingExecutionRequested || objectJudgementProcessingRequested ||
-                objectDefinitionProcessingRequested || objectDetectionDefectProcessingRequested)
-            {
-                MessageBox.Show(
-                    this,
-                    "目前仍有影像流程正在執行，請完成後再讀取檢測參數。",
-                    "無法讀取",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-                return;
-            }
-
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Title = "讀取檢測參數及關聯設定";
-                dialog.Filter = "檢測參數設定檔 (*.ini)|*.ini|所有檔案 (*.*)|*.*";
-                dialog.CheckFileExists = true;
-                dialog.Multiselect = false;
-                if (dialog.ShowDialog(this) != DialogResult.OK)
-                {
-                    return;
-                }
-
-                SystemParameterSettings importedSettings;
-                try
-                {
-                    importedSettings = new SystemParameterIniService(dialog.FileName).Load();
-                }
-                catch (Exception exception)
-                {
-                    MessageBox.Show(
-                        this,
-                        "無法讀取檢測參數設定：\r\n" + exception.Message,
-                        "讀取失敗",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                    return;
-                }
-
-                if (importedSettings == null || importedSettings.ObjectDetectionParameters.Count != 1)
-                {
-                    MessageBox.Show(
-                        this,
-                        "這個檔案必須包含且只包含一個檢測參數。\r\n請選擇由檢測參數匯出的設定檔。",
-                        "檔案內容不符",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                    return;
-                }
-
-                ObjectDetectionParameterSettings importedParameter =
-                    importedSettings.ObjectDetectionParameters[0];
-                string parameterName = string.IsNullOrWhiteSpace(importedParameter.DisplayName)
-                    ? "檢測參數"
-                    : importedParameter.DisplayName.Trim();
-                DialogResult confirm = MessageBox.Show(
-                    this,
-                    "將以「" + parameterName + "」及檔案內的相關流程設定，完整取代目前所有設定。\r\n" +
-                    "匯入後只會保留這一個檢測參數；目前開啟的圖片與檢視位置會保留，且不會自動重新運算。\r\n\r\n" +
-                    "確定要覆蓋嗎？",
-                    "覆蓋目前設定",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2);
-                if (confirm != DialogResult.Yes)
-                {
-                    return;
-                }
-
-                // The exported profile intentionally omits a machine-specific image path.
-                importedSettings.LastImagePath = systemParameters.LastImagePath;
-                string settingsPath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory,
-                    "SystemParameters.ini");
-                string temporarySettingsPath = settingsPath + ".import-" + Guid.NewGuid().ToString("N") + ".tmp";
-                try
-                {
-                    new SystemParameterIniService(temporarySettingsPath).Save(importedSettings);
-                    if (File.Exists(settingsPath))
-                    {
-                        File.Replace(temporarySettingsPath, settingsPath, null);
-                    }
-                    else
-                    {
-                        File.Move(temporarySettingsPath, settingsPath);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    MessageBox.Show(
-                        this,
-                        "無法套用檢測參數設定，原本設定未變更：\r\n" + exception.Message,
-                        "覆蓋失敗",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                    return;
-                }
-                finally
-                {
-                    if (File.Exists(temporarySettingsPath))
-                    {
-                        File.Delete(temporarySettingsPath);
-                    }
-                }
-
-                ApplyImportedDetectionParameterSettings(importedSettings, importedParameter.Id);
-                statusLabel.Text = "已覆蓋目前設定並載入「" + parameterName + "」；圖片未變更，尚未重新運算";
-                MessageBox.Show(
-                    this,
-                    "已載入「" + parameterName + "」，目前流程設定已由檔案內容完整取代。\r\n" +
-                    "目前圖片與檢視位置已保留；處理結果需由你手動執行更新。",
-                    "讀取完成",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
-            }
-        }
-
         private void ApplyImportedDetectionParameterSettings(
             SystemParameterSettings importedSettings,
             string importedParameterId)
         {
+            CancelDetectionRecipeBoundOperations();
             isImportingDetectionParameterSettings = true;
             try
             {
@@ -417,6 +299,17 @@ namespace IntegratedImageProcessingApp.Forms
                 InvalidateObjectJudgementProcessingResults();
                 InvalidateObjectDetectionMeasurementMaskCache();
                 ClearObjectDetectionMeasurementClipCache();
+                ClearObjectDetectionDefectCoreResults();
+                foreach (string parameterId in objectDetectionFrequencyResults.Keys.ToList())
+                {
+                    RemoveObjectDetectionFrequencyResult(parameterId);
+                }
+                foreach (string parameterId in objectDetectionLineTextureResults.Keys.ToList())
+                {
+                    RemoveObjectDetectionLineTextureResult(parameterId);
+                }
+                Interlocked.Increment(ref objectDetectionFlatFieldEvaluationGeneration);
+                ClearObjectDetectionFlatFieldCorrectionPreview();
                 if (objectDetectionMeasurementHighlightTimer != null)
                 {
                     objectDetectionMeasurementHighlightTimer.Stop();
@@ -469,6 +362,7 @@ namespace IntegratedImageProcessingApp.Forms
                 RebuildVisibleObjectDefinitions();
                 RebuildVisibleObjectDetectionParameters();
                 SelectObjectDetectionParameter(importedParameterId);
+                ClearObjectDetectionResultReviewResults();
             }
             finally
             {
@@ -483,6 +377,25 @@ namespace IntegratedImageProcessingApp.Forms
             finally
             {
                 suppressObjectDetectionParameterSourceAutoProcessing = false;
+            }
+        }
+
+        private void CancelDetectionRecipeBoundOperations()
+        {
+            Interlocked.Increment(ref detectionRecipeGeneration);
+            var replacement = new CancellationTokenSource();
+            CancellationTokenSource previousCancellation =
+                Interlocked.Exchange(ref detectionRecipeCancellationTokenSource, replacement);
+            if (previousCancellation != null)
+            {
+                try
+                {
+                    previousCancellation.Cancel();
+                }
+                finally
+                {
+                    previousCancellation.Dispose();
+                }
             }
         }
 

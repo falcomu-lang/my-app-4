@@ -454,7 +454,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private async Task RunObjectDetectionLineTextureAnalysisAsync(string parameterId, bool isCoordinatedRun = false)
+        private async Task RunObjectDetectionLineTextureAnalysisAsync(
+            string parameterId,
+            bool isCoordinatedRun = false,
+            CancellationToken cancellationToken = default(CancellationToken),
+            int capturedRecipeGeneration = -1)
         {
             if (objectDetectionLineTextureAnalysisRunning) return;
             ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(parameterId);
@@ -483,6 +487,17 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (!cancellationToken.CanBeCanceled)
+            {
+                cancellationToken = detectionRecipeCancellationTokenSource.Token;
+            }
+            if (capturedRecipeGeneration < 0)
+            {
+                capturedRecipeGeneration = Interlocked.CompareExchange(
+                    ref detectionRecipeGeneration, 0, 0);
+            }
+            EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
+
             objectDetectionLineTextureAnalysisRunning = true;
             UpdateObjectDetectionLineTextureControlsEnabled(parameter.DefectLineTextureEnabled);
             if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null) objectDetectionDefectCoreTabs.Enabled = false;
@@ -496,9 +511,11 @@ namespace IntegratedImageProcessingApp.Forms
                 Stopwatch total = Stopwatch.StartNew();
                 SetObjectDetectionDefectRegionStatus("正在準備平場校正影像與 ROI... ");
                 await Task.Yield();
+                EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
                 Stopwatch sourcePreparation = Stopwatch.StartNew();
                 LargeImageSource source = await PrepareObjectDetectionFrequencySourceAsync(parameter);
                 sourcePreparation.Stop();
+                EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
                 if (source == null) return;
 
                 List<ObjectDefinitionDetectedObject> objects = SnapshotCompletedObjectDefinitionObjects(definition, definitionSignature);
@@ -518,7 +535,10 @@ namespace IntegratedImageProcessingApp.Forms
                 LargeImageSource sourceReference = source.AddReference();
                 var progress = new Progress<string>(message =>
                 {
-                    if (!IsDisposed && string.Equals(activeObjectDetectionParameterId, parameter.Id, StringComparison.Ordinal))
+                    if (!IsDisposed && !cancellationToken.IsCancellationRequested &&
+                        capturedRecipeGeneration == Interlocked.CompareExchange(
+                            ref detectionRecipeGeneration, 0, 0) &&
+                        string.Equals(activeObjectDetectionParameterId, parameter.Id, StringComparison.Ordinal))
                     {
                         SetObjectDetectionDefectRegionStatus(message);
                     }
@@ -536,7 +556,10 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         return ScanObjectDetectionLineTextureRegions(
                             sourceReference, objects, normalizedRegion, imageBounds, parameter,
-                            diagnosticLayer, parameter.DefectParallelExecutionEnabled, progress);
+                            diagnosticLayer,
+                            parameter.DefectParallelExecutionEnabled,
+                            progress,
+                            cancellationToken);
                     }
                     finally { sourceReference.ReleaseReference(); }
                 });
@@ -547,7 +570,10 @@ namespace IntegratedImageProcessingApp.Forms
                 result.ScanElapsedMilliseconds = scan.ElapsedMilliseconds;
                 result.TotalElapsedMilliseconds = total.ElapsedMilliseconds;
 
-                if (IsDisposed || !string.Equals(activeObjectDetectionParameterId, parameter.Id, StringComparison.Ordinal) ||
+                if (IsDisposed || cancellationToken.IsCancellationRequested ||
+                    capturedRecipeGeneration != Interlocked.CompareExchange(
+                        ref detectionRecipeGeneration, 0, 0) ||
+                    !string.Equals(activeObjectDetectionParameterId, parameter.Id, StringComparison.Ordinal) ||
                     !string.Equals(CreateObjectDefinitionProcessingSignature(definition), definitionSignature, StringComparison.Ordinal) ||
                     !string.Equals(CreateObjectDetectionLineTextureSignature(
                         parameter, definitionSignature, imageSourceGeneration, objectDetectionFlatFieldEvaluationGeneration), signature, StringComparison.Ordinal))
@@ -582,18 +608,27 @@ namespace IntegratedImageProcessingApp.Forms
             }
             catch (OutOfMemoryException)
             {
-                SetObjectDetectionDefectRegionStatus("紋理異常分析記憶體不足；請增大紋理格或減少同時處理的 ROI。 ");
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    SetObjectDetectionDefectRegionStatus("紋理異常分析記憶體不足；請增大紋理格或減少同時處理的 ROI。 ");
+                }
             }
             catch (Exception exception)
             {
-                SetObjectDetectionDefectRegionStatus("紋理異常分析失敗：" + exception.Message);
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    SetObjectDetectionDefectRegionStatus("紋理異常分析失敗：" + exception.Message);
+                }
             }
             finally
             {
                 objectDetectionLineTextureAnalysisRunning = false;
                 if (!IsDisposed)
                 {
-                    UpdateObjectDetectionLineTextureControlsEnabled(parameter != null && parameter.DefectLineTextureEnabled);
+                    ObjectDetectionParameterSettings currentParameter =
+                        FindObjectDetectionParameter(activeObjectDetectionParameterId);
+                    UpdateObjectDetectionLineTextureControlsEnabled(
+                        currentParameter != null && currentParameter.DefectLineTextureEnabled);
                     if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null && !objectDetectionDefectCoreTabs.IsDisposed)
                     {
                         objectDetectionDefectCoreTabs.Enabled = true;
@@ -610,7 +645,8 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter,
             ObjectDetectionLineTextureDiagnosticLayer diagnosticLayer,
             bool runParallel,
-            IProgress<string> progress)
+            IProgress<string> progress,
+            CancellationToken cancellationToken)
         {
             var cellsByObject = new List<ObjectDetectionLineTextureCell>[objects.Count];
             var regionsByObject = new List<ObjectDetectionTextureAnomalyRegion>[objects.Count];
@@ -623,6 +659,7 @@ namespace IntegratedImageProcessingApp.Forms
             int tileSize = Math.Max(4, parameter.DefectLineTextureTileSizePixels);
             Action<int> scanObject = objectIndex =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 ObjectDefinitionDetectedObject detected = objects[objectIndex];
                 PointF[] corners = CreateObjectDetectionDefectRegionImageCorners(detected, normalizedRegion);
                 polygonsByObject[objectIndex] = corners;
@@ -684,10 +721,12 @@ namespace IntegratedImageProcessingApp.Forms
                     var validIndices = new List<int>();
                     for (int tileY = 0; tileY < rows; tileY++)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         int y0 = tileY * tileSize;
                         int y1 = Math.Min(crop.Height, y0 + tileSize);
                         for (int tileX = 0; tileX < columns; tileX++)
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
                             int x0 = tileX * tileSize;
                             int x1 = Math.Min(crop.Width, x0 + tileSize);
                             double densitySum = 0;
@@ -855,7 +894,11 @@ namespace IntegratedImageProcessingApp.Forms
                 try
                 {
                     Parallel.For(0, objects.Count,
-                        new ParallelOptions { MaxDegreeOfParallelism = objects.Count }, scanObject);
+                        new ParallelOptions
+                        {
+                            MaxDegreeOfParallelism = objects.Count,
+                            CancellationToken = cancellationToken
+                        }, scanObject);
                 }
                 catch
                 {

@@ -42,6 +42,7 @@
     <Reference Include="PresentationCore" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="WindowsBase" />
+    <Reference Include="System.Runtime.Serialization" />
     <Reference Include="OpenCvSharp">
       <HintPath>..\packages\OpenCvSharp4.4.10.0.20240616\lib\netstandard2.0\OpenCvSharp.dll</HintPath>
       <Private>True</Private>
@@ -78,6 +79,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Services\SystemParameterIniService.cs" />
     <Compile Include="Services\SystemParameterSettings.cs" />
+    <Compile Include="Services\DetectionRecipeCatalogService.cs" />
     <Compile Include="Services\OpenCvThresholdService.cs" />
     <Compile Include="Services\OpenCvEdgeDetectionService.cs" />
     <Compile Include="Services\OpenCvImageProcessingService.cs" />
@@ -175,6 +177,13 @@
     </Compile>
     <Compile Include="Forms\MainForm.DetectionParameter.Management.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\MainForm.DetectionParameter.Recipes.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\DetectionRecipeDialogs.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\MainForm.FlatFieldCalibration.cs">

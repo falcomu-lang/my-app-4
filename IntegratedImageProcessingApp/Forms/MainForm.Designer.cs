@@ -107,6 +107,12 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (disposing)
             {
+                if (detectionRecipeCancellationTokenSource != null)
+                {
+                    detectionRecipeCancellationTokenSource.Cancel();
+                    detectionRecipeCancellationTokenSource.Dispose();
+                    detectionRecipeCancellationTokenSource = null;
+                }
                 ClearObjectDetectionDefectCoreResults();
                 ClearObjectDetectionFlatFieldMaskOverlays();
                 ReleaseObjectDetectionFlatFieldCorrectedLargeSource();

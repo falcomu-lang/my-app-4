@@ -188,9 +188,13 @@ namespace IntegratedImageProcessingApp.Forms
 
             ResetRightFunctionPanel();
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
-            if (selectedFunction == DetectionParameterLoadMenuText)
+            if (selectedFunction == DetectionParameterAddMenuText)
             {
-                parameterPlaceholderLabel.Text = "選取已保存的檢測參數設定檔，覆蓋目前流程設定。";
+                parameterPlaceholderLabel.Text = "讀取外部檢測參數檔，加入軟體根目錄 recipe 參數庫。";
+            }
+            else if (selectedFunction == DetectionParameterSelectMenuText)
+            {
+                parameterPlaceholderLabel.Text = "從 recipe 參數庫選擇並載入一組檢測參數。";
             }
             else if (selectedFunction == LoadImageMenuText)
             {
@@ -419,9 +423,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 ToggleFindObjectFlowMenu();
             }
-            else if (selectedFunction == DetectionParameterLoadMenuText)
+            else if (selectedFunction == DetectionParameterAddMenuText)
             {
-                ImportDetectionParameterSettings();
+                AddDetectionParameterRecipe();
+            }
+            else if (selectedFunction == DetectionParameterSelectMenuText)
+            {
+                SelectDetectionParameterRecipe();
             }
             else if (selectedFunction == LoadImageMenuText)
             {

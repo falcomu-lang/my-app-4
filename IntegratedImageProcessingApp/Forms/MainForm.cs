@@ -87,6 +87,9 @@ namespace IntegratedImageProcessingApp.Forms
         // The preprocessing output remains a full-resolution OpenCV Mat and
         // is exposed to the viewers through a memory-backed tile source.
         private int imageSourceGeneration;
+        private int detectionRecipeGeneration;
+        private CancellationTokenSource detectionRecipeCancellationTokenSource =
+            new CancellationTokenSource();
         private Dictionary<string, string> pendingImageProcessingParameters;
         private Label parameterApplyStatusLabel;
         private Stopwatch parameterApplyStopwatch;
@@ -272,7 +275,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private const string DetectionParameterLoadMenuText = "檢測參數讀取";
+        private const string DetectionParameterAddMenuText = "檢測參數讀取加入";
+        private const string DetectionParameterSelectMenuText = "檢測參數選擇";
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
         private const string FindObjectFlowMenuText = "找尋物件流程";
@@ -342,10 +346,16 @@ namespace IntegratedImageProcessingApp.Forms
             NormalizeObjectDefinitionDefaultNames();
             functionListBox.SelectionMode = SelectionMode.MultiExtended;
             functionListBox.MouseUp += FunctionListBox_MouseUp;
-            if (!functionListBox.Items.Contains(DetectionParameterLoadMenuText))
+            int loadImageIndex = functionListBox.Items.IndexOf(LoadImageMenuText);
+            int detectionParameterAddIndex = functionListBox.Items.IndexOf(DetectionParameterAddMenuText);
+            if (detectionParameterAddIndex < 0)
             {
-                int loadImageIndex = functionListBox.Items.IndexOf(LoadImageMenuText);
-                functionListBox.Items.Insert(loadImageIndex < 0 ? 0 : loadImageIndex, DetectionParameterLoadMenuText);
+                detectionParameterAddIndex = loadImageIndex < 0 ? 0 : loadImageIndex;
+                functionListBox.Items.Insert(detectionParameterAddIndex, DetectionParameterAddMenuText);
+            }
+            if (!functionListBox.Items.Contains(DetectionParameterSelectMenuText))
+            {
+                functionListBox.Items.Insert(detectionParameterAddIndex + 1, DetectionParameterSelectMenuText);
             }
             if (!functionListBox.Items.Contains(ImageRelationMenuText))
             {
@@ -2588,7 +2598,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 case FindObjectFlowMenuText:
                     return FunctionMenuIcon.Flow;
-                case DetectionParameterLoadMenuText:
+                case DetectionParameterAddMenuText:
+                case DetectionParameterSelectMenuText:
                     return FunctionMenuIcon.Measure;
                 case LoadImageMenuText:
                     return FunctionMenuIcon.Folder;

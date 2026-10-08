@@ -861,6 +861,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            int capturedRecipeGeneration = System.Threading.Interlocked.CompareExchange(
+                ref detectionRecipeGeneration, 0, 0);
+            System.Threading.CancellationToken cancellationToken =
+                detectionRecipeCancellationTokenSource.Token;
+
             var choice = objectDetectionResultReviewParameterComboBox == null
                 ? null
                 : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
@@ -917,7 +922,12 @@ namespace IntegratedImageProcessingApp.Forms
                     await WaitForObjectDetectionResultReviewDefinitionAsync(
                         definition,
                         definitionSignature,
-                        objectDetectionResultReviewDefinitionCompletion);
+                        objectDetectionResultReviewDefinitionCompletion,
+                        cancellationToken,
+                        capturedRecipeGeneration);
+                    EnsureDetectionRecipeGenerationIsCurrent(
+                        capturedRecipeGeneration,
+                        cancellationToken);
                     imageProcessingMilliseconds += Math.Max(0, objectDefinitionProcessingElapsedMilliseconds);
                 }
                 objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
@@ -965,6 +975,9 @@ namespace IntegratedImageProcessingApp.Forms
                             objectDetectionResultReviewImageProcessingMilliseconds = imageProcessingMilliseconds;
                             UpdateObjectDetectionResultReviewTimingMemo();
                         });
+                    EnsureDetectionRecipeGenerationIsCurrent(
+                        capturedRecipeGeneration,
+                        cancellationToken);
                     if (!IsObjectDetectionResultReviewUiAvailable())
                     {
                         return;
@@ -1052,6 +1065,9 @@ namespace IntegratedImageProcessingApp.Forms
                         defectTasks.Add(RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true));
                     }
                     await Task.WhenAll(defectTasks);
+                    EnsureDetectionRecipeGenerationIsCurrent(
+                        capturedRecipeGeneration,
+                        cancellationToken);
                     parallelDefectStopwatch.Stop();
                     if (!IsObjectDetectionResultReviewUiAvailable())
                     {
@@ -1083,6 +1099,9 @@ namespace IntegratedImageProcessingApp.Forms
                             UpdateObjectDetectionResultReviewTimingMemo();
                         },
                         true);
+                    EnsureDetectionRecipeGenerationIsCurrent(
+                        capturedRecipeGeneration,
+                        cancellationToken);
                     if (!IsObjectDetectionResultReviewUiAvailable())
                     {
                         return;
@@ -1095,6 +1114,9 @@ namespace IntegratedImageProcessingApp.Forms
                             objectDetectionResultReviewStatusLabel.Text =
                                 "一般缺陷條件完成，正在執行納入整合的頻域異常分析...";
                             await RunObjectDetectionFrequencyAnalysisAsync(parameter.Id, true);
+                            EnsureDetectionRecipeGenerationIsCurrent(
+                                capturedRecipeGeneration,
+                                cancellationToken);
                             if (!IsObjectDetectionResultReviewUiAvailable())
                             {
                                 return;
@@ -1119,6 +1141,9 @@ namespace IntegratedImageProcessingApp.Forms
                             objectDetectionResultReviewStatusLabel.Text =
                                 "一般缺陷條件完成，正在執行納入整合的紋理異常分析...";
                             await RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true);
+                            EnsureDetectionRecipeGenerationIsCurrent(
+                                capturedRecipeGeneration,
+                                cancellationToken);
                             if (!IsObjectDetectionResultReviewUiAvailable())
                             {
                                 return;
@@ -1141,7 +1166,15 @@ namespace IntegratedImageProcessingApp.Forms
                 StartObjectDetectionResultReviewTimingStage("尺寸量測計算");
                 objectDetectionResultReviewStatusLabel.Text = "正在計算尺寸量測與良品條件...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：尺寸判定中...";
-                await BuildObjectDetectionResultReviewResultsAsync(parameter, definition, objects);
+                await BuildObjectDetectionResultReviewResultsAsync(
+                    parameter,
+                    definition,
+                    objects,
+                    cancellationToken,
+                    capturedRecipeGeneration);
+                EnsureDetectionRecipeGenerationIsCurrent(
+                    capturedRecipeGeneration,
+                    cancellationToken);
                 StopObjectDetectionResultReviewTimingStage();
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
@@ -1169,8 +1202,13 @@ namespace IntegratedImageProcessingApp.Forms
             catch (Exception exception)
             {
                 StopObjectDetectionResultReviewTimingStage();
-                SetObjectDetectionResultReviewStatus("結果確認未完成：" + exception.Message);
-                statusLabel.Text = "結果確認未完成：" + exception.Message;
+                if (!cancellationToken.IsCancellationRequested &&
+                    capturedRecipeGeneration == System.Threading.Interlocked.CompareExchange(
+                        ref detectionRecipeGeneration, 0, 0))
+                {
+                    SetObjectDetectionResultReviewStatus("結果確認未完成：" + exception.Message);
+                    statusLabel.Text = "結果確認未完成：" + exception.Message;
+                }
             }
             finally
             {
@@ -1277,11 +1315,14 @@ namespace IntegratedImageProcessingApp.Forms
         private async Task WaitForObjectDetectionResultReviewDefinitionAsync(
             ObjectDefinitionSettings definition,
             string signature,
-            TaskCompletionSource<string> completion)
+            TaskCompletionSource<string> completion,
+            System.Threading.CancellationToken cancellationToken,
+            int recipeGeneration)
         {
             Stopwatch elapsed = Stopwatch.StartNew();
             while (!HasCompletedObjectDefinitionResult(definition, signature))
             {
+                EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
                 if (elapsed.Elapsed > TimeSpan.FromMinutes(30))
                 {
                     throw new TimeoutException("物件定義處理超過 30 分鐘，請檢查影像大小與來源設定。");
@@ -1299,14 +1340,18 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     throw new InvalidOperationException("物件定義處理未能啟動，請確認影像來源與 ROI 設定。");
                 }
-                await Task.WhenAny(completion.Task, Task.Delay(100));
+                await Task.WhenAny(
+                    completion.Task,
+                    Task.Delay(100, cancellationToken));
             }
         }
 
         private async Task BuildObjectDetectionResultReviewResultsAsync(
             ObjectDetectionParameterSettings parameter,
             ObjectDefinitionSettings definition,
-            IList<ObjectDefinitionDetectedObject> objects)
+            IList<ObjectDefinitionDetectedObject> objects,
+            System.Threading.CancellationToken cancellationToken,
+            int recipeGeneration)
         {
             objectDetectionResultReviewMeasurementsGrid.Rows.Clear();
             objectDetectionResultReviewConditionsGrid.Rows.Clear();
@@ -1323,9 +1368,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 foreach (ObjectDefinitionDetectedObject detectedObject in objects)
                 {
+                    EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
                     var statsByRecord = new Dictionary<int, ObjectDetectionMeasurementStatistics>();
                     foreach (ObjectDetectionMeasurementRecordSettings record in records)
                     {
+                        EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
                         ObjectDetectionParameterSettings maskParameter =
                             CreateObjectDetectionResultReviewMaskParameter(parameter, record);
                         if (!IsObjectDetectionResultReviewUiAvailable())
@@ -1336,6 +1383,7 @@ namespace IntegratedImageProcessingApp.Forms
                             "正在量測物件 " + detectedObject.Number.ToString(CultureInfo.CurrentCulture) +
                             "，量測編號 " + record.Number.ToString(CultureInfo.CurrentCulture) + "...";
                         await Task.Yield();
+                        EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
                         if (!IsObjectDetectionResultReviewUiAvailable())
                         {
                             return;
