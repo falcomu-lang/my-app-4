@@ -347,13 +347,7 @@ namespace IntegratedImageProcessingApp.Forms
             "讀取圖片",
             "指定 ROI",
             "影像前處理",
-            "影像處理",
-            "亮度 / 對比",
-            "濾波與銳化",
-            "邊緣偵測",
-            "幾何校正",
-            "量測工具",
-            "輸出設定"});
+            "影像處理"});
             this.functionListBox.Location = new System.Drawing.Point(14, 46);
             this.functionListBox.Name = "functionListBox";
             this.functionListBox.Size = new System.Drawing.Size(177, 446);
