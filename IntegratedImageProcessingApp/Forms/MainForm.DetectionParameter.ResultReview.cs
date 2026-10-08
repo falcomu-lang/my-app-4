@@ -15,6 +15,13 @@ namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm
     {
+        private enum ResultReviewDefectGrade
+        {
+            Pending,
+            A,
+            Ng
+        }
+
         private sealed class ResultReviewParameterChoice
         {
             public ObjectDetectionParameterSettings Parameter { get; set; }
@@ -529,7 +536,7 @@ namespace IntegratedImageProcessingApp.Forms
             layout.Controls.Add(new Label
             {
                 Dock = DockStyle.Fill,
-                Text = "物件序號（再次點選同一片可取消選取）",
+                Text = "物件序號：綠色 A 規　紅色 NG　灰色待確認（再點取消選取）",
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(75, 83, 95),
                 Padding = new Padding(4, 0, 2, 0),
@@ -1630,6 +1637,8 @@ namespace IntegratedImageProcessingApp.Forms
                     .Select(item => item.GridColumn).DefaultIfEmpty(0).Max() + 1);
                 int rowCount = Math.Max(1, objects
                     .Select(item => item.GridRow).DefaultIfEmpty(0).Max() + 1);
+                Dictionary<int, ResultReviewDefectGrade> defectGrades =
+                    GetObjectDetectionResultReviewDefectObjectGrades();
                 objectDetectionResultReviewDefectObjectButtonsPanel.ColumnCount = columnCount;
                 objectDetectionResultReviewDefectObjectButtonsPanel.RowCount = rowCount;
                 objectDetectionResultReviewDefectObjectButtonsPanel.Height = rowCount * 34 + 4;
@@ -1647,6 +1656,11 @@ namespace IntegratedImageProcessingApp.Forms
                 for (int index = 0; index < objects.Count; index++)
                 {
                     int objectNumber = objects[index].ObjectNumber;
+                    ResultReviewDefectGrade grade;
+                    if (!defectGrades.TryGetValue(objectNumber, out grade))
+                    {
+                        grade = ResultReviewDefectGrade.Pending;
+                    }
                     var button = new Button
                     {
                         Text = objectNumber.ToString(CultureInfo.CurrentCulture),
@@ -1655,17 +1669,16 @@ namespace IntegratedImageProcessingApp.Forms
                         Margin = new Padding(2),
                         FlatStyle = FlatStyle.Flat,
                         UseVisualStyleBackColor = false,
-                        BackColor = objectDetectionResultReviewSelectedDefectObjectNumber == objectNumber
-                            ? Color.FromArgb(190, 220, 250)
-                            : Color.FromArgb(240, 241, 243),
-                        ForeColor = Color.FromArgb(35, 45, 58),
-                        AccessibleName = "物件 " + objectNumber.ToString(CultureInfo.CurrentCulture)
+                        BackColor = GetObjectDetectionResultReviewDefectGradeColor(grade),
+                        ForeColor = Color.White,
+                        AccessibleName = "物件 " + objectNumber.ToString(CultureInfo.CurrentCulture),
+                        AccessibleDescription = GetObjectDetectionResultReviewDefectGradeText(grade)
                     };
                     bool selected = objectDetectionResultReviewSelectedDefectObjectNumber == objectNumber;
                     button.FlatAppearance.BorderColor = selected
                         ? Color.DodgerBlue
                         : Color.FromArgb(190, 195, 202);
-                    button.FlatAppearance.BorderSize = selected ? 2 : 1;
+                    button.FlatAppearance.BorderSize = selected ? 3 : 1;
                     button.Click += ObjectDetectionResultReviewDefectObjectButton_Click;
                     objectDetectionResultReviewDefectObjectButtonsPanel.Controls.Add(
                         button,
@@ -1676,6 +1689,119 @@ namespace IntegratedImageProcessingApp.Forms
             finally
             {
                 objectDetectionResultReviewDefectObjectButtonsPanel.ResumeLayout(true);
+            }
+        }
+
+        private Dictionary<int, ResultReviewDefectGrade>
+            GetObjectDetectionResultReviewDefectObjectGrades()
+        {
+            var grades = objectDetectionResultReviewGoodJudgementResults
+                .ToDictionary(
+                    result => result.ObjectNumber,
+                    result => ResultReviewDefectGrade.Pending);
+            var choice = objectDetectionResultReviewParameterComboBox == null
+                ? null
+                : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+            ObjectDetectionParameterSettings parameter = choice == null ? null : choice.Parameter;
+            if (parameter == null ||
+                !parameter.DefectInspectionRegionConfigured ||
+                !string.Equals(
+                    parameter.DefectInspectionRegionObjectDefinitionId,
+                    parameter.ObjectDefinitionId,
+                    StringComparison.Ordinal))
+            {
+                return grades;
+            }
+
+            EnsureObjectDetectionDefectCores(parameter);
+            bool hasEnabledAnalysis = false;
+            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4))
+            {
+                if (core == null || !core.Enabled)
+                {
+                    continue;
+                }
+
+                hasEnabledAnalysis = true;
+                if (!core.DarkThresholdEnabled && !core.BrightThresholdEnabled)
+                {
+                    return grades;
+                }
+
+                ObjectDetectionDefectCoreResult coreResult;
+                if (!TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out coreResult) ||
+                    coreResult == null)
+                {
+                    return grades;
+                }
+            }
+
+            if (IsObjectDetectionDefectFrequencyIntegrationRequired(parameter))
+            {
+                hasEnabledAnalysis = true;
+                ObjectDetectionFrequencyResult frequencyResult;
+                if (!TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult) ||
+                    frequencyResult == null)
+                {
+                    return grades;
+                }
+            }
+
+            if (IsObjectDetectionDefectLineTextureIntegrationRequired(parameter))
+            {
+                hasEnabledAnalysis = true;
+                ObjectDetectionLineTextureResult lineTextureResult;
+                if (!TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult) ||
+                    lineTextureResult == null)
+                {
+                    return grades;
+                }
+            }
+
+            if (!hasEnabledAnalysis)
+            {
+                return grades;
+            }
+
+            HashSet<int> defectiveObjects = new HashSet<int>(
+                GetObjectDetectionDefectIntegrationGroups(parameter)
+                    .Where(group => group != null)
+                    .Select(group => group.ObjectNumber));
+            foreach (int objectNumber in grades.Keys.ToList())
+            {
+                grades[objectNumber] = defectiveObjects.Contains(objectNumber)
+                    ? ResultReviewDefectGrade.Ng
+                    : ResultReviewDefectGrade.A;
+            }
+
+            return grades;
+        }
+
+        private static Color GetObjectDetectionResultReviewDefectGradeColor(
+            ResultReviewDefectGrade grade)
+        {
+            switch (grade)
+            {
+                case ResultReviewDefectGrade.A:
+                    return Color.FromArgb(46, 125, 50);
+                case ResultReviewDefectGrade.Ng:
+                    return Color.FromArgb(198, 40, 40);
+                default:
+                    return Color.FromArgb(117, 117, 117);
+            }
+        }
+
+        private static string GetObjectDetectionResultReviewDefectGradeText(
+            ResultReviewDefectGrade grade)
+        {
+            switch (grade)
+            {
+                case ResultReviewDefectGrade.A:
+                    return "A 規：未檢出整合缺陷";
+                case ResultReviewDefectGrade.Ng:
+                    return "NG：檢出整合缺陷";
+                default:
+                    return "待確認：缺陷範圍、有效門檻或必要分析尚未完成";
             }
         }
 
