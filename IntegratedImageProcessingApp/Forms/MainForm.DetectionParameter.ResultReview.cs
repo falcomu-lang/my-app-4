@@ -234,6 +234,12 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             PopulateObjectDetectionResultReviewParameters();
+            ResultReviewParameterChoice selectedParameterChoice =
+                objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+            if (selectedParameterChoice != null && selectedParameterChoice.Parameter != null)
+            {
+                TryActivateDetectionParameterProfile(selectedParameterChoice.Parameter.Id, false);
+            }
             bool parameterChangedWhileAway = !string.Equals(
                 previousReviewParameterId,
                 objectDetectionResultReviewSelectedParameterId,
@@ -330,11 +336,17 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionResultReviewHighlightTimer = null;
             }
             objectDetectionResultReviewSelectedMeasurement = null;
-            activeObjectDetectionParameterId = objectDetectionResultReviewPreviousParameterId;
-            selectedObjectDetectionNumber = objectDetectionResultReviewPreviousObjectNumber;
+            systemParameters.ActiveObjectDetectionParameterId = activeObjectDetectionParameterId ?? string.Empty;
+            selectedObjectDetectionNumber = string.Equals(
+                activeObjectDetectionParameterId,
+                objectDetectionResultReviewPreviousParameterId,
+                StringComparison.Ordinal)
+                    ? objectDetectionResultReviewPreviousObjectNumber
+                    : -1;
             objectDetectionResultReviewPreviousParameterId = null;
             objectDetectionResultReviewPreviousObjectNumber = 0;
             SetObjectDetectionParameterDisplayMode(false);
+            SaveSystemParameters();
         }
 
         private Panel CreateObjectDetectionResultReviewPanel()
@@ -674,7 +686,6 @@ namespace IntegratedImageProcessingApp.Forms
             if (selectedChoice != null && selectedChoice.Parameter != null)
             {
                 objectDetectionResultReviewSelectedParameterId = selectedChoice.Parameter.Id;
-                activeObjectDetectionParameterId = selectedChoice.Parameter.Id;
                 if (hadResults && !string.Equals(
                     previousReviewParameterId,
                     selectedChoice.Parameter.Id,
@@ -716,7 +727,16 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             objectDetectionResultReviewSelectedParameterId = choice.Parameter.Id;
+            TryActivateDetectionParameterProfile(choice.Parameter.Id, false);
+            if (!string.Equals(
+                activeObjectDetectionParameterId,
+                choice.Parameter.Id,
+                StringComparison.Ordinal))
+            {
+                return;
+            }
             activeObjectDetectionParameterId = choice.Parameter.Id;
+            systemParameters.ActiveObjectDetectionParameterId = choice.Parameter.Id;
             ClearObjectDetectionResultReviewResults();
             ResetObjectDetectionResultReviewProcessingTimings();
             UpdateObjectDetectionResultReviewTimingMemo();
@@ -870,6 +890,21 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionResultReviewStatusLabel.Text = "請先選擇檢測參數。";
                 return;
             }
+
+            string parameterId = parameter.Id;
+            TryActivateDetectionParameterProfile(parameterId, false);
+            if (!string.Equals(activeObjectDetectionParameterId, parameterId, StringComparison.Ordinal))
+            {
+                objectDetectionResultReviewStatusLabel.Text = "檢測參數流程切換失敗，請重新選擇參數。";
+                return;
+            }
+            parameter = FindObjectDetectionParameter(parameterId);
+            if (parameter == null)
+            {
+                objectDetectionResultReviewStatusLabel.Text = "找不到所選檢測參數。";
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(objectDetectionResultReviewImagePath) ||
                 !string.Equals(systemParameters.LastImagePath, objectDetectionResultReviewImagePath,
                     StringComparison.OrdinalIgnoreCase))

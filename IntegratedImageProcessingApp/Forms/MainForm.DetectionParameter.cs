@@ -27,6 +27,12 @@ namespace IntegratedImageProcessingApp.Forms
         private int selectedObjectDetectionNumber = -1;
         private void ShowObjectDetectionParameterPanel(string parameterId)
         {
+            if (!isActivatingDetectionParameterProfile &&
+                TryActivateDetectionParameterProfile(parameterId, true))
+            {
+                return;
+            }
+
             ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(parameterId);
             if (parameter == null)
             {
@@ -178,6 +184,14 @@ namespace IntegratedImageProcessingApp.Forms
                 ClearObjectDetectionFlatFieldMaskOverlays();
             }
             activeObjectDetectionParameterId = parameter.Id;
+            if (!string.Equals(
+                systemParameters.ActiveObjectDetectionParameterId,
+                parameter.Id,
+                StringComparison.Ordinal))
+            {
+                systemParameters.ActiveObjectDetectionParameterId = parameter.Id;
+                SaveSystemParameters();
+            }
             SetObjectDetectionParameterDisplayMode(true);
             UpdateObjectDetectionParameterTabs(parameter);
             EnsureObjectDetectionParameterSourceProcessed(parameter);
@@ -191,15 +205,6 @@ namespace IntegratedImageProcessingApp.Forms
                 UpdateObjectDetectionParameterSourceStatus(
                     parameter == null ? null : parameter.Id,
                     "尚未指定物件定義結果",
-                    Color.FromArgb(75, 83, 95));
-                return;
-            }
-
-            if (suppressObjectDetectionParameterSourceAutoProcessing)
-            {
-                UpdateObjectDetectionParameterSourceStatus(
-                    parameter.Id,
-                    "設定已載入，尚未重新處理",
                     Color.FromArgb(75, 83, 95));
                 return;
             }

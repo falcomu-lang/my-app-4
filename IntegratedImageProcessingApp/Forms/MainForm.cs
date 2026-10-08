@@ -272,7 +272,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private const string DetectionParameterLoadMenuText = "檢測參數讀取";
+        private const string DetectionParameterLoadMenuText = "檢測參數插入";
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
         private const string FindObjectFlowMenuText = "找尋物件流程";
@@ -319,6 +319,7 @@ namespace IntegratedImageProcessingApp.Forms
             systemParameterService = new SystemParameterIniService(
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SystemParameters.ini"));
             systemParameters = systemParameterService.Load();
+            activeObjectDetectionParameterId = systemParameters.ActiveObjectDetectionParameterId;
             LoadSavedObjectDetectionFlatFieldProfiles();
 
             InitializeComponent();
@@ -2334,6 +2335,25 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void SaveSystemParameters()
         {
+            string activeId = activeObjectDetectionParameterId ??
+                systemParameters.ActiveObjectDetectionParameterId;
+            systemParameters.ActiveObjectDetectionParameterId = activeId ?? string.Empty;
+            ObjectDetectionParameterSettings activeParameter =
+                string.IsNullOrEmpty(activeId)
+                    ? null
+                    : systemParameters.ObjectDetectionParameters.FirstOrDefault(
+                        item => string.Equals(item.Id, activeId, StringComparison.Ordinal));
+            if (activeParameter != null && !string.IsNullOrWhiteSpace(activeParameter.ProfileSettingsData))
+            {
+                activeParameter.ProfileSettingsData = CreateDetectionParameterProfileData(systemParameters);
+            }
+            else if (systemParameters.ObjectDetectionParameters.Any(
+                item => !string.IsNullOrWhiteSpace(item.ProfileSettingsData)))
+            {
+                systemParameters.DetectionParameterBaselineData =
+                    CreateDetectionParameterProfileData(systemParameters);
+            }
+
             systemParameterService.Save(systemParameters);
         }
 

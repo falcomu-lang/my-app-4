@@ -1,9 +1,11 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -18,7 +20,7 @@ namespace IntegratedImageProcessingApp.Forms
     public partial class MainForm
     {
         private bool isImportingDetectionParameterSettings;
-        private bool suppressObjectDetectionParameterSourceAutoProcessing;
+        private bool isActivatingDetectionParameterProfile;
         private bool objectDetectionParameterMenuExpanded;
         private bool isRebuildingObjectDetectionParameterMenu;
         private readonly Dictionary<int, string> visibleObjectDetectionParameterIds =
@@ -210,7 +212,16 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     SystemParameterSettings exportSettings =
                         CreateObjectDetectionParameterExportSettings(parameter);
-                    new SystemParameterIniService(dialog.FileName).Save(exportSettings);
+                    string savedProfileData = parameter.ProfileSettingsData;
+                    try
+                    {
+                        parameter.ProfileSettingsData = string.Empty;
+                        new SystemParameterIniService(dialog.FileName).Save(exportSettings);
+                    }
+                    finally
+                    {
+                        parameter.ProfileSettingsData = savedProfileData;
+                    }
                     statusLabel.Text = "已匯出「" + displayName + "」及其關聯設定";
                     MessageBox.Show(
                         this,
@@ -235,12 +246,13 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (isLoadingImage || parameterApplyInProgress || isPreparingPreprocessedImage ||
                 imageProcessingExecutionRequested || objectJudgementProcessingRequested ||
-                objectDefinitionProcessingRequested || objectDetectionDefectProcessingRequested)
+                objectDefinitionProcessingRequested || objectDetectionDefectProcessingRequested ||
+                isObjectDetectionResultReviewRunning)
             {
                 MessageBox.Show(
                     this,
-                    "目前仍有影像流程正在執行，請完成後再讀取檢測參數。",
-                    "無法讀取",
+                    "目前仍有影像流程正在執行，請完成後再插入檢測參數。",
+                    "無法插入",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
                 return;
@@ -248,117 +260,450 @@ namespace IntegratedImageProcessingApp.Forms
 
             using (var dialog = new OpenFileDialog())
             {
-                dialog.Title = "讀取檢測參數及關聯設定";
+                dialog.Title = "插入兩組檢測參數及關聯設定";
                 dialog.Filter = "檢測參數設定檔 (*.ini)|*.ini|所有檔案 (*.*)|*.*";
                 dialog.CheckFileExists = true;
-                dialog.Multiselect = false;
+                dialog.Multiselect = true;
                 if (dialog.ShowDialog(this) != DialogResult.OK)
                 {
                     return;
                 }
 
-                SystemParameterSettings importedSettings;
-                try
-                {
-                    importedSettings = new SystemParameterIniService(dialog.FileName).Load();
-                }
-                catch (Exception exception)
+                if (dialog.FileNames.Length != 2)
                 {
                     MessageBox.Show(
                         this,
-                        "無法讀取檢測參數設定：\r\n" + exception.Message,
-                        "讀取失敗",
+                        "請一次選取兩個檢測參數設定檔。",
+                        "選取數量不符",
                         MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                        MessageBoxIcon.Information);
                     return;
                 }
 
-                if (importedSettings == null || importedSettings.ObjectDetectionParameters.Count != 1)
-                {
-                    MessageBox.Show(
-                        this,
-                        "這個檔案必須包含且只包含一個檢測參數。\r\n請選擇由檢測參數匯出的設定檔。",
-                        "檔案內容不符",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                    return;
-                }
-
-                ObjectDetectionParameterSettings importedParameter =
-                    importedSettings.ObjectDetectionParameters[0];
-                string parameterName = string.IsNullOrWhiteSpace(importedParameter.DisplayName)
-                    ? "檢測參數"
-                    : importedParameter.DisplayName.Trim();
-                DialogResult confirm = MessageBox.Show(
-                    this,
-                    "將以「" + parameterName + "」及檔案內的相關流程設定，完整取代目前所有設定。\r\n" +
-                    "匯入後只會保留這一個檢測參數；目前開啟的圖片與檢視位置會保留，且不會自動重新運算。\r\n\r\n" +
-                    "確定要覆蓋嗎？",
-                    "覆蓋目前設定",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button2);
-                if (confirm != DialogResult.Yes)
-                {
-                    return;
-                }
-
-                // The exported profile intentionally omits a machine-specific image path.
-                importedSettings.LastImagePath = systemParameters.LastImagePath;
-                string settingsPath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory,
-                    "SystemParameters.ini");
-                string temporarySettingsPath = settingsPath + ".import-" + Guid.NewGuid().ToString("N") + ".tmp";
+                SystemParameterSettings mergedSettings;
+                var importedNames = new List<string>();
                 try
                 {
-                    new SystemParameterIniService(temporarySettingsPath).Save(importedSettings);
-                    if (File.Exists(settingsPath))
+                    mergedSettings = CloneSystemParameterSettings(systemParameters);
+                    string activeId = activeObjectDetectionParameterId ??
+                        systemParameters.ActiveObjectDetectionParameterId;
+                    ObjectDetectionParameterSettings activeParameter =
+                        mergedSettings.ObjectDetectionParameters.FirstOrDefault(
+                            item => string.Equals(item.Id, activeId, StringComparison.Ordinal));
+                    if (activeParameter != null && !string.IsNullOrWhiteSpace(activeParameter.ProfileSettingsData))
                     {
-                        File.Replace(temporarySettingsPath, settingsPath, null);
+                        activeParameter.ProfileSettingsData = CreateDetectionParameterProfileData(mergedSettings);
                     }
                     else
                     {
-                        File.Move(temporarySettingsPath, settingsPath);
+                        mergedSettings.DetectionParameterBaselineData =
+                            CreateDetectionParameterProfileData(mergedSettings);
                     }
+
+                    mergedSettings.ActiveObjectDetectionParameterId = activeId ?? string.Empty;
+                    var occupiedIds = CollectSettingsIds(mergedSettings);
+                    foreach (string fileName in dialog.FileNames)
+                    {
+                        SystemParameterSettings importedSettings =
+                            new SystemParameterIniService(fileName).Load();
+                        if (importedSettings == null || importedSettings.ObjectDetectionParameters.Count != 1)
+                        {
+                            throw new InvalidDataException(
+                                "檔案「" + Path.GetFileName(fileName) +
+                                "」必須包含且只包含一個檢測參數，請選擇由檢測參數匯出的設定檔。");
+                        }
+
+                        importedSettings.ActiveObjectDetectionParameterId = string.Empty;
+                        importedSettings.DetectionParameterBaselineData = string.Empty;
+                        RemapDetectionParameterPackageIds(importedSettings, occupiedIds);
+                        ObjectDetectionParameterSettings importedParameter =
+                            importedSettings.ObjectDetectionParameters[0];
+                        importedParameter.ProfileSettingsData = CreateDetectionParameterProfileData(importedSettings);
+                        importedParameter.DisplayName = GetUniqueDetectionParameterName(
+                            importedParameter.DisplayName,
+                            mergedSettings.ObjectDetectionParameters.Select(
+                                (item, index) => GetObjectDetectionParameterDisplayName(item, index))
+                                .Concat(importedNames));
+                        mergedSettings.ObjectDetectionParameters.Add(importedParameter);
+                        importedNames.Add(importedParameter.DisplayName);
+                    }
+
+                    SaveSystemParameterSettingsAtomically(mergedSettings);
                 }
                 catch (Exception exception)
                 {
                     MessageBox.Show(
                         this,
-                        "無法套用檢測參數設定，原本設定未變更：\r\n" + exception.Message,
-                        "覆蓋失敗",
+                        "無法插入檢測參數設定；原本設定未變更：\r\n" + exception.Message,
+                        "插入失敗",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                     return;
                 }
-                finally
-                {
-                    if (File.Exists(temporarySettingsPath))
-                    {
-                        File.Delete(temporarySettingsPath);
-                    }
-                }
 
-                ApplyImportedDetectionParameterSettings(importedSettings, importedParameter.Id);
-                statusLabel.Text = "已覆蓋目前設定並載入「" + parameterName + "」；圖片未變更，尚未重新運算";
+                systemParameters = mergedSettings;
+                objectDetectionParameterMenuExpanded = true;
+                RebuildVisibleObjectDetectionParameters();
+                SelectObjectDetectionParameter(activeObjectDetectionParameterId);
+                statusLabel.Text = "已插入兩組檢測參數；請選擇要使用的參數";
                 MessageBox.Show(
                     this,
-                    "已載入「" + parameterName + "」，目前流程設定已由檔案內容完整取代。\r\n" +
-                    "目前圖片與檢視位置已保留；處理結果需由你手動執行更新。",
-                    "讀取完成",
+                    "已插入兩組獨立檢測參數：\r\n「" + importedNames[0] + "」\r\n「" + importedNames[1] + "」\r\n\r\n" +
+                    "兩組的 ROI 與影像流程會各自保存。請在左側檢測參數清單選擇一組，再執行檢測。",
+                    "插入完成",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
         }
 
+        private static SystemParameterSettings CloneSystemParameterSettings(SystemParameterSettings settings)
+        {
+            string temporaryPath = Path.Combine(
+                Path.GetTempPath(),
+                "iip-settings-clone-" + Guid.NewGuid().ToString("N") + ".ini");
+            try
+            {
+                new SystemParameterIniService(temporaryPath).Save(settings);
+                return new SystemParameterIniService(temporaryPath).Load();
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+        }
+
+        private static string CreateDetectionParameterProfileData(SystemParameterSettings settings)
+        {
+            var profile = new SystemParameterSettings
+            {
+                LastImagePath = string.Empty,
+                RoiEnabled = settings.RoiEnabled,
+                Roi = settings.Roi
+            };
+            profile.RoiRegions.AddRange(settings.RoiRegions);
+            profile.ImagePreprocessingSteps.AddRange(settings.ImagePreprocessingSteps);
+            profile.ImagePreprocessingGroups.AddRange(settings.ImagePreprocessingGroups);
+            profile.ImageProcessingSteps.AddRange(settings.ImageProcessingSteps);
+            profile.ImageProcessingGroups.AddRange(settings.ImageProcessingGroups);
+            profile.ImageRelations.AddRange(settings.ImageRelations);
+            profile.ImageRelationGroups.AddRange(settings.ImageRelationGroups);
+            profile.ObjectJudgements.AddRange(settings.ObjectJudgements);
+            profile.ObjectJudgementGroups.AddRange(settings.ObjectJudgementGroups);
+            profile.ObjectDefinitions.AddRange(settings.ObjectDefinitions);
+
+            string temporaryPath = Path.Combine(
+                Path.GetTempPath(),
+                "iip-profile-" + Guid.NewGuid().ToString("N") + ".ini");
+            try
+            {
+                new SystemParameterIniService(temporaryPath).Save(profile);
+                return Convert.ToBase64String(File.ReadAllBytes(temporaryPath));
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+        }
+
+        private static SystemParameterSettings ReadDetectionParameterProfileData(string data)
+        {
+            string temporaryPath = Path.Combine(
+                Path.GetTempPath(),
+                "iip-profile-" + Guid.NewGuid().ToString("N") + ".ini");
+            try
+            {
+                File.WriteAllBytes(temporaryPath, Convert.FromBase64String(data));
+                return new SystemParameterIniService(temporaryPath).Load();
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+        }
+
+        private static IEnumerable<object> EnumerateSettingsObjects(object value)
+        {
+            if (value == null || value is string || value.GetType().IsValueType)
+            {
+                yield break;
+            }
+
+            IEnumerable enumerable = value as IEnumerable;
+            if (enumerable != null)
+            {
+                foreach (object item in enumerable)
+                {
+                    foreach (object nested in EnumerateSettingsObjects(item)) yield return nested;
+                }
+                yield break;
+            }
+
+            yield return value;
+            foreach (PropertyInfo property in value.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public))
+            {
+                if (!property.CanRead || property.GetIndexParameters().Length > 0 ||
+                    property.PropertyType == typeof(string) || property.PropertyType.IsValueType)
+                {
+                    continue;
+                }
+
+                object nestedValue = property.GetValue(value, null);
+                foreach (object nested in EnumerateSettingsObjects(nestedValue)) yield return nested;
+            }
+        }
+
+        private static HashSet<string> CollectSettingsIds(SystemParameterSettings settings)
+        {
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            foreach (object item in EnumerateSettingsObjects(settings))
+            {
+                PropertyInfo idProperty = item.GetType().GetProperty("Id");
+                string id = idProperty == null ? null : idProperty.GetValue(item, null) as string;
+                if (!string.IsNullOrWhiteSpace(id)) ids.Add(id);
+            }
+            return ids;
+        }
+
+        private static void RemapDetectionParameterPackageIds(
+            SystemParameterSettings settings,
+            HashSet<string> occupiedIds)
+        {
+            var idMap = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (object item in EnumerateSettingsObjects(settings))
+            {
+                PropertyInfo idProperty = item.GetType().GetProperty("Id");
+                string oldId = idProperty == null ? null : idProperty.GetValue(item, null) as string;
+                if (string.IsNullOrWhiteSpace(oldId)) continue;
+
+                string newId;
+                if (!idMap.TryGetValue(oldId, out newId))
+                {
+                    do { newId = Guid.NewGuid().ToString("N"); }
+                    while (!occupiedIds.Add(newId));
+                    idMap.Add(oldId, newId);
+                }
+                idProperty.SetValue(item, newId, null);
+            }
+
+            foreach (object item in EnumerateSettingsObjects(settings))
+            {
+                foreach (PropertyInfo property in item.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public))
+                {
+                    if (!property.CanRead || property.Name == "Id" || property.GetIndexParameters().Length > 0) continue;
+                    if (property.PropertyType == typeof(string) && property.CanWrite &&
+                        property.Name.EndsWith("Id", StringComparison.Ordinal))
+                    {
+                        string oldReference = property.GetValue(item, null) as string;
+                        string newReference;
+                        if (!string.IsNullOrEmpty(oldReference) && idMap.TryGetValue(oldReference, out newReference))
+                        {
+                            property.SetValue(item, newReference, null);
+                        }
+                    }
+                    else if (property.PropertyType == typeof(string) && property.CanWrite &&
+                        property.Name.EndsWith("Namespace", StringComparison.Ordinal))
+                    {
+                        string oldNamespace = property.GetValue(item, null) as string;
+                        if (!string.IsNullOrEmpty(oldNamespace))
+                        {
+                            string[] parts = oldNamespace.Split('|');
+                            for (int index = 0; index < parts.Length; index++)
+                            {
+                                string newReference;
+                                if (idMap.TryGetValue(parts[index], out newReference))
+                                {
+                                    parts[index] = newReference;
+                                }
+                            }
+                            property.SetValue(item, string.Join("|", parts), null);
+                        }
+                    }
+                    else if (property.Name.EndsWith("Ids", StringComparison.Ordinal))
+                    {
+                        IList references = property.GetValue(item, null) as IList;
+                        if (references == null) continue;
+                        for (int index = 0; index < references.Count; index++)
+                        {
+                            string oldReference = references[index] as string;
+                            string newReference;
+                            if (!string.IsNullOrEmpty(oldReference) && idMap.TryGetValue(oldReference, out newReference))
+                            {
+                                references[index] = newReference;
+                            }
+                        }
+                    }
+                }
+            }
+
+            settings.ActiveObjectDetectionParameterId = string.Empty;
+            settings.DetectionParameterBaselineData = string.Empty;
+            foreach (ObjectDetectionParameterSettings parameter in settings.ObjectDetectionParameters)
+            {
+                parameter.ProfileSettingsData = string.Empty;
+                if (!string.IsNullOrWhiteSpace(parameter.FlatFieldSavedProfileData))
+                {
+                    parameter.FlatFieldSavedSettingsSignature =
+                        CreateObjectDetectionFlatFieldSettingsSignature(parameter);
+                }
+            }
+        }
+
+        private static string GetUniqueDetectionParameterName(string candidate, IEnumerable<string> existingNames)
+        {
+            string baseName = string.IsNullOrWhiteSpace(candidate) ? "檢測參數" : candidate.Trim();
+            var names = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
+            if (!names.Contains(baseName)) return baseName;
+
+            int suffix = 2;
+            string name;
+            do { name = baseName + " (" + suffix.ToString(CultureInfo.InvariantCulture) + ")"; suffix++; }
+            while (names.Contains(name));
+            return name;
+        }
+
+        private void SaveSystemParameterSettingsAtomically(SystemParameterSettings settings)
+        {
+            string settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SystemParameters.ini");
+            string temporaryPath = settingsPath + ".insert-" + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                new SystemParameterIniService(temporaryPath).Save(settings);
+                if (File.Exists(settingsPath)) File.Replace(temporaryPath, settingsPath, null);
+                else File.Move(temporaryPath, settingsPath);
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+        }
+
+        private bool TryActivateDetectionParameterProfile(string parameterId, bool showParameterPanel)
+        {
+            if (isActivatingDetectionParameterProfile)
+            {
+                return false;
+            }
+
+            ObjectDetectionParameterSettings target = string.IsNullOrEmpty(parameterId)
+                ? null
+                : FindObjectDetectionParameter(parameterId);
+            string currentId = activeObjectDetectionParameterId ??
+                systemParameters.ActiveObjectDetectionParameterId;
+            if (string.Equals(currentId, parameterId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            if (isLoadingImage || parameterApplyInProgress || isPreparingPreprocessedImage ||
+                imageProcessingExecutionRequested || objectJudgementProcessingRequested ||
+                objectDefinitionProcessingRequested || objectDetectionDefectProcessingRequested ||
+                isObjectDetectionResultReviewRunning)
+            {
+                statusLabel.Text = "目前有流程正在執行，完成後才能切換檢測參數";
+                return true;
+            }
+
+            ObjectDetectionParameterSettings current = FindObjectDetectionParameter(currentId);
+            bool currentHasProfile = current != null && !string.IsNullOrWhiteSpace(current.ProfileSettingsData);
+            bool targetHasProfile = target != null && !string.IsNullOrWhiteSpace(target.ProfileSettingsData);
+            if (!currentHasProfile && !targetHasProfile)
+            {
+                activeObjectDetectionParameterId = parameterId;
+                systemParameters.ActiveObjectDetectionParameterId = parameterId ?? string.Empty;
+                SaveSystemParameters();
+                return false;
+            }
+
+            try
+            {
+                if (currentHasProfile)
+                {
+                    current.ProfileSettingsData = CreateDetectionParameterProfileData(systemParameters);
+                }
+                else
+                {
+                    systemParameters.DetectionParameterBaselineData =
+                        CreateDetectionParameterProfileData(systemParameters);
+                }
+
+                string targetData = targetHasProfile
+                    ? target.ProfileSettingsData
+                    : systemParameters.DetectionParameterBaselineData;
+                if (string.IsNullOrWhiteSpace(targetData))
+                {
+                    throw new InvalidDataException("找不到這組參數所保存的流程設定。");
+                }
+
+                SystemParameterSettings profile = ReadDetectionParameterProfileData(targetData);
+                SystemParameterSettings updated = CloneSystemParameterSettings(systemParameters);
+                CopyDetectionParameterProfileConfiguration(updated, profile);
+                updated.ActiveObjectDetectionParameterId = parameterId ?? string.Empty;
+                updated.LastImagePath = systemParameters.LastImagePath;
+                SaveSystemParameterSettingsAtomically(updated);
+
+                isActivatingDetectionParameterProfile = true;
+                try
+                {
+                    ApplyImportedDetectionParameterSettings(updated, parameterId, showParameterPanel);
+                }
+                finally
+                {
+                    isActivatingDetectionParameterProfile = false;
+                }
+                return true;
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(
+                    this,
+                    "無法切換檢測參數流程；目前設定未切換：\r\n" + exception.Message,
+                    "切換失敗",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return true;
+            }
+        }
+
+        private static void CopyDetectionParameterProfileConfiguration(
+            SystemParameterSettings target,
+            SystemParameterSettings source)
+        {
+            target.RoiEnabled = source.RoiEnabled;
+            target.Roi = source.Roi;
+            target.RoiRegions.Clear();
+            target.RoiRegions.AddRange(source.RoiRegions);
+            target.ImagePreprocessingSteps.Clear();
+            target.ImagePreprocessingSteps.AddRange(source.ImagePreprocessingSteps);
+            target.ImagePreprocessingGroups.Clear();
+            target.ImagePreprocessingGroups.AddRange(source.ImagePreprocessingGroups);
+            target.ImageProcessingSteps.Clear();
+            target.ImageProcessingSteps.AddRange(source.ImageProcessingSteps);
+            target.ImageProcessingGroups.Clear();
+            target.ImageProcessingGroups.AddRange(source.ImageProcessingGroups);
+            target.ImageRelations.Clear();
+            target.ImageRelations.AddRange(source.ImageRelations);
+            target.ImageRelationGroups.Clear();
+            target.ImageRelationGroups.AddRange(source.ImageRelationGroups);
+            target.ObjectJudgements.Clear();
+            target.ObjectJudgements.AddRange(source.ObjectJudgements);
+            target.ObjectJudgementGroups.Clear();
+            target.ObjectJudgementGroups.AddRange(source.ObjectJudgementGroups);
+            target.ObjectDefinitions.Clear();
+            target.ObjectDefinitions.AddRange(source.ObjectDefinitions);
+        }
+
         private void ApplyImportedDetectionParameterSettings(
             SystemParameterSettings importedSettings,
-            string importedParameterId)
+            string importedParameterId,
+            bool showParameterPanel = true)
         {
             isImportingDetectionParameterSettings = true;
             try
             {
-                functionListBox.SelectedIndex = -1;
+                if (showParameterPanel)
+                {
+                    functionListBox.SelectedIndex = -1;
+                }
                 CloseImageProcessingStepContextMenu();
                 if (roiMenuExpanded) ToggleRoiMenu();
                 if (imagePreprocessingMenuExpanded) ToggleImagePreprocessingMenu();
@@ -434,6 +779,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionMeasurementIsDrawing = false;
 
                 systemParameters = importedSettings;
+                systemParameters.ActiveObjectDetectionParameterId = importedParameterId ?? string.Empty;
                 selectedRoiIndex = -1;
                 selectedImageProcessingStepIndex = -1;
                 selectedImageProcessingGroupId = null;
@@ -449,7 +795,7 @@ namespace IntegratedImageProcessingApp.Forms
                 activeImageRelationGroupId = null;
                 activeObjectJudgementId = null;
                 activeObjectJudgementGroupId = null;
-                activeObjectDetectionParameterId = null;
+                activeObjectDetectionParameterId = importedParameterId;
                 selectedObjectDetectionNumber = -1;
                 objectDetectionMeasurementAppliedRecordId = null;
 
@@ -468,44 +814,55 @@ namespace IntegratedImageProcessingApp.Forms
                 RebuildVisibleObjectJudgements();
                 RebuildVisibleObjectDefinitions();
                 RebuildVisibleObjectDetectionParameters();
-                SelectObjectDetectionParameter(importedParameterId);
+                if (showParameterPanel)
+                {
+                    SelectObjectDetectionParameter(importedParameterId);
+                }
+                else if (isObjectDetectionResultReviewMode)
+                {
+                    int resultReviewIndex = functionListBox.Items.IndexOf(ObjectDetectionResultReviewMenuText);
+                    if (resultReviewIndex >= 0) functionListBox.SelectedIndex = resultReviewIndex;
+                }
             }
             finally
             {
                 isImportingDetectionParameterSettings = false;
             }
 
-            suppressObjectDetectionParameterSourceAutoProcessing = true;
-            try
+            if (showParameterPanel)
             {
                 ShowObjectDetectionParameterPanel(importedParameterId);
             }
-            finally
+            else if (isObjectDetectionResultReviewMode)
             {
-                suppressObjectDetectionParameterSourceAutoProcessing = false;
+                PopulateObjectDetectionResultReviewParameters();
             }
         }
 
         private SystemParameterSettings CreateObjectDetectionParameterExportSettings(
             ObjectDetectionParameterSettings parameter)
         {
+            SystemParameterSettings profileSettings =
+                string.IsNullOrWhiteSpace(parameter.ProfileSettingsData)
+                    ? systemParameters
+                    : ReadDetectionParameterProfileData(parameter.ProfileSettingsData);
             var exportSettings = new SystemParameterSettings
             {
                 LastImagePath = string.Empty,
-                RoiEnabled = systemParameters.RoiEnabled,
-                Roi = systemParameters.Roi
+                RoiEnabled = profileSettings.RoiEnabled,
+                Roi = profileSettings.Roi
             };
 
-            exportSettings.RoiRegions.AddRange(systemParameters.RoiRegions);
-            exportSettings.ImagePreprocessingSteps.AddRange(systemParameters.ImagePreprocessingSteps);
-            exportSettings.ImagePreprocessingGroups.AddRange(systemParameters.ImagePreprocessingGroups);
-            exportSettings.ImageProcessingSteps.AddRange(systemParameters.ImageProcessingSteps);
-            exportSettings.ImageProcessingGroups.AddRange(systemParameters.ImageProcessingGroups);
-            exportSettings.ImageRelations.AddRange(systemParameters.ImageRelations);
-            exportSettings.ImageRelationGroups.AddRange(systemParameters.ImageRelationGroups);
-            exportSettings.ObjectJudgements.AddRange(systemParameters.ObjectJudgements);
-            exportSettings.ObjectJudgementGroups.AddRange(systemParameters.ObjectJudgementGroups);
-            exportSettings.ObjectDefinitions.AddRange(systemParameters.ObjectDefinitions);
+            exportSettings.RoiRegions.AddRange(profileSettings.RoiRegions);
+            exportSettings.ImagePreprocessingSteps.AddRange(profileSettings.ImagePreprocessingSteps);
+            exportSettings.ImagePreprocessingGroups.AddRange(profileSettings.ImagePreprocessingGroups);
+            exportSettings.ImageProcessingSteps.AddRange(profileSettings.ImageProcessingSteps);
+            exportSettings.ImageProcessingGroups.AddRange(profileSettings.ImageProcessingGroups);
+            exportSettings.ImageRelations.AddRange(profileSettings.ImageRelations);
+            exportSettings.ImageRelationGroups.AddRange(profileSettings.ImageRelationGroups);
+            exportSettings.ObjectJudgements.AddRange(profileSettings.ObjectJudgements);
+            exportSettings.ObjectJudgementGroups.AddRange(profileSettings.ObjectJudgementGroups);
+            exportSettings.ObjectDefinitions.AddRange(profileSettings.ObjectDefinitions);
             exportSettings.ObjectDetectionParameters.Add(parameter);
             return exportSettings;
         }
@@ -566,7 +923,31 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (string.Equals(activeObjectDetectionParameterId, parameterId, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(parameter.ProfileSettingsData))
+            {
+                if (!TryActivateDetectionParameterProfile(null, true))
+                {
+                    return;
+                }
+                parameter = FindObjectDetectionParameter(parameterId);
+                if (parameter == null)
+                {
+                    return;
+                }
+            }
+
             systemParameters.ObjectDetectionParameters.Remove(parameter);
+            if (!systemParameters.ObjectDetectionParameters.Any(
+                item => !string.IsNullOrWhiteSpace(item.ProfileSettingsData)))
+            {
+                systemParameters.DetectionParameterBaselineData = string.Empty;
+            }
+            if (string.Equals(systemParameters.ActiveObjectDetectionParameterId, parameterId, StringComparison.Ordinal))
+            {
+                systemParameters.ActiveObjectDetectionParameterId = string.Empty;
+                activeObjectDetectionParameterId = null;
+            }
             RemoveObjectDetectionDefectCoreResults(parameter.Id);
             SaveSystemParameters();
             RebuildVisibleObjectDetectionParameters();
