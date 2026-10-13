@@ -1063,7 +1063,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 objectDetectionResultReviewStatusLabel.Text =
-                    "平場校正完成，缺陷檢測與尺寸量測將同時運算...";
+                    "平場校正完成，尺寸量測將依物件平行處理，並與缺陷檢測同時運算...";
                 statusLabel.Text = parameter.DisplayName + " 結果確認：缺陷與尺寸並行運算中...";
 
                 leftImageTabControl.SelectedTab =
@@ -1501,12 +1501,24 @@ namespace IntegratedImageProcessingApp.Forms
                 Rows = new List<ResultReviewMeasurementRowResult>(),
                 Contexts = new Dictionary<int, ResultReviewMeasurementContext>()
             };
-            Stopwatch calculationStopwatch = Stopwatch.StartNew();
-            foreach (ObjectDefinitionDetectedObject detectedObject in objects)
+            var rowsByObject = new List<ResultReviewMeasurementRowResult>[objects.Count];
+            var contextsByObject = new ResultReviewMeasurementContext[objects.Count];
+            int maxDegreeOfParallelism = Math.Min(
+                objects.Count,
+                Math.Max(1, Math.Min(4, Environment.ProcessorCount)));
+            var parallelOptions = new ParallelOptions
             {
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = maxDegreeOfParallelism
+            };
+            Stopwatch calculationStopwatch = Stopwatch.StartNew();
+            Parallel.For(0, objects.Count, parallelOptions, objectIndex =>
+            {
+                ObjectDefinitionDetectedObject detectedObject = objects[objectIndex];
                 EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
                 EnsureObjectDetectionResultReviewImageGenerationIsCurrent(imageGeneration);
                 var statsByRecord = new Dictionary<int, ObjectDetectionMeasurementStatistics>();
+                var objectRows = new List<ResultReviewMeasurementRowResult>(records.Count);
                 foreach (ObjectDetectionMeasurementRecordSettings record in records)
                 {
                     EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
@@ -1541,7 +1553,7 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         statsByRecord[record.Number] = statistics;
                     }
-                    result.Rows.Add(new ResultReviewMeasurementRowResult
+                    objectRows.Add(new ResultReviewMeasurementRowResult
                     {
                         Record = record,
                         MaskParameter = maskParameter,
@@ -1551,11 +1563,18 @@ namespace IntegratedImageProcessingApp.Forms
                     });
                 }
 
-                result.Contexts[detectedObject.Number] = new ResultReviewMeasurementContext
+                rowsByObject[objectIndex] = objectRows;
+                contextsByObject[objectIndex] = new ResultReviewMeasurementContext
                 {
                     Parameter = parameter,
                     StatisticsByRecord = statsByRecord
                 };
+            });
+
+            for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+            {
+                result.Rows.AddRange(rowsByObject[objectIndex]);
+                result.Contexts[objects[objectIndex].Number] = contextsByObject[objectIndex];
             }
 
             calculationStopwatch.Stop();
