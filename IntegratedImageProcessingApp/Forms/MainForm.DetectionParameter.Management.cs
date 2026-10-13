@@ -679,6 +679,11 @@ namespace IntegratedImageProcessingApp.Forms
 
                 systemParameters = importedSettings;
                 collapsedObjectDetectionParameterGroups.Clear();
+                if (objectDetectionParameterTabControl != null &&
+                    objectDetectionParameterTabControl.TabPages.Count > 0)
+                {
+                    objectDetectionParameterTabControl.SelectedIndex = 0;
+                }
                 selectedRoiIndex = -1;
                 selectedImageProcessingStepIndex = -1;
                 selectedImageProcessingGroupId = null;
