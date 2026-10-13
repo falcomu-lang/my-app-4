@@ -717,7 +717,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (objectDetectionFlatFieldShowMaskOverlay)
+            if (objectDetectionFlatFieldShowMaskOverlay && !display.IsPanOverlaySettling)
             {
                 DrawObjectDetectionFlatFieldMaskOverlays(
                     e.Graphics,
@@ -743,7 +743,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (objectDetectionFlatFieldShowMaskOverlay)
+            if (objectDetectionFlatFieldShowMaskOverlay && !display.IsPanOverlaySettling)
             {
                 DrawObjectDetectionFlatFieldMaskOverlays(
                     e.Graphics,

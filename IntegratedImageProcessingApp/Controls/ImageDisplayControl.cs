@@ -35,7 +35,7 @@ namespace IntegratedImageProcessingApp.Controls
         private const int MaxCachedTilesWhilePanning = 64;
         private const int TileRefreshIntervalMs = 33;
         private const int PanInvalidateIntervalMs = 16;
-        private const int PanOverlaySettleIntervalMs = 120;
+        private const int PanOverlaySettleIntervalMs = 250;
         private const int StatusUpdateIntervalMs = 60;
         private const int ZoomSettleIntervalMs = 180;
         private const long MaxDisplayPixels = 50000000L;
