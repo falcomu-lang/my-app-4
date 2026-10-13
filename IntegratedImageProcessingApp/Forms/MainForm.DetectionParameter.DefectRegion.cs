@@ -221,8 +221,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
             ObjectDefinitionDetectedObject selectedObject;
             if (parameter == null ||
                 !TryGetSelectedObjectDetectionObject(out selectedObject))
@@ -641,7 +640,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+                GetObjectDetectionParameterForDisplay();
             RectangleF normalizedRegion;
             bool draft = false;
             if (objectDetectionDefectRegionIsDrawing)

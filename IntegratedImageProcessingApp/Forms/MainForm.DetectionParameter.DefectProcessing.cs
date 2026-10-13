@@ -1727,6 +1727,13 @@ namespace IntegratedImageProcessingApp.Forms
             out ObjectDetectionDefectCoreResult result)
         {
             result = null;
+            if (IsActiveObjectDetectionResultReviewSnapshot(parameter))
+            {
+                return objectDetectionResultReviewSnapshot.CoreResults != null &&
+                    objectDetectionResultReviewSnapshot.CoreResults.TryGetValue(
+                        coreKey ?? string.Empty,
+                        out result);
+            }
             if (parameter == null || !parameter.DefectInspectionRegionConfigured ||
                 !string.Equals(parameter.DefectInspectionRegionObjectDefinitionId,
                     parameter.ObjectDefinitionId, StringComparison.Ordinal))
@@ -1774,8 +1781,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return;
             }
-            ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
             ObjectDetectionDefectCoreResult result;
             if (!TryGetObjectDetectionDefectCoreResult(parameter, coreKey, out result) ||
                 result.Contours == null || result.ProcessedPatches == null)
@@ -1871,8 +1877,7 @@ namespace IntegratedImageProcessingApp.Forms
             PointF offset,
             Rectangle visibleSourceRect)
         {
-            ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
             if (parameter == null)
             {
                 return;

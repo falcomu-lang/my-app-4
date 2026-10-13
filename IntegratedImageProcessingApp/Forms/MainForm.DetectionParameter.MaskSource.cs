@@ -54,7 +54,8 @@ namespace IntegratedImageProcessingApp.Forms
             LargeImageSource largeSource,
             Bitmap original,
             out Cv.Mat mask,
-            bool rebuildMissingSources = false)
+            bool rebuildMissingSources = false,
+            bool bypassResultReviewSnapshot = false)
         {
             mask = null;
             if (parameter == null || objectBounds.Width <= 0 || objectBounds.Height <= 0 ||
@@ -62,6 +63,27 @@ namespace IntegratedImageProcessingApp.Forms
                 string.IsNullOrWhiteSpace(parameter.SourceMaskPrimaryId))
             {
                 return false;
+            }
+
+            ObjectDetectionResultReviewSnapshot reviewSnapshot =
+                isObjectDetectionResultReviewMode && !bypassResultReviewSnapshot
+                    ? objectDetectionResultReviewSnapshot
+                    : null;
+            if (reviewSnapshot != null && reviewSnapshot.MeasurementMasks != null)
+            {
+                string reviewMaskKey = CreateObjectDetectionMeasurementMaskCacheKey(
+                    parameter,
+                    objectNumber,
+                    objectBounds,
+                    reviewSnapshot.ImageSourceGeneration);
+                Cv.Mat savedMask;
+                if (reviewSnapshot.MeasurementMasks.TryGetValue(reviewMaskKey, out savedMask) &&
+                    savedMask != null && !savedMask.Empty() &&
+                    savedMask.Cols == objectBounds.Width && savedMask.Rows == objectBounds.Height)
+                {
+                    mask = savedMask.Clone();
+                    return true;
+                }
             }
 
             string cacheKey = CreateObjectDetectionMeasurementMaskCacheKey(
@@ -265,10 +287,23 @@ namespace IntegratedImageProcessingApp.Forms
             int objectNumber,
             Rectangle objectBounds)
         {
+            return CreateObjectDetectionMeasurementMaskCacheKey(
+                parameter,
+                objectNumber,
+                objectBounds,
+                System.Threading.Interlocked.CompareExchange(ref imageSourceGeneration, 0, 0));
+        }
+
+        private string CreateObjectDetectionMeasurementMaskCacheKey(
+            ObjectDetectionParameterSettings parameter,
+            int objectNumber,
+            Rectangle objectBounds,
+            int imageGeneration)
+        {
             return string.Join(
                 "|",
                 parameter.Id ?? string.Empty,
-                imageSourceGeneration.ToString(CultureInfo.InvariantCulture),
+                imageGeneration.ToString(CultureInfo.InvariantCulture),
                 objectNumber.ToString(CultureInfo.InvariantCulture),
                 objectBounds.X.ToString(CultureInfo.InvariantCulture),
                 objectBounds.Y.ToString(CultureInfo.InvariantCulture),

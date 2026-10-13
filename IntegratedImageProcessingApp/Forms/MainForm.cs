@@ -87,6 +87,7 @@ namespace IntegratedImageProcessingApp.Forms
         // The preprocessing output remains a full-resolution OpenCV Mat and
         // is exposed to the viewers through a memory-backed tile source.
         private int imageSourceGeneration;
+        private int imageContentGeneration;
         private int detectionRecipeGeneration;
         private CancellationTokenSource detectionRecipeCancellationTokenSource =
             new CancellationTokenSource();
@@ -2414,6 +2415,7 @@ namespace IntegratedImageProcessingApp.Forms
         private async Task LoadImageIntoOriginalDisplaysAsync(string filePath, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref imageSourceGeneration);
+            Interlocked.Increment(ref imageContentGeneration);
             ClearObjectDetectionDefectCoreResults();
             ClearObjectDetectionFlatFieldMaskOverlays();
             ClearObjectDetectionFlatFieldCorrectionPreview();

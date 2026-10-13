@@ -1437,6 +1437,11 @@ namespace IntegratedImageProcessingApp.Forms
             out ObjectDetectionFrequencyResult result)
         {
             result = null;
+            if (IsActiveObjectDetectionResultReviewSnapshot(parameter))
+            {
+                result = objectDetectionResultReviewSnapshot.FrequencyResult;
+                return result != null && parameter.DefectFrequencyEnabled;
+            }
             if (parameter == null || !parameter.DefectFrequencyEnabled ||
                 !objectDetectionFrequencyResults.TryGetValue(parameter.Id, out result))
             {
@@ -1476,8 +1481,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return;
             }
-            ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
             ObjectDetectionFrequencyResult result;
             if (!TryGetCurrentObjectDetectionFrequencyResult(parameter, out result) ||
                 (result.Cells == null || result.Cells.Count == 0) &&

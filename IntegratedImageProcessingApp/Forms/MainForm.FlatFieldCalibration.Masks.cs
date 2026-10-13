@@ -558,6 +558,22 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (isObjectDetectionResultReviewMode && objectDetectionResultReviewSnapshot != null)
+            {
+                ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
+                SetObjectDetectionResultReviewBaseImage(
+                    objectDetectionFlatFieldPreviewDisplayControl,
+                    snapshot.CorrectedLargeSource,
+                    snapshot.CorrectedBitmap);
+                objectDetectionFlatFieldPreviewWidth = snapshot.ImageWidth;
+                objectDetectionFlatFieldPreviewHeight = snapshot.ImageHeight;
+                objectDetectionFlatFieldPreviewIsCorrected = true;
+                objectDetectionFlatFieldCorrectedImageGeneration = imageSourceGeneration;
+                objectDetectionFlatFieldPreviewImageGeneration = imageSourceGeneration;
+                objectDetectionFlatFieldPreviewDisplayControl.InvalidateImageView();
+                return;
+            }
+
             ImageDisplayControl source = rightOriginalDisplayControl != null &&
                 rightOriginalDisplayControl.HasImage
                 ? rightOriginalDisplayControl
@@ -770,25 +786,37 @@ namespace IntegratedImageProcessingApp.Forms
                 Cv.MatType.CV_8UC1,
                 Cv.Scalar.All(0)))
             {
-                lock (objectDetectionFlatFieldMaskLock)
+                IEnumerable<ObjectDetectionFlatFieldMaskOverlay> visibleMasks;
+                if (isObjectDetectionResultReviewMode && objectDetectionResultReviewSnapshot != null)
                 {
-                    IEnumerable<ObjectDetectionFlatFieldMaskOverlay> visibleMasks =
-                        objectDetectionFlatFieldUseMaskConfigured
-                            ? objectDetectionFlatFieldUseMaskOverlays
-                            : objectDetectionFlatFieldMaskOverlays;
-                    foreach (ObjectDetectionFlatFieldMaskOverlay item in visibleMasks)
+                    ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
+                    visibleMasks = snapshot.UseMaskConfigured
+                        ? snapshot.UseMasks
+                        : snapshot.SourceMasks;
+                }
+                else
+                {
+                    lock (objectDetectionFlatFieldMaskLock)
                     {
-                        if (item.Mask == null || item.Mask.Empty() ||
-                            item.Mask.Cols != item.Bounds.Width || item.Mask.Rows != item.Bounds.Height)
-                        {
-                            continue;
-                        }
+                        visibleMasks = (objectDetectionFlatFieldUseMaskConfigured
+                            ? objectDetectionFlatFieldUseMaskOverlays
+                            : objectDetectionFlatFieldMaskOverlays).ToList();
+                    }
+                }
 
-                        Rectangle visibleMaskBounds = Rectangle.Intersect(item.Bounds, visibleSourceRect);
-                        if (visibleMaskBounds.Width <= 0 || visibleMaskBounds.Height <= 0)
-                        {
-                            continue;
-                        }
+                foreach (ObjectDetectionFlatFieldMaskOverlay item in visibleMasks)
+                {
+                    if (item.Mask == null || item.Mask.Empty() ||
+                        item.Mask.Cols != item.Bounds.Width || item.Mask.Rows != item.Bounds.Height)
+                    {
+                        continue;
+                    }
+
+                    Rectangle visibleMaskBounds = Rectangle.Intersect(item.Bounds, visibleSourceRect);
+                    if (visibleMaskBounds.Width <= 0 || visibleMaskBounds.Height <= 0)
+                    {
+                        continue;
+                    }
 
                         int localX = visibleMaskBounds.X - item.Bounds.X;
                         int localY = visibleMaskBounds.Y - item.Bounds.Y;
@@ -851,7 +879,6 @@ namespace IntegratedImageProcessingApp.Forms
                             }
                         }
                         }
-                    }
                 }
 
                 using (Bitmap overlay = CreateObjectDetectionMaskOverlay(

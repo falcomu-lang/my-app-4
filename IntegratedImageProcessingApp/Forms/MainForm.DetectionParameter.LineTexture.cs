@@ -1333,6 +1333,11 @@ namespace IntegratedImageProcessingApp.Forms
             out ObjectDetectionLineTextureResult result)
         {
             result = null;
+            if (IsActiveObjectDetectionResultReviewSnapshot(parameter))
+            {
+                result = objectDetectionResultReviewSnapshot.LineTextureResult;
+                return result != null && parameter.DefectLineTextureEnabled;
+            }
             if (parameter == null || !parameter.DefectLineTextureEnabled ||
                 !objectDetectionLineTextureResults.TryGetValue(parameter.Id, out result)) return false;
             ObjectDefinitionSettings definition = string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId)
@@ -1364,7 +1369,7 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle visibleSourceRect)
         {
             if (graphics == null || zoom <= 0 || !isObjectDetectionParameterImageLayout) return;
-            ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
             ObjectDetectionLineTextureResult result;
             if (!TryGetCurrentObjectDetectionLineTextureResult(parameter, out result)) return;
             Rectangle visible = visibleSourceRect;

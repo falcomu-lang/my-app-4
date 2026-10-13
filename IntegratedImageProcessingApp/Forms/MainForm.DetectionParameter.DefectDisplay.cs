@@ -219,11 +219,27 @@ namespace IntegratedImageProcessingApp.Forms
 
             UpdateActiveObjectDetectionDefectDisplayAlias();
             int activeIndex = GetObjectDetectionDefectDisplayIndex(leftImageTabControl.SelectedTab);
-            ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
             if (parameter == null)
             {
                 ShowObjectDetectionDefectDisplayPlaceholder("請先選擇檢測參數");
+                return;
+            }
+
+            if (IsActiveObjectDetectionResultReviewSnapshot(parameter))
+            {
+                ImageDisplayControl snapshotDisplay = GetObjectDetectionDefectDisplayControl(activeIndex);
+                SetObjectDetectionResultReviewBaseImage(
+                    snapshotDisplay,
+                    objectDetectionResultReviewSnapshot.CorrectedLargeSource,
+                    objectDetectionResultReviewSnapshot.CorrectedBitmap);
+                if (snapshotDisplay != null)
+                {
+                    objectDetectionDefectDisplayParameterIds[activeIndex] = parameter.Id;
+                    objectDetectionDefectDisplayImageGenerations[activeIndex] = imageSourceGeneration;
+                    snapshotDisplay.InvalidateImageView();
+                }
+                ShowObjectDetectionDefectDisplayPlaceholder(null);
                 return;
             }
 

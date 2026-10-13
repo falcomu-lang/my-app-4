@@ -1,15 +1,20 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
 using IntegratedImageProcessingApp.Services;
+using Cv = OpenCvSharp;
 
 namespace IntegratedImageProcessingApp.Forms
 {
@@ -66,6 +71,90 @@ namespace IntegratedImageProcessingApp.Forms
             public long CalculationMilliseconds { get; set; }
         }
 
+        private sealed class ObjectDetectionResultReviewSnapshot : IDisposable
+        {
+            public string ParameterId { get; set; }
+            public string ImagePath { get; set; }
+            public string SettingsSignature { get; set; }
+            public int ImageContentGeneration { get; set; }
+            public int ImageSourceGeneration { get; set; }
+            public ObjectDetectionParameterSettings Parameter { get; set; }
+            public ObjectDefinitionSettings Definition { get; set; }
+            public List<ObjectDefinitionDetectedObject> Objects { get; set; }
+            public Dictionary<string, ObjectDetectionDefectCoreResult> CoreResults { get; set; }
+            public Dictionary<string, Cv.Mat> MeasurementMasks { get; set; }
+            public ObjectDetectionFrequencyResult FrequencyResult { get; set; }
+            public ObjectDetectionLineTextureResult LineTextureResult { get; set; }
+            public List<ObjectDetectionDefectIntegrationGroup> IntegrationGroups { get; set; }
+            public LargeImageSource OriginalLargeSource { get; set; }
+            public LargeImageSource CorrectedLargeSource { get; set; }
+            public Bitmap OriginalBitmap { get; set; }
+            public Bitmap CorrectedBitmap { get; set; }
+            public List<ObjectDetectionFlatFieldMaskOverlay> SourceMasks { get; set; }
+            public List<ObjectDetectionFlatFieldMaskOverlay> UseMasks { get; set; }
+            public bool UseMaskConfigured { get; set; }
+            public int ImageWidth { get; set; }
+            public int ImageHeight { get; set; }
+            public ImageViewState MeasurementViewState { get; set; }
+            public ImageViewState FlatFieldViewState { get; set; }
+            public ImageViewState[] DefectViewStates { get; set; }
+
+            public void Dispose()
+            {
+                if (CoreResults != null)
+                {
+                    DisposeObjectDetectionDefectCoreResults(CoreResults);
+                    CoreResults = null;
+                }
+                if (FrequencyResult != null)
+                {
+                    DisposeObjectDetectionFrequencyResult(FrequencyResult);
+                    FrequencyResult = null;
+                }
+                if (LineTextureResult != null)
+                {
+                    DisposeObjectDetectionLineTextureResult(LineTextureResult);
+                    LineTextureResult = null;
+                }
+                if (MeasurementMasks != null)
+                {
+                    foreach (Cv.Mat mask in MeasurementMasks.Values)
+                    {
+                        if (mask != null)
+                        {
+                            mask.Dispose();
+                        }
+                    }
+                    MeasurementMasks.Clear();
+                    MeasurementMasks = null;
+                }
+                if (OriginalLargeSource != null)
+                {
+                    OriginalLargeSource.ReleaseReference();
+                    OriginalLargeSource = null;
+                }
+                if (CorrectedLargeSource != null)
+                {
+                    CorrectedLargeSource.ReleaseReference();
+                    CorrectedLargeSource = null;
+                }
+                if (OriginalBitmap != null)
+                {
+                    OriginalBitmap.Dispose();
+                    OriginalBitmap = null;
+                }
+                if (CorrectedBitmap != null)
+                {
+                    CorrectedBitmap.Dispose();
+                    CorrectedBitmap = null;
+                }
+                DisposeObjectDetectionFlatFieldMasks(SourceMasks);
+                DisposeObjectDetectionFlatFieldMasks(UseMasks);
+                SourceMasks = null;
+                UseMasks = null;
+            }
+        }
+
         private Panel objectDetectionResultReviewPanel;
         private ComboBox objectDetectionResultReviewParameterComboBox;
         private Button objectDetectionResultReviewLoadImageButton;
@@ -105,6 +194,10 @@ namespace IntegratedImageProcessingApp.Forms
         private string objectDetectionResultReviewPreviousParameterId;
         private int objectDetectionResultReviewPreviousObjectNumber;
         private string objectDetectionResultReviewSelectedParameterId;
+        private ObjectDetectionResultReviewSnapshot objectDetectionResultReviewSnapshot;
+        private string objectDetectionResultReviewLastSuccessfulSettingsSignature;
+        private string objectDetectionResultReviewLastSuccessfulParameterId;
+        private int? objectDetectionResultReviewLastSuccessfulImageGeneration;
         private bool isPopulatingObjectDetectionResultReviewParameters;
         private TabPage objectDetectionResultReviewSelectedImageTabPage;
         private readonly Dictionary<ImageDisplayControl, ImageViewState>
@@ -220,13 +313,13 @@ namespace IntegratedImageProcessingApp.Forms
             bool hadReviewImage = !string.IsNullOrWhiteSpace(objectDetectionResultReviewImagePath);
             bool imageWasAddedWhileAway = isRestoringExistingReviewPanel &&
                 !hadReviewImage && hasCurrentImage;
-            bool imageChanged = hadReviewImage && hasCurrentImage &&
+            bool imageChanged = hadReviewImage &&
                 !string.Equals(
                     objectDetectionResultReviewImagePath,
                     currentImagePath,
                     StringComparison.OrdinalIgnoreCase);
             bool imageGenerationChanged = objectDetectionResultReviewImageGeneration.HasValue &&
-                objectDetectionResultReviewImageGeneration.Value != imageSourceGeneration;
+                objectDetectionResultReviewImageGeneration.Value != imageContentGeneration;
             bool imageSourceChanged = imageWasAddedWhileAway || imageChanged || imageGenerationChanged;
             if (hasCurrentImage)
             {
@@ -257,6 +350,30 @@ namespace IntegratedImageProcessingApp.Forms
                 previousReviewParameterId,
                 objectDetectionResultReviewSelectedParameterId,
                 StringComparison.Ordinal);
+            ObjectDetectionParameterSettings currentReviewParameter =
+                FindObjectDetectionParameter(objectDetectionResultReviewSelectedParameterId);
+            ObjectDefinitionSettings currentReviewDefinition = currentReviewParameter == null ||
+                string.IsNullOrWhiteSpace(currentReviewParameter.ObjectDefinitionId)
+                ? null
+                : FindObjectDefinition(currentReviewParameter.ObjectDefinitionId);
+            bool snapshotSettingsChanged = objectDetectionResultReviewSnapshot != null &&
+                (!string.Equals(
+                    objectDetectionResultReviewSnapshot.SettingsSignature,
+                    CreateObjectDetectionResultReviewSettingsSignature(
+                        currentReviewParameter,
+                        currentReviewDefinition),
+                    StringComparison.Ordinal) ||
+                 !string.Equals(
+                    objectDetectionResultReviewSnapshot.ParameterId,
+                    objectDetectionResultReviewSelectedParameterId,
+                    StringComparison.Ordinal));
+            if (snapshotSettingsChanged)
+            {
+                ClearObjectDetectionResultReviewResults();
+                ResetObjectDetectionResultReviewProcessingTimings();
+                objectDetectionResultReviewStatusLabel.Text =
+                    "檢測參數內容已變更，請重新執行結果確認。";
+            }
             ResultReviewGoodJudgementObject selectedGoodJudgementObject =
                 objectDetectionResultReviewSelectedGoodJudgementObjectNumber.HasValue
                     ? objectDetectionResultReviewGoodJudgementResults.FirstOrDefault(result =>
@@ -303,7 +420,13 @@ namespace IntegratedImageProcessingApp.Forms
                                 "N0", CultureInfo.CurrentCulture) + ")"
                         : string.Empty);
             }
-            if (!isRestoringExistingReviewPanel || imageSourceChanged || parameterChangedWhileAway)
+            if (objectDetectionResultReviewSnapshot != null && !imageSourceChanged &&
+                !parameterChangedWhileAway && !snapshotSettingsChanged)
+            {
+                RestoreObjectDetectionResultReviewSnapshotDisplays();
+            }
+            else if (!isRestoringExistingReviewPanel || imageSourceChanged ||
+                parameterChangedWhileAway || snapshotSettingsChanged)
             {
                 RefreshObjectDetectionFlatFieldDisplay();
                 RefreshObjectDetectionMeasurementDisplay();
@@ -323,6 +446,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionResultReviewPanel.Visible = false;
             }
+            CaptureObjectDetectionResultReviewSnapshotViewStates();
             if (leftImageTabControl != null)
             {
                 objectDetectionResultReviewSelectedImageTabPage = leftImageTabControl.SelectedTab;
@@ -348,7 +472,6 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionResultReviewHighlightTimer.Dispose();
                 objectDetectionResultReviewHighlightTimer = null;
             }
-            objectDetectionResultReviewSelectedMeasurement = null;
             activeObjectDetectionParameterId = objectDetectionResultReviewPreviousParameterId;
             selectedObjectDetectionNumber = objectDetectionResultReviewPreviousObjectNumber;
             objectDetectionResultReviewPreviousParameterId = null;
@@ -918,6 +1041,20 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            string currentSettingsSignature =
+                CreateObjectDetectionResultReviewSettingsSignature(parameter, definition);
+            bool settingsChangedSinceLastSuccessfulRun =
+                objectDetectionResultReviewLastSuccessfulImageGeneration.HasValue &&
+                (objectDetectionResultReviewLastSuccessfulImageGeneration.Value != imageContentGeneration ||
+                 !string.Equals(
+                    objectDetectionResultReviewLastSuccessfulParameterId,
+                    parameter.Id,
+                    StringComparison.Ordinal) ||
+                 !string.Equals(
+                    objectDetectionResultReviewLastSuccessfulSettingsSignature,
+                    currentSettingsSignature,
+                    StringComparison.Ordinal));
+
             isObjectDetectionResultReviewRunning = true;
             SetObjectDetectionResultReviewControlsEnabled(false);
             ClearObjectDetectionResultReviewResults();
@@ -1083,9 +1220,11 @@ namespace IntegratedImageProcessingApp.Forms
                 bool includeLineTexture = IsObjectDetectionDefectLineTextureIntegrationRequired(parameter);
                 ObjectDetectionFrequencyResult frequencyResult;
                 bool frequencyAlreadyReady = !includeFrequency ||
+                    !settingsChangedSinceLastSuccessfulRun &&
                     TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult);
                 ObjectDetectionLineTextureResult lineTextureResult;
                 bool lineTextureAlreadyReady = !includeLineTexture ||
+                    !settingsChangedSinceLastSuccessfulRun &&
                     TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
 
                 if (parameter.DefectParallelExecutionEnabled)
@@ -1274,7 +1413,13 @@ namespace IntegratedImageProcessingApp.Forms
                     defectDisplayStopwatch.ElapsedMilliseconds;
                 objectDetectionResultReviewStatusLabel.Text =
                     BuildObjectDetectionResultReviewSummary(parameter, objects.Count);
-                objectDetectionResultReviewImageGeneration = imageSourceGeneration;
+                objectDetectionResultReviewImageGeneration = imageContentGeneration;
+                CaptureObjectDetectionResultReviewSnapshot(parameter, definition, objects);
+                RestoreObjectDetectionResultReviewSnapshotDisplays();
+                objectDetectionResultReviewLastSuccessfulSettingsSignature =
+                    currentSettingsSignature;
+                objectDetectionResultReviewLastSuccessfulParameterId = parameter.Id;
+                objectDetectionResultReviewLastSuccessfulImageGeneration = imageContentGeneration;
                 statusLabel.Text = parameter.DisplayName + " 結果確認完成";
             }
             catch (Exception exception)
@@ -2356,8 +2501,484 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private bool IsActiveObjectDetectionResultReviewSnapshot(
+            ObjectDetectionParameterSettings parameter)
+        {
+            return isObjectDetectionResultReviewMode &&
+                objectDetectionResultReviewSnapshot != null &&
+                parameter != null &&
+                string.Equals(
+                    objectDetectionResultReviewSnapshot.ParameterId,
+                    parameter.Id,
+                    StringComparison.Ordinal);
+        }
+
+        private ObjectDetectionParameterSettings GetObjectDetectionParameterForDisplay()
+        {
+            if (isObjectDetectionResultReviewMode && objectDetectionResultReviewSnapshot != null)
+            {
+                return objectDetectionResultReviewSnapshot.Parameter;
+            }
+            return FindObjectDetectionParameter(activeObjectDetectionParameterId);
+        }
+
+        private string CreateObjectDetectionResultReviewSettingsSignature(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDefinitionSettings definition)
+        {
+            if (parameter == null || definition == null)
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            AppendObjectDetectionResultReviewSignatureValue(builder, parameter, new HashSet<object>());
+            builder.Append('|');
+            AppendObjectDetectionResultReviewSignatureValue(builder, definition, new HashSet<object>());
+            using (SHA256 hash = SHA256.Create())
+            {
+                byte[] digest = hash.ComputeHash(Encoding.UTF8.GetBytes(builder.ToString()));
+                return BitConverter.ToString(digest).Replace("-", string.Empty);
+            }
+        }
+
+        private static void AppendObjectDetectionResultReviewSignatureValue(
+            StringBuilder builder,
+            object value,
+            HashSet<object> visited)
+        {
+            if (value == null)
+            {
+                builder.Append("null;");
+                return;
+            }
+
+            Type type = value.GetType();
+            if (type == typeof(string) || type.IsPrimitive || type.IsEnum ||
+                type == typeof(decimal) || type == typeof(DateTime) || type == typeof(Guid) ||
+                type.IsValueType)
+            {
+                string scalar = Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+                builder.Append(type.FullName).Append(':').Append(scalar.Length)
+                    .Append(':').Append(scalar).Append(';');
+                return;
+            }
+
+            if (!type.IsValueType && !visited.Add(value))
+            {
+                builder.Append("ref;");
+                return;
+            }
+
+            IEnumerable enumerable = value as IEnumerable;
+            if (enumerable != null)
+            {
+                builder.Append(type.FullName).Append('[');
+                foreach (object item in enumerable)
+                {
+                    AppendObjectDetectionResultReviewSignatureValue(builder, item, visited);
+                }
+                builder.Append("];" );
+                visited.Remove(value);
+                return;
+            }
+
+            builder.Append(type.FullName).Append('{');
+            foreach (PropertyInfo property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(item => item.CanRead && item.GetIndexParameters().Length == 0)
+                .OrderBy(item => item.Name, StringComparer.Ordinal))
+            {
+                builder.Append(property.Name).Append('=');
+                try
+                {
+                    AppendObjectDetectionResultReviewSignatureValue(
+                        builder,
+                        property.GetValue(value, null),
+                        visited);
+                }
+                catch
+                {
+                    builder.Append("unavailable;");
+                }
+            }
+            builder.Append("};");
+            visited.Remove(value);
+        }
+
+        private static object CloneObjectDetectionResultReviewModel(object source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            Type type = source.GetType();
+            if (type == typeof(string) || type.IsPrimitive || type.IsEnum ||
+                type == typeof(decimal) || type == typeof(DateTime) || type == typeof(Guid) ||
+                type.IsValueType)
+            {
+                return source;
+            }
+
+            Array sourceArray = source as Array;
+            if (sourceArray != null)
+            {
+                Type elementType = type.GetElementType();
+                Array copy = Array.CreateInstance(elementType, sourceArray.Length);
+                for (int index = 0; index < sourceArray.Length; index++)
+                {
+                    copy.SetValue(
+                        CloneObjectDetectionResultReviewModel(sourceArray.GetValue(index)),
+                        index);
+                }
+                return copy;
+            }
+
+            IList sourceList = source as IList;
+            if (sourceList != null)
+            {
+                IList copy = Activator.CreateInstance(type) as IList;
+                if (copy == null)
+                {
+                    throw new InvalidOperationException("無法複製結果確認清單資料。");
+                }
+                foreach (object item in sourceList)
+                {
+                    copy.Add(CloneObjectDetectionResultReviewModel(item));
+                }
+                return copy;
+            }
+
+            object clone = Activator.CreateInstance(type);
+            foreach (PropertyInfo property in type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(item => item.CanRead && item.GetIndexParameters().Length == 0))
+            {
+                object value = property.GetValue(source, null);
+                if (property.CanWrite)
+                {
+                    property.SetValue(
+                        clone,
+                        CloneObjectDetectionResultReviewModel(value),
+                        null);
+                }
+                else
+                {
+                    IList sourceItems = value as IList;
+                    IList targetItems = property.GetValue(clone, null) as IList;
+                    if (sourceItems != null && targetItems != null)
+                    {
+                        foreach (object item in sourceItems)
+                        {
+                            targetItems.Add(CloneObjectDetectionResultReviewModel(item));
+                        }
+                    }
+                }
+            }
+            return clone;
+        }
+
+        private static List<ObjectDefinitionDetectedObject> CloneObjectDetectionResultReviewObjects(
+            IEnumerable<ObjectDefinitionDetectedObject> objects)
+        {
+            return objects == null
+                ? new List<ObjectDefinitionDetectedObject>()
+                : objects.Select(item => (ObjectDefinitionDetectedObject)
+                    CloneObjectDetectionResultReviewModel(item)).ToList();
+        }
+
+        private void CaptureObjectDetectionResultReviewSnapshot(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDefinitionSettings definition,
+            IList<ObjectDefinitionDetectedObject> objects)
+        {
+            if (parameter == null || definition == null || objects == null)
+            {
+                return;
+            }
+
+            var snapshot = new ObjectDetectionResultReviewSnapshot
+            {
+                ParameterId = parameter.Id,
+                ImagePath = objectDetectionResultReviewImagePath,
+                ImageContentGeneration = imageContentGeneration,
+                ImageSourceGeneration = System.Threading.Interlocked.CompareExchange(
+                    ref imageSourceGeneration, 0, 0),
+                Parameter = (ObjectDetectionParameterSettings)
+                    CloneObjectDetectionResultReviewModel(parameter),
+                Definition = (ObjectDefinitionSettings)
+                    CloneObjectDetectionResultReviewModel(definition),
+                Objects = CloneObjectDetectionResultReviewObjects(objects),
+                DefectViewStates = GetAllObjectDetectionDefectDisplayControls()
+                    .Select(display => display == null ? default(ImageViewState) : display.ViewState)
+                    .ToArray()
+            };
+
+            try
+            {
+                snapshot.SettingsSignature = CreateObjectDetectionResultReviewSettingsSignature(
+                    snapshot.Parameter,
+                    snapshot.Definition);
+                if (rightOriginalDisplayControl != null && rightOriginalDisplayControl.HasImage)
+                {
+                    if (rightOriginalDisplayControl.IsLargeImageMode)
+                    {
+                        snapshot.OriginalLargeSource =
+                            rightOriginalDisplayControl.GetSharedLargeImageSource();
+                    }
+                    else
+                    {
+                        snapshot.OriginalBitmap = rightOriginalDisplayControl.CloneImage();
+                    }
+                }
+                if (objectDetectionFlatFieldCorrectedLargeSource != null)
+                {
+                    snapshot.CorrectedLargeSource =
+                        objectDetectionFlatFieldCorrectedLargeSource.AddReference();
+                }
+                else if (objectDetectionFlatFieldPreviewDisplayControl != null &&
+                    objectDetectionFlatFieldPreviewDisplayControl.HasImage &&
+                    !objectDetectionFlatFieldPreviewDisplayControl.IsLargeImageMode)
+                {
+                    snapshot.CorrectedBitmap =
+                        objectDetectionFlatFieldPreviewDisplayControl.CloneImage();
+                }
+
+                LargeImageSource dimensionSource = snapshot.OriginalLargeSource ??
+                    snapshot.CorrectedLargeSource;
+                if (dimensionSource != null)
+                {
+                    snapshot.ImageWidth = dimensionSource.Width;
+                    snapshot.ImageHeight = dimensionSource.Height;
+                }
+                else if (snapshot.OriginalBitmap != null)
+                {
+                    snapshot.ImageWidth = snapshot.OriginalBitmap.Width;
+                    snapshot.ImageHeight = snapshot.OriginalBitmap.Height;
+                }
+                else if (snapshot.CorrectedBitmap != null)
+                {
+                    snapshot.ImageWidth = snapshot.CorrectedBitmap.Width;
+                    snapshot.ImageHeight = snapshot.CorrectedBitmap.Height;
+                }
+
+                CaptureObjectDetectionResultReviewMeasurementMasks(snapshot);
+
+                if (objectDetectionMeasurementDisplayControl != null)
+                {
+                    snapshot.MeasurementViewState = objectDetectionMeasurementDisplayControl.ViewState;
+                }
+                if (objectDetectionFlatFieldPreviewDisplayControl != null)
+                {
+                    snapshot.FlatFieldViewState = objectDetectionFlatFieldPreviewDisplayControl.ViewState;
+                }
+                lock (objectDetectionFlatFieldMaskLock)
+                {
+                    snapshot.SourceMasks = objectDetectionFlatFieldMaskOverlays;
+                    snapshot.UseMasks = objectDetectionFlatFieldUseMaskOverlays;
+                    snapshot.UseMaskConfigured = objectDetectionFlatFieldUseMaskConfigured;
+                    objectDetectionFlatFieldMaskOverlays =
+                        new List<ObjectDetectionFlatFieldMaskOverlay>();
+                    objectDetectionFlatFieldUseMaskOverlays =
+                        new List<ObjectDetectionFlatFieldMaskOverlay>();
+                    objectDetectionFlatFieldUseMaskConfigured = false;
+                }
+                snapshot.IntegrationGroups = (List<ObjectDetectionDefectIntegrationGroup>)
+                    CloneObjectDetectionResultReviewModel(
+                        GetObjectDetectionDefectIntegrationGroups(parameter));
+
+                Dictionary<string, ObjectDetectionDefectCoreResult> coreResults;
+                if (objectDetectionDefectCoreResults.TryGetValue(parameter.Id, out coreResults))
+                {
+                    snapshot.CoreResults = coreResults;
+                    objectDetectionDefectCoreResults.Remove(parameter.Id);
+                }
+                ObjectDetectionFrequencyResult frequencyResult;
+                if (objectDetectionFrequencyResults.TryGetValue(parameter.Id, out frequencyResult))
+                {
+                    snapshot.FrequencyResult = frequencyResult;
+                    objectDetectionFrequencyResults.Remove(parameter.Id);
+                }
+                ObjectDetectionLineTextureResult lineTextureResult;
+                if (objectDetectionLineTextureResults.TryGetValue(parameter.Id, out lineTextureResult))
+                {
+                    snapshot.LineTextureResult = lineTextureResult;
+                    objectDetectionLineTextureResults.Remove(parameter.Id);
+                }
+
+                ClearObjectDetectionResultReviewSnapshot();
+                objectDetectionResultReviewSnapshot = snapshot;
+                objectDetectionDefectIntegrationCache.Remove(parameter.Id);
+            }
+            catch
+            {
+                snapshot.Dispose();
+                throw;
+            }
+        }
+
+        private void CaptureObjectDetectionResultReviewMeasurementMasks(
+            ObjectDetectionResultReviewSnapshot snapshot)
+        {
+            if (snapshot == null || objectDetectionResultReviewMeasurementsGrid == null)
+            {
+                return;
+            }
+
+            snapshot.MeasurementMasks = new Dictionary<string, Cv.Mat>(StringComparer.Ordinal);
+            for (int rowIndex = 0;
+                rowIndex < objectDetectionResultReviewMeasurementsGrid.Rows.Count;
+                rowIndex++)
+            {
+                ResultReviewMeasurementRowContext context =
+                    objectDetectionResultReviewMeasurementsGrid.Rows[rowIndex].Tag
+                        as ResultReviewMeasurementRowContext;
+                if (context == null || context.MaskParameter == null ||
+                    context.DetectedObject == null)
+                {
+                    continue;
+                }
+
+                Rectangle bounds = context.DetectedObject.Bounds;
+                string key = CreateObjectDetectionMeasurementMaskCacheKey(
+                    context.MaskParameter,
+                    context.ObjectNumber,
+                    bounds,
+                    snapshot.ImageSourceGeneration);
+                if (snapshot.MeasurementMasks.ContainsKey(key))
+                {
+                    continue;
+                }
+
+                Cv.Mat mask;
+                if (TryGetObjectDetectionMeasurementMask(
+                    context.MaskParameter,
+                    context.ObjectNumber,
+                    bounds,
+                    snapshot.OriginalLargeSource,
+                    snapshot.OriginalBitmap,
+                    out mask,
+                    true,
+                    true))
+                {
+                    snapshot.MeasurementMasks[key] = mask;
+                }
+            }
+        }
+
+        private void CaptureObjectDetectionResultReviewSnapshotViewStates()
+        {
+            ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
+            if (snapshot == null)
+            {
+                return;
+            }
+            if (objectDetectionMeasurementDisplayControl != null)
+            {
+                snapshot.MeasurementViewState = objectDetectionMeasurementDisplayControl.ViewState;
+            }
+            if (objectDetectionFlatFieldPreviewDisplayControl != null)
+            {
+                snapshot.FlatFieldViewState = objectDetectionFlatFieldPreviewDisplayControl.ViewState;
+            }
+            ImageDisplayControl[] displays = GetAllObjectDetectionDefectDisplayControls();
+            snapshot.DefectViewStates = displays
+                .Select(display => display == null ? default(ImageViewState) : display.ViewState)
+                .ToArray();
+        }
+
+        private void RestoreObjectDetectionResultReviewSnapshotDisplays()
+        {
+            ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
+            if (snapshot == null || !isObjectDetectionResultReviewMode)
+            {
+                return;
+            }
+
+            activeObjectDetectionParameterId = snapshot.ParameterId;
+            SetObjectDetectionResultReviewBaseImage(
+                objectDetectionMeasurementDisplayControl,
+                snapshot.OriginalLargeSource,
+                snapshot.OriginalBitmap);
+            SetObjectDetectionResultReviewBaseImage(
+                objectDetectionFlatFieldPreviewDisplayControl,
+                snapshot.CorrectedLargeSource,
+                snapshot.CorrectedBitmap);
+            ImageDisplayControl[] defectDisplays = GetAllObjectDetectionDefectDisplayControls();
+            for (int index = 0; index < defectDisplays.Length; index++)
+            {
+                SetObjectDetectionResultReviewBaseImage(
+                    defectDisplays[index],
+                    snapshot.CorrectedLargeSource,
+                    snapshot.CorrectedBitmap);
+                if (snapshot.DefectViewStates != null && index < snapshot.DefectViewStates.Length)
+                {
+                    defectDisplays[index].ApplyViewState(snapshot.DefectViewStates[index]);
+                }
+                defectDisplays[index].InvalidateImageView();
+                if (objectDetectionDefectDisplayParameterIds != null &&
+                    index < objectDetectionDefectDisplayParameterIds.Length)
+                {
+                    objectDetectionDefectDisplayParameterIds[index] = snapshot.ParameterId;
+                    objectDetectionDefectDisplayImageGenerations[index] = imageSourceGeneration;
+                }
+            }
+
+            if (objectDetectionMeasurementDisplayControl != null)
+            {
+                objectDetectionMeasurementDisplayControl.ApplyViewState(snapshot.MeasurementViewState);
+                objectDetectionMeasurementDisplayControl.InvalidateImageView();
+            }
+            if (objectDetectionFlatFieldPreviewDisplayControl != null)
+            {
+                objectDetectionFlatFieldPreviewDisplayControl.ApplyViewState(snapshot.FlatFieldViewState);
+                objectDetectionFlatFieldPreviewDisplayControl.InvalidateImageView();
+            }
+            objectDetectionFlatFieldPreviewWidth = snapshot.ImageWidth;
+            objectDetectionFlatFieldPreviewHeight = snapshot.ImageHeight;
+            objectDetectionFlatFieldPreviewIsCorrected = true;
+            objectDetectionFlatFieldCorrectedImageGeneration = imageSourceGeneration;
+            objectDetectionFlatFieldPreviewImageGeneration = imageSourceGeneration;
+            objectDetectionDefectDisplayParameterId = snapshot.ParameterId;
+            objectDetectionDefectDisplayImageGeneration = imageSourceGeneration;
+            ShowObjectDetectionDefectDisplayPlaceholder(null);
+        }
+
+        private static void SetObjectDetectionResultReviewBaseImage(
+            ImageDisplayControl display,
+            LargeImageSource largeSource,
+            Bitmap bitmap)
+        {
+            if (display == null || display.IsDisposed)
+            {
+                return;
+            }
+            if (largeSource != null)
+            {
+                display.SetSharedLargeImageSource(largeSource, true);
+            }
+            else if (bitmap != null)
+            {
+                display.SetDisplayImage(new Bitmap(bitmap), true);
+            }
+            else
+            {
+                display.ClearImage();
+            }
+        }
+
+        private void ClearObjectDetectionResultReviewSnapshot()
+        {
+            ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
+            objectDetectionResultReviewSnapshot = null;
+            if (snapshot != null)
+            {
+                snapshot.Dispose();
+            }
+        }
+
         private void ClearObjectDetectionResultReviewResults()
         {
+            ClearObjectDetectionResultReviewSnapshot();
             if (!IsObjectDetectionResultReviewUiAvailable())
             {
                 return;

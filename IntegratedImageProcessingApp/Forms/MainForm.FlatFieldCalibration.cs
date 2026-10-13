@@ -73,8 +73,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
             if (parameter == null)
             {
                 return;
@@ -306,7 +305,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+                GetObjectDetectionParameterForDisplay();
             if (parameter == null || !parameter.FlatFieldSamplePositionConfigured)
             {
                 return;

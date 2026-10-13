@@ -719,7 +719,6 @@ namespace IntegratedImageProcessingApp.Forms
                 RebuildVisibleObjectDefinitions();
                 RebuildVisibleObjectDetectionParameters();
                 SelectObjectDetectionParameter(importedParameterId);
-                ClearObjectDetectionResultReviewResults();
             }
             finally
             {

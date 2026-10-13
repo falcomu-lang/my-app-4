@@ -501,6 +501,11 @@ namespace IntegratedImageProcessingApp.Forms
         private List<ObjectDetectionDefectIntegrationGroup> GetObjectDetectionDefectIntegrationGroups(
             ObjectDetectionParameterSettings parameter)
         {
+            if (IsActiveObjectDetectionResultReviewSnapshot(parameter))
+            {
+                return objectDetectionResultReviewSnapshot.IntegrationGroups ??
+                    new List<ObjectDetectionDefectIntegrationGroup>();
+            }
             if (parameter == null)
             {
                 return new List<ObjectDetectionDefectIntegrationGroup>();

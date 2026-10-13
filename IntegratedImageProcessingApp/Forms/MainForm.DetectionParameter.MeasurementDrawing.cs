@@ -1242,8 +1242,14 @@ namespace IntegratedImageProcessingApp.Forms
                 return false;
             }
 
-            ObjectDetectionParameterSettings parameter =
-                FindObjectDetectionParameter(activeObjectDetectionParameterId);
+            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
+            if (IsActiveObjectDetectionResultReviewSnapshot(parameter))
+            {
+                detectedObject = objectDetectionResultReviewSnapshot.Objects.FirstOrDefault(item =>
+                    item.Number == selectedObjectDetectionNumber);
+                return detectedObject != null && detectedObject.Bounds.Width > 0 &&
+                    detectedObject.Bounds.Height > 0;
+            }
             ObjectDefinitionSettings definition = parameter == null ||
                 string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId)
                 ? null
@@ -1313,9 +1319,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void RefreshObjectDetectionMeasurementDisplay()
         {
             if (objectDetectionMeasurementDisplayControl == null ||
-                !isObjectDetectionParameterImageLayout ||
-                rightOriginalDisplayControl == null ||
-                !rightOriginalDisplayControl.HasImage)
+                !isObjectDetectionParameterImageLayout)
             {
                 return;
             }
@@ -1323,6 +1327,11 @@ namespace IntegratedImageProcessingApp.Forms
             if (isObjectDetectionResultReviewMode)
             {
                 RefreshObjectDetectionResultReviewMeasurementDisplay();
+                return;
+            }
+
+            if (rightOriginalDisplayControl == null || !rightOriginalDisplayControl.HasImage)
+            {
                 return;
             }
 
@@ -1432,35 +1441,44 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void RefreshObjectDetectionResultReviewMeasurementDisplay()
         {
+            ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
+            bool hasSnapshotImage = snapshot != null &&
+                (snapshot.OriginalLargeSource != null || snapshot.OriginalBitmap != null);
             if (objectDetectionMeasurementDisplayControl == null ||
-                rightOriginalDisplayControl == null ||
-                !rightOriginalDisplayControl.HasImage)
+                (!hasSnapshotImage && (rightOriginalDisplayControl == null ||
+                    !rightOriginalDisplayControl.HasImage)))
             {
                 return;
             }
 
-            if (rightOriginalDisplayControl.IsLargeImageMode)
+            LargeImageSource originalLargeSource = hasSnapshotImage
+                ? snapshot.OriginalLargeSource
+                : rightOriginalDisplayControl.IsLargeImageMode
+                    ? rightOriginalDisplayControl.GetSharedLargeImageSource()
+                    : null;
+            if (originalLargeSource != null)
             {
-                LargeImageSource source = rightOriginalDisplayControl.GetSharedLargeImageSource();
-                if (source == null)
-                {
-                    return;
-                }
-
                 try
                 {
-                    objectDetectionMeasurementDisplayControl.SetSharedLargeImageSource(source, true);
+                    objectDetectionMeasurementDisplayControl.SetSharedLargeImageSource(
+                        originalLargeSource,
+                        true);
                 }
                 finally
                 {
-                    source.ReleaseReference();
+                    if (!hasSnapshotImage)
+                    {
+                        originalLargeSource.ReleaseReference();
+                    }
                 }
 
                 objectDetectionMeasurementDisplayControl.InvalidateImageView();
                 return;
             }
 
-            Bitmap image = rightOriginalDisplayControl.CloneImage();
+            Bitmap image = hasSnapshotImage
+                ? new Bitmap(snapshot.OriginalBitmap)
+                : rightOriginalDisplayControl.CloneImage();
             if (image == null)
             {
                 return;
