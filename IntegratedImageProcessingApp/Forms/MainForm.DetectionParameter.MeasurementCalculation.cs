@@ -321,6 +321,65 @@ namespace IntegratedImageProcessingApp.Forms
         {
             statistics = null;
             errorMessage = string.Empty;
+            if (rightOriginalDisplayControl == null ||
+                !rightOriginalDisplayControl.HasImage)
+            {
+                errorMessage = "尚未載入原始影像";
+                return false;
+            }
+
+            LargeImageSource largeSource = null;
+            Bitmap original = null;
+            try
+            {
+                if (rightOriginalDisplayControl.IsLargeImageMode)
+                {
+                    largeSource = rightOriginalDisplayControl.GetSharedLargeImageSource();
+                }
+                else
+                {
+                    original = rightOriginalDisplayControl.CloneImage();
+                }
+
+                return TryCalculateObjectDetectionMeasurementRecord(
+                    parameter,
+                    record,
+                    selectedObject,
+                    maskParameter,
+                    largeSource,
+                    original,
+                    out statistics,
+                    out errorMessage,
+                    rebuildMissingMaskSources);
+            }
+            finally
+            {
+                if (original != null)
+                {
+                    original.Dispose();
+                }
+
+                if (largeSource != null)
+                {
+                    largeSource.ReleaseReference();
+                }
+            }
+        }
+
+        private bool TryCalculateObjectDetectionMeasurementRecord(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDetectionMeasurementRecordSettings record,
+            ObjectDefinitionDetectedObject selectedObject,
+            ObjectDetectionParameterSettings maskParameter,
+            LargeImageSource largeSource,
+            Bitmap original,
+            out ObjectDetectionMeasurementStatistics statistics,
+            out string errorMessage,
+            bool rebuildMissingMaskSources = false,
+            bool allowParallelLineMeasurement = true)
+        {
+            statistics = null;
+            errorMessage = string.Empty;
             if (selectedObject == null)
             {
                 errorMessage = "請先選擇已找到的物件序號";
@@ -335,22 +394,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             Cv.Mat mask = null;
-            LargeImageSource largeSource = null;
-            Bitmap original = null;
             try
             {
-                if (rightOriginalDisplayControl == null ||
-                    !rightOriginalDisplayControl.HasImage)
+                if (largeSource != null)
                 {
-                    errorMessage = "尚未載入原始影像";
-                    return false;
-                }
-
-                if (rightOriginalDisplayControl.IsLargeImageMode)
-                {
-                    largeSource = rightOriginalDisplayControl.GetSharedLargeImageSource();
-                    if (largeSource == null ||
-                        !TryGetObjectDetectionMeasurementMask(
+                    if (!TryGetObjectDetectionMeasurementMask(
                             maskParameter,
                             selectedObject.Number,
                             objectBounds,
@@ -365,7 +413,6 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 else
                 {
-                    original = rightOriginalDisplayControl.CloneImage();
                     if (original == null ||
                         !TryGetObjectDetectionMeasurementMask(
                             maskParameter,
@@ -450,7 +497,8 @@ namespace IntegratedImageProcessingApp.Forms
                     double lineDeltaY = second.Y1 - first.Y1;
                     double estimatedPixelSamples = Math.Ceiling(Math.Sqrt(
                         (lineDeltaX * lineDeltaX) + (lineDeltaY * lineDeltaY))) * lineCount;
-                    if (lineCount >= 32 && estimatedPixelSamples >= 100000d &&
+                    if (allowParallelLineMeasurement &&
+                        lineCount >= 32 && estimatedPixelSamples >= 100000d &&
                         Environment.ProcessorCount > 1)
                     {
                         Parallel.For(
@@ -525,16 +573,6 @@ namespace IntegratedImageProcessingApp.Forms
                 if (mask != null)
                 {
                     mask.Dispose();
-                }
-
-                if (original != null)
-                {
-                    original.Dispose();
-                }
-
-                if (largeSource != null)
-                {
-                    largeSource.ReleaseReference();
                 }
             }
         }
