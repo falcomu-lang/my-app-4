@@ -385,10 +385,25 @@ namespace IntegratedImageProcessingApp.Services
         {
             SystemParameterSettings settings = new SystemParameterIniService(filePath).Load();
             if (settings == null || settings.ObjectDetectionParameters == null ||
-                settings.ObjectDetectionParameters.Count != 1)
+                settings.ObjectDetectionParameters.Count == 0)
             {
                 throw new InvalidDataException(
-                    "參數檔必須包含且只包含一組檢測參數，請選擇由檢測參數匯出的 INI 檔。");
+                    "參數檔必須至少包含一組檢測參數。");
+            }
+
+            if (settings.ObjectDetectionParameters.Count > 1)
+            {
+                string groupName = settings.ObjectDetectionParameters[0].GroupName;
+                if (string.IsNullOrWhiteSpace(groupName) ||
+                    settings.ObjectDetectionParameters.Any(parameter =>
+                        !string.Equals(
+                            parameter.GroupName == null ? string.Empty : parameter.GroupName.Trim(),
+                            groupName.Trim(),
+                            StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new InvalidDataException(
+                        "包含多個檢測參數的參數檔，必須是同一個已分組的群組。");
+                }
             }
         }
 

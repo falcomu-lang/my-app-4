@@ -362,6 +362,7 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", string.Empty),
                     DisplayName = GetValue(sections, SectionObjectDetection, prefix + ".DisplayName", string.Empty),
+                    GroupName = GetValue(sections, SectionObjectDetection, prefix + ".GroupName", string.Empty),
                     Parameters = GetValue(sections, SectionObjectDetection, prefix + ".Parameters", string.Empty),
                     ObjectDefinitionId = GetValue(
                         sections,
@@ -1077,6 +1078,7 @@ namespace IntegratedImageProcessingApp.Services
                     string prefix = "Parameter" + (index + 1).ToString(CultureInfo.InvariantCulture);
                     writer.WriteLine("{0}.Id={1}", prefix, Escape(parameter.Id));
                     writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(parameter.DisplayName));
+                    writer.WriteLine("{0}.GroupName={1}", prefix, Escape(parameter.GroupName));
                     writer.WriteLine("{0}.Parameters={1}", prefix, Escape(parameter.Parameters));
                     writer.WriteLine(
                         "{0}.ObjectDefinitionId={1}",

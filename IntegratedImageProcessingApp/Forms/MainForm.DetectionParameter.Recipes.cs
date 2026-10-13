@@ -16,6 +16,27 @@ namespace IntegratedImageProcessingApp.Forms
         private TaskCompletionSource<string> detectionRecipeDefinitionCompletion;
         private bool isDetectionRecipeAutoRunActive;
 
+        private static bool IsSupportedDetectionParameterPackage(SystemParameterSettings settings)
+        {
+            if (settings == null || settings.ObjectDetectionParameters == null ||
+                settings.ObjectDetectionParameters.Count == 0)
+            {
+                return false;
+            }
+            if (settings.ObjectDetectionParameters.Count == 1)
+            {
+                return true;
+            }
+
+            string groupName = settings.ObjectDetectionParameters[0].GroupName;
+            return !string.IsNullOrWhiteSpace(groupName) &&
+                settings.ObjectDetectionParameters.All(parameter =>
+                    string.Equals(
+                        parameter.GroupName == null ? string.Empty : parameter.GroupName.Trim(),
+                        groupName.Trim(),
+                        StringComparison.OrdinalIgnoreCase));
+        }
+
         private void EnsureDetectionRecipeGenerationIsCurrent(
             int generation,
             CancellationToken cancellationToken)
@@ -40,12 +61,11 @@ namespace IntegratedImageProcessingApp.Forms
                 try
                 {
                     SystemParameterSettings imported = new SystemParameterIniService(dialog.FileName).Load();
-                    if (imported == null || imported.ObjectDetectionParameters == null ||
-                        imported.ObjectDetectionParameters.Count != 1)
+                    if (!IsSupportedDetectionParameterPackage(imported))
                     {
                         MessageBox.Show(
                             this,
-                            "參數檔必須包含且只包含一組檢測參數。請選擇由檢測參數匯出的 INI 檔。",
+                            "參數檔需包含一組檢測參數，或包含同一分組內的多個參數。",
                             "檔案內容不符",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Warning);
@@ -53,9 +73,11 @@ namespace IntegratedImageProcessingApp.Forms
                     }
 
                     ObjectDetectionParameterSettings parameter = imported.ObjectDetectionParameters[0];
-                    string suggestedName = string.IsNullOrWhiteSpace(parameter.DisplayName)
-                        ? Path.GetFileNameWithoutExtension(dialog.FileName)
-                        : parameter.DisplayName.Trim();
+                    string suggestedName = imported.ObjectDetectionParameters.Count > 1
+                        ? parameter.GroupName.Trim()
+                        : string.IsNullOrWhiteSpace(parameter.DisplayName)
+                            ? Path.GetFileNameWithoutExtension(dialog.FileName)
+                            : parameter.DisplayName.Trim();
                     using (var metadata = new DetectionRecipeMetadataDialog(
                         "加入檢測參數 Recipe",
                         suggestedName,
@@ -182,10 +204,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 recipeFilePath = catalog.GetParameterFilePath(entry);
                 imported = new SystemParameterIniService(recipeFilePath).Load();
-                if (imported == null || imported.ObjectDetectionParameters == null ||
-                    imported.ObjectDetectionParameters.Count != 1)
+                if (!IsSupportedDetectionParameterPackage(imported))
                 {
-                    throw new InvalidDataException("Recipe 檔案必須包含且只包含一組檢測參數。");
+                    throw new InvalidDataException(
+                        "Recipe 檔案需包含一組檢測參數，或包含同一分組內的多個參數。");
                 }
             }
             catch (Exception exception)

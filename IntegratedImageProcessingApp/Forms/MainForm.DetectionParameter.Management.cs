@@ -24,6 +24,10 @@ namespace IntegratedImageProcessingApp.Forms
         private bool isRebuildingObjectDetectionParameterMenu;
         private readonly Dictionary<int, string> visibleObjectDetectionParameterIds =
             new Dictionary<int, string>();
+        private readonly Dictionary<int, string> visibleObjectDetectionParameterGroupNames =
+            new Dictionary<int, string>();
+        private readonly HashSet<string> collapsedObjectDetectionParameterGroups =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         private static string GetObjectDetectionParameterDisplayName(
             ObjectDetectionParameterSettings parameter,
@@ -46,6 +50,11 @@ namespace IntegratedImageProcessingApp.Forms
             out string parameterId)
         {
             parameterId = null;
+            if (visibleObjectDetectionParameterGroupNames.ContainsKey(visibleIndex))
+            {
+                return false;
+            }
+
             if (!visibleObjectDetectionParameterIds.TryGetValue(visibleIndex, out parameterId))
             {
                 string name = menuText == null ? string.Empty : menuText.Trim();
@@ -103,6 +112,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 visibleObjectDetectionParameterIds.Clear();
+                visibleObjectDetectionParameterGroupNames.Clear();
                 int removeIndex = menuIndex + 1;
                 while (removeIndex < functionListBox.Items.Count)
                 {
@@ -121,13 +131,67 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 int insertIndex = menuIndex + 1;
+                Dictionary<string, List<ObjectDetectionParameterSettings>> groups =
+                    systemParameters.ObjectDetectionParameters
+                        .Where(parameter => !string.IsNullOrWhiteSpace(parameter.GroupName))
+                        .GroupBy(parameter => parameter.GroupName.Trim(), StringComparer.OrdinalIgnoreCase)
+                        .Where(group => group.Count() >= 2)
+                        .ToDictionary(
+                            group => group.Key,
+                            group => group.ToList(),
+                            StringComparer.OrdinalIgnoreCase);
+                var renderedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 for (int index = 0; index < systemParameters.ObjectDetectionParameters.Count; index++)
                 {
                     ObjectDetectionParameterSettings parameter = systemParameters.ObjectDetectionParameters[index];
-                    visibleObjectDetectionParameterIds[insertIndex] = parameter.Id;
-                    functionListBox.Items.Insert(
-                        insertIndex++,
-                        "    " + GetObjectDetectionParameterDisplayName(parameter, index));
+                    string groupName = string.IsNullOrWhiteSpace(parameter.GroupName)
+                        ? string.Empty
+                        : parameter.GroupName.Trim();
+                    List<ObjectDetectionParameterSettings> groupParameters;
+                    if (groups.TryGetValue(groupName, out groupParameters))
+                    {
+                        if (!renderedGroups.Add(groupName))
+                        {
+                            continue;
+                        }
+
+                        bool isCollapsed = collapsedObjectDetectionParameterGroups.Contains(groupName);
+                        visibleObjectDetectionParameterGroupNames[insertIndex] = groupName;
+                        functionListBox.Items.Insert(
+                            insertIndex++,
+                            "    " + (isCollapsed ? "[+] " : "[-] ") + groupName);
+                        if (isCollapsed)
+                        {
+                            continue;
+                        }
+
+                        for (int memberIndex = 0;
+                            memberIndex < systemParameters.ObjectDetectionParameters.Count;
+                            memberIndex++)
+                        {
+                            ObjectDetectionParameterSettings member =
+                                systemParameters.ObjectDetectionParameters[memberIndex];
+                            if (!string.Equals(
+                                    member.GroupName == null ? string.Empty : member.GroupName.Trim(),
+                                    groupName,
+                                    StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            visibleObjectDetectionParameterIds[insertIndex] = member.Id;
+                            functionListBox.Items.Insert(
+                                insertIndex++,
+                                "        " + GetObjectDetectionParameterDisplayName(member, memberIndex));
+                        }
+                    }
+                    else
+                    {
+                        visibleObjectDetectionParameterIds[insertIndex] = parameter.Id;
+                        functionListBox.Items.Insert(
+                            insertIndex++,
+                            "    " + GetObjectDetectionParameterDisplayName(parameter, index));
+                    }
                 }
             }
             finally
@@ -144,6 +208,209 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     functionListBox.SelectedIndex = item.Key;
                     return;
+                }
+            }
+        }
+
+        private List<string> GetSelectedObjectDetectionParameterIds()
+        {
+            var parameterIds = new List<string>();
+            foreach (int selectedIndex in functionListBox.SelectedIndices)
+            {
+                string parameterId;
+                if (visibleObjectDetectionParameterIds.TryGetValue(selectedIndex, out parameterId) &&
+                    !string.IsNullOrEmpty(parameterId) &&
+                    !parameterIds.Contains(parameterId, StringComparer.Ordinal))
+                {
+                    parameterIds.Add(parameterId);
+                }
+            }
+
+            return parameterIds;
+        }
+
+        private void ToggleObjectDetectionParameterGroup(string groupName)
+        {
+            if (collapsedObjectDetectionParameterGroups.Add(groupName))
+            {
+                statusLabel.Text = "已收合檢測參數群組「" + groupName + "」";
+            }
+            else
+            {
+                collapsedObjectDetectionParameterGroups.Remove(groupName);
+                statusLabel.Text = "已展開檢測參數群組「" + groupName + "」";
+            }
+
+            RebuildVisibleObjectDetectionParameters();
+            foreach (KeyValuePair<int, string> item in visibleObjectDetectionParameterGroupNames)
+            {
+                if (string.Equals(item.Value, groupName, StringComparison.OrdinalIgnoreCase))
+                {
+                    functionListBox.SelectedIndex = item.Key;
+                    break;
+                }
+            }
+        }
+
+        private void ShowObjectDetectionParameterGroupContextMenu(string groupName, Point location)
+        {
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            menu.Items.Add(
+                "保存群組及其參數...",
+                null,
+                delegate { ExportObjectDetectionParameterGroup(groupName); });
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(
+                collapsedObjectDetectionParameterGroups.Contains(groupName) ? "展開群組" : "收合群組",
+                null,
+                delegate { ToggleObjectDetectionParameterGroup(groupName); });
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("取消分組", null, delegate { DissolveObjectDetectionParameterGroup(groupName); });
+            menu.Show(functionListBox, location);
+        }
+
+        private void ShowObjectDetectionParameterMultiSelectContextMenu(
+            List<string> parameterIds,
+            Point location)
+        {
+            CloseImageProcessingStepContextMenu();
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("分組", null, delegate { GroupObjectDetectionParameters(parameterIds); });
+            menu.Items.Add(new ToolStripSeparator());
+            ToolStripItem ungroupItem = menu.Items.Add(
+                "取消所選參數分組",
+                null,
+                delegate { UngroupObjectDetectionParameters(parameterIds); });
+            ungroupItem.Enabled = parameterIds
+                .Select(FindObjectDetectionParameter)
+                .Any(parameter => parameter != null && !string.IsNullOrWhiteSpace(parameter.GroupName));
+            menu.Show(functionListBox, location);
+        }
+
+        private void GroupObjectDetectionParameters(List<string> parameterIds)
+        {
+            List<ObjectDetectionParameterSettings> selectedParameters = parameterIds
+                .Select(FindObjectDetectionParameter)
+                .Where(parameter => parameter != null)
+                .ToList();
+            if (selectedParameters.Count < 2)
+            {
+                statusLabel.Text = "至少選擇兩個檢測參數才能分組";
+                return;
+            }
+
+            var existingGroupNames = new HashSet<string>(
+                systemParameters.ObjectDetectionParameters
+                    .Where(parameter => !string.IsNullOrWhiteSpace(parameter.GroupName))
+                    .Select(parameter => parameter.GroupName.Trim()),
+                StringComparer.OrdinalIgnoreCase);
+            int nextGroupNumber = 1;
+            while (existingGroupNames.Contains(
+                "群組" + nextGroupNumber.ToString(CultureInfo.InvariantCulture)))
+            {
+                nextGroupNumber++;
+            }
+            string defaultGroupName = "群組" + nextGroupNumber.ToString(CultureInfo.InvariantCulture);
+            string requestedName = PromptForText(
+                "分組檢測參數",
+                "群組名稱（輸入既有名稱會加入該群組）",
+                defaultGroupName);
+            if (string.IsNullOrWhiteSpace(requestedName))
+            {
+                return;
+            }
+
+            requestedName = requestedName.Trim();
+            string groupName = systemParameters.ObjectDetectionParameters
+                .Where(parameter => !string.IsNullOrWhiteSpace(parameter.GroupName))
+                .Select(parameter => parameter.GroupName.Trim())
+                .FirstOrDefault(name => string.Equals(
+                    name,
+                    requestedName,
+                    StringComparison.OrdinalIgnoreCase)) ?? requestedName;
+            List<string> previousGroupNames = selectedParameters
+                .Select(parameter => parameter.GroupName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (ObjectDetectionParameterSettings parameter in selectedParameters)
+            {
+                parameter.GroupName = groupName;
+            }
+
+            NormalizeObjectDetectionParameterGroups(previousGroupNames);
+            collapsedObjectDetectionParameterGroups.Remove(groupName);
+            SaveSystemParameters();
+            RebuildVisibleObjectDetectionParameters();
+            SelectObjectDetectionParameter(selectedParameters[0].Id);
+            statusLabel.Text = "已將 " + selectedParameters.Count + " 個檢測參數分組至「" + groupName + "」";
+        }
+
+        private void UngroupObjectDetectionParameters(IEnumerable<string> parameterIds)
+        {
+            List<ObjectDetectionParameterSettings> selectedParameters = parameterIds
+                .Select(FindObjectDetectionParameter)
+                .Where(parameter => parameter != null)
+                .ToList();
+            List<string> groupNames = selectedParameters
+                .Select(parameter => parameter.GroupName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (groupNames.Count == 0)
+            {
+                return;
+            }
+
+            foreach (ObjectDetectionParameterSettings parameter in selectedParameters)
+            {
+                parameter.GroupName = string.Empty;
+            }
+
+            NormalizeObjectDetectionParameterGroups(groupNames);
+            SaveSystemParameters();
+            RebuildVisibleObjectDetectionParameters();
+            if (selectedParameters.Count > 0)
+            {
+                SelectObjectDetectionParameter(selectedParameters[0].Id);
+            }
+            statusLabel.Text = "已取消所選檢測參數的分組";
+        }
+
+        private void DissolveObjectDetectionParameterGroup(string groupName)
+        {
+            List<string> parameterIds = systemParameters.ObjectDetectionParameters
+                .Where(parameter => string.Equals(
+                    parameter.GroupName == null ? string.Empty : parameter.GroupName.Trim(),
+                    groupName,
+                    StringComparison.OrdinalIgnoreCase))
+                .Select(parameter => parameter.Id)
+                .ToList();
+            UngroupObjectDetectionParameters(parameterIds);
+        }
+
+        private void NormalizeObjectDetectionParameterGroups(IEnumerable<string> groupNames)
+        {
+            foreach (string groupName in groupNames)
+            {
+                List<ObjectDetectionParameterSettings> members = systemParameters.ObjectDetectionParameters
+                    .Where(parameter => string.Equals(
+                        parameter.GroupName == null ? string.Empty : parameter.GroupName.Trim(),
+                        groupName,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (members.Count == 1)
+                {
+                    members[0].GroupName = string.Empty;
+                    collapsedObjectDetectionParameterGroups.Remove(groupName);
+                }
+                else if (members.Count == 0)
+                {
+                    collapsedObjectDetectionParameterGroups.Remove(groupName);
                 }
             }
         }
@@ -174,6 +441,13 @@ namespace IntegratedImageProcessingApp.Forms
             menu.Items.Add("命名", null, delegate { RenameObjectDetectionParameter(parameterId); });
             menu.Items.Add("上移", null, delegate { MoveObjectDetectionParameter(parameterId, -1); });
             menu.Items.Add("下移", null, delegate { MoveObjectDetectionParameter(parameterId, 1); });
+            if (!string.IsNullOrWhiteSpace(parameter.GroupName))
+            {
+                menu.Items.Add(
+                    "取消分組",
+                    null,
+                    delegate { UngroupObjectDetectionParameters(new[] { parameterId }); });
+            }
             menu.Items.Add("刪除", null, delegate { DeleteObjectDetectionParameter(parameterId); });
             menu.Show(functionListBox, location);
         }
@@ -211,7 +485,16 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     SystemParameterSettings exportSettings =
                         CreateObjectDetectionParameterExportSettings(parameter);
-                    new SystemParameterIniService(dialog.FileName).Save(exportSettings);
+                    string originalGroupName = parameter.GroupName;
+                    try
+                    {
+                        parameter.GroupName = string.Empty;
+                        new SystemParameterIniService(dialog.FileName).Save(exportSettings);
+                    }
+                    finally
+                    {
+                        parameter.GroupName = originalGroupName;
+                    }
                     statusLabel.Text = "已匯出「" + displayName + "」及其關聯設定";
                     MessageBox.Show(
                         this,
@@ -226,6 +509,74 @@ namespace IntegratedImageProcessingApp.Forms
                         this,
                         "無法保存檢測參數設定：\r\n" + exception.Message,
                         "匯出失敗",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private void ExportObjectDetectionParameterGroup(string groupName)
+        {
+            List<ObjectDetectionParameterSettings> groupParameters =
+                systemParameters.ObjectDetectionParameters
+                    .Where(parameter => string.Equals(
+                        parameter.GroupName == null ? string.Empty : parameter.GroupName.Trim(),
+                        groupName,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            if (groupParameters.Count < 2)
+            {
+                MessageBox.Show(
+                    this,
+                    "群組至少要有兩個檢測參數才能保存。",
+                    "無法保存群組",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            string fileName = groupName;
+            foreach (char invalidCharacter in Path.GetInvalidFileNameChars())
+            {
+                fileName = fileName.Replace(invalidCharacter, '_');
+            }
+
+            using (var dialog = new SaveFileDialog())
+            {
+                dialog.Title = "保存檢測參數群組及其成員";
+                dialog.Filter = "檢測參數設定檔 (*.ini)|*.ini|所有檔案 (*.*)|*.*";
+                dialog.DefaultExt = "ini";
+                dialog.AddExtension = true;
+                dialog.FileName = fileName + ".ini";
+                dialog.OverwritePrompt = true;
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+
+                try
+                {
+                    SystemParameterSettings exportSettings =
+                        CreateObjectDetectionParameterExportSettings(groupParameters[0]);
+                    exportSettings.ObjectDetectionParameters.Clear();
+                    exportSettings.ObjectDetectionParameters.AddRange(groupParameters);
+                    new SystemParameterIniService(dialog.FileName).Save(exportSettings);
+                    statusLabel.Text = "已保存群組「" + groupName + "」及 " +
+                        groupParameters.Count + " 個檢測參數";
+                    MessageBox.Show(
+                        this,
+                        "群組「" + groupName + "」及其 " + groupParameters.Count +
+                        " 個成員已保存至：\r\n" + dialog.FileName,
+                        "群組保存完成",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(
+                        this,
+                        "無法保存檢測參數群組：\r\n" + exception.Message,
+                        "群組保存失敗",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                 }
@@ -327,6 +678,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionMeasurementIsDrawing = false;
 
                 systemParameters = importedSettings;
+                collapsedObjectDetectionParameterGroups.Clear();
                 selectedRoiIndex = -1;
                 selectedImageProcessingStepIndex = -1;
                 selectedImageProcessingGroupId = null;
@@ -479,7 +831,12 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            string groupName = parameter.GroupName;
             systemParameters.ObjectDetectionParameters.Remove(parameter);
+            if (!string.IsNullOrWhiteSpace(groupName))
+            {
+                NormalizeObjectDetectionParameterGroups(new[] { groupName });
+            }
             RemoveObjectDetectionDefectCoreResults(parameter.Id);
             SaveSystemParameters();
             RebuildVisibleObjectDetectionParameters();

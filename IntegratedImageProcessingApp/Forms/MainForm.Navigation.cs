@@ -188,6 +188,15 @@ namespace IntegratedImageProcessingApp.Forms
 
             ResetRightFunctionPanel();
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
+            string objectDetectionParameterGroupName;
+            if (visibleObjectDetectionParameterGroupNames.TryGetValue(
+                    functionListBox.SelectedIndex,
+                    out objectDetectionParameterGroupName))
+            {
+                parameterPlaceholderLabel.Text = "檢測參數群組：「" + objectDetectionParameterGroupName + "」";
+                return;
+            }
+
             if (selectedFunction == DetectionParameterAddMenuText)
             {
                 parameterPlaceholderLabel.Text = "讀取外部檢測參數檔，加入軟體根目錄 recipe 參數庫。";
@@ -419,6 +428,19 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string selectedFunction = functionListBox.Items[clickedIndex] as string;
+            string objectDetectionParameterGroupName;
+            if (visibleObjectDetectionParameterGroupNames.TryGetValue(
+                    clickedIndex,
+                    out objectDetectionParameterGroupName))
+            {
+                if ((ModifierKeys & (Keys.Control | Keys.Shift)) == Keys.None &&
+                    functionListBox.SelectedIndices.Count <= 1)
+                {
+                    ToggleObjectDetectionParameterGroup(objectDetectionParameterGroupName);
+                }
+                return;
+            }
+
             if (selectedFunction == FindObjectFlowMenuText)
             {
                 ToggleFindObjectFlowMenu();
@@ -709,6 +731,23 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            string objectDetectionParameterGroupName;
+            if (visibleObjectDetectionParameterGroupNames.TryGetValue(
+                    clickedIndex,
+                    out objectDetectionParameterGroupName))
+            {
+                if (!functionListBox.SelectedIndices.Contains(clickedIndex))
+                {
+                    functionListBox.ClearSelected();
+                    functionListBox.SelectedIndex = clickedIndex;
+                }
+
+                ShowObjectDetectionParameterGroupContextMenu(
+                    objectDetectionParameterGroupName,
+                    e.Location);
+                return;
+            }
+
             string objectDetectionParameterId;
             if (TryGetObjectDetectionParameterLocation(
                     clickedIndex,
@@ -721,7 +760,18 @@ namespace IntegratedImageProcessingApp.Forms
                     functionListBox.SelectedIndex = clickedIndex;
                 }
 
-                ShowObjectDetectionParameterItemContextMenu(objectDetectionParameterId, e.Location);
+                List<string> selectedObjectDetectionParameterIds =
+                    GetSelectedObjectDetectionParameterIds();
+                if (selectedObjectDetectionParameterIds.Count >= 2)
+                {
+                    ShowObjectDetectionParameterMultiSelectContextMenu(
+                        selectedObjectDetectionParameterIds,
+                        e.Location);
+                }
+                else
+                {
+                    ShowObjectDetectionParameterItemContextMenu(objectDetectionParameterId, e.Location);
+                }
                 return;
             }
 

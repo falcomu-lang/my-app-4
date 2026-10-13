@@ -401,6 +401,7 @@ namespace IntegratedImageProcessingApp.Services
         public ObjectDetectionParameterSettings()
         {
             Id = Guid.NewGuid().ToString("N");
+            GroupName = string.Empty;
             ObjectDefinitionId = string.Empty;
             ColumnCount = 0;
             RowCount = 0;
@@ -492,6 +493,8 @@ namespace IntegratedImageProcessingApp.Services
         public string Id { get; set; }
 
         public string DisplayName { get; set; }
+
+        public string GroupName { get; set; }
 
         public string Parameters { get; set; }
 
