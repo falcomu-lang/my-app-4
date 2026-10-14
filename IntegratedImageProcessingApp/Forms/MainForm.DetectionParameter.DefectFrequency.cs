@@ -16,6 +16,42 @@ namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm
     {
+        private static readonly int[] ObjectDetectionFrequencyVerticalStretchPercents =
+        {
+            25, 50, 75, 100, 200, 300
+        };
+
+        private static int GetObjectDetectionFrequencyVerticalStretchIndex(int percent)
+        {
+            int index = Array.IndexOf(ObjectDetectionFrequencyVerticalStretchPercents, percent);
+            return index < 0 ? 3 : index;
+        }
+
+        private static int GetObjectDetectionFrequencyVerticalStretchPercent(int selectedIndex)
+        {
+            return selectedIndex >= 0 &&
+                selectedIndex < ObjectDetectionFrequencyVerticalStretchPercents.Length
+                ? ObjectDetectionFrequencyVerticalStretchPercents[selectedIndex]
+                : 100;
+        }
+
+        private static int GetObjectDetectionFrequencyAnalysisHeight(int sourceHeight, int percent)
+        {
+            return Math.Max(1, (int)Math.Round(
+                sourceHeight * percent / 100.0,
+                MidpointRounding.AwayFromZero));
+        }
+
+        private static bool IsSupportedObjectDetectionFrequencyVerticalStretchPercent(int percent)
+        {
+            return Array.IndexOf(ObjectDetectionFrequencyVerticalStretchPercents, percent) >= 0;
+        }
+
+        private static string FormatObjectDetectionFrequencyVerticalStretch(int percent)
+        {
+            return (percent / 100.0).ToString("0.##", CultureInfo.CurrentCulture) + "X";
+        }
+
         private sealed class ObjectDetectionFrequencyCell
         {
             public int ObjectNumber { get; set; }
@@ -39,7 +75,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             public int ScanHeight { get; set; }
 
-            public int VerticalStretchFactor { get; set; }
+            public int VerticalStretchPercent { get; set; }
 
             public double Sensitivity { get; set; }
 
@@ -76,13 +112,13 @@ namespace IntegratedImageProcessingApp.Forms
                 Cv.Mat image,
                 Cv.Mat mask,
                 int windowSize,
-                int verticalStretchFactor)
+                int verticalStretchPercent)
             {
                 if (image == null || image.Empty() || image.Type() != Cv.MatType.CV_8UC1 ||
                     mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
                     image.Cols != mask.Cols || image.Rows != mask.Rows ||
                     windowSize < 8 || windowSize > image.Cols || windowSize > image.Rows ||
-                    verticalStretchFactor < 1 || verticalStretchFactor > 3)
+                    !IsSupportedObjectDetectionFrequencyVerticalStretchPercent(verticalStretchPercent))
                 {
                     throw new ArgumentException("頻域掃描需要有效且尺寸相同的灰階影像與 MASK。");
                 }
@@ -95,8 +131,10 @@ namespace IntegratedImageProcessingApp.Forms
                 ImageWidth = image.Cols;
                 ImageHeight = image.Rows;
                 WindowWidth = windowSize;
-                WindowHeight = checked(windowSize * verticalStretchFactor);
-                VerticalStretchFactor = verticalStretchFactor;
+                WindowHeight = GetObjectDetectionFrequencyAnalysisHeight(
+                    windowSize,
+                    verticalStretchPercent);
+                VerticalStretchPercent = verticalStretchPercent;
                 HannWindow = new Cv.Mat();
                 try
                 {
@@ -106,7 +144,7 @@ namespace IntegratedImageProcessingApp.Forms
                         Cv.MatType.CV_32FC1);
                     HannData = HannWindow.Data;
                     HannStep = HannWindow.Step();
-                    if (VerticalStretchFactor > 1)
+                    if (VerticalStretchPercent != 100)
                     {
                         ResizedWindow = new Cv.Mat(
                             WindowHeight,
@@ -139,7 +177,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             public int WindowHeight { get; private set; }
 
-            public int VerticalStretchFactor { get; private set; }
+            public int VerticalStretchPercent { get; private set; }
 
             public Cv.Mat HannWindow { get; private set; }
 
@@ -267,13 +305,16 @@ namespace IntegratedImageProcessingApp.Forms
             };
             objectDetectionFrequencyVerticalStretchComboBox.Items.AddRange(new object[]
             {
-                "不改變",
-                "X2",
-                "X3"
+                "0.25X",
+                "0.5X",
+                "0.75X",
+                "1X（不改變）",
+                "2X",
+                "3X"
             });
-            objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex = Math.Max(
-                0,
-                Math.Min(2, parameter.DefectFrequencyVerticalStretchFactor - 1));
+            objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex =
+                GetObjectDetectionFrequencyVerticalStretchIndex(
+                    parameter.DefectFrequencyVerticalStretchPercent);
             objectDetectionFrequencySensitivityInput = new NumericUpDown
             {
                 Dock = DockStyle.Fill,
@@ -296,7 +337,7 @@ namespace IntegratedImageProcessingApp.Forms
             scanLayout.Controls.Add(objectDetectionFrequencyScanHeightInput, 1, 0);
             scanLayout.Controls.Add(CreateDefectCoreLabel("自動視窗與間距"), 0, 1);
             scanLayout.Controls.Add(objectDetectionFrequencyWindowHint, 1, 1);
-            scanLayout.Controls.Add(CreateDefectCoreLabel("垂直拉伸倍率"), 0, 2);
+            scanLayout.Controls.Add(CreateDefectCoreLabel("垂直縮放倍率"), 0, 2);
             scanLayout.Controls.Add(objectDetectionFrequencyVerticalStretchComboBox, 1, 2);
             scanLayout.Controls.Add(CreateDefectCoreLabel("區域能量敏感度"), 0, 3);
             scanLayout.Controls.Add(objectDetectionFrequencySensitivityInput, 1, 3);
@@ -513,17 +554,20 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
             int size = (int)objectDetectionFrequencyScanHeightInput.Value;
-            int stretchFactor = objectDetectionFrequencyVerticalStretchComboBox == null
-                ? 1
-                : Math.Max(1, objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex + 1);
+            int stretchPercent = objectDetectionFrequencyVerticalStretchComboBox == null
+                ? 100
+                : GetObjectDetectionFrequencyVerticalStretchPercent(
+                    objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex);
             string originalSize = size.ToString(CultureInfo.CurrentCulture) + " × " +
                 size.ToString(CultureInfo.CurrentCulture);
             string analysisSize = size.ToString(CultureInfo.CurrentCulture) + " × " +
-                (size * stretchFactor).ToString(CultureInfo.CurrentCulture);
-            objectDetectionFrequencyWindowHint.Text = stretchFactor == 1
+                GetObjectDetectionFrequencyAnalysisHeight(size, stretchPercent)
+                    .ToString(CultureInfo.CurrentCulture);
+            objectDetectionFrequencyWindowHint.Text = stretchPercent == 100
                 ? "分析格 " + originalSize + " px；間距 " +
                     Math.Max(1, size / 2).ToString(CultureInfo.CurrentCulture) + " px"
-                : "原格 " + originalSize + " → 分析 " + analysisSize + " px；間距 " +
+                : "原格 " + originalSize + " → 分析 " + analysisSize + " px（" +
+                    FormatObjectDetectionFrequencyVerticalStretch(stretchPercent) + "）；間距 " +
                     Math.Max(1, size / 2).ToString(CultureInfo.CurrentCulture) + " px";
         }
 
@@ -541,8 +585,9 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             parameter.DefectFrequencyScanHeight = (int)objectDetectionFrequencyScanHeightInput.Value;
-            parameter.DefectFrequencyVerticalStretchFactor =
-                Math.Max(1, objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex + 1);
+            parameter.DefectFrequencyVerticalStretchPercent =
+                GetObjectDetectionFrequencyVerticalStretchPercent(
+                    objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex);
             parameter.DefectFrequencySensitivity = Decimal.ToDouble(
                 objectDetectionFrequencySensitivityInput.Value);
             parameter.DefectFrequencyShowHeatmap =
@@ -567,8 +612,9 @@ namespace IntegratedImageProcessingApp.Forms
             SetObjectDetectionDefectRegionStatus(
                 "頻域異常設定已套用；掃描高度 " +
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.CurrentCulture) +
-                " px，垂直拉伸 X" +
-                parameter.DefectFrequencyVerticalStretchFactor.ToString(CultureInfo.CurrentCulture) +
+                " px，垂直縮放 " +
+                FormatObjectDetectionFrequencyVerticalStretch(
+                    parameter.DefectFrequencyVerticalStretchPercent) +
                 "，敏感度 " +
                 parameter.DefectFrequencySensitivity.ToString("0.0", CultureInfo.CurrentCulture) +
                 "。來源為平場校正後灰階影像，未額外套用對比或淡色增強；設定變更後請重新分析。 ");
@@ -593,9 +639,9 @@ namespace IntegratedImageProcessingApp.Forms
                     parameter.DefectFrequencySensitivity));
             if (objectDetectionFrequencyVerticalStretchComboBox != null)
             {
-                objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex = Math.Max(
-                    0,
-                    Math.Min(2, parameter.DefectFrequencyVerticalStretchFactor - 1));
+                objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex =
+                    GetObjectDetectionFrequencyVerticalStretchIndex(
+                        parameter.DefectFrequencyVerticalStretchPercent);
             }
             objectDetectionFrequencyShowHeatmapCheckBox.Checked =
                 parameter.DefectFrequencyShowHeatmap;
@@ -729,9 +775,11 @@ namespace IntegratedImageProcessingApp.Forms
                     ClampUnit((float)parameter.DefectInspectionRegionRight),
                     ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
-                int verticalStretchFactor = Math.Max(
-                    1,
-                    Math.Min(3, parameter.DefectFrequencyVerticalStretchFactor));
+                int verticalStretchPercent =
+                    IsSupportedObjectDetectionFrequencyVerticalStretchPercent(
+                        parameter.DefectFrequencyVerticalStretchPercent)
+                    ? parameter.DefectFrequencyVerticalStretchPercent
+                    : 100;
                 var undersizedObjects = objects
                     .Select(detectedObject => new
                     {
@@ -801,7 +849,7 @@ namespace IntegratedImageProcessingApp.Forms
                             normalizedRegion,
                             imageBounds,
                             scanHeight,
-                            verticalStretchFactor,
+                            verticalStretchPercent,
                             sensitivity,
                             runParallel,
                             progress,
@@ -823,7 +871,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 result.Signature = signature;
                 result.ScanHeight = scanHeight;
-                result.VerticalStretchFactor = verticalStretchFactor;
+                result.VerticalStretchPercent = verticalStretchPercent;
                 result.Sensitivity = sensitivity;
                 result.SourcePreparationMilliseconds = sourcePreparationStopwatch.ElapsedMilliseconds;
                 result.ElapsedMilliseconds = scanStopwatch.ElapsedMilliseconds;
@@ -862,7 +910,7 @@ namespace IntegratedImageProcessingApp.Forms
                 int anomalyCount = result.Cells.Count(cell => cell.IsAnomaly);
                 string summary = string.Format(
                     CultureInfo.CurrentCulture,
-                    "ROI {0}；掃描 {1:N0} 格（有效 {2:N0}），可疑 {3:N0}；分析格垂直 X{10}\r\n運算總耗時 {4:N0} ms；來源準備 {5:N0} ms，掃描 {6:N0} ms\r\nROI 格迴圈累計 {7:N0} ms；預覽累計 {8:N0} ms；統計 {9:N0} ms",
+                    "ROI {0}；掃描 {1:N0} 格（有效 {2:N0}），可疑 {3:N0}；分析格垂直 {10}\r\n運算總耗時 {4:N0} ms；來源準備 {5:N0} ms，掃描 {6:N0} ms\r\nROI 格迴圈累計 {7:N0} ms；預覽累計 {8:N0} ms；統計 {9:N0} ms",
                     result.CellsByObject.Count,
                     result.ScannedWindowCount,
                     result.Cells.Count,
@@ -873,7 +921,8 @@ namespace IntegratedImageProcessingApp.Forms
                     result.CellLoopMilliseconds,
                     result.PreviewGenerationMilliseconds,
                     result.StatisticsMilliseconds,
-                    result.VerticalStretchFactor);
+                    FormatObjectDetectionFrequencyVerticalStretch(
+                        result.VerticalStretchPercent));
                 if (objectDetectionFrequencyStatusLabel != null)
                 {
                     objectDetectionFrequencyStatusLabel.Text = summary;
@@ -996,7 +1045,7 @@ namespace IntegratedImageProcessingApp.Forms
             RectangleF normalizedRegion,
             Rectangle imageBounds,
             int requestedWindowSize,
-            int verticalStretchFactor,
+            int verticalStretchPercent,
             double sensitivity,
             bool runParallel,
             IProgress<string> progress,
@@ -1091,7 +1140,7 @@ namespace IntegratedImageProcessingApp.Forms
                         rectifiedGray,
                         rectifiedMask,
                         windowSize,
-                        verticalStretchFactor))
+                        verticalStretchPercent))
                     {
                         long objectScannedWindowCount = 0;
                         var usedWindows = new HashSet<long>();
@@ -1445,7 +1494,7 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         return false;
                     }
-                    if (workspace.VerticalStretchFactor == 1)
+                    if (workspace.VerticalStretchPercent == 100)
                     {
                         pixelSum += imageRow[column];
                     }
@@ -1460,7 +1509,7 @@ namespace IntegratedImageProcessingApp.Forms
                 int energyWidth = windowSize;
                 int energyHeight = windowSize;
                 int validPixels = windowSize * windowSize;
-                if (workspace.VerticalStretchFactor > 1)
+                if (workspace.VerticalStretchPercent != 100)
                 {
                     sourceWindow = new Cv.Mat(
                         workspace.Image,
@@ -1471,7 +1520,9 @@ namespace IntegratedImageProcessingApp.Forms
                         new Cv.Size(workspace.WindowWidth, workspace.WindowHeight),
                         0,
                         0,
-                        Cv.InterpolationFlags.Linear);
+                        workspace.VerticalStretchPercent < 100
+                            ? Cv.InterpolationFlags.Area
+                            : Cv.InterpolationFlags.Linear);
                     energyImage = (byte*)workspace.ResizedWindow.Data.ToPointer();
                     energyImageStep = workspace.ResizedWindow.Step();
                     energyWidth = workspace.WindowWidth;
@@ -1552,7 +1603,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegionRight.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture),
-                parameter.DefectFrequencyVerticalStretchFactor.ToString(CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyVerticalStretchPercent.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,

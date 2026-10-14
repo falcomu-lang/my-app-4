@@ -750,11 +750,9 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectFrequencyScanHeight",
                         50))),
-                    DefectFrequencyVerticalStretchFactor = Math.Max(1, Math.Min(3, GetInt(
+                    DefectFrequencyVerticalStretchPercent = ReadObjectDetectionFrequencyVerticalStretchPercent(
                         sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectFrequencyVerticalStretchFactor",
-                        1))),
+                        prefix),
                     DefectFrequencySensitivity = GetClampedFiniteDouble(
                         sections,
                         SectionObjectDetection,
@@ -1225,7 +1223,7 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectIntegrationMergeDistancePixels={1}", prefix, parameter.DefectIntegrationMergeDistancePixels.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, parameter.DefectFrequencyEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectFrequencyVerticalStretchFactor={1}", prefix, parameter.DefectFrequencyVerticalStretchFactor.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyVerticalStretchPercent={1}", prefix, parameter.DefectFrequencyVerticalStretchPercent.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyContrastEnabled={1}", prefix, parameter.DefectFrequencyContrastEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyContrastGain={1}", prefix, parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture));
@@ -1950,6 +1948,41 @@ namespace IntegratedImageProcessingApp.Services
             return int.TryParse(GetValue(sections, section, key, string.Empty), NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
                 ? value
                 : defaultValue;
+        }
+
+        private static int ReadObjectDetectionFrequencyVerticalStretchPercent(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string parameterPrefix)
+        {
+            int percent = GetInt(
+                sections,
+                SectionObjectDetection,
+                parameterPrefix + ".DefectFrequencyVerticalStretchPercent",
+                int.MinValue);
+            if (percent == int.MinValue)
+            {
+                int legacyFactor = GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    parameterPrefix + ".DefectFrequencyVerticalStretchFactor",
+                    1);
+                percent = legacyFactor >= 1 && legacyFactor <= 3
+                    ? legacyFactor * 100
+                    : 100;
+            }
+
+            switch (percent)
+            {
+                case 25:
+                case 50:
+                case 75:
+                case 100:
+                case 200:
+                case 300:
+                    return percent;
+                default:
+                    return 100;
+            }
         }
 
         private static List<ObjectDetectionMeasurementRecordSettings> ReadObjectDetectionMeasurementRecords(

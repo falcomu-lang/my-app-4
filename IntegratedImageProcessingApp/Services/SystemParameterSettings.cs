@@ -465,7 +465,7 @@ namespace IntegratedImageProcessingApp.Services
             DefectIntegrationMergeDistancePixels = 0;
             DefectFrequencyEnabled = true;
             DefectFrequencyScanHeight = 50;
-            DefectFrequencyVerticalStretchFactor = 1;
+            DefectFrequencyVerticalStretchPercent = 100;
             DefectFrequencySensitivity = 3.0;
             DefectFrequencyContrastEnabled = true;
             DefectFrequencyContrastGain = 1.0;
@@ -669,7 +669,7 @@ namespace IntegratedImageProcessingApp.Services
 
         public int DefectFrequencyScanHeight { get; set; }
 
-        public int DefectFrequencyVerticalStretchFactor { get; set; }
+        public int DefectFrequencyVerticalStretchPercent { get; set; }
 
         public double DefectFrequencySensitivity { get; set; }
 
