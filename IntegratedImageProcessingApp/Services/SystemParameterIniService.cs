@@ -767,6 +767,23 @@ namespace IntegratedImageProcessingApp.Services
                         1.0,
                         0.1,
                         5.0),
+                    DefectFrequencyNeighborComparisonEnabled = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyNeighborComparisonEnabled",
+                        false),
+                    DefectFrequencyNeighborReferenceRadius = Math.Max(2, Math.Min(20, GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyNeighborReferenceRadius",
+                        8))),
+                    DefectFrequencyNeighborSensitivity = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyNeighborSensitivity",
+                        3.0,
+                        1.0,
+                        10.0),
                     DefectFrequencyEnhancementMethod = GetValue(
                         sections,
                         SectionObjectDetection,
@@ -806,6 +823,21 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectFrequencyShowAnomalyBoxes",
                         true),
+                    DefectFrequencyShowNeighborHeatmap = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyShowNeighborHeatmap",
+                        true),
+                    DefectFrequencyShowNeighborAnomalyBoxes = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyShowNeighborAnomalyBoxes",
+                        true),
+                    DefectFrequencyShowHealthyReferenceCells = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyShowHealthyReferenceCells",
+                        false),
                     DefectDetectionCores = ReadObjectDetectionDefectCores(
                         sections,
                         prefix)
@@ -1190,6 +1222,9 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyContrastEnabled={1}", prefix, parameter.DefectFrequencyContrastEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyContrastGain={1}", prefix, parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyNeighborComparisonEnabled={1}", prefix, parameter.DefectFrequencyNeighborComparisonEnabled ? "1" : "0");
+                    writer.WriteLine("{0}.DefectFrequencyNeighborReferenceRadius={1}", prefix, parameter.DefectFrequencyNeighborReferenceRadius.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyNeighborSensitivity={1}", prefix, parameter.DefectFrequencyNeighborSensitivity.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyEnhancementMethod={1}", prefix, Escape(parameter.DefectFrequencyEnhancementMethod));
                     writer.WriteLine("{0}.DefectFrequencyLocalBackgroundKernelSize={1}", prefix, parameter.DefectFrequencyLocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyLocalBackgroundGain={1}", prefix, parameter.DefectFrequencyLocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture));
@@ -1197,6 +1232,9 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencyClaheTileGridSize={1}", prefix, parameter.DefectFrequencyClaheTileGridSize.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, parameter.DefectFrequencyShowHeatmap ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowAnomalyBoxes={1}", prefix, parameter.DefectFrequencyShowAnomalyBoxes ? "1" : "0");
+                    writer.WriteLine("{0}.DefectFrequencyShowNeighborHeatmap={1}", prefix, parameter.DefectFrequencyShowNeighborHeatmap ? "1" : "0");
+                    writer.WriteLine("{0}.DefectFrequencyShowNeighborAnomalyBoxes={1}", prefix, parameter.DefectFrequencyShowNeighborAnomalyBoxes ? "1" : "0");
+                    writer.WriteLine("{0}.DefectFrequencyShowHealthyReferenceCells={1}", prefix, parameter.DefectFrequencyShowHealthyReferenceCells ? "1" : "0");
                     List<ObjectDetectionDefectCoreSettings> defectCores =
                         parameter.DefectDetectionCores ?? new List<ObjectDetectionDefectCoreSettings>();
                     writer.WriteLine(

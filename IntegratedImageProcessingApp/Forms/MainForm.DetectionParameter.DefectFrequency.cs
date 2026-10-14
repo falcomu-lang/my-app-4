@@ -62,11 +62,35 @@ namespace IntegratedImageProcessingApp.Forms
 
             public PointF[] ImageCorners { get; set; }
 
+            public int GridColumn { get; set; }
+
+            public int GridRow { get; set; }
+
+            public double MeanGray { get; set; }
+
+            public double LowerQuartileBlockMean { get; set; }
+
             public double Energy { get; set; }
 
             public double Score { get; set; }
 
             public bool IsAnomaly { get; set; }
+
+            public double NeighborReferenceGray { get; set; }
+
+            public double NeighborDeltaGray { get; set; }
+
+            public double NeighborReferenceLowerQuartile { get; set; }
+
+            public double NeighborDarkDeltaGray { get; set; }
+
+            public double NeighborScore { get; set; }
+
+            public bool IsNeighborAnomaly { get; set; }
+
+            public bool IsHealthyReference { get; set; }
+
+            public bool HasIndependentCoreDefect { get; set; }
         }
 
         private sealed class ObjectDetectionFrequencyResult
@@ -78,6 +102,16 @@ namespace IntegratedImageProcessingApp.Forms
             public int VerticalStretchPercent { get; set; }
 
             public double Sensitivity { get; set; }
+
+            public double NeighborSensitivity { get; set; }
+
+            public int NeighborReferenceRadius { get; set; }
+
+            public int NeighborReferenceCellCount { get; set; }
+
+            public int NeighborEvaluatedCellCount { get; set; }
+
+            public long NeighborComparisonMilliseconds { get; set; }
 
             public double MedianEnergy { get; set; }
 
@@ -211,9 +245,15 @@ namespace IntegratedImageProcessingApp.Forms
         private NumericUpDown objectDetectionFrequencySensitivityInput;
         private CheckBox objectDetectionFrequencyContrastEnabledCheckBox;
         private NumericUpDown objectDetectionFrequencyContrastGainInput;
+        private CheckBox objectDetectionFrequencyNeighborEnabledCheckBox;
+        private NumericUpDown objectDetectionFrequencyNeighborRadiusInput;
+        private NumericUpDown objectDetectionFrequencyNeighborSensitivityInput;
         private CheckBox objectDetectionFrequencyEnabledCheckBox;
         private CheckBox objectDetectionFrequencyShowHeatmapCheckBox;
         private CheckBox objectDetectionFrequencyShowBoxesCheckBox;
+        private CheckBox objectDetectionFrequencyShowNeighborHeatmapCheckBox;
+        private CheckBox objectDetectionFrequencyShowNeighborBoxesCheckBox;
+        private CheckBox objectDetectionFrequencyShowReferenceCellsCheckBox;
         private Label objectDetectionFrequencyWindowHint;
         private Label objectDetectionFrequencyStatusLabel;
         private Button objectDetectionFrequencyRunButton;
@@ -403,6 +443,66 @@ namespace IntegratedImageProcessingApp.Forms
             scanLayout.SetColumnSpan(baselineInfo, 2);
             scanGroup.Controls.Add(scanLayout);
 
+            var neighborGroup = new GroupBox
+            {
+                Dock = DockStyle.Top,
+                Height = 101,
+                Text = "鄰近良品基準比較",
+                Padding = new Padding(8, 16, 8, 4)
+            };
+            var neighborLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            neighborLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
+            neighborLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            objectDetectionFrequencyNeighborEnabledCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Anchor = AnchorStyles.Left,
+                Text = "啟用鄰近良品比較",
+                Checked = parameter.DefectFrequencyNeighborComparisonEnabled,
+                Margin = new Padding(0, 2, 0, 0)
+            };
+            objectDetectionFrequencyNeighborRadiusInput = new NumericUpDown
+            {
+                Dock = DockStyle.Fill,
+                Minimum = 2,
+                Maximum = 20,
+                Value = Math.Max(2, Math.Min(20,
+                    parameter.DefectFrequencyNeighborReferenceRadius))
+            };
+            objectDetectionFrequencyNeighborSensitivityInput = new NumericUpDown
+            {
+                Dock = DockStyle.Fill,
+                Minimum = 1.0m,
+                Maximum = 10.0m,
+                DecimalPlaces = 1,
+                Increment = 0.5m,
+                Value = (decimal)Math.Max(1.0, Math.Min(10.0,
+                    parameter.DefectFrequencyNeighborSensitivity))
+            };
+            neighborLayout.Controls.Add(objectDetectionFrequencyNeighborEnabledCheckBox, 0, 0);
+            neighborLayout.SetColumnSpan(objectDetectionFrequencyNeighborEnabledCheckBox, 2);
+            neighborLayout.Controls.Add(CreateDefectCoreLabel("健康參考搜尋半徑（格）"), 0, 1);
+            neighborLayout.Controls.Add(objectDetectionFrequencyNeighborRadiusInput, 1, 1);
+            neighborLayout.Controls.Add(CreateDefectCoreLabel("比較敏感度"), 0, 2);
+            neighborLayout.Controls.Add(objectDetectionFrequencyNeighborSensitivityInput, 1, 2);
+            neighborGroup.Controls.Add(neighborLayout);
+            objectDetectionFrequencyNeighborEnabledCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyNeighborControlsEnabled(
+                    objectDetectionFrequencyEnabledCheckBox != null &&
+                    objectDetectionFrequencyEnabledCheckBox.Checked);
+            };
+
             var displayOptions = new FlowLayoutPanel
             {
                 Dock = DockStyle.Top,
@@ -426,6 +526,27 @@ namespace IntegratedImageProcessingApp.Forms
                 Checked = parameter.DefectFrequencyShowAnomalyBoxes,
                 Margin = new Padding(2, 1, 0, 1)
             };
+            objectDetectionFrequencyShowNeighborHeatmapCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "顯示鄰格熱圖",
+                Checked = parameter.DefectFrequencyShowNeighborHeatmap,
+                Margin = new Padding(2, 1, 14, 1)
+            };
+            objectDetectionFrequencyShowNeighborBoxesCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "顯示鄰格異常框",
+                Checked = parameter.DefectFrequencyShowNeighborAnomalyBoxes,
+                Margin = new Padding(2, 1, 14, 1)
+            };
+            objectDetectionFrequencyShowReferenceCellsCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "顯示健康參考格",
+                Checked = parameter.DefectFrequencyShowHealthyReferenceCells,
+                Margin = new Padding(2, 1, 0, 1)
+            };
             objectDetectionFrequencyShowHeatmapCheckBox.CheckedChanged += delegate
             {
                 UpdateObjectDetectionFrequencyDisplayOptions(parameter);
@@ -434,8 +555,24 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 UpdateObjectDetectionFrequencyDisplayOptions(parameter);
             };
+            objectDetectionFrequencyShowNeighborHeatmapCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+            };
+            objectDetectionFrequencyShowNeighborBoxesCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+            };
+            objectDetectionFrequencyShowReferenceCellsCheckBox.CheckedChanged += delegate
+            {
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+            };
             displayOptions.Controls.Add(objectDetectionFrequencyShowHeatmapCheckBox);
             displayOptions.Controls.Add(objectDetectionFrequencyShowBoxesCheckBox);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowNeighborHeatmapCheckBox);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowNeighborBoxesCheckBox);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowReferenceCellsCheckBox);
+            displayOptions.Height = 62;
 
             objectDetectionFrequencyStatusLabel = new Label
             {
@@ -502,6 +639,7 @@ namespace IntegratedImageProcessingApp.Forms
             content.Controls.Add(actionBar);
             content.Controls.Add(objectDetectionFrequencyStatusLabel);
             content.Controls.Add(displayOptions);
+            content.Controls.Add(neighborGroup);
             content.Controls.Add(scanGroup);
             content.Controls.Add(sourceGroup);
             content.Controls.Add(enabledPanel);
@@ -568,6 +706,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyContrastEnabledCheckBox.Enabled = enabled;
             }
             UpdateObjectDetectionFrequencyContrastControlsEnabled(enabled);
+            UpdateObjectDetectionFrequencyNeighborControlsEnabled(enabled);
             if (objectDetectionFrequencyVerticalStretchComboBox != null)
             {
                 objectDetectionFrequencyVerticalStretchComboBox.Enabled = enabled;
@@ -579,6 +718,18 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDetectionFrequencyShowBoxesCheckBox != null)
             {
                 objectDetectionFrequencyShowBoxesCheckBox.Enabled = enabled;
+            }
+            if (objectDetectionFrequencyShowNeighborHeatmapCheckBox != null)
+            {
+                objectDetectionFrequencyShowNeighborHeatmapCheckBox.Enabled = enabled;
+            }
+            if (objectDetectionFrequencyShowNeighborBoxesCheckBox != null)
+            {
+                objectDetectionFrequencyShowNeighborBoxesCheckBox.Enabled = enabled;
+            }
+            if (objectDetectionFrequencyShowReferenceCellsCheckBox != null)
+            {
+                objectDetectionFrequencyShowReferenceCellsCheckBox.Enabled = enabled;
             }
             if (objectDetectionFrequencyRunButton != null)
             {
@@ -594,6 +745,25 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyContrastGainInput.Enabled = frequencyEnabled &&
                     objectDetectionFrequencyContrastEnabledCheckBox != null &&
                     objectDetectionFrequencyContrastEnabledCheckBox.Checked;
+            }
+        }
+
+        private void UpdateObjectDetectionFrequencyNeighborControlsEnabled(bool frequencyEnabled)
+        {
+            bool comparisonEnabled = frequencyEnabled &&
+                objectDetectionFrequencyNeighborEnabledCheckBox != null &&
+                objectDetectionFrequencyNeighborEnabledCheckBox.Checked;
+            if (objectDetectionFrequencyNeighborEnabledCheckBox != null)
+            {
+                objectDetectionFrequencyNeighborEnabledCheckBox.Enabled = frequencyEnabled;
+            }
+            if (objectDetectionFrequencyNeighborRadiusInput != null)
+            {
+                objectDetectionFrequencyNeighborRadiusInput.Enabled = comparisonEnabled;
+            }
+            if (objectDetectionFrequencyNeighborSensitivityInput != null)
+            {
+                objectDetectionFrequencyNeighborSensitivityInput.Enabled = comparisonEnabled;
             }
         }
 
@@ -667,10 +837,22 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyContrastEnabledCheckBox.Checked;
             parameter.DefectFrequencyContrastGain = Decimal.ToDouble(
                 objectDetectionFrequencyContrastGainInput.Value);
+            parameter.DefectFrequencyNeighborComparisonEnabled =
+                objectDetectionFrequencyNeighborEnabledCheckBox.Checked;
+            parameter.DefectFrequencyNeighborReferenceRadius =
+                Decimal.ToInt32(objectDetectionFrequencyNeighborRadiusInput.Value);
+            parameter.DefectFrequencyNeighborSensitivity = Decimal.ToDouble(
+                objectDetectionFrequencyNeighborSensitivityInput.Value);
             parameter.DefectFrequencyShowHeatmap =
                 objectDetectionFrequencyShowHeatmapCheckBox.Checked;
             parameter.DefectFrequencyShowAnomalyBoxes =
                 objectDetectionFrequencyShowBoxesCheckBox.Checked;
+            parameter.DefectFrequencyShowNeighborHeatmap =
+                objectDetectionFrequencyShowNeighborHeatmapCheckBox.Checked;
+            parameter.DefectFrequencyShowNeighborAnomalyBoxes =
+                objectDetectionFrequencyShowNeighborBoxesCheckBox.Checked;
+            parameter.DefectFrequencyShowHealthyReferenceCells =
+                objectDetectionFrequencyShowReferenceCellsCheckBox.Checked;
             SaveSystemParameters();
             RemoveObjectDetectionFrequencyResult(parameter.Id);
             RefreshObjectDetectionDefectIntegrationResults(parameter);
@@ -729,10 +911,26 @@ namespace IntegratedImageProcessingApp.Forms
                 (double)objectDetectionFrequencyContrastGainInput.Minimum,
                 Math.Min((double)objectDetectionFrequencyContrastGainInput.Maximum,
                     parameter.DefectFrequencyContrastGain));
+            objectDetectionFrequencyNeighborEnabledCheckBox.Checked =
+                parameter.DefectFrequencyNeighborComparisonEnabled;
+            objectDetectionFrequencyNeighborRadiusInput.Value = Math.Max(
+                objectDetectionFrequencyNeighborRadiusInput.Minimum,
+                Math.Min(objectDetectionFrequencyNeighborRadiusInput.Maximum,
+                    parameter.DefectFrequencyNeighborReferenceRadius));
+            objectDetectionFrequencyNeighborSensitivityInput.Value = (decimal)Math.Max(
+                (double)objectDetectionFrequencyNeighborSensitivityInput.Minimum,
+                Math.Min((double)objectDetectionFrequencyNeighborSensitivityInput.Maximum,
+                    parameter.DefectFrequencyNeighborSensitivity));
             objectDetectionFrequencyShowHeatmapCheckBox.Checked =
                 parameter.DefectFrequencyShowHeatmap;
             objectDetectionFrequencyShowBoxesCheckBox.Checked =
                 parameter.DefectFrequencyShowAnomalyBoxes;
+            objectDetectionFrequencyShowNeighborHeatmapCheckBox.Checked =
+                parameter.DefectFrequencyShowNeighborHeatmap;
+            objectDetectionFrequencyShowNeighborBoxesCheckBox.Checked =
+                parameter.DefectFrequencyShowNeighborAnomalyBoxes;
+            objectDetectionFrequencyShowReferenceCellsCheckBox.Checked =
+                parameter.DefectFrequencyShowHealthyReferenceCells;
             UpdateObjectDetectionFrequencyControlsEnabled(
                 objectDetectionFrequencyEnabledCheckBox != null &&
                 objectDetectionFrequencyEnabledCheckBox.Checked);
@@ -751,6 +949,12 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyShowHeatmapCheckBox.Checked;
             parameter.DefectFrequencyShowAnomalyBoxes =
                 objectDetectionFrequencyShowBoxesCheckBox.Checked;
+            parameter.DefectFrequencyShowNeighborHeatmap =
+                objectDetectionFrequencyShowNeighborHeatmapCheckBox.Checked;
+            parameter.DefectFrequencyShowNeighborAnomalyBoxes =
+                objectDetectionFrequencyShowNeighborBoxesCheckBox.Checked;
+            parameter.DefectFrequencyShowHealthyReferenceCells =
+                objectDetectionFrequencyShowReferenceCellsCheckBox.Checked;
             SaveSystemParameters();
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
                 ObjectDetectionDefectFrequencyDisplayIndex);
@@ -764,7 +968,8 @@ namespace IntegratedImageProcessingApp.Forms
             string parameterId,
             bool isCoordinatedRun = false,
             CancellationToken cancellationToken = default(CancellationToken),
-            int capturedRecipeGeneration = -1)
+            int capturedRecipeGeneration = -1,
+            bool includeIndependentCoreDefects = true)
         {
             if (objectDetectionFrequencyAnalysisRunning)
             {
@@ -961,13 +1166,21 @@ namespace IntegratedImageProcessingApp.Forms
                         "檢測範圍內找不到完整且有效的掃描格；請確認ROI位置，或降低掃描高度。 ");
                     return;
                 }
+                Stopwatch neighborComparisonStopwatch = Stopwatch.StartNew();
+                CalculateObjectDetectionFrequencyNeighborComparison(
+                    parameter,
+                    result,
+                    includeIndependentCoreDefects);
+                neighborComparisonStopwatch.Stop();
+                result.NeighborComparisonMilliseconds = neighborComparisonStopwatch.ElapsedMilliseconds;
                 result.Signature = signature;
                 result.ScanHeight = scanHeight;
                 result.VerticalStretchPercent = verticalStretchPercent;
                 result.Sensitivity = sensitivity;
                 result.SourcePreparationMilliseconds = sourcePreparationStopwatch.ElapsedMilliseconds;
                 result.ElapsedMilliseconds = scanStopwatch.ElapsedMilliseconds;
-                result.TotalElapsedMilliseconds = totalStopwatch.ElapsedMilliseconds;
+                result.TotalElapsedMilliseconds = totalStopwatch.ElapsedMilliseconds +
+                    result.NeighborComparisonMilliseconds;
 
             if (IsDisposed || cancellationToken.IsCancellationRequested ||
                     capturedRecipeGeneration != Interlocked.CompareExchange(
@@ -999,26 +1212,7 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     display.InvalidateImageView();
                 }
-                int anomalyCount = result.Cells.Count(cell => cell.IsAnomaly);
-                string summary = string.Format(
-                    CultureInfo.CurrentCulture,
-                    "ROI {0}；掃描 {1:N0} 格（有效 {2:N0}），可疑 {3:N0}；分析格垂直 {10}\r\n運算總耗時 {4:N0} ms；來源準備 {5:N0} ms，掃描 {6:N0} ms\r\nROI 格迴圈累計 {7:N0} ms；預覽累計 {8:N0} ms；統計 {9:N0} ms",
-                    result.CellsByObject.Count,
-                    result.ScannedWindowCount,
-                    result.Cells.Count,
-                    anomalyCount,
-                    result.TotalElapsedMilliseconds,
-                    result.SourcePreparationMilliseconds,
-                    result.ElapsedMilliseconds,
-                    result.CellLoopMilliseconds,
-                    result.PreviewGenerationMilliseconds,
-                    result.StatisticsMilliseconds,
-                    FormatObjectDetectionFrequencyVerticalStretch(
-                        result.VerticalStretchPercent));
-                if (objectDetectionFrequencyStatusLabel != null)
-                {
-                    objectDetectionFrequencyStatusLabel.Text = summary;
-                }
+                string summary = UpdateObjectDetectionFrequencyResultSummary(result);
                 if (statusLabel != null)
                 {
                     statusLabel.Text = string.Format(
@@ -1246,16 +1440,20 @@ namespace IntegratedImageProcessingApp.Forms
                         long objectScannedWindowCount = 0;
                         var usedWindows = new HashSet<long>();
                         Stopwatch cellLoopStopwatch = Stopwatch.StartNew();
-                        foreach (int y in yStarts)
+                        for (int gridRow = 0; gridRow < yStarts.Count; gridRow++)
                         {
                             cancellationToken.ThrowIfCancellationRequested();
-                            foreach (int x in xStarts)
+                            int y = yStarts[gridRow];
+                            for (int gridColumn = 0; gridColumn < xStarts.Count; gridColumn++)
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
+                                int x = xStarts[gridColumn];
                                 objectScannedWindowCount++;
                                 int windowX;
                                 int windowY;
                                 double energy;
+                                double meanGray;
+                                double lowerQuartileBlockMean;
                                 if (!TryFindObjectDetectionFrequencyWindow(
                                     workspace,
                                     x,
@@ -1265,7 +1463,9 @@ namespace IntegratedImageProcessingApp.Forms
                                     usedWindows,
                                     out windowX,
                                     out windowY,
-                                    out energy))
+                                    out energy,
+                                    out meanGray,
+                                    out lowerQuartileBlockMean))
                                 {
                                     continue;
                                 }
@@ -1291,6 +1491,10 @@ namespace IntegratedImageProcessingApp.Forms
                                     Bounds = cellBounds,
                                     ValidBounds = validBounds,
                                     ImageCorners = cellCorners,
+                                    GridColumn = gridColumn,
+                                    GridRow = gridRow,
+                                    MeanGray = meanGray,
+                                    LowerQuartileBlockMean = lowerQuartileBlockMean,
                                     Energy = energy
                                 });
                             }
@@ -1400,6 +1604,228 @@ namespace IntegratedImageProcessingApp.Forms
             statisticsStopwatch.Stop();
             result.StatisticsMilliseconds = statisticsStopwatch.ElapsedMilliseconds;
             return result;
+        }
+
+        private void CalculateObjectDetectionFrequencyNeighborComparison(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDetectionFrequencyResult result,
+            bool includeIndependentCoreDefects)
+        {
+            if (parameter == null || result == null || result.Cells == null)
+            {
+                return;
+            }
+
+            result.NeighborSensitivity = Math.Max(1.0, Math.Min(
+                10.0,
+                parameter.DefectFrequencyNeighborSensitivity));
+            result.NeighborReferenceRadius = Math.Max(2, Math.Min(
+                20,
+                parameter.DefectFrequencyNeighborReferenceRadius));
+            result.NeighborReferenceCellCount = 0;
+            result.NeighborEvaluatedCellCount = 0;
+            foreach (ObjectDetectionFrequencyCell cell in result.Cells)
+            {
+                cell.NeighborReferenceGray = 0;
+                cell.NeighborDeltaGray = 0;
+                cell.NeighborReferenceLowerQuartile = 0;
+                cell.NeighborDarkDeltaGray = 0;
+                cell.NeighborScore = 0;
+                cell.IsNeighborAnomaly = false;
+                cell.IsHealthyReference = false;
+                cell.HasIndependentCoreDefect = false;
+            }
+            if (!parameter.DefectFrequencyNeighborComparisonEnabled)
+            {
+                return;
+            }
+
+            if (includeIndependentCoreDefects)
+            {
+                EnsureObjectDetectionDefectCores(parameter);
+                const int bucketSize = 512;
+                var independentDefectsByObject =
+                    new Dictionary<int, Dictionary<long, List<ObjectDetectionDefectContour>>>();
+                foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
+                    .Take(ObjectDetectionDefectCoreKeys.Length)
+                    .Where(item => item != null && item.Enabled))
+                {
+                    ObjectDetectionDefectCoreResult coreResult;
+                    if (TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out coreResult) &&
+                        coreResult.Contours != null)
+                    {
+                        foreach (ObjectDetectionDefectContour contour in coreResult.Contours)
+                        {
+                            if (contour == null || contour.ObjectNumber <= 0)
+                            {
+                                continue;
+                            }
+                            Rectangle bounds = Rectangle.Ceiling(contour.Bounds);
+                            if (bounds.Width <= 0 || bounds.Height <= 0)
+                            {
+                                continue;
+                            }
+                            Dictionary<long, List<ObjectDetectionDefectContour>> objectBuckets;
+                            if (!independentDefectsByObject.TryGetValue(
+                                contour.ObjectNumber,
+                                out objectBuckets))
+                            {
+                                objectBuckets = new Dictionary<long, List<ObjectDetectionDefectContour>>();
+                                independentDefectsByObject.Add(contour.ObjectNumber, objectBuckets);
+                            }
+                            int firstBucketX = (int)Math.Floor(bounds.Left / (double)bucketSize);
+                            int lastBucketX = (int)Math.Floor((bounds.Right - 1) / (double)bucketSize);
+                            int firstBucketY = (int)Math.Floor(bounds.Top / (double)bucketSize);
+                            int lastBucketY = (int)Math.Floor((bounds.Bottom - 1) / (double)bucketSize);
+                            for (int bucketY = firstBucketY; bucketY <= lastBucketY; bucketY++)
+                            {
+                                for (int bucketX = firstBucketX; bucketX <= lastBucketX; bucketX++)
+                                {
+                                    long key = GetObjectDetectionFrequencySpatialBucketKey(bucketX, bucketY);
+                                    List<ObjectDetectionDefectContour> bucket;
+                                    if (!objectBuckets.TryGetValue(key, out bucket))
+                                    {
+                                        bucket = new List<ObjectDetectionDefectContour>();
+                                        objectBuckets.Add(key, bucket);
+                                    }
+                                    bucket.Add(contour);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                foreach (ObjectDetectionFrequencyCell cell in result.Cells)
+                {
+                    Dictionary<long, List<ObjectDetectionDefectContour>> objectBuckets;
+                    if (!independentDefectsByObject.TryGetValue(cell.ObjectNumber, out objectBuckets))
+                    {
+                        continue;
+                    }
+                    int firstBucketX = (int)Math.Floor(cell.ValidBounds.Left / (double)bucketSize);
+                    int lastBucketX = (int)Math.Floor((cell.ValidBounds.Right - 1) / (double)bucketSize);
+                    int firstBucketY = (int)Math.Floor(cell.ValidBounds.Top / (double)bucketSize);
+                    int lastBucketY = (int)Math.Floor((cell.ValidBounds.Bottom - 1) / (double)bucketSize);
+                    var candidates = new HashSet<ObjectDetectionDefectContour>();
+                    for (int bucketY = firstBucketY; bucketY <= lastBucketY; bucketY++)
+                    {
+                        for (int bucketX = firstBucketX; bucketX <= lastBucketX; bucketX++)
+                        {
+                            List<ObjectDetectionDefectContour> bucket;
+                            if (objectBuckets.TryGetValue(
+                                GetObjectDetectionFrequencySpatialBucketKey(bucketX, bucketY),
+                                out bucket))
+                            {
+                                candidates.UnionWith(bucket);
+                            }
+                        }
+                    }
+                    cell.HasIndependentCoreDefect = candidates.Any(contour =>
+                        cell.ValidBounds.IntersectsWith(Rectangle.Ceiling(contour.Bounds)));
+                }
+            }
+
+            var usedReferenceCells = new HashSet<ObjectDetectionFrequencyCell>();
+            foreach (IGrouping<int, ObjectDetectionFrequencyCell> objectCells in result.Cells
+                .GroupBy(cell => cell.ObjectNumber))
+            {
+                var cellsByGrid = objectCells.ToDictionary(
+                    cell => ((long)cell.GridRow << 32) | (uint)cell.GridColumn,
+                    cell => cell);
+                foreach (ObjectDetectionFrequencyCell cell in objectCells)
+                {
+                    var references = new List<ObjectDetectionFrequencyCell>();
+                    for (int rowOffset = -result.NeighborReferenceRadius;
+                        rowOffset <= result.NeighborReferenceRadius;
+                        rowOffset++)
+                    {
+                        int row = cell.GridRow + rowOffset;
+                        if (row < 0)
+                        {
+                            continue;
+                        }
+                        for (int columnOffset = -result.NeighborReferenceRadius;
+                            columnOffset <= result.NeighborReferenceRadius;
+                            columnOffset++)
+                        {
+                            if (Math.Abs(rowOffset) < 2 && Math.Abs(columnOffset) < 2)
+                            {
+                                continue;
+                            }
+                            int column = cell.GridColumn + columnOffset;
+                            if (column < 0)
+                            {
+                                continue;
+                            }
+                            ObjectDetectionFrequencyCell reference;
+                            long key = ((long)row << 32) | (uint)column;
+                            if (!cellsByGrid.TryGetValue(key, out reference) ||
+                                reference.IsAnomaly || reference.HasIndependentCoreDefect)
+                            {
+                                continue;
+                            }
+                            references.Add(reference);
+                        }
+                    }
+
+                    if (references.Count < 4)
+                    {
+                        continue;
+                    }
+                    references = references
+                        .OrderBy(reference => Math.Max(
+                            Math.Abs(reference.GridColumn - cell.GridColumn),
+                            Math.Abs(reference.GridRow - cell.GridRow)))
+                        .Take(24)
+                        .ToList();
+                    if (references.Count < 4)
+                    {
+                        continue;
+                    }
+
+                    double referenceMean = CalculateObjectDetectionFrequencyMedian(
+                        references.Select(reference => reference.MeanGray).ToList());
+                    double meanScale = CalculateObjectDetectionFrequencyRobustScale(
+                        references.Select(reference => reference.MeanGray).ToList(),
+                        referenceMean);
+                    double referenceLowerQuartile = CalculateObjectDetectionFrequencyMedian(
+                        references.Select(reference => reference.LowerQuartileBlockMean).ToList());
+                    double lowerQuartileScale = CalculateObjectDetectionFrequencyRobustScale(
+                        references.Select(reference => reference.LowerQuartileBlockMean).ToList(),
+                        referenceLowerQuartile);
+                    cell.NeighborReferenceGray = referenceMean;
+                    cell.NeighborDeltaGray = cell.MeanGray - referenceMean;
+                    cell.NeighborReferenceLowerQuartile = referenceLowerQuartile;
+                    cell.NeighborDarkDeltaGray = referenceLowerQuartile -
+                        cell.LowerQuartileBlockMean;
+                    double meanScore = Math.Abs(cell.NeighborDeltaGray) / meanScale;
+                    double darkSubBlockScore = Math.Max(0, cell.NeighborDarkDeltaGray) /
+                        lowerQuartileScale;
+                    cell.NeighborScore = Math.Max(meanScore, darkSubBlockScore);
+                    cell.IsNeighborAnomaly = cell.NeighborScore >= result.NeighborSensitivity;
+                    result.NeighborEvaluatedCellCount++;
+                    foreach (ObjectDetectionFrequencyCell reference in references)
+                    {
+                        reference.IsHealthyReference = true;
+                        usedReferenceCells.Add(reference);
+                    }
+                }
+            }
+            result.NeighborReferenceCellCount = usedReferenceCells.Count;
+        }
+
+        private static long GetObjectDetectionFrequencySpatialBucketKey(int x, int y)
+        {
+            return ((long)y << 32) | (uint)x;
+        }
+
+        private static double CalculateObjectDetectionFrequencyRobustScale(
+            List<double> values,
+            double median)
+        {
+            double medianAbsoluteDeviation = CalculateObjectDetectionFrequencyMedian(
+                values.Select(value => Math.Abs(value - median)).ToList());
+            return Math.Max(2.0, medianAbsoluteDeviation * 1.4826);
         }
 
         private static Cv.Mat CreateObjectDetectionFrequencyContrastMat(
@@ -1531,11 +1957,15 @@ namespace IntegratedImageProcessingApp.Forms
             HashSet<long> usedWindows,
             out int windowX,
             out int windowY,
-            out double energy)
+            out double energy,
+            out double meanGray,
+            out double lowerQuartileBlockMean)
         {
             windowX = 0;
             windowY = 0;
             energy = 0.0;
+            meanGray = 0.0;
+            lowerQuartileBlockMean = 0.0;
             if (workspace == null || usedWindows == null)
             {
                 return false;
@@ -1580,7 +2010,9 @@ namespace IntegratedImageProcessingApp.Forms
                         candidate.X,
                         candidate.Y,
                         windowSize,
-                        out energy))
+                        out energy,
+                        out meanGray,
+                        out lowerQuartileBlockMean))
                     {
                         continue;
                     }
@@ -1599,9 +2031,13 @@ namespace IntegratedImageProcessingApp.Forms
             int startX,
             int startY,
             int windowSize,
-            out double energy)
+            out double energy,
+            out double meanGray,
+            out double lowerQuartileBlockMean)
         {
             energy = 0.0;
+            meanGray = 0.0;
+            lowerQuartileBlockMean = 0.0;
             if (workspace == null || windowSize <= 0 || startX < 0 || startY < 0 ||
                 windowSize != workspace.WindowWidth ||
                 startX > workspace.ImageWidth - windowSize ||
@@ -1613,7 +2049,6 @@ namespace IntegratedImageProcessingApp.Forms
             byte* image = (byte*)workspace.ImageData.ToPointer();
             byte* mask = (byte*)workspace.MaskData.ToPointer();
             byte* hannBytes = (byte*)workspace.HannData.ToPointer();
-            double pixelSum = 0.0;
             for (int row = 0; row < windowSize; row++)
             {
                 byte* imageRow = image + (long)(startY + row) * workspace.ImageStep + startX;
@@ -1623,10 +2058,6 @@ namespace IntegratedImageProcessingApp.Forms
                     if (maskRow[column] == 0)
                     {
                         return false;
-                    }
-                    if (workspace.VerticalStretchPercent == 100)
-                    {
-                        pixelSum += imageRow[column];
                     }
                 }
             }
@@ -1658,17 +2089,41 @@ namespace IntegratedImageProcessingApp.Forms
                     energyWidth = workspace.WindowWidth;
                     energyHeight = workspace.WindowHeight;
                     validPixels = energyWidth * energyHeight;
-                    for (int row = 0; row < energyHeight; row++)
+                }
+
+                int blockColumns = Math.Min(4, energyWidth);
+                int blockRows = Math.Min(4, energyHeight);
+                var blockSums = new double[blockColumns * blockRows];
+                var blockCounts = new int[blockSums.Length];
+                double pixelSum = 0.0;
+                for (int row = 0; row < energyHeight; row++)
+                {
+                    byte* imageRow = energyImage + (long)row * energyImageStep;
+                    int blockRow = Math.Min(blockRows - 1, row * blockRows / energyHeight);
+                    for (int column = 0; column < energyWidth; column++)
                     {
-                        byte* imageRow = energyImage + (long)row * energyImageStep;
-                        for (int column = 0; column < energyWidth; column++)
-                        {
-                            pixelSum += imageRow[column];
-                        }
+                        int blockColumn = Math.Min(blockColumns - 1, column * blockColumns / energyWidth);
+                        int blockIndex = blockRow * blockColumns + blockColumn;
+                        byte value = imageRow[column];
+                        pixelSum += value;
+                        blockSums[blockIndex] += value;
+                        blockCounts[blockIndex]++;
                     }
                 }
 
                 float mean = (float)(pixelSum / validPixels);
+                meanGray = mean;
+                var blockMeans = new List<double>(blockSums.Length);
+                for (int index = 0; index < blockSums.Length; index++)
+                {
+                    if (blockCounts[index] > 0)
+                    {
+                        blockMeans.Add(blockSums[index] / blockCounts[index]);
+                    }
+                }
+                blockMeans.Sort();
+                int lowerQuartileCount = Math.Max(1, (int)Math.Ceiling(blockMeans.Count * 0.25));
+                lowerQuartileBlockMean = blockMeans.Take(lowerQuartileCount).Average();
                 double squaredEnergySum = 0.0;
                 for (int row = 0; row < energyHeight; row++)
                 {
@@ -1714,12 +2169,57 @@ namespace IntegratedImageProcessingApp.Forms
                 : values[middle];
         }
 
+        private string UpdateObjectDetectionFrequencyResultSummary(
+            ObjectDetectionFrequencyResult result)
+        {
+            if (result == null || objectDetectionFrequencyStatusLabel == null)
+            {
+                return string.Empty;
+            }
+            int anomalyCount = result.Cells == null
+                ? 0
+                : result.Cells.Count(cell => cell.IsAnomaly);
+            int neighborAnomalyCount = result.Cells == null
+                ? 0
+                : result.Cells.Count(cell => cell.IsNeighborAnomaly);
+            string summary = string.Format(
+                CultureInfo.CurrentCulture,
+                "ROI {0}；掃描 {1:N0} 格（有效 {2:N0}），能量可疑 {3:N0}、鄰格可疑 {11:N0}；分析格垂直 {10}\r\n運算總耗時 {4:N0} ms；來源準備 {5:N0} ms，掃描 {6:N0} ms\r\nROI 格迴圈累計 {7:N0} ms；預覽累計 {8:N0} ms；統計 {9:N0} ms；鄰格比較 {12:N0} ms",
+                result.CellsByObject == null ? 0 : result.CellsByObject.Count,
+                result.ScannedWindowCount,
+                result.Cells == null ? 0 : result.Cells.Count,
+                anomalyCount,
+                result.TotalElapsedMilliseconds,
+                result.SourcePreparationMilliseconds,
+                result.ElapsedMilliseconds,
+                result.CellLoopMilliseconds,
+                result.PreviewGenerationMilliseconds,
+                result.StatisticsMilliseconds,
+                FormatObjectDetectionFrequencyVerticalStretch(result.VerticalStretchPercent),
+                neighborAnomalyCount,
+                result.NeighborComparisonMilliseconds);
+            objectDetectionFrequencyStatusLabel.Text = summary;
+            return summary;
+        }
+
         private string CreateObjectDetectionFrequencySignature(
             ObjectDetectionParameterSettings parameter,
             string definitionSignature,
             int imageGeneration,
             int flatFieldGeneration)
         {
+            string neighborCoreSignatures = string.Empty;
+            if (parameter.DefectFrequencyNeighborComparisonEnabled)
+            {
+                EnsureObjectDetectionDefectCores(parameter);
+                neighborCoreSignatures = string.Join(";", parameter.DefectDetectionCores
+                    .Take(ObjectDetectionDefectCoreKeys.Length)
+                    .Where(core => core != null && core.Enabled)
+                    .Select(core => CreateObjectDetectionDefectCoreSignature(
+                        parameter,
+                        core,
+                        definitionSignature)));
+            }
             return string.Join("|", new[]
             {
                 parameter.Id ?? string.Empty,
@@ -1735,6 +2235,10 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencyVerticalStretchPercent.ToString(CultureInfo.InvariantCulture),
                 parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyNeighborComparisonEnabled ? "1" : "0",
+                parameter.DefectFrequencyNeighborReferenceRadius.ToString(CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyNeighborSensitivity.ToString("R", CultureInfo.InvariantCulture),
+                neighborCoreSignatures,
                 parameter.DefectFrequencyContrastEnabled ? "1" : "0",
                 parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
@@ -1841,7 +2345,11 @@ namespace IntegratedImageProcessingApp.Forms
 
             bool showHeatmap = parameter.DefectFrequencyShowHeatmap;
             bool showBoxes = parameter.DefectFrequencyShowAnomalyBoxes;
+            bool showNeighborHeatmap = parameter.DefectFrequencyShowNeighborHeatmap;
+            bool showNeighborBoxes = parameter.DefectFrequencyShowNeighborAnomalyBoxes;
+            bool showHealthyReferenceCells = parameter.DefectFrequencyShowHealthyReferenceCells;
             int[] heatmapAlpha = { 16, 24, 32, 40, 48 };
+            int[] neighborHeatmapAlpha = { 18, 28, 40, 54, 70 };
             var highEnergyBrushes = new SolidBrush[heatmapAlpha.Length];
             var lowEnergyBrushes = new SolidBrush[heatmapAlpha.Length];
             for (int index = 0; index < heatmapAlpha.Length; index++)
@@ -1851,8 +2359,21 @@ namespace IntegratedImageProcessingApp.Forms
                 lowEnergyBrushes[index] = new SolidBrush(
                     Color.FromArgb(heatmapAlpha[index], 50, 145, 255));
             }
-            using (var anomalyOutline = new Pen(Color.OrangeRed, Math.Max(1.0f, Math.Min(3.0f, zoom * 1.5f))))
+            var darkNeighborBrushes = new SolidBrush[neighborHeatmapAlpha.Length];
+            var brightNeighborBrushes = new SolidBrush[neighborHeatmapAlpha.Length];
+            for (int index = 0; index < neighborHeatmapAlpha.Length; index++)
             {
+                darkNeighborBrushes[index] = new SolidBrush(
+                    Color.FromArgb(neighborHeatmapAlpha[index], 235, 55, 145));
+                brightNeighborBrushes[index] = new SolidBrush(
+                    Color.FromArgb(neighborHeatmapAlpha[index], 255, 155, 35));
+            }
+            using (var anomalyOutline = new Pen(Color.OrangeRed, Math.Max(1.0f, Math.Min(3.0f, zoom * 1.5f))))
+            using (var darkNeighborOutline = new Pen(Color.DeepPink, Math.Max(1.2f, Math.Min(3.5f, zoom * 1.7f))))
+            using (var brightNeighborOutline = new Pen(Color.Gold, Math.Max(1.2f, Math.Min(3.5f, zoom * 1.7f))))
+            using (var referenceOutline = new Pen(Color.FromArgb(150, 0, 115, 125), Math.Max(1.0f, Math.Min(2.0f, zoom))))
+            {
+                referenceOutline.DashStyle = DashStyle.Dash;
                 try
                 {
                     foreach (KeyValuePair<int, List<ObjectDetectionFrequencyCell>> objectEntry in
@@ -1905,9 +2426,33 @@ namespace IntegratedImageProcessingApp.Forms
                                             : lowEnergyBrushes[level];
                                         graphics.FillPolygon(fill, screenCellPolygon);
                                     }
+                                    if (showNeighborHeatmap && cell.NeighborScore >= 1.0)
+                                    {
+                                        int level = (int)Math.Floor(
+                                            cell.NeighborScore / Math.Max(1.0, result.NeighborSensitivity) *
+                                            neighborHeatmapAlpha.Length);
+                                        level = Math.Max(0, Math.Min(neighborHeatmapAlpha.Length - 1, level));
+                                        bool darkDeviation = cell.NeighborDeltaGray < 0 ||
+                                            cell.NeighborDarkDeltaGray > 0;
+                                        graphics.FillPolygon(
+                                            darkDeviation ? darkNeighborBrushes[level] : brightNeighborBrushes[level],
+                                            screenCellPolygon);
+                                    }
+                                    if (showHealthyReferenceCells && cell.IsHealthyReference)
+                                    {
+                                        graphics.DrawPolygon(referenceOutline, screenCellPolygon);
+                                    }
                                     if (showBoxes && cell.IsAnomaly)
                                     {
                                         graphics.DrawPolygon(anomalyOutline, screenCellPolygon);
+                                    }
+                                    if (showNeighborBoxes && cell.IsNeighborAnomaly)
+                                    {
+                                        graphics.DrawPolygon(
+                                            cell.NeighborDeltaGray < 0 || cell.NeighborDarkDeltaGray > 0
+                                                ? darkNeighborOutline
+                                                : brightNeighborOutline,
+                                            screenCellPolygon);
                                     }
                                 }
                             }
@@ -1925,6 +2470,14 @@ namespace IntegratedImageProcessingApp.Forms
                         brush.Dispose();
                     }
                     foreach (SolidBrush brush in lowEnergyBrushes)
+                    {
+                        brush.Dispose();
+                    }
+                    foreach (SolidBrush brush in darkNeighborBrushes)
+                    {
+                        brush.Dispose();
+                    }
+                    foreach (SolidBrush brush in brightNeighborBrushes)
                     {
                         brush.Dispose();
                     }

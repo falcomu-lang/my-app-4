@@ -1210,7 +1210,9 @@ namespace IntegratedImageProcessingApp.Forms
                         cancellationToken,
                         capturedRecipeGeneration,
                         capturedImageGeneration));
-                bool includeFrequency = IsObjectDetectionDefectFrequencyIntegrationRequired(parameter);
+                bool includeFrequency = parameter.DefectFrequencyEnabled &&
+                    (parameter.DefectIntegrationIncludeFrequency ||
+                        parameter.DefectFrequencyNeighborComparisonEnabled);
                 ObjectDetectionFrequencyResult frequencyResult;
                 bool frequencyAlreadyReady = !includeFrequency ||
                     !settingsChangedSinceLastSuccessfulRun &&
@@ -1238,7 +1240,10 @@ namespace IntegratedImageProcessingApp.Forms
                     };
                     if (includeFrequency && !frequencyAlreadyReady)
                     {
-                        defectTasks.Add(RunObjectDetectionFrequencyAnalysisAsync(parameter.Id, true));
+                        defectTasks.Add(RunObjectDetectionFrequencyAnalysisAsync(
+                            parameter.Id,
+                            true,
+                            includeIndependentCoreDefects: false));
                     }
                     await Task.WhenAll(defectTasks);
                     EnsureDetectionRecipeGenerationIsCurrent(
@@ -1291,7 +1296,10 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             objectDetectionResultReviewStatusLabel.Text =
                                 "一般缺陷條件完成，正在執行納入整合的頻域異常分析...";
-                            await RunObjectDetectionFrequencyAnalysisAsync(parameter.Id, true);
+                            await RunObjectDetectionFrequencyAnalysisAsync(
+                                parameter.Id,
+                                true,
+                                includeIndependentCoreDefects: false);
                             EnsureDetectionRecipeGenerationIsCurrent(
                                 capturedRecipeGeneration,
                                 cancellationToken);
@@ -1311,6 +1319,31 @@ namespace IntegratedImageProcessingApp.Forms
                         leftImageTabControl.SelectedTab =
                             objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
                         InvalidateObjectDetectionDefectIntegrationDisplay();
+                    }
+                }
+
+                if (includeFrequency && parameter.DefectFrequencyNeighborComparisonEnabled &&
+                    TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult))
+                {
+                    Stopwatch neighborComparisonStopwatch = Stopwatch.StartNew();
+                    CalculateObjectDetectionFrequencyNeighborComparison(
+                        parameter,
+                        frequencyResult,
+                        true);
+                    neighborComparisonStopwatch.Stop();
+                    frequencyResult.NeighborComparisonMilliseconds +=
+                        neighborComparisonStopwatch.ElapsedMilliseconds;
+                    frequencyResult.TotalElapsedMilliseconds +=
+                        neighborComparisonStopwatch.ElapsedMilliseconds;
+                    UpdateObjectDetectionFrequencyResultSummary(frequencyResult);
+                    InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
+                    RefreshObjectDetectionDefectIntegrationResults(parameter);
+                    InvalidateObjectDetectionDefectIntegrationDisplay();
+                    ImageDisplayControl frequencyDisplay = GetObjectDetectionDefectDisplayControl(
+                        ObjectDetectionDefectFrequencyDisplayIndex);
+                    if (frequencyDisplay != null)
+                    {
+                        frequencyDisplay.InvalidateImageView();
                     }
                 }
 
@@ -2209,21 +2242,33 @@ namespace IntegratedImageProcessingApp.Forms
                     "OpenCV 元件數：" + componentCount.ToString("N0", CultureInfo.CurrentCulture));
             }
 
-            if (parameter.DefectIntegrationIncludeFrequency)
+            if (parameter.DefectIntegrationIncludeFrequency ||
+                parameter.DefectFrequencyNeighborComparisonEnabled)
             {
                 if (!parameter.DefectFrequencyEnabled)
                 {
                     objectDetectionResultReviewDefectsGrid.Rows.Add(
-                        "頻域異常", "-", "-", "未啟用", "頻域分析已停用，未納入整合");
+                        "頻域異常", "-", "-", "未啟用", "頻域分析已停用，未產生掃描結果");
                 }
                 else
                 {
                     ObjectDetectionFrequencyResult frequencyResult;
                     if (TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult))
                     {
-                        int anomalyCount = frequencyResult.Cells == null
+                        int energyAnomalyCount = frequencyResult.Cells == null
                             ? 0
                             : frequencyResult.Cells.Count(cell => cell != null && cell.IsAnomaly &&
+                                (!selectedObjectNumber.HasValue ||
+                                    cell.ObjectNumber == selectedObjectNumber.Value));
+                        int neighborAnomalyCount = frequencyResult.Cells == null
+                            ? 0
+                            : frequencyResult.Cells.Count(cell => cell != null && cell.IsNeighborAnomaly &&
+                                (!selectedObjectNumber.HasValue ||
+                                    cell.ObjectNumber == selectedObjectNumber.Value));
+                        int anomalyCount = frequencyResult.Cells == null
+                            ? 0
+                            : frequencyResult.Cells.Count(cell => cell != null &&
+                                (cell.IsAnomaly || cell.IsNeighborAnomaly) &&
                                 (!selectedObjectNumber.HasValue ||
                                     cell.ObjectNumber == selectedObjectNumber.Value));
                         objectDetectionResultReviewDefectsGrid.Rows.Add(
@@ -2233,7 +2278,9 @@ namespace IntegratedImageProcessingApp.Forms
                                 ? (object)"-"
                                 : frequencyResult.TotalElapsedMilliseconds,
                             anomalyCount > 0 ? "檢出異常格" : "未檢出",
-                            "異常掃描格數；依合併距離轉為整合區域");
+                            "能量異常 " + energyAnomalyCount.ToString("N0", CultureInfo.CurrentCulture) +
+                            " 格；鄰格比較 " + neighborAnomalyCount.ToString("N0", CultureInfo.CurrentCulture) +
+                            " 格；僅勾選納入頻域異常時才併入整合結果");
                     }
                     else
                     {

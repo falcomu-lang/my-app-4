@@ -504,7 +504,9 @@ namespace IntegratedImageProcessingApp.Forms
                 if (frequencyResult.Cells != null)
                 {
                     candidates.AddRange(frequencyResult.Cells
-                        .Where(cell => cell != null && cell.IsAnomaly && cell.ObjectNumber > 0)
+                        .Where(cell => cell != null &&
+                            (cell.IsAnomaly || cell.IsNeighborAnomaly) &&
+                            cell.ObjectNumber > 0)
                         .Select(cell => new ObjectDetectionDefectIntegrationCandidate
                         {
                             CoreKey = "Frequency",
