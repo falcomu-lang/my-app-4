@@ -446,9 +446,9 @@ namespace IntegratedImageProcessingApp.Forms
             var neighborGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 101,
+                Height = 108,
                 Text = "鄰近良品基準比較",
-                Padding = new Padding(8, 16, 8, 4)
+                Padding = new Padding(8, 4, 8, 4)
             };
             var neighborLayout = new TableLayoutPanel
             {
@@ -460,9 +460,9 @@ namespace IntegratedImageProcessingApp.Forms
             };
             neighborLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
             neighborLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
-            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
-            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
-            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
             objectDetectionFrequencyNeighborEnabledCheckBox = new CheckBox
             {
                 AutoSize = true,
@@ -503,49 +503,59 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionFrequencyEnabledCheckBox.Checked);
             };
 
-            var displayOptions = new FlowLayoutPanel
+            var displayOptions = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 36,
-                FlowDirection = FlowDirection.LeftToRight,
-                WrapContents = true,
-                Padding = new Padding(5, 6, 0, 0),
+                Height = 72,
+                ColumnCount = 2,
+                RowCount = 3,
+                Padding = new Padding(5, 2, 0, 2),
                 Margin = Padding.Empty
             };
+            displayOptions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            displayOptions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+            displayOptions.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+            displayOptions.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+            displayOptions.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
             objectDetectionFrequencyShowHeatmapCheckBox = new CheckBox
             {
                 AutoSize = true,
+                Anchor = AnchorStyles.Left,
                 Text = "顯示能量熱圖",
                 Checked = parameter.DefectFrequencyShowHeatmap,
-                Margin = new Padding(2, 1, 14, 1)
+                Margin = new Padding(2, 1, 2, 1)
             };
             objectDetectionFrequencyShowBoxesCheckBox = new CheckBox
             {
                 AutoSize = true,
+                Anchor = AnchorStyles.Left,
                 Text = "顯示異常框",
                 Checked = parameter.DefectFrequencyShowAnomalyBoxes,
-                Margin = new Padding(2, 1, 0, 1)
+                Margin = new Padding(2, 1, 2, 1)
             };
             objectDetectionFrequencyShowNeighborHeatmapCheckBox = new CheckBox
             {
                 AutoSize = true,
+                Anchor = AnchorStyles.Left,
                 Text = "顯示鄰格熱圖",
                 Checked = parameter.DefectFrequencyShowNeighborHeatmap,
-                Margin = new Padding(2, 1, 14, 1)
+                Margin = new Padding(2, 1, 2, 1)
             };
             objectDetectionFrequencyShowNeighborBoxesCheckBox = new CheckBox
             {
                 AutoSize = true,
+                Anchor = AnchorStyles.Left,
                 Text = "顯示鄰格異常框",
                 Checked = parameter.DefectFrequencyShowNeighborAnomalyBoxes,
-                Margin = new Padding(2, 1, 14, 1)
+                Margin = new Padding(2, 1, 2, 1)
             };
             objectDetectionFrequencyShowReferenceCellsCheckBox = new CheckBox
             {
                 AutoSize = true,
+                Anchor = AnchorStyles.Left,
                 Text = "顯示健康參考格",
                 Checked = parameter.DefectFrequencyShowHealthyReferenceCells,
-                Margin = new Padding(2, 1, 0, 1)
+                Margin = new Padding(2, 1, 2, 1)
             };
             objectDetectionFrequencyShowHeatmapCheckBox.CheckedChanged += delegate
             {
@@ -567,12 +577,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 UpdateObjectDetectionFrequencyDisplayOptions(parameter);
             };
-            displayOptions.Controls.Add(objectDetectionFrequencyShowHeatmapCheckBox);
-            displayOptions.Controls.Add(objectDetectionFrequencyShowBoxesCheckBox);
-            displayOptions.Controls.Add(objectDetectionFrequencyShowNeighborHeatmapCheckBox);
-            displayOptions.Controls.Add(objectDetectionFrequencyShowNeighborBoxesCheckBox);
-            displayOptions.Controls.Add(objectDetectionFrequencyShowReferenceCellsCheckBox);
-            displayOptions.Height = 62;
+            displayOptions.Controls.Add(objectDetectionFrequencyShowHeatmapCheckBox, 0, 0);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowBoxesCheckBox, 1, 0);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowNeighborHeatmapCheckBox, 0, 1);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowNeighborBoxesCheckBox, 1, 1);
+            displayOptions.Controls.Add(objectDetectionFrequencyShowReferenceCellsCheckBox, 0, 2);
 
             objectDetectionFrequencyStatusLabel = new Label
             {
