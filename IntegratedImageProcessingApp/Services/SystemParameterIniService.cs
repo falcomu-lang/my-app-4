@@ -767,6 +767,40 @@ namespace IntegratedImageProcessingApp.Services
                         1.0,
                         0.1,
                         5.0),
+                    DefectFrequencyPreprocessMethod = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyPreprocessMethod",
+                        "None"),
+                    DefectFrequencyGaussianKernelWidth = NormalizeOddKernelSize(GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyGaussianKernelWidth",
+                        3), 1),
+                    DefectFrequencyGaussianKernelHeight = NormalizeOddKernelSize(GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyGaussianKernelHeight",
+                        3), 1),
+                    DefectFrequencyGaussianSigmaX = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyGaussianSigmaX",
+                        0,
+                        0,
+                        100),
+                    DefectFrequencyGaussianSigmaY = GetClampedFiniteDouble(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyGaussianSigmaY",
+                        0,
+                        0,
+                        100),
+                    DefectFrequencyMedianKernelSize = NormalizeOddKernelSize(GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyMedianKernelSize",
+                        3), 3),
                     DefectFrequencyNeighborComparisonEnabled = GetBool(
                         sections,
                         SectionObjectDetection,
@@ -1222,6 +1256,12 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyContrastEnabled={1}", prefix, parameter.DefectFrequencyContrastEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyContrastGain={1}", prefix, parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyPreprocessMethod={1}", prefix, Escape(parameter.DefectFrequencyPreprocessMethod));
+                    writer.WriteLine("{0}.DefectFrequencyGaussianKernelWidth={1}", prefix, parameter.DefectFrequencyGaussianKernelWidth.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyGaussianKernelHeight={1}", prefix, parameter.DefectFrequencyGaussianKernelHeight.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyGaussianSigmaX={1}", prefix, parameter.DefectFrequencyGaussianSigmaX.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyGaussianSigmaY={1}", prefix, parameter.DefectFrequencyGaussianSigmaY.ToString("R", CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyMedianKernelSize={1}", prefix, parameter.DefectFrequencyMedianKernelSize.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyNeighborComparisonEnabled={1}", prefix, parameter.DefectFrequencyNeighborComparisonEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyNeighborReferenceRadius={1}", prefix, parameter.DefectFrequencyNeighborReferenceRadius.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyNeighborSensitivity={1}", prefix, parameter.DefectFrequencyNeighborSensitivity.ToString("R", CultureInfo.InvariantCulture));

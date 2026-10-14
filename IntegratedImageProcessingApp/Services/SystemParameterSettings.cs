@@ -468,6 +468,12 @@ namespace IntegratedImageProcessingApp.Services
             DefectFrequencySensitivity = 3.0;
             DefectFrequencyContrastEnabled = true;
             DefectFrequencyContrastGain = 1.0;
+            DefectFrequencyPreprocessMethod = "None";
+            DefectFrequencyGaussianKernelWidth = 3;
+            DefectFrequencyGaussianKernelHeight = 3;
+            DefectFrequencyGaussianSigmaX = 0;
+            DefectFrequencyGaussianSigmaY = 0;
+            DefectFrequencyMedianKernelSize = 3;
             DefectFrequencyNeighborComparisonEnabled = false;
             DefectFrequencyNeighborReferenceRadius = 8;
             DefectFrequencyNeighborSensitivity = 3.0;
@@ -673,6 +679,18 @@ namespace IntegratedImageProcessingApp.Services
         public bool DefectFrequencyContrastEnabled { get; set; }
 
         public double DefectFrequencyContrastGain { get; set; }
+
+        public string DefectFrequencyPreprocessMethod { get; set; }
+
+        public int DefectFrequencyGaussianKernelWidth { get; set; }
+
+        public int DefectFrequencyGaussianKernelHeight { get; set; }
+
+        public double DefectFrequencyGaussianSigmaX { get; set; }
+
+        public double DefectFrequencyGaussianSigmaY { get; set; }
+
+        public int DefectFrequencyMedianKernelSize { get; set; }
 
         public bool DefectFrequencyNeighborComparisonEnabled { get; set; }
 

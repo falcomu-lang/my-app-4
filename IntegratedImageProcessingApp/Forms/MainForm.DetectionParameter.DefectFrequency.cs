@@ -245,6 +245,13 @@ namespace IntegratedImageProcessingApp.Forms
         private NumericUpDown objectDetectionFrequencySensitivityInput;
         private CheckBox objectDetectionFrequencyContrastEnabledCheckBox;
         private NumericUpDown objectDetectionFrequencyContrastGainInput;
+        private GroupBox objectDetectionFrequencyPreprocessingGroup;
+        private ComboBox objectDetectionFrequencyPreprocessMethodComboBox;
+        private NumericUpDown objectDetectionFrequencyGaussianKernelWidthInput;
+        private NumericUpDown objectDetectionFrequencyGaussianKernelHeightInput;
+        private NumericUpDown objectDetectionFrequencyGaussianSigmaXInput;
+        private NumericUpDown objectDetectionFrequencyGaussianSigmaYInput;
+        private NumericUpDown objectDetectionFrequencyMedianKernelSizeInput;
         private CheckBox objectDetectionFrequencyNeighborEnabledCheckBox;
         private NumericUpDown objectDetectionFrequencyNeighborRadiusInput;
         private NumericUpDown objectDetectionFrequencyNeighborSensitivityInput;
@@ -338,6 +345,8 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionFrequencyEnabledCheckBox != null &&
                     objectDetectionFrequencyEnabledCheckBox.Checked);
             };
+            objectDetectionFrequencyPreprocessingGroup =
+                BuildObjectDetectionFrequencyPreprocessingGroup(parameter);
             var enabledPanel = new Panel
             {
                 Dock = DockStyle.Top,
@@ -655,12 +664,125 @@ namespace IntegratedImageProcessingApp.Forms
             content.Controls.Add(displayOptions);
             content.Controls.Add(neighborGroup);
             content.Controls.Add(scanGroup);
+            content.Controls.Add(objectDetectionFrequencyPreprocessingGroup);
             content.Controls.Add(sourceGroup);
             content.Controls.Add(enabledPanel);
             page.Controls.Add(content);
             UpdateObjectDetectionFrequencyWindowHint();
             UpdateObjectDetectionFrequencyControlsEnabled(parameter.DefectFrequencyEnabled);
             return page;
+        }
+
+        private GroupBox BuildObjectDetectionFrequencyPreprocessingGroup(
+            ObjectDetectionParameterSettings parameter)
+        {
+            var group = new GroupBox
+            {
+                Dock = DockStyle.Top,
+                Height = 216,
+                Text = "前處理",
+                Padding = new Padding(8, 16, 8, 4)
+            };
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 6,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
+            for (int row = 0; row < 6; row++)
+            {
+                layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            }
+
+            objectDetectionFrequencyPreprocessMethodComboBox = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            objectDetectionFrequencyPreprocessMethodComboBox.Items.Add(
+                new DefectCorePreprocessOption("不處理", "None"));
+            objectDetectionFrequencyPreprocessMethodComboBox.Items.Add(
+                new DefectCorePreprocessOption("Gaussian 模糊", "GaussianBlur"));
+            objectDetectionFrequencyPreprocessMethodComboBox.Items.Add(
+                new DefectCorePreprocessOption("Median 模糊", "MedianBlur"));
+            SelectDefectCorePreprocessOption(
+                objectDetectionFrequencyPreprocessMethodComboBox,
+                parameter.DefectFrequencyPreprocessMethod);
+
+            objectDetectionFrequencyGaussianKernelWidthInput = CreateOddDefectCoreNumber(
+                parameter.DefectFrequencyGaussianKernelWidth,
+                1);
+            objectDetectionFrequencyGaussianKernelHeightInput = CreateOddDefectCoreNumber(
+                parameter.DefectFrequencyGaussianKernelHeight,
+                1);
+            objectDetectionFrequencyGaussianSigmaXInput = CreateDefectCoreNumber(
+                0m,
+                100m,
+                0.25m,
+                2,
+                (decimal)Math.Max(0.0, Math.Min(100.0, parameter.DefectFrequencyGaussianSigmaX)));
+            objectDetectionFrequencyGaussianSigmaYInput = CreateDefectCoreNumber(
+                0m,
+                100m,
+                0.25m,
+                2,
+                (decimal)Math.Max(0.0, Math.Min(100.0, parameter.DefectFrequencyGaussianSigmaY)));
+            objectDetectionFrequencyMedianKernelSizeInput = CreateOddDefectCoreNumber(
+                parameter.DefectFrequencyMedianKernelSize,
+                3);
+
+            Label gaussianWidthLabel = CreateDefectCoreLabel("Gaussian 核心寬度");
+            Label gaussianHeightLabel = CreateDefectCoreLabel("Gaussian 核心高度");
+            Label sigmaXLabel = CreateDefectCoreLabel("Sigma X（0 自動）");
+            Label sigmaYLabel = CreateDefectCoreLabel("Sigma Y（0 自動）");
+            Label medianSizeLabel = CreateDefectCoreLabel("Median 核心大小");
+            layout.Controls.Add(CreateDefectCoreLabel("處理方式"), 0, 0);
+            layout.Controls.Add(objectDetectionFrequencyPreprocessMethodComboBox, 1, 0);
+            layout.Controls.Add(gaussianWidthLabel, 0, 1);
+            layout.Controls.Add(objectDetectionFrequencyGaussianKernelWidthInput, 1, 1);
+            layout.Controls.Add(gaussianHeightLabel, 0, 2);
+            layout.Controls.Add(objectDetectionFrequencyGaussianKernelHeightInput, 1, 2);
+            layout.Controls.Add(sigmaXLabel, 0, 3);
+            layout.Controls.Add(objectDetectionFrequencyGaussianSigmaXInput, 1, 3);
+            layout.Controls.Add(sigmaYLabel, 0, 4);
+            layout.Controls.Add(objectDetectionFrequencyGaussianSigmaYInput, 1, 4);
+            layout.Controls.Add(medianSizeLabel, 0, 5);
+            layout.Controls.Add(objectDetectionFrequencyMedianKernelSizeInput, 1, 5);
+            group.Controls.Add(layout);
+
+            Action updateMode = delegate
+            {
+                DefectCorePreprocessOption option =
+                    objectDetectionFrequencyPreprocessMethodComboBox.SelectedItem
+                        as DefectCorePreprocessOption;
+                string mode = option == null ? "None" : option.Value;
+                bool gaussianEnabled = string.Equals(
+                    mode,
+                    "GaussianBlur",
+                    StringComparison.Ordinal);
+                bool medianEnabled = string.Equals(
+                    mode,
+                    "MedianBlur",
+                    StringComparison.Ordinal);
+                gaussianWidthLabel.Enabled = gaussianEnabled;
+                objectDetectionFrequencyGaussianKernelWidthInput.Enabled = gaussianEnabled;
+                gaussianHeightLabel.Enabled = gaussianEnabled;
+                objectDetectionFrequencyGaussianKernelHeightInput.Enabled = gaussianEnabled;
+                sigmaXLabel.Enabled = gaussianEnabled;
+                objectDetectionFrequencyGaussianSigmaXInput.Enabled = gaussianEnabled;
+                sigmaYLabel.Enabled = gaussianEnabled;
+                objectDetectionFrequencyGaussianSigmaYInput.Enabled = gaussianEnabled;
+                medianSizeLabel.Enabled = medianEnabled;
+                objectDetectionFrequencyMedianKernelSizeInput.Enabled = medianEnabled;
+            };
+            updateMode();
+            objectDetectionFrequencyPreprocessMethodComboBox.SelectedIndexChanged +=
+                delegate { updateMode(); };
+            return group;
         }
 
         private void UpdateObjectDetectionFrequencyEnabled(
@@ -714,6 +836,10 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDetectionFrequencySensitivityInput != null)
             {
                 objectDetectionFrequencySensitivityInput.Enabled = enabled;
+            }
+            if (objectDetectionFrequencyPreprocessingGroup != null)
+            {
+                objectDetectionFrequencyPreprocessingGroup.Enabled = enabled;
             }
             if (objectDetectionFrequencyContrastEnabledCheckBox != null)
             {
@@ -851,6 +977,22 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyContrastEnabledCheckBox.Checked;
             parameter.DefectFrequencyContrastGain = Decimal.ToDouble(
                 objectDetectionFrequencyContrastGainInput.Value);
+            DefectCorePreprocessOption preprocessOption =
+                objectDetectionFrequencyPreprocessMethodComboBox.SelectedItem
+                    as DefectCorePreprocessOption;
+            parameter.DefectFrequencyPreprocessMethod = preprocessOption == null
+                ? "None"
+                : preprocessOption.Value;
+            parameter.DefectFrequencyGaussianKernelWidth =
+                Decimal.ToInt32(objectDetectionFrequencyGaussianKernelWidthInput.Value);
+            parameter.DefectFrequencyGaussianKernelHeight =
+                Decimal.ToInt32(objectDetectionFrequencyGaussianKernelHeightInput.Value);
+            parameter.DefectFrequencyGaussianSigmaX = Decimal.ToDouble(
+                objectDetectionFrequencyGaussianSigmaXInput.Value);
+            parameter.DefectFrequencyGaussianSigmaY = Decimal.ToDouble(
+                objectDetectionFrequencyGaussianSigmaYInput.Value);
+            parameter.DefectFrequencyMedianKernelSize =
+                Decimal.ToInt32(objectDetectionFrequencyMedianKernelSizeInput.Value);
             parameter.DefectFrequencyNeighborComparisonEnabled =
                 objectDetectionFrequencyNeighborEnabledCheckBox.Checked;
             parameter.DefectFrequencyNeighborReferenceRadius =
@@ -925,6 +1067,29 @@ namespace IntegratedImageProcessingApp.Forms
                 (double)objectDetectionFrequencyContrastGainInput.Minimum,
                 Math.Min((double)objectDetectionFrequencyContrastGainInput.Maximum,
                     parameter.DefectFrequencyContrastGain));
+            SelectDefectCorePreprocessOption(
+                objectDetectionFrequencyPreprocessMethodComboBox,
+                parameter.DefectFrequencyPreprocessMethod);
+            objectDetectionFrequencyGaussianKernelWidthInput.Value = Math.Max(
+                objectDetectionFrequencyGaussianKernelWidthInput.Minimum,
+                Math.Min(objectDetectionFrequencyGaussianKernelWidthInput.Maximum,
+                    parameter.DefectFrequencyGaussianKernelWidth));
+            objectDetectionFrequencyGaussianKernelHeightInput.Value = Math.Max(
+                objectDetectionFrequencyGaussianKernelHeightInput.Minimum,
+                Math.Min(objectDetectionFrequencyGaussianKernelHeightInput.Maximum,
+                    parameter.DefectFrequencyGaussianKernelHeight));
+            objectDetectionFrequencyGaussianSigmaXInput.Value = (decimal)Math.Max(
+                (double)objectDetectionFrequencyGaussianSigmaXInput.Minimum,
+                Math.Min((double)objectDetectionFrequencyGaussianSigmaXInput.Maximum,
+                    parameter.DefectFrequencyGaussianSigmaX));
+            objectDetectionFrequencyGaussianSigmaYInput.Value = (decimal)Math.Max(
+                (double)objectDetectionFrequencyGaussianSigmaYInput.Minimum,
+                Math.Min((double)objectDetectionFrequencyGaussianSigmaYInput.Maximum,
+                    parameter.DefectFrequencyGaussianSigmaY));
+            objectDetectionFrequencyMedianKernelSizeInput.Value = Math.Max(
+                objectDetectionFrequencyMedianKernelSizeInput.Minimum,
+                Math.Min(objectDetectionFrequencyMedianKernelSizeInput.Maximum,
+                    parameter.DefectFrequencyMedianKernelSize));
             objectDetectionFrequencyNeighborEnabledCheckBox.Checked =
                 parameter.DefectFrequencyNeighborComparisonEnabled;
             objectDetectionFrequencyNeighborRadiusInput.Value = Math.Max(
@@ -1083,6 +1248,15 @@ namespace IntegratedImageProcessingApp.Forms
                 bool contrastEnabled = parameter.DefectFrequencyContrastEnabled;
                 double contrastGain = Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain));
                 int contrastPivotGray = Math.Max(1, Math.Min(255, parameter.FlatFieldTargetGray));
+                var preprocessingSettings = new ObjectDetectionDefectCoreSettings
+                {
+                    PreprocessMethod = parameter.DefectFrequencyPreprocessMethod,
+                    GaussianKernelWidth = parameter.DefectFrequencyGaussianKernelWidth,
+                    GaussianKernelHeight = parameter.DefectFrequencyGaussianKernelHeight,
+                    GaussianSigmaX = parameter.DefectFrequencyGaussianSigmaX,
+                    GaussianSigmaY = parameter.DefectFrequencyGaussianSigmaY,
+                    MedianKernelSize = parameter.DefectFrequencyMedianKernelSize
+                };
                 int verticalStretchPercent =
                     IsSupportedObjectDetectionFrequencyVerticalStretchPercent(
                         parameter.DefectFrequencyVerticalStretchPercent)
@@ -1162,6 +1336,7 @@ namespace IntegratedImageProcessingApp.Forms
                             contrastEnabled,
                             contrastGain,
                             contrastPivotGray,
+                            preprocessingSettings,
                             runParallel,
                             progress,
                             cancellationToken);
@@ -1350,6 +1525,7 @@ namespace IntegratedImageProcessingApp.Forms
             bool contrastEnabled,
             double contrastGain,
             int contrastPivotGray,
+            ObjectDetectionDefectCoreSettings preprocessingSettings,
             bool runParallel,
             IProgress<string> progress,
             CancellationToken cancellationToken)
@@ -1395,6 +1571,9 @@ namespace IntegratedImageProcessingApp.Forms
                     contrastEnabled,
                     contrastGain,
                     contrastPivotGray))
+                using (Cv.Mat preprocessedGray = ApplyObjectDetectionFrequencyPreprocessing(
+                    adjustedGray ?? gray,
+                    preprocessingSettings))
                 using (var polygonMask = new Cv.Mat(
                     crop.Height,
                     crop.Width,
@@ -1408,7 +1587,7 @@ namespace IntegratedImageProcessingApp.Forms
                     localRegionLeft,
                     localRegionTop))
                 {
-                    Cv.Mat analysisGray = adjustedGray ?? gray;
+                    Cv.Mat analysisGray = preprocessedGray ?? adjustedGray ?? gray;
                     Stopwatch previewStopwatch = Stopwatch.StartNew();
                     Bitmap processedPreview = CreateObjectDetectionDefectPreviewBitmap(analysisGray);
                     previewStopwatch.Stop();
@@ -1871,6 +2050,25 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private static Cv.Mat ApplyObjectDetectionFrequencyPreprocessing(
+            Cv.Mat source,
+            ObjectDetectionDefectCoreSettings settings)
+        {
+            if (source == null || source.Empty() || settings == null)
+            {
+                return null;
+            }
+
+            string method = settings.PreprocessMethod ?? string.Empty;
+            if (!string.Equals(method, "GaussianBlur", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(method, "MedianBlur", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return ApplyObjectDetectionDefectPreprocessing(source, settings);
+        }
+
         private static void DisposeObjectDetectionFrequencyResult(
             ObjectDetectionFrequencyResult result)
         {
@@ -2255,6 +2453,17 @@ namespace IntegratedImageProcessingApp.Forms
                 neighborCoreSignatures,
                 parameter.DefectFrequencyContrastEnabled ? "1" : "0",
                 parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyPreprocessMethod ?? "None",
+                NormalizeDefectKernel(parameter.DefectFrequencyGaussianKernelWidth)
+                    .ToString(CultureInfo.InvariantCulture),
+                NormalizeDefectKernel(parameter.DefectFrequencyGaussianKernelHeight)
+                    .ToString(CultureInfo.InvariantCulture),
+                NormalizeDefectSigma(parameter.DefectFrequencyGaussianSigmaX)
+                    .ToString("R", CultureInfo.InvariantCulture),
+                NormalizeDefectSigma(parameter.DefectFrequencyGaussianSigmaY)
+                    .ToString("R", CultureInfo.InvariantCulture),
+                NormalizeDefectKernel(parameter.DefectFrequencyMedianKernelSize)
+                    .ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,
                 CreateObjectDetectionFlatFieldSettingsSignature(parameter)
