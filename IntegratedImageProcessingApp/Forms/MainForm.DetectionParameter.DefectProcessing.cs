@@ -196,67 +196,22 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            bool runFrequency = parameter.DefectFrequencyEnabled;
-            bool runLineTexture = parameter.DefectLineTextureEnabled;
-            if (!runFrequency && !runLineTexture)
+            if (!parameter.DefectFrequencyEnabled)
             {
                 return;
             }
 
-            if (parameter.DefectParallelExecutionEnabled && runFrequency && runLineTexture)
+            try
             {
-                SetObjectDetectionDefectRegionStatus(
-                    "四核心完成；頻域異常與紋理異常正平行執行，各自依 ROI 平行處理...");
-                try
-                {
-                    await Task.WhenAll(
-                        RunObjectDetectionFrequencyAnalysisAsync(
-                            parameterId, true, cancellationToken, capturedRecipeGeneration),
-                        RunObjectDetectionLineTextureAnalysisAsync(
-                            parameterId, true, cancellationToken, capturedRecipeGeneration));
-                }
-                catch (Exception exception)
-                {
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        SetObjectDetectionDefectRegionStatus(
-                            "頻域／紋理附加分析失敗：" + exception.Message);
-                    }
-                }
-                return;
+                await RunObjectDetectionFrequencyAnalysisAsync(
+                    parameterId, true, cancellationToken, capturedRecipeGeneration);
             }
-
-            if (runFrequency)
+            catch (Exception exception)
             {
-                try
+                if (!cancellationToken.IsCancellationRequested)
                 {
-                    await RunObjectDetectionFrequencyAnalysisAsync(
-                        parameterId, true, cancellationToken, capturedRecipeGeneration);
-                }
-                catch (Exception exception)
-                {
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        SetObjectDetectionDefectRegionStatus(
-                            "頻域附加分析失敗：" + exception.Message);
-                    }
-                }
-            }
-
-            if (runLineTexture)
-            {
-                try
-                {
-                    await RunObjectDetectionLineTextureAnalysisAsync(
-                        parameterId, true, cancellationToken, capturedRecipeGeneration);
-                }
-                catch (Exception exception)
-                {
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        SetObjectDetectionDefectRegionStatus(
-                            "紋理附加分析失敗：" + exception.Message);
-                    }
+                    SetObjectDetectionDefectRegionStatus(
+                        "頻域附加分析失敗：" + exception.Message);
                 }
             }
         }

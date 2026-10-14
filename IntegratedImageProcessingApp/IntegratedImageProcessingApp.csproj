@@ -222,10 +222,6 @@
       <DependentUpon>MainForm.cs</DependentUpon>
       <SubType>Form</SubType>
     </Compile>
-    <Compile Include="Forms\MainForm.DetectionParameter.LineTexture.cs">
-      <DependentUpon>MainForm.cs</DependentUpon>
-      <SubType>Form</SubType>
-    </Compile>
     <Compile Include="Forms\MainForm.DetectionParameter.DefectProcessing.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
       <SubType>Form</SubType>

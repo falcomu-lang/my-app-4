@@ -655,10 +655,6 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     RemoveObjectDetectionFrequencyResult(parameterId);
                 }
-                foreach (string parameterId in objectDetectionLineTextureResults.Keys.ToList())
-                {
-                    RemoveObjectDetectionLineTextureResult(parameterId);
-                }
                 Interlocked.Increment(ref objectDetectionFlatFieldEvaluationGeneration);
                 ClearObjectDetectionFlatFieldCorrectionPreview();
                 if (objectDetectionMeasurementHighlightTimer != null)

@@ -84,7 +84,6 @@ namespace IntegratedImageProcessingApp.Forms
             public Dictionary<string, ObjectDetectionDefectCoreResult> CoreResults { get; set; }
             public Dictionary<string, Cv.Mat> MeasurementMasks { get; set; }
             public ObjectDetectionFrequencyResult FrequencyResult { get; set; }
-            public ObjectDetectionLineTextureResult LineTextureResult { get; set; }
             public List<ObjectDetectionDefectIntegrationGroup> IntegrationGroups { get; set; }
             public LargeImageSource OriginalLargeSource { get; set; }
             public LargeImageSource CorrectedLargeSource { get; set; }
@@ -110,11 +109,6 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     DisposeObjectDetectionFrequencyResult(FrequencyResult);
                     FrequencyResult = null;
-                }
-                if (LineTextureResult != null)
-                {
-                    DisposeObjectDetectionLineTextureResult(LineTextureResult);
-                    LineTextureResult = null;
                 }
                 if (MeasurementMasks != null)
                 {
@@ -1217,22 +1211,16 @@ namespace IntegratedImageProcessingApp.Forms
                         capturedRecipeGeneration,
                         capturedImageGeneration));
                 bool includeFrequency = IsObjectDetectionDefectFrequencyIntegrationRequired(parameter);
-                bool includeLineTexture = IsObjectDetectionDefectLineTextureIntegrationRequired(parameter);
                 ObjectDetectionFrequencyResult frequencyResult;
                 bool frequencyAlreadyReady = !includeFrequency ||
                     !settingsChangedSinceLastSuccessfulRun &&
                     TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult);
-                ObjectDetectionLineTextureResult lineTextureResult;
-                bool lineTextureAlreadyReady = !includeLineTexture ||
-                    !settingsChangedSinceLastSuccessfulRun &&
-                    TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
 
                 if (parameter.DefectParallelExecutionEnabled)
                 {
                     objectDetectionResultReviewStatusLabel.Text =
                         "正在平行執行一般缺陷條件" +
                         (includeFrequency && !frequencyAlreadyReady ? "、頻域異常" : string.Empty) +
-                        (includeLineTexture && !lineTextureAlreadyReady ? "、紋理異常" : string.Empty) +
                         "...";
                     Stopwatch parallelDefectStopwatch = Stopwatch.StartNew();
                     var defectTasks = new List<Task>
@@ -1252,10 +1240,6 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         defectTasks.Add(RunObjectDetectionFrequencyAnalysisAsync(parameter.Id, true));
                     }
-                    if (includeLineTexture && !lineTextureAlreadyReady)
-                    {
-                        defectTasks.Add(RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true));
-                    }
                     await Task.WhenAll(defectTasks);
                     EnsureDetectionRecipeGenerationIsCurrent(
                         capturedRecipeGeneration,
@@ -1269,7 +1253,7 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionResultReviewDefectMilliseconds =
                         parallelDefectStopwatch.ElapsedMilliseconds;
                     UpdateObjectDetectionResultReviewTimingMemo();
-                    if (includeFrequency || includeLineTexture)
+                    if (includeFrequency)
                     {
                         leftImageTabControl.SelectedTab =
                             objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
@@ -1321,34 +1305,6 @@ namespace IntegratedImageProcessingApp.Forms
                                 objectDetectionResultReviewDefectMilliseconds =
                                     (objectDetectionResultReviewDefectMilliseconds ?? 0) +
                                     frequencyResult.TotalElapsedMilliseconds;
-                                UpdateObjectDetectionResultReviewTimingMemo();
-                            }
-                        }
-                        leftImageTabControl.SelectedTab =
-                            objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
-                        InvalidateObjectDetectionDefectIntegrationDisplay();
-                    }
-
-                    if (includeLineTexture)
-                    {
-                        if (!lineTextureAlreadyReady)
-                        {
-                            objectDetectionResultReviewStatusLabel.Text =
-                                "一般缺陷條件完成，正在執行納入整合的紋理異常分析...";
-                            await RunObjectDetectionLineTextureAnalysisAsync(parameter.Id, true);
-                            EnsureDetectionRecipeGenerationIsCurrent(
-                                capturedRecipeGeneration,
-                                cancellationToken);
-                            if (!IsObjectDetectionResultReviewUiAvailable())
-                            {
-                                await measurementTask;
-                                return;
-                            }
-                            if (TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult))
-                            {
-                                objectDetectionResultReviewDefectMilliseconds =
-                                    (objectDetectionResultReviewDefectMilliseconds ?? 0) +
-                                    lineTextureResult.TotalElapsedMilliseconds;
                                 UpdateObjectDetectionResultReviewTimingMemo();
                             }
                         }
@@ -2097,17 +2053,6 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            if (IsObjectDetectionDefectLineTextureIntegrationRequired(parameter))
-            {
-                hasEnabledAnalysis = true;
-                ObjectDetectionLineTextureResult lineTextureResult;
-                if (!TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult) ||
-                    lineTextureResult == null)
-                {
-                    return grades;
-                }
-            }
-
             if (!hasEnabledAnalysis)
             {
                 return grades;
@@ -2295,41 +2240,6 @@ namespace IntegratedImageProcessingApp.Forms
                         allRequiredResultsReady = false;
                         objectDetectionResultReviewDefectsGrid.Rows.Add(
                             "頻域異常", "-", "-", "未完成", "目前影像的頻域分析尚未完成或已過期");
-                    }
-                }
-            }
-
-            if (parameter.DefectIntegrationIncludeLineTexture)
-            {
-                if (!parameter.DefectLineTextureEnabled)
-                {
-                    objectDetectionResultReviewDefectsGrid.Rows.Add(
-                        "紋理異常", "-", "-", "未啟用", "紋理異常分析已停用，未納入整合");
-                }
-                else
-                {
-                    ObjectDetectionLineTextureResult lineTextureResult;
-                    if (TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult))
-                    {
-                        int anomalyCount = lineTextureResult.Regions == null
-                            ? 0
-                            : lineTextureResult.Regions.Count(region => region != null && region.IsAnomaly &&
-                                (!selectedObjectNumber.HasValue ||
-                                    region.ObjectNumber == selectedObjectNumber.Value));
-                        objectDetectionResultReviewDefectsGrid.Rows.Add(
-                            "紋理異常",
-                            anomalyCount,
-                            selectedObjectNumber.HasValue
-                                ? (object)"-"
-                                : lineTextureResult.TotalElapsedMilliseconds,
-                            anomalyCount > 0 ? "檢出異常區域" : "未檢出",
-                            "以多數穩定紋理作為基準，標示偏離紋理的區域");
-                    }
-                    else
-                    {
-                        allRequiredResultsReady = false;
-                        objectDetectionResultReviewDefectsGrid.Rows.Add(
-                            "紋理異常", "-", "-", "未完成", "目前影像的紋理異常分析尚未完成或已過期");
                     }
                 }
             }
@@ -2798,13 +2708,6 @@ namespace IntegratedImageProcessingApp.Forms
                     snapshot.FrequencyResult = frequencyResult;
                     objectDetectionFrequencyResults.Remove(parameter.Id);
                 }
-                ObjectDetectionLineTextureResult lineTextureResult;
-                if (objectDetectionLineTextureResults.TryGetValue(parameter.Id, out lineTextureResult))
-                {
-                    snapshot.LineTextureResult = lineTextureResult;
-                    objectDetectionLineTextureResults.Remove(parameter.Id);
-                }
-
                 ClearObjectDetectionResultReviewSnapshot();
                 objectDetectionResultReviewSnapshot = snapshot;
                 objectDetectionDefectIntegrationCache.Remove(parameter.Id);

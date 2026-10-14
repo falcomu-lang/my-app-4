@@ -461,7 +461,6 @@ namespace IntegratedImageProcessingApp.Services
             DefectIntegrationMergeBright = false;
             DefectIntegrationMergeDarkBright = false;
             DefectIntegrationIncludeFrequency = false;
-            DefectIntegrationIncludeLineTexture = false;
             DefectIntegrationMergeDistancePixels = 0;
             DefectFrequencyEnabled = true;
             DefectFrequencyScanHeight = 50;
@@ -476,12 +475,6 @@ namespace IntegratedImageProcessingApp.Services
             DefectFrequencyClaheTileGridSize = 8;
             DefectFrequencyShowHeatmap = true;
             DefectFrequencyShowAnomalyBoxes = true;
-            DefectLineTextureEnabled = false;
-            DefectLineTextureTileSizePixels = 8;
-            DefectLineTextureMinimumAreaPixels = 0;
-            DefectLineTextureSensitivity = 2.0;
-            DefectLineTextureShowHeatmap = true;
-            DefectLineTextureShowAnomalyLines = true;
             DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
             {
                 new ObjectDetectionDefectCoreSettings { CoreKey = "FlatField" },
@@ -661,8 +654,6 @@ namespace IntegratedImageProcessingApp.Services
 
         public bool DefectIntegrationIncludeFrequency { get; set; }
 
-        public bool DefectIntegrationIncludeLineTexture { get; set; }
-
         public double DefectIntegrationMergeDistancePixels { get; set; }
 
         public bool DefectFrequencyEnabled { get; set; }
@@ -690,18 +681,6 @@ namespace IntegratedImageProcessingApp.Services
         public bool DefectFrequencyShowHeatmap { get; set; }
 
         public bool DefectFrequencyShowAnomalyBoxes { get; set; }
-
-        public bool DefectLineTextureEnabled { get; set; }
-
-        public int DefectLineTextureTileSizePixels { get; set; }
-
-        public int DefectLineTextureMinimumAreaPixels { get; set; }
-
-        public double DefectLineTextureSensitivity { get; set; }
-
-        public bool DefectLineTextureShowHeatmap { get; set; }
-
-        public bool DefectLineTextureShowAnomalyLines { get; set; }
 
         public List<ObjectDetectionDefectCoreSettings> DefectDetectionCores { get; set; }
     }

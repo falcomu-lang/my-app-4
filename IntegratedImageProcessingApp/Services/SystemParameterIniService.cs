@@ -728,11 +728,6 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectIntegrationIncludeFrequency",
                         false),
-                    DefectIntegrationIncludeLineTexture = GetBool(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectIntegrationIncludeLineTexture",
-                        false),
                     DefectIntegrationMergeDistancePixels = GetClampedFiniteDouble(
                         sections,
                         SectionObjectDetection,
@@ -810,38 +805,6 @@ namespace IntegratedImageProcessingApp.Services
                         sections,
                         SectionObjectDetection,
                         prefix + ".DefectFrequencyShowAnomalyBoxes",
-                        true),
-                    DefectLineTextureEnabled = GetBool(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectLineTextureEnabled",
-                        false),
-                    DefectLineTextureTileSizePixels = Math.Max(4, Math.Min(128, GetInt(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectLineTextureTileSizePixels",
-                        8))),
-                    DefectLineTextureMinimumAreaPixels = Math.Max(0, Math.Min(1000000000, GetInt(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectLineTextureMinimumAreaPixels",
-                        0))),
-                    DefectLineTextureSensitivity = GetClampedFiniteDouble(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectLineTextureSensitivity",
-                        2.0,
-                        0.5,
-                        8.0),
-                    DefectLineTextureShowHeatmap = GetBool(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectLineTextureShowHeatmap",
-                        true),
-                    DefectLineTextureShowAnomalyLines = GetBool(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".DefectLineTextureShowAnomalyLines",
                         true),
                     DefectDetectionCores = ReadObjectDetectionDefectCores(
                         sections,
@@ -1234,13 +1197,6 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencyClaheTileGridSize={1}", prefix, parameter.DefectFrequencyClaheTileGridSize.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, parameter.DefectFrequencyShowHeatmap ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowAnomalyBoxes={1}", prefix, parameter.DefectFrequencyShowAnomalyBoxes ? "1" : "0");
-                    writer.WriteLine("{0}.DefectIntegrationIncludeLineTexture={1}", prefix, parameter.DefectIntegrationIncludeLineTexture ? "1" : "0");
-                    writer.WriteLine("{0}.DefectLineTextureEnabled={1}", prefix, parameter.DefectLineTextureEnabled ? "1" : "0");
-                    writer.WriteLine("{0}.DefectLineTextureTileSizePixels={1}", prefix, parameter.DefectLineTextureTileSizePixels.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectLineTextureMinimumAreaPixels={1}", prefix, parameter.DefectLineTextureMinimumAreaPixels.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectLineTextureSensitivity={1}", prefix, parameter.DefectLineTextureSensitivity.ToString("R", CultureInfo.InvariantCulture));
-                    writer.WriteLine("{0}.DefectLineTextureShowHeatmap={1}", prefix, parameter.DefectLineTextureShowHeatmap ? "1" : "0");
-                    writer.WriteLine("{0}.DefectLineTextureShowAnomalyLines={1}", prefix, parameter.DefectLineTextureShowAnomalyLines ? "1" : "0");
                     List<ObjectDetectionDefectCoreSettings> defectCores =
                         parameter.DefectDetectionCores ?? new List<ObjectDetectionDefectCoreSettings>();
                     writer.WriteLine(

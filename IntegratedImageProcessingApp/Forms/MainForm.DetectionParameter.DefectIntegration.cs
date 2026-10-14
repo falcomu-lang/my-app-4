@@ -26,15 +26,11 @@ namespace IntegratedImageProcessingApp.Forms
             public bool? IsBright { get; set; }
 
             public bool IsFrequency { get; set; }
-
-            public bool IsLineTexture { get; set; }
-
         }
 
         private const byte ObjectDetectionDefectIntegrationDarkFlag = 1;
         private const byte ObjectDetectionDefectIntegrationBrightFlag = 2;
         private const byte ObjectDetectionDefectIntegrationFrequencyFlag = 4;
-        private const byte ObjectDetectionDefectIntegrationLineTextureFlag = 8;
 
         private sealed class ObjectDetectionDefectIntegrationGroup
         {
@@ -53,7 +49,6 @@ namespace IntegratedImageProcessingApp.Forms
         private CheckBox objectDetectionDefectIntegrationBrightCheckBox;
         private CheckBox objectDetectionDefectIntegrationMixedCheckBox;
         private CheckBox objectDetectionDefectIntegrationFrequencyCheckBox;
-        private CheckBox objectDetectionDefectIntegrationLineTextureCheckBox;
         private NumericUpDown objectDetectionDefectIntegrationDistanceInput;
         private DataGridView objectDetectionDefectIntegrationResultsGrid;
         private Label objectDetectionDefectIntegrationResultsStatus;
@@ -74,7 +69,7 @@ namespace IntegratedImageProcessingApp.Forms
             var mergeGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 160,
+                Height = 138,
                 Text = "缺陷合併方式",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -114,18 +109,10 @@ namespace IntegratedImageProcessingApp.Forms
                 Checked = parameter.DefectIntegrationIncludeFrequency,
                 Margin = new Padding(2, 1, 0, 1)
             };
-            objectDetectionDefectIntegrationLineTextureCheckBox = new CheckBox
-            {
-                AutoSize = true,
-                Text = "納入紋理異常",
-                Checked = parameter.DefectIntegrationIncludeLineTexture,
-                Margin = new Padding(2, 1, 0, 1)
-            };
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationDarkCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationBrightCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationMixedCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationFrequencyCheckBox);
-            mergeOptions.Controls.Add(objectDetectionDefectIntegrationLineTextureCheckBox);
             mergeGroup.Controls.Add(mergeOptions);
 
             var distanceGroup = new GroupBox
@@ -260,7 +247,6 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionDefectIntegrationBrightCheckBox == null ||
                 objectDetectionDefectIntegrationMixedCheckBox == null ||
                 objectDetectionDefectIntegrationFrequencyCheckBox == null ||
-                objectDetectionDefectIntegrationLineTextureCheckBox == null ||
                 objectDetectionDefectIntegrationDistanceInput == null)
             {
                 return;
@@ -274,8 +260,6 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionDefectIntegrationMixedCheckBox.Checked;
             parameter.DefectIntegrationIncludeFrequency =
                 objectDetectionDefectIntegrationFrequencyCheckBox.Checked;
-            parameter.DefectIntegrationIncludeLineTexture =
-                objectDetectionDefectIntegrationLineTextureCheckBox.Checked;
             parameter.DefectIntegrationMergeDistancePixels =
                 (double)objectDetectionDefectIntegrationDistanceInput.Value;
             InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
@@ -308,8 +292,6 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectIntegrationMergeDarkBright;
             objectDetectionDefectIntegrationFrequencyCheckBox.Checked =
                 parameter.DefectIntegrationIncludeFrequency;
-            objectDetectionDefectIntegrationLineTextureCheckBox.Checked =
-                parameter.DefectIntegrationIncludeLineTexture;
             objectDetectionDefectIntegrationDistanceInput.Value =
                 (decimal)Math.Max(0, Math.Min(
                     1000000,
@@ -354,21 +336,17 @@ namespace IntegratedImageProcessingApp.Forms
                 bool hasDark = group.Candidates.Any(item => item.IsBright == false);
                 bool hasBright = group.Candidates.Any(item => item.IsBright == true);
                 bool hasFrequency = group.Candidates.Any(item => item.IsFrequency);
-                bool hasLineTexture = group.Candidates.Any(item => item.IsLineTexture);
                 var typeParts = new List<string>();
                 if (hasDark && hasBright) typeParts.Add("亮暗");
                 else if (hasBright) typeParts.Add("亮");
                 else if (hasDark) typeParts.Add("暗");
                 if (hasFrequency) typeParts.Add("頻域");
-                if (hasLineTexture) typeParts.Add("紋理異常");
                 string type = string.Join("+", typeParts);
                 string sources = string.Join("、", group.Candidates
                     .Select(item => item.IsFrequency
                         ? "頻域異常"
-                        : item.IsLineTexture
-                        ? "紋理異常"
-                            : GetObjectDetectionDefectCoreLabel(
-                                GetObjectDetectionDefectCoreIndex(item.CoreKey)))
+                        : GetObjectDetectionDefectCoreLabel(
+                            GetObjectDetectionDefectCoreIndex(item.CoreKey)))
                     .Distinct(StringComparer.Ordinal));
                 int rowIndex = grid.Rows.Add(
                     (index + 1).ToString(CultureInfo.InvariantCulture),
@@ -387,23 +365,14 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionFrequencyResult frequencyResult;
             bool frequencyReady = !frequencyRequired ||
                 TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult);
-            bool lineTextureRequired = IsObjectDetectionDefectLineTextureIntegrationRequired(parameter);
-            ObjectDetectionLineTextureResult lineTextureResult;
-            bool lineTextureReady = !lineTextureRequired || TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
-            string pendingAnalysisMessage = !frequencyReady && !lineTextureReady
-                ? "頻域異常與紋理異常分析尚未完成；整合判定待確認。"
-                : !frequencyReady
-                    ? "已勾選納入頻域異常，但目前影像的頻域分析尚未完成；整合判定待確認。"
-                    : !lineTextureReady
-                        ? "已勾選納入紋理異常，但目前影像的分析尚未完成；整合判定待確認。"
-                        : null;
+            string pendingAnalysisMessage = !frequencyReady
+                ? "已勾選納入頻域異常，但目前影像的頻域分析尚未完成；整合判定待確認。"
+                : null;
             SetObjectDetectionDefectIntegrationResultsStatus(
                 pendingAnalysisMessage != null
                     ? pendingAnalysisMessage
                     : parameter.DefectIntegrationIncludeFrequency && !parameter.DefectFrequencyEnabled
                     ? "已勾選納入頻域異常，但頻域分析目前停用；本次僅整合其他缺陷來源。"
-                    : parameter.DefectIntegrationIncludeLineTexture && !parameter.DefectLineTextureEnabled
-                    ? "已勾選納入紋理異常，但該分析目前停用；本次僅整合其他缺陷來源。"
                     : groups.Count == 0
                     ? selectedObjectDetectionNumber > 0
                         ? "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
@@ -548,23 +517,6 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            bool includeLineTexture = IsObjectDetectionDefectLineTextureIntegrationRequired(parameter);
-            ObjectDetectionLineTextureResult lineTextureResult = null;
-            bool lineTextureResultAvailable = includeLineTexture &&
-                TryGetCurrentObjectDetectionLineTextureResult(parameter, out lineTextureResult);
-            if (lineTextureResultAvailable && lineTextureResult.Regions != null)
-            {
-                candidates.AddRange(lineTextureResult.Regions
-                    .Where(region => region != null && region.IsAnomaly && region.ObjectNumber > 0)
-                    .Select(region => new ObjectDetectionDefectIntegrationCandidate
-                    {
-                        CoreKey = "LineTexture",
-                        ObjectNumber = region.ObjectNumber,
-                        Bounds = region.Bounds,
-                        IsLineTexture = true
-                    }));
-            }
-
             List<ObjectDetectionDefectIntegrationGroup> groups =
                 MergeObjectDetectionDefectIntegrationCandidates(parameter, candidates);
             objectDetectionDefectIntegrationCache[parameter.Id] = groups;
@@ -589,8 +541,6 @@ namespace IntegratedImageProcessingApp.Forms
                 ObjectDetectionDefectIntegrationCandidate candidate = candidates[index];
                 sourceFlags[index] = candidate.IsFrequency
                     ? ObjectDetectionDefectIntegrationFrequencyFlag
-                    : candidate.IsLineTexture
-                        ? ObjectDetectionDefectIntegrationLineTextureFlag
                     : candidate.IsBright == true
                         ? ObjectDetectionDefectIntegrationBrightFlag
                         : ObjectDetectionDefectIntegrationDarkFlag;
@@ -795,14 +745,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 DashStyle = DashStyle.Dash
             })
-            using (var lineTexturePen = new Pen(Color.LimeGreen, Math.Max(1f, 2f * zoom))
-            {
-                DashStyle = DashStyle.DashDot
-            })
-            using (var lineTexturePolarityPen = new Pen(Color.Magenta, Math.Max(1f, 2f * zoom))
-            {
-                DashStyle = DashStyle.DashDot
-            })
             {
                 foreach (ObjectDetectionDefectIntegrationGroup group in
                     GetObjectDetectionDefectIntegrationGroupsForDisplay(parameter))
@@ -819,17 +761,16 @@ namespace IntegratedImageProcessingApp.Forms
                         candidate.IsBright == true && candidate.Core != null &&
                         candidate.Core.ShowOrangeBoxes);
                     bool showFrequency = group.Candidates.Any(candidate => candidate.IsFrequency);
-                    bool showLineTexture = group.Candidates.Any(candidate => candidate.IsLineTexture);
-                    if (!showDark && !showBright && !showFrequency && !showLineTexture)
+                    if (!showDark && !showBright && !showFrequency)
                     {
                         continue;
                     }
 
                     Pen pen = showDark && showBright
-                        ? showLineTexture ? lineTexturePolarityPen : showFrequency ? mixedFrequencyPen : mixedPen
-                        : showDark ? showLineTexture ? lineTexturePolarityPen : showFrequency ? darkFrequencyPen : darkPen
-                        : showBright ? showLineTexture ? lineTexturePolarityPen : showFrequency ? brightFrequencyPen : brightPen
-                        : showLineTexture ? lineTexturePen : frequencyPen;
+                        ? showFrequency ? mixedFrequencyPen : mixedPen
+                        : showDark ? showFrequency ? darkFrequencyPen : darkPen
+                        : showBright ? showFrequency ? brightFrequencyPen : brightPen
+                        : frequencyPen;
                     GraphicsState state = graphics.Save();
                     try
                     {

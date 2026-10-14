@@ -225,7 +225,7 @@ namespace IntegratedImageProcessingApp.Forms
                 this,
                 "將載入「" + entry.DisplayName + "」的完整檢測參數及關聯流程，取代目前的流程設定。\r\n" +
                 "若舊參數仍在運算，會取消舊運算並清除舊結果。套用後會保留目前圖片，\r\n" +
-                "重新處理參數所需的影像／物件流程，並執行所有啟用的缺陷條件（含頻域與紋理）。\r\n" +
+                "重新處理參數所需的影像／物件流程，並執行所有啟用的缺陷條件（含頻域）。\r\n" +
                 "Recipe 原檔與說明不會被修改；大型影像可能需要較長時間。\r\n\r\n" +
                 "確定要載入嗎？",
                 "載入檢測參數",
@@ -306,7 +306,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             bool hasEnabledCore = parameter.DefectDetectionCores != null &&
                 parameter.DefectDetectionCores.Take(4).Any(core => core.Enabled);
-            if (!hasEnabledCore && !parameter.DefectFrequencyEnabled && !parameter.DefectLineTextureEnabled)
+            if (!hasEnabledCore && !parameter.DefectFrequencyEnabled)
             {
                 ReportAppliedRecipeProcessingFailure(recipeName, "目前沒有啟用任何缺陷條件。");
                 return;
@@ -411,8 +411,7 @@ namespace IntegratedImageProcessingApp.Forms
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             while (isDetectionRecipeAutoRunActive ||
                 objectDetectionDefectProcessingRequested ||
-                objectDetectionFrequencyAnalysisRunning ||
-                objectDetectionLineTextureAnalysisRunning)
+                objectDetectionFrequencyAnalysisRunning)
             {
                 EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
                 if (elapsed.Elapsed > TimeSpan.FromMinutes(30))
@@ -484,12 +483,6 @@ namespace IntegratedImageProcessingApp.Forms
                 !TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult))
             {
                 throw new InvalidOperationException("頻域異常分析未完成。");
-            }
-            ObjectDetectionLineTextureResult textureResult;
-            if (parameter.DefectLineTextureEnabled &&
-                !TryGetCurrentObjectDetectionLineTextureResult(parameter, out textureResult))
-            {
-                throw new InvalidOperationException("紋理異常分析未完成。");
             }
         }
 

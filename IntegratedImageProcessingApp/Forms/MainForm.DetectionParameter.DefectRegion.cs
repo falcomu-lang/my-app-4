@@ -583,8 +583,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             bool deferCoreDetailOverlay =
                 (displayIndex < ObjectDetectionDefectCoreKeys.Length ||
-                    displayIndex == ObjectDetectionDefectFrequencyDisplayIndex ||
-                    displayIndex == ObjectDetectionDefectLineTextureDisplayIndex) &&
+                    displayIndex == ObjectDetectionDefectFrequencyDisplayIndex) &&
                 display.IsPanOverlaySettling;
             if (!display.IsViewInteractionInProgress && !deferCoreDetailOverlay)
             {
@@ -599,14 +598,6 @@ namespace IntegratedImageProcessingApp.Forms
                 else if (displayIndex == ObjectDetectionDefectFrequencyDisplayIndex)
                 {
                     DrawObjectDetectionFrequencyAnomalies(
-                        e.Graphics,
-                        e.Zoom,
-                        e.Offset,
-                        e.VisibleSourceRect);
-                }
-                else if (displayIndex == ObjectDetectionDefectLineTextureDisplayIndex)
-                {
-                    DrawObjectDetectionLineTextureAnomalies(
                         e.Graphics,
                         e.Zoom,
                         e.Offset,
