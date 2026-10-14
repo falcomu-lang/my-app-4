@@ -750,6 +750,11 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectFrequencyScanHeight",
                         50))),
+                    DefectFrequencyVerticalStretchFactor = Math.Max(1, Math.Min(3, GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyVerticalStretchFactor",
+                        1))),
                     DefectFrequencySensitivity = GetClampedFiniteDouble(
                         sections,
                         SectionObjectDetection,
@@ -1220,6 +1225,7 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectIntegrationMergeDistancePixels={1}", prefix, parameter.DefectIntegrationMergeDistancePixels.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, parameter.DefectFrequencyEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));
+                    writer.WriteLine("{0}.DefectFrequencyVerticalStretchFactor={1}", prefix, parameter.DefectFrequencyVerticalStretchFactor.ToString(CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, parameter.DefectFrequencySensitivity.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyContrastEnabled={1}", prefix, parameter.DefectFrequencyContrastEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyContrastGain={1}", prefix, parameter.DefectFrequencyContrastGain.ToString("R", CultureInfo.InvariantCulture));
