@@ -446,13 +446,17 @@ namespace IntegratedImageProcessingApp.Forms
             var neighborGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 108,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                MinimumSize = new Size(0, 108),
                 Text = "鄰近良品基準比較",
-                Padding = new Padding(8, 4, 8, 4)
+                Padding = new Padding(8, 8, 8, 6)
             };
             var neighborLayout = new TableLayoutPanel
             {
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.Top,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 ColumnCount = 2,
                 RowCount = 3,
                 Margin = Padding.Empty,
@@ -460,9 +464,9 @@ namespace IntegratedImageProcessingApp.Forms
             };
             neighborLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 48f));
             neighborLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 52f));
-            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-            neighborLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            neighborLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             objectDetectionFrequencyNeighborEnabledCheckBox = new CheckBox
             {
                 AutoSize = true,
@@ -506,17 +510,18 @@ namespace IntegratedImageProcessingApp.Forms
             var displayOptions = new TableLayoutPanel
             {
                 Dock = DockStyle.Top,
-                Height = 72,
+                AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 ColumnCount = 2,
                 RowCount = 3,
-                Padding = new Padding(5, 2, 0, 2),
+                Padding = new Padding(5, 2, 0, 4),
                 Margin = Padding.Empty
             };
             displayOptions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
             displayOptions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
-            displayOptions.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-            displayOptions.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-            displayOptions.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+            displayOptions.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            displayOptions.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            displayOptions.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             objectDetectionFrequencyShowHeatmapCheckBox = new CheckBox
             {
                 AutoSize = true,
