@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 
 namespace IntegratedImageProcessingApp.Services
 {
@@ -703,6 +704,14 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectInspectionRegionBottom",
                         1),
+                    DefectInspectionRoiGroups = ReadObjectDetectionRoiGroups(
+                        sections,
+                        prefix),
+                    DefectFrequencyRoiGroupId = GetValue(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectFrequencyRoiGroupId",
+                        string.Empty),
                     DefectParallelExecutionEnabled = GetBool(
                         sections,
                         SectionObjectDetection,
@@ -727,6 +736,11 @@ namespace IntegratedImageProcessingApp.Services
                         sections,
                         SectionObjectDetection,
                         prefix + ".DefectIntegrationIncludeFrequency",
+                        false),
+                    DefectIntegrationIncludeFrequency2 = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".DefectIntegrationIncludeFrequency2",
                         false),
                     DefectIntegrationMergeDistancePixels = GetClampedFiniteDouble(
                         sections,
@@ -874,7 +888,10 @@ namespace IntegratedImageProcessingApp.Services
                         false),
                     DefectDetectionCores = ReadObjectDetectionDefectCores(
                         sections,
-                        prefix)
+                        prefix),
+                    DefectFrequency2Settings = ReadObjectDetectionFrequencySettings(
+                        sections,
+                        prefix + ".DefectFrequency2")
                 });
             }
 
@@ -1244,11 +1261,14 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectInspectionRegionTop={1}", prefix, parameter.DefectInspectionRegionTop.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectInspectionRegionRight={1}", prefix, parameter.DefectInspectionRegionRight.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectInspectionRegionBottom={1}", prefix, parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture));
+                    WriteObjectDetectionRoiGroups(writer, prefix, parameter.DefectInspectionRoiGroups);
+                    writer.WriteLine("{0}.DefectFrequencyRoiGroupId={1}", prefix, Escape(parameter.DefectFrequencyRoiGroupId));
                     writer.WriteLine("{0}.DefectParallelExecutionEnabled={1}", prefix, parameter.DefectParallelExecutionEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDark={1}", prefix, parameter.DefectIntegrationMergeDark ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeBright={1}", prefix, parameter.DefectIntegrationMergeBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDarkBright={1}", prefix, parameter.DefectIntegrationMergeDarkBright ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationIncludeFrequency={1}", prefix, parameter.DefectIntegrationIncludeFrequency ? "1" : "0");
+                    writer.WriteLine("{0}.DefectIntegrationIncludeFrequency2={1}", prefix, parameter.DefectIntegrationIncludeFrequency2 ? "1" : "0");
                     writer.WriteLine("{0}.DefectIntegrationMergeDistancePixels={1}", prefix, parameter.DefectIntegrationMergeDistancePixels.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, parameter.DefectFrequencyEnabled ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, parameter.DefectFrequencyScanHeight.ToString(CultureInfo.InvariantCulture));
@@ -1275,6 +1295,10 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectFrequencyShowNeighborHeatmap={1}", prefix, parameter.DefectFrequencyShowNeighborHeatmap ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowNeighborAnomalyBoxes={1}", prefix, parameter.DefectFrequencyShowNeighborAnomalyBoxes ? "1" : "0");
                     writer.WriteLine("{0}.DefectFrequencyShowHealthyReferenceCells={1}", prefix, parameter.DefectFrequencyShowHealthyReferenceCells ? "1" : "0");
+                    WriteObjectDetectionFrequencySettings(
+                        writer,
+                        prefix + ".DefectFrequency2",
+                        parameter.DefectFrequency2Settings);
                     List<ObjectDetectionDefectCoreSettings> defectCores =
                         parameter.DefectDetectionCores ?? new List<ObjectDetectionDefectCoreSettings>();
                     writer.WriteLine(
@@ -1293,6 +1317,8 @@ namespace IntegratedImageProcessingApp.Services
                             (coreIndex + 1).ToString(CultureInfo.InvariantCulture);
                         writer.WriteLine("{0}.Id={1}", corePrefix, Escape(core.Id));
                         writer.WriteLine("{0}.CoreKey={1}", corePrefix, Escape(core.CoreKey));
+                        writer.WriteLine("{0}.InspectionPurpose={1}", corePrefix, Escape(core.InspectionPurpose));
+                        writer.WriteLine("{0}.RoiGroupId={1}", corePrefix, Escape(core.RoiGroupId));
                         writer.WriteLine("{0}.ContrastAdjustmentEnabled={1}", corePrefix, core.ContrastAdjustmentEnabled ? "1" : "0");
                         writer.WriteLine("{0}.ContrastGain={1}", corePrefix, core.ContrastGain.ToString("R", CultureInfo.InvariantCulture));
                         writer.WriteLine("{0}.PreprocessMethod={1}", corePrefix, Escape(core.PreprocessMethod));
@@ -1421,17 +1447,45 @@ namespace IntegratedImageProcessingApp.Services
             var objectDetectionParameterIds = new HashSet<string>(StringComparer.Ordinal);
             var defectInspectionRegionIds = new HashSet<string>(StringComparer.Ordinal);
             var defectCoreIds = new HashSet<string>(StringComparer.Ordinal);
+            var defectRoiGroupIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (ObjectDetectionParameterSettings parameter in settings.ObjectDetectionParameters)
             {
                 parameter.Id = EnsureUniqueId(parameter.Id, objectDetectionParameterIds);
                 parameter.DefectInspectionRegionId = EnsureUniqueId(
                     parameter.DefectInspectionRegionId,
                     defectInspectionRegionIds);
+                parameter.DefectInspectionRoiGroups = parameter.DefectInspectionRoiGroups ??
+                    new List<ObjectDetectionRoiGroupSettings>();
+                parameter.DefectFrequencyRoiGroupId = parameter.DefectFrequencyRoiGroupId ?? string.Empty;
+                parameter.DefectInspectionRoiGroups = parameter.DefectInspectionRoiGroups
+                    .Where(group => group != null)
+                    .ToList();
+                for (int groupIndex = 0;
+                    groupIndex < parameter.DefectInspectionRoiGroups.Count;
+                    groupIndex++)
+                {
+                    ObjectDetectionRoiGroupSettings group =
+                        parameter.DefectInspectionRoiGroups[groupIndex];
+                    group.Id = EnsureUniqueId(group.Id, defectRoiGroupIds);
+                    group.DisplayName = string.IsNullOrWhiteSpace(group.DisplayName)
+                        ? "ROI 組 " + (groupIndex + 1).ToString(CultureInfo.InvariantCulture)
+                        : group.DisplayName.Trim();
+                    group.ObjectDefinitionId = group.ObjectDefinitionId ?? string.Empty;
+                    group.RoiObjectNumbers = (group.RoiObjectNumbers ?? new List<int>())
+                        .Where(number => number > 0)
+                        .Distinct()
+                        .OrderBy(number => number)
+                        .ToList();
+                }
                 if (parameter.DefectDetectionCores == null)
                 {
                     parameter.DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>();
                 }
-                string[] defectCoreKeys = { "FlatField", "Contrast1", "Contrast2", "Contrast3" };
+                string[] defectCoreKeys =
+                {
+                    "FlatField", "Contrast1", "Contrast2", "Contrast3",
+                    "Contrast4", "Contrast5", "Contrast6"
+                };
                 for (int coreIndex = 0; coreIndex < parameter.DefectDetectionCores.Count; coreIndex++)
                 {
                     ObjectDetectionDefectCoreSettings core = parameter.DefectDetectionCores[coreIndex];
@@ -1451,7 +1505,13 @@ namespace IntegratedImageProcessingApp.Services
                     if (core != null)
                     {
                         core.Id = EnsureUniqueId(core.Id, defectCoreIds);
+                        core.RoiGroupId = core.RoiGroupId ?? string.Empty;
                     }
+                }
+                if (parameter.DefectFrequency2Settings != null)
+                {
+                    parameter.DefectFrequency2Settings.RoiGroupId =
+                        parameter.DefectFrequency2Settings.RoiGroupId ?? string.Empty;
                 }
                 NormalizeObjectDetectionMeasurementRecordMaskSources(parameter);
                 EnsureObjectDetectionMeasurementRecordIds(parameter.MeasurementRecords);
@@ -2101,24 +2161,219 @@ namespace IntegratedImageProcessingApp.Services
             return rules;
         }
 
+        private static List<ObjectDetectionRoiGroupSettings> ReadObjectDetectionRoiGroups(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string parameterPrefix)
+        {
+            var groups = new List<ObjectDetectionRoiGroupSettings>();
+            int count = Math.Max(0, Math.Min(1000, GetInt(
+                sections,
+                SectionObjectDetection,
+                parameterPrefix + ".DefectInspectionRoiGroupCount",
+                0)));
+            for (int index = 1; index <= count; index++)
+            {
+                string groupPrefix = parameterPrefix + ".DefectInspectionRoiGroup" +
+                    index.ToString(CultureInfo.InvariantCulture);
+                int memberCount = Math.Max(0, Math.Min(10000, GetInt(
+                    sections,
+                    SectionObjectDetection,
+                    groupPrefix + ".MemberCount",
+                    0)));
+                var members = new List<int>();
+                for (int memberIndex = 1; memberIndex <= memberCount; memberIndex++)
+                {
+                    int number = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        groupPrefix + ".Member" + memberIndex.ToString(CultureInfo.InvariantCulture),
+                        0);
+                    if (number > 0 && !members.Contains(number))
+                    {
+                        members.Add(number);
+                    }
+                }
+
+                groups.Add(new ObjectDetectionRoiGroupSettings
+                {
+                    Id = GetValue(sections, SectionObjectDetection, groupPrefix + ".Id", string.Empty),
+                    DisplayName = GetValue(sections, SectionObjectDetection, groupPrefix + ".DisplayName", string.Empty),
+                    ObjectDefinitionId = GetValue(sections, SectionObjectDetection, groupPrefix + ".ObjectDefinitionId", string.Empty),
+                    RoiObjectNumbers = members
+                });
+            }
+            return groups;
+        }
+
+        private static void WriteObjectDetectionRoiGroups(
+            StreamWriter writer,
+            string parameterPrefix,
+            List<ObjectDetectionRoiGroupSettings> groups)
+        {
+            groups = groups ?? new List<ObjectDetectionRoiGroupSettings>();
+            writer.WriteLine(
+                "{0}.DefectInspectionRoiGroupCount={1}",
+                parameterPrefix,
+                groups.Count.ToString(CultureInfo.InvariantCulture));
+            for (int index = 0; index < groups.Count; index++)
+            {
+                ObjectDetectionRoiGroupSettings group = groups[index];
+                if (group == null)
+                {
+                    continue;
+                }
+                string groupPrefix = parameterPrefix + ".DefectInspectionRoiGroup" +
+                    (index + 1).ToString(CultureInfo.InvariantCulture);
+                List<int> members = (group.RoiObjectNumbers ?? new List<int>())
+                    .Where(number => number > 0)
+                    .Distinct()
+                    .ToList();
+                writer.WriteLine("{0}.Id={1}", groupPrefix, Escape(group.Id));
+                writer.WriteLine("{0}.DisplayName={1}", groupPrefix, Escape(group.DisplayName));
+                writer.WriteLine("{0}.ObjectDefinitionId={1}", groupPrefix, Escape(group.ObjectDefinitionId));
+                writer.WriteLine("{0}.MemberCount={1}", groupPrefix, members.Count.ToString(CultureInfo.InvariantCulture));
+                for (int memberIndex = 0; memberIndex < members.Count; memberIndex++)
+                {
+                    writer.WriteLine(
+                        "{0}.Member{1}={2}",
+                        groupPrefix,
+                        (memberIndex + 1).ToString(CultureInfo.InvariantCulture),
+                        members[memberIndex].ToString(CultureInfo.InvariantCulture));
+                }
+            }
+        }
+
+        private static ObjectDetectionFrequencySettings ReadObjectDetectionFrequencySettings(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string prefix)
+        {
+            var defaults = new ObjectDetectionFrequencySettings();
+            return new ObjectDetectionFrequencySettings
+            {
+                Enabled = GetBool(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyEnabled", defaults.Enabled),
+                RoiGroupId = GetValue(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyRoiGroupId", defaults.RoiGroupId),
+                ScanHeight = Math.Max(8, Math.Min(1000, GetInt(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyScanHeight", defaults.ScanHeight))),
+                VerticalStretchPercent = ReadObjectDetectionFrequencyVerticalStretchPercent(
+                    sections, prefix),
+                Sensitivity = GetClampedFiniteDouble(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencySensitivity", defaults.Sensitivity, 1.0, 10.0),
+                ContrastEnabled = GetBool(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyContrastEnabled", defaults.ContrastEnabled),
+                ContrastGain = GetClampedFiniteDouble(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyContrastGain", defaults.ContrastGain, 0.1, 5.0),
+                PreprocessMethod = GetValue(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyPreprocessMethod", defaults.PreprocessMethod),
+                GaussianKernelWidth = NormalizeOddKernelSize(GetInt(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyGaussianKernelWidth", defaults.GaussianKernelWidth), 1),
+                GaussianKernelHeight = NormalizeOddKernelSize(GetInt(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyGaussianKernelHeight", defaults.GaussianKernelHeight), 1),
+                GaussianSigmaX = GetClampedFiniteDouble(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyGaussianSigmaX", defaults.GaussianSigmaX, 0, 100),
+                GaussianSigmaY = GetClampedFiniteDouble(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyGaussianSigmaY", defaults.GaussianSigmaY, 0, 100),
+                MedianKernelSize = NormalizeOddKernelSize(GetInt(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyMedianKernelSize", defaults.MedianKernelSize), 3),
+                NeighborComparisonEnabled = GetBool(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyNeighborComparisonEnabled", defaults.NeighborComparisonEnabled),
+                NeighborReferenceRadius = Math.Max(2, Math.Min(20, GetInt(sections,
+                    SectionObjectDetection, prefix + ".DefectFrequencyNeighborReferenceRadius",
+                    defaults.NeighborReferenceRadius))),
+                NeighborSensitivity = GetClampedFiniteDouble(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyNeighborSensitivity", defaults.NeighborSensitivity, 1.0, 10.0),
+                EnhancementMethod = GetValue(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyEnhancementMethod", defaults.EnhancementMethod),
+                LocalBackgroundKernelSize = NormalizeOddKernelSize(GetInt(sections,
+                    SectionObjectDetection, prefix + ".DefectFrequencyLocalBackgroundKernelSize",
+                    defaults.LocalBackgroundKernelSize), 3),
+                LocalBackgroundGain = GetClampedFiniteDouble(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyLocalBackgroundGain", defaults.LocalBackgroundGain, 0.1, 10.0),
+                ClaheClipLimit = GetClampedFiniteDouble(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyClaheClipLimit", defaults.ClaheClipLimit, 0.1, 40.0),
+                ClaheTileGridSize = Math.Max(2, Math.Min(32, GetInt(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyClaheTileGridSize", defaults.ClaheTileGridSize))),
+                ShowHeatmap = GetBool(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyShowHeatmap", defaults.ShowHeatmap),
+                ShowAnomalyBoxes = GetBool(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyShowAnomalyBoxes", defaults.ShowAnomalyBoxes),
+                ShowNeighborHeatmap = GetBool(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyShowNeighborHeatmap", defaults.ShowNeighborHeatmap),
+                ShowNeighborAnomalyBoxes = GetBool(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyShowNeighborAnomalyBoxes", defaults.ShowNeighborAnomalyBoxes),
+                ShowHealthyReferenceCells = GetBool(sections, SectionObjectDetection,
+                    prefix + ".DefectFrequencyShowHealthyReferenceCells", defaults.ShowHealthyReferenceCells)
+            };
+        }
+
+        private static void WriteObjectDetectionFrequencySettings(
+            StreamWriter writer,
+            string prefix,
+            ObjectDetectionFrequencySettings settings)
+        {
+            settings = settings ?? new ObjectDetectionFrequencySettings();
+            writer.WriteLine("{0}.DefectFrequencyEnabled={1}", prefix, settings.Enabled ? "1" : "0");
+            writer.WriteLine("{0}.DefectFrequencyRoiGroupId={1}", prefix, Escape(settings.RoiGroupId));
+            writer.WriteLine("{0}.DefectFrequencyScanHeight={1}", prefix, settings.ScanHeight.ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyVerticalStretchPercent={1}", prefix, settings.VerticalStretchPercent.ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencySensitivity={1}", prefix, settings.Sensitivity.ToString("R", CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyContrastEnabled={1}", prefix, settings.ContrastEnabled ? "1" : "0");
+            writer.WriteLine("{0}.DefectFrequencyContrastGain={1}", prefix, settings.ContrastGain.ToString("R", CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyPreprocessMethod={1}", prefix, Escape(settings.PreprocessMethod));
+            writer.WriteLine("{0}.DefectFrequencyGaussianKernelWidth={1}", prefix, settings.GaussianKernelWidth.ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyGaussianKernelHeight={1}", prefix, settings.GaussianKernelHeight.ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyGaussianSigmaX={1}", prefix, settings.GaussianSigmaX.ToString("R", CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyGaussianSigmaY={1}", prefix, settings.GaussianSigmaY.ToString("R", CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyMedianKernelSize={1}", prefix, settings.MedianKernelSize.ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyNeighborComparisonEnabled={1}", prefix, settings.NeighborComparisonEnabled ? "1" : "0");
+            writer.WriteLine("{0}.DefectFrequencyNeighborReferenceRadius={1}", prefix, settings.NeighborReferenceRadius.ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyNeighborSensitivity={1}", prefix, settings.NeighborSensitivity.ToString("R", CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyEnhancementMethod={1}", prefix, Escape(settings.EnhancementMethod));
+            writer.WriteLine("{0}.DefectFrequencyLocalBackgroundKernelSize={1}", prefix, settings.LocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyLocalBackgroundGain={1}", prefix, settings.LocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyClaheClipLimit={1}", prefix, settings.ClaheClipLimit.ToString("R", CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyClaheTileGridSize={1}", prefix, settings.ClaheTileGridSize.ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine("{0}.DefectFrequencyShowHeatmap={1}", prefix, settings.ShowHeatmap ? "1" : "0");
+            writer.WriteLine("{0}.DefectFrequencyShowAnomalyBoxes={1}", prefix, settings.ShowAnomalyBoxes ? "1" : "0");
+            writer.WriteLine("{0}.DefectFrequencyShowNeighborHeatmap={1}", prefix, settings.ShowNeighborHeatmap ? "1" : "0");
+            writer.WriteLine("{0}.DefectFrequencyShowNeighborAnomalyBoxes={1}", prefix, settings.ShowNeighborAnomalyBoxes ? "1" : "0");
+            writer.WriteLine("{0}.DefectFrequencyShowHealthyReferenceCells={1}", prefix, settings.ShowHealthyReferenceCells ? "1" : "0");
+        }
+
         private static List<ObjectDetectionDefectCoreSettings> ReadObjectDetectionDefectCores(
             Dictionary<string, Dictionary<string, string>> sections,
             string parameterPrefix)
         {
-            string[] keys = { "FlatField", "Contrast1", "Contrast2", "Contrast3" };
-            double[] defaultGains = { 1.0, 1.25, 1.5, 2.0 };
+            string[] keys =
+            {
+                "FlatField", "Contrast1", "Contrast2", "Contrast3",
+                "Contrast4", "Contrast5", "Contrast6"
+            };
+            double[] defaultGains = { 1.0, 1.25, 1.5, 2.0, 1.0, 1.0, 1.0 };
             var cores = new List<ObjectDetectionDefectCoreSettings>(keys.Length);
             for (int index = 0; index < keys.Length; index++)
             {
                 var defaults = new ObjectDetectionDefectCoreSettings
                 {
                     CoreKey = keys[index],
-                    ContrastGain = defaultGains[index]
+                    ContrastGain = defaultGains[index],
+                    Enabled = index < 4
                 };
                 string prefix = parameterPrefix + ".DefectCore" +
                     (index + 1).ToString(CultureInfo.InvariantCulture);
                 defaults.Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", defaults.Id);
                 defaults.CoreKey = GetValue(sections, SectionObjectDetection, prefix + ".CoreKey", defaults.CoreKey);
+                defaults.InspectionPurpose = GetValue(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".InspectionPurpose",
+                    defaults.InspectionPurpose);
+                defaults.RoiGroupId = GetValue(
+                    sections,
+                    SectionObjectDetection,
+                    prefix + ".RoiGroupId",
+                    defaults.RoiGroupId);
                 defaults.ContrastAdjustmentEnabled = GetBool(
                     sections,
                     SectionObjectDetection,

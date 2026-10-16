@@ -651,9 +651,16 @@ namespace IntegratedImageProcessingApp.Forms
                 InvalidateObjectDetectionMeasurementMaskCache();
                 ClearObjectDetectionMeasurementClipCache();
                 ClearObjectDetectionDefectCoreResults();
-                foreach (string parameterId in objectDetectionFrequencyResults.Keys.ToList())
+                foreach (string resultKey in objectDetectionFrequencyResults.Keys.ToList())
                 {
-                    RemoveObjectDetectionFrequencyResult(parameterId);
+                    const string frequency2Suffix = "|Frequency2";
+                    bool isFrequency2 = resultKey.EndsWith(
+                        frequency2Suffix,
+                        StringComparison.Ordinal);
+                    string parameterId = isFrequency2
+                        ? resultKey.Substring(0, resultKey.Length - frequency2Suffix.Length)
+                        : resultKey;
+                    RemoveObjectDetectionFrequencyResult(parameterId, isFrequency2 ? 1 : 0);
                 }
                 Interlocked.Increment(ref objectDetectionFlatFieldEvaluationGeneration);
                 ClearObjectDetectionFlatFieldCorrectionPreview();

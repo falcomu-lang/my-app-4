@@ -305,8 +305,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
             bool hasEnabledCore = parameter.DefectDetectionCores != null &&
-                parameter.DefectDetectionCores.Take(4).Any(core => core.Enabled);
-            if (!hasEnabledCore && !parameter.DefectFrequencyEnabled)
+                parameter.DefectDetectionCores.Take(ObjectDetectionDefectCoreKeys.Length)
+                    .Any(core => core.Enabled);
+            bool frequency2Enabled = parameter.DefectFrequency2Settings != null &&
+                parameter.DefectFrequency2Settings.Enabled;
+            if (!hasEnabledCore && !parameter.DefectFrequencyEnabled && !frequency2Enabled)
             {
                 ReportAppliedRecipeProcessingFailure(recipeName, "目前沒有啟用任何缺陷條件。");
                 return;
@@ -411,7 +414,7 @@ namespace IntegratedImageProcessingApp.Forms
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             while (isDetectionRecipeAutoRunActive ||
                 objectDetectionDefectProcessingRequested ||
-                objectDetectionFrequencyAnalysisRunning)
+                IsAnyObjectDetectionFrequencyAnalysisRunning)
             {
                 EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
                 if (elapsed.Elapsed > TimeSpan.FromMinutes(30))
@@ -457,7 +460,8 @@ namespace IntegratedImageProcessingApp.Forms
         private void EnsureAppliedRecipeDefectResultsCompleted(ObjectDetectionParameterSettings parameter)
         {
             bool hasEnabledCore = parameter.DefectDetectionCores != null &&
-                parameter.DefectDetectionCores.Take(4).Any(core => core.Enabled);
+                parameter.DefectDetectionCores.Take(ObjectDetectionDefectCoreKeys.Length)
+                    .Any(core => core.Enabled);
             if (hasEnabledCore)
             {
                 Dictionary<string, ObjectDetectionDefectCoreResult> results;
@@ -465,7 +469,8 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     throw new InvalidOperationException("缺陷核心沒有產生結果，請檢查缺陷檢測範圍與平場校正設定。");
                 }
-                foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4).Where(item => item.Enabled))
+                foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
+                    .Take(ObjectDetectionDefectCoreKeys.Length).Where(item => item.Enabled))
                 {
                     if (!results.ContainsKey(core.CoreKey))
                     {
@@ -483,6 +488,13 @@ namespace IntegratedImageProcessingApp.Forms
                 !TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult))
             {
                 throw new InvalidOperationException("頻域異常分析未完成。");
+            }
+            ObjectDetectionFrequencySettings frequency2 =
+                parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings();
+            if (frequency2.Enabled &&
+                !TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult, 1))
+            {
+                throw new InvalidOperationException("頻域異常二未完成。");
             }
         }
 

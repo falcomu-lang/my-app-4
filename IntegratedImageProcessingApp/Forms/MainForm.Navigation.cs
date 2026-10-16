@@ -105,6 +105,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void VisibleImageTabControl_SelectedIndexChanged(object sender, EventArgs e)
         {
+            if (objectDetectionDefectDisplayVisibilityUpdating)
+            {
+                return;
+            }
+
             if (ReferenceEquals(sender, leftImageTabControl) &&
                 isObjectDetectionResultReviewMode && hasSharedImageViewState)
             {

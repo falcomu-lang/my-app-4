@@ -293,6 +293,8 @@ namespace IntegratedImageProcessingApp.Services
         {
             Id = Guid.NewGuid().ToString("N");
             CoreKey = string.Empty;
+            RoiGroupId = string.Empty;
+            InspectionPurpose = string.Empty;
             ContrastAdjustmentEnabled = true;
             ContrastGain = 1.0;
             PreprocessMethod = "None";
@@ -330,6 +332,10 @@ namespace IntegratedImageProcessingApp.Services
         public string Id { get; set; }
 
         public string CoreKey { get; set; }
+
+        public string RoiGroupId { get; set; }
+
+        public string InspectionPurpose { get; set; }
 
         public bool ContrastAdjustmentEnabled { get; set; }
 
@@ -396,6 +402,25 @@ namespace IntegratedImageProcessingApp.Services
         public bool Enabled { get; set; }
     }
 
+    public class ObjectDetectionRoiGroupSettings
+    {
+        public ObjectDetectionRoiGroupSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+            DisplayName = string.Empty;
+            ObjectDefinitionId = string.Empty;
+            RoiObjectNumbers = new List<int>();
+        }
+
+        public string Id { get; set; }
+
+        public string DisplayName { get; set; }
+
+        public string ObjectDefinitionId { get; set; }
+
+        public List<int> RoiObjectNumbers { get; set; }
+    }
+
     public class ObjectDetectionParameterSettings
     {
         public ObjectDetectionParameterSettings()
@@ -456,11 +481,14 @@ namespace IntegratedImageProcessingApp.Services
             DefectInspectionRegionTop = 0;
             DefectInspectionRegionRight = 1;
             DefectInspectionRegionBottom = 1;
+            DefectInspectionRoiGroups = new List<ObjectDetectionRoiGroupSettings>();
+            DefectFrequencyRoiGroupId = string.Empty;
             DefectParallelExecutionEnabled = false;
             DefectIntegrationMergeDark = false;
             DefectIntegrationMergeBright = false;
             DefectIntegrationMergeDarkBright = false;
             DefectIntegrationIncludeFrequency = false;
+            DefectIntegrationIncludeFrequency2 = false;
             DefectIntegrationMergeDistancePixels = 0;
             DefectFrequencyEnabled = true;
             DefectFrequencyScanHeight = 50;
@@ -487,12 +515,19 @@ namespace IntegratedImageProcessingApp.Services
             DefectFrequencyShowNeighborHeatmap = true;
             DefectFrequencyShowNeighborAnomalyBoxes = true;
             DefectFrequencyShowHealthyReferenceCells = false;
+            DefectFrequency2Settings = new ObjectDetectionFrequencySettings
+            {
+                Enabled = false
+            };
             DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>
             {
                 new ObjectDetectionDefectCoreSettings { CoreKey = "FlatField" },
                 new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast1", ContrastGain = 1.25 },
                 new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast2", ContrastGain = 1.5 },
-                new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast3", ContrastGain = 2.0 }
+                new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast3", ContrastGain = 2.0 },
+                new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast4", Enabled = false },
+                new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast5", Enabled = false },
+                new ObjectDetectionDefectCoreSettings { CoreKey = "Contrast6", Enabled = false }
             };
         }
 
@@ -656,6 +691,10 @@ namespace IntegratedImageProcessingApp.Services
 
         public double DefectInspectionRegionBottom { get; set; }
 
+        public List<ObjectDetectionRoiGroupSettings> DefectInspectionRoiGroups { get; set; }
+
+        public string DefectFrequencyRoiGroupId { get; set; }
+
         public bool DefectParallelExecutionEnabled { get; set; }
 
         public bool DefectIntegrationMergeDark { get; set; }
@@ -665,6 +704,8 @@ namespace IntegratedImageProcessingApp.Services
         public bool DefectIntegrationMergeDarkBright { get; set; }
 
         public bool DefectIntegrationIncludeFrequency { get; set; }
+
+        public bool DefectIntegrationIncludeFrequency2 { get; set; }
 
         public double DefectIntegrationMergeDistancePixels { get; set; }
 
@@ -718,7 +759,75 @@ namespace IntegratedImageProcessingApp.Services
 
         public bool DefectFrequencyShowHealthyReferenceCells { get; set; }
 
+        public ObjectDetectionFrequencySettings DefectFrequency2Settings { get; set; }
+
         public List<ObjectDetectionDefectCoreSettings> DefectDetectionCores { get; set; }
+
+        public ObjectDetectionParameterSettings CreateShallowCopy()
+        {
+            return (ObjectDetectionParameterSettings)MemberwiseClone();
+        }
+    }
+
+    public class ObjectDetectionFrequencySettings
+    {
+        public ObjectDetectionFrequencySettings()
+        {
+            Enabled = false;
+            RoiGroupId = string.Empty;
+            ScanHeight = 50;
+            VerticalStretchPercent = 100;
+            Sensitivity = 3.0;
+            ContrastEnabled = true;
+            ContrastGain = 1.0;
+            PreprocessMethod = "None";
+            GaussianKernelWidth = 3;
+            GaussianKernelHeight = 3;
+            GaussianSigmaX = 0;
+            GaussianSigmaY = 0;
+            MedianKernelSize = 3;
+            NeighborComparisonEnabled = false;
+            NeighborReferenceRadius = 8;
+            NeighborSensitivity = 3.0;
+            EnhancementMethod = "None";
+            LocalBackgroundKernelSize = 31;
+            LocalBackgroundGain = 1.5;
+            ClaheClipLimit = 2.0;
+            ClaheTileGridSize = 8;
+            ShowHeatmap = true;
+            ShowAnomalyBoxes = true;
+            ShowNeighborHeatmap = true;
+            ShowNeighborAnomalyBoxes = true;
+            ShowHealthyReferenceCells = false;
+        }
+
+        public bool Enabled { get; set; }
+
+        public string RoiGroupId { get; set; }
+        public int ScanHeight { get; set; }
+        public int VerticalStretchPercent { get; set; }
+        public double Sensitivity { get; set; }
+        public bool ContrastEnabled { get; set; }
+        public double ContrastGain { get; set; }
+        public string PreprocessMethod { get; set; }
+        public int GaussianKernelWidth { get; set; }
+        public int GaussianKernelHeight { get; set; }
+        public double GaussianSigmaX { get; set; }
+        public double GaussianSigmaY { get; set; }
+        public int MedianKernelSize { get; set; }
+        public bool NeighborComparisonEnabled { get; set; }
+        public int NeighborReferenceRadius { get; set; }
+        public double NeighborSensitivity { get; set; }
+        public string EnhancementMethod { get; set; }
+        public int LocalBackgroundKernelSize { get; set; }
+        public double LocalBackgroundGain { get; set; }
+        public double ClaheClipLimit { get; set; }
+        public int ClaheTileGridSize { get; set; }
+        public bool ShowHeatmap { get; set; }
+        public bool ShowAnomalyBoxes { get; set; }
+        public bool ShowNeighborHeatmap { get; set; }
+        public bool ShowNeighborAnomalyBoxes { get; set; }
+        public bool ShowHealthyReferenceCells { get; set; }
     }
 
     public class ObjectDetectionGoodJudgementRuleSettings

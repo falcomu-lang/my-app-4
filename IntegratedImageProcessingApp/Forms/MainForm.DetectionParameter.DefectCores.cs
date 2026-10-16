@@ -12,6 +12,8 @@ namespace IntegratedImageProcessingApp.Forms
     public partial class MainForm
     {
         private TabControl objectDetectionDefectCoreTabs;
+        private ComboBox[] objectDetectionDefectCoreRoiGroupSelectors =
+            new ComboBox[ObjectDetectionDefectCoreKeys.Length];
         private int selectedObjectDetectionDefectCoreIndex;
         private string objectDetectionDefectDraftParameterId;
         private System.Collections.Generic.List<ObjectDetectionDefectCoreSettings>
@@ -82,6 +84,14 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     selectedObjectDetectionDefectCoreIndex = tabs.SelectedIndex;
                 }
+                else if (tabs.SelectedIndex == ObjectDetectionDefectFrequencyDisplayIndex)
+                {
+                    activeObjectDetectionFrequencyUiIndex = 0;
+                }
+                else if (tabs.SelectedIndex == ObjectDetectionDefectFrequency2DisplayIndex)
+                {
+                    activeObjectDetectionFrequencyUiIndex = 1;
+                }
                 SelectObjectDetectionDefectDisplayForCore(tabs.SelectedIndex);
                 ObjectDetectionParameterSettings activeParameter =
                     FindObjectDetectionParameter(activeObjectDetectionParameterId);
@@ -103,13 +113,19 @@ namespace IntegratedImageProcessingApp.Forms
             TabControl tabs,
             ObjectDetectionParameterSettings parameter)
         {
+            objectDetectionDefectCoreRoiGroupSelectors =
+                new ComboBox[ObjectDetectionDefectCoreKeys.Length];
             TabPage[] oldPages = tabs.TabPages.Cast<TabPage>().ToArray();
             tabs.TabPages.Clear();
             foreach (TabPage oldPage in oldPages)
             {
                 oldPage.Dispose();
             }
-            string[] labels = { "平場校正影像", "條件一", "條件二", "條件三" };
+            string[] labels =
+            {
+                "平場校正影像", "條件一", "條件二", "條件三",
+                "條件四", "條件五", "條件六"
+            };
             for (int index = 0; index < labels.Length; index++)
             {
                 ObjectDetectionDefectCoreSettings core = objectDetectionDefectCoreDrafts[index];
@@ -135,13 +151,18 @@ namespace IntegratedImageProcessingApp.Forms
                 scrollPanel.Controls.Add(enhancementGroup);
                 scrollPanel.Controls.Add(preprocessingGroup);
                 scrollPanel.Controls.Add(contrastGroup);
+                if (index > 0)
+                {
+                    scrollPanel.Controls.Add(BuildDefectCoreInspectionPurposePanel(core));
+                }
                 scrollPanel.Controls.Add(
                     BuildDefectCoreEnabledPanel(parameter, index, core));
                 scrollPanel.Controls.Add(commandBar);
                 page.Controls.Add(scrollPanel);
                 tabs.TabPages.Add(page);
             }
-            tabs.TabPages.Add(BuildObjectDetectionDefectFrequencyTab(parameter));
+            tabs.TabPages.Add(BuildObjectDetectionDefectFrequencyTab(parameter, 0));
+            tabs.TabPages.Add(BuildObjectDetectionDefectFrequencyTab(parameter, 1));
             tabs.TabPages.Add(BuildObjectDetectionDefectIntegrationTab(parameter));
             ResizeObjectDetectionDefectCoreTabsToContent();
         }
@@ -156,7 +177,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDetectionDefectCoreDrafts != null &&
                 string.Equals(objectDetectionDefectDraftParameterId, parameter.Id,
                     StringComparison.Ordinal) &&
-                objectDetectionDefectCoreDrafts.Count == 4)
+                objectDetectionDefectCoreDrafts.Count == ObjectDetectionDefectCoreKeys.Length)
             {
                 return;
             }
@@ -164,7 +185,7 @@ namespace IntegratedImageProcessingApp.Forms
             EnsureObjectDetectionDefectCores(parameter);
             objectDetectionDefectDraftParameterId = parameter.Id;
             objectDetectionDefectCoreDrafts = parameter.DefectDetectionCores
-                .Take(4)
+                .Take(ObjectDetectionDefectCoreKeys.Length)
                 .Select(CloneObjectDetectionDefectCoreSettings)
                 .ToList();
         }
@@ -278,7 +299,7 @@ namespace IntegratedImageProcessingApp.Forms
             var panel = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 30
+                Height = 58
             };
             var useCondition = new CheckBox
             {
@@ -294,7 +315,77 @@ namespace IntegratedImageProcessingApp.Forms
                     coreIndex,
                     useCondition.Checked);
             };
+            var roiGroupLabel = new Label
+            {
+                AutoSize = false,
+                Text = "使用 ROI 組",
+                TextAlign = ContentAlignment.MiddleLeft,
+                Location = new Point(8, 31),
+                Size = new Size(88, 22)
+            };
+            var roiGroupSelector = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Location = new Point(98, 30),
+                Width = 240,
+                Height = 23
+            };
+            objectDetectionDefectCoreRoiGroupSelectors[coreIndex] = roiGroupSelector;
+            PopulateObjectDetectionRoiGroupSelector(
+                parameter,
+                roiGroupSelector,
+                core.RoiGroupId);
+            roiGroupSelector.SelectedIndexChanged += delegate
+            {
+                if (isRefreshingObjectDetectionRoiGroupSelectors ||
+                    objectDetectionDefectCoreDrafts == null ||
+                    coreIndex >= objectDetectionDefectCoreDrafts.Count)
+                {
+                    return;
+                }
+                ObjectDetectionRoiGroupChoice choice =
+                    roiGroupSelector.SelectedItem as ObjectDetectionRoiGroupChoice;
+                objectDetectionDefectCoreDrafts[coreIndex].RoiGroupId =
+                    choice == null ? string.Empty : choice.Id;
+            };
             panel.Controls.Add(useCondition);
+            panel.Controls.Add(roiGroupLabel);
+            panel.Controls.Add(roiGroupSelector);
+            return panel;
+        }
+
+        private Control BuildDefectCoreInspectionPurposePanel(
+            ObjectDetectionDefectCoreSettings core)
+        {
+            var panel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 36
+            };
+            var label = new Label
+            {
+                AutoSize = true,
+                Text = "檢測用途（選填）",
+                Location = new Point(8, 10)
+            };
+            var purpose = new TextBox
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                Location = new Point(124, 5),
+                Width = 120,
+                Text = core.InspectionPurpose ?? string.Empty
+            };
+            purpose.TextChanged += delegate
+            {
+                if (objectDetectionDefectCoreDrafts != null &&
+                    objectDetectionDefectCoreDrafts.Contains(core))
+                {
+                    core.InspectionPurpose = purpose.Text;
+                }
+            };
+            panel.Controls.Add(label);
+            panel.Controls.Add(purpose);
             return panel;
         }
 
@@ -303,7 +394,7 @@ namespace IntegratedImageProcessingApp.Forms
             int coreIndex,
             bool enabled)
         {
-            if (parameter == null || coreIndex < 0 || coreIndex >= 4)
+            if (parameter == null || coreIndex < 0 || coreIndex >= ObjectDetectionDefectCoreKeys.Length)
             {
                 return;
             }
@@ -312,6 +403,7 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDefectCoreDrafts[coreIndex].Enabled = enabled;
             parameter.DefectDetectionCores[coreIndex].Enabled = enabled;
             SaveSystemParameters();
+            UpdateObjectDetectionDefectDisplayTabVisibility(parameter);
             InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
             if (!enabled)
             {
@@ -345,7 +437,7 @@ namespace IntegratedImageProcessingApp.Forms
             DefectCoreDisplayOption option,
             bool enabled)
         {
-            if (parameter == null || coreIndex < 0 || coreIndex >= 4)
+            if (parameter == null || coreIndex < 0 || coreIndex >= ObjectDetectionDefectCoreKeys.Length)
             {
                 return;
             }
@@ -381,7 +473,7 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter,
             int coreIndex)
         {
-            if (parameter == null || coreIndex < 0 || coreIndex >= 4 ||
+            if (parameter == null || coreIndex < 0 || coreIndex >= ObjectDetectionDefectCoreKeys.Length ||
                 objectDetectionDefectCoreDrafts == null ||
                 coreIndex >= objectDetectionDefectCoreDrafts.Count ||
                 objectDetectionDefectProcessingRequested)
@@ -424,7 +516,7 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionParameterSettings parameter,
             int coreIndex)
         {
-            if (parameter == null || coreIndex < 0 || coreIndex >= 4)
+            if (parameter == null || coreIndex < 0 || coreIndex >= ObjectDetectionDefectCoreKeys.Length)
             {
                 return;
             }
@@ -443,7 +535,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static string GetObjectDetectionDefectCoreLabel(int index)
         {
-            string[] labels = { "平場校正影像", "條件一", "條件二", "條件三" };
+            string[] labels =
+            {
+                "平場校正影像", "條件一", "條件二", "條件三",
+                "條件四", "條件五", "條件六"
+            };
             return index >= 0 && index < labels.Length ? labels[index] : "缺陷核心";
         }
 
@@ -505,13 +601,9 @@ namespace IntegratedImageProcessingApp.Forms
                     selectedObjectDetectionDefectCoreIndex,
                     ObjectDetectionDefectCoreKeys.Length - 1));
             }
-            switch (index)
-            {
-                case 1: return "Contrast1";
-                case 2: return "Contrast2";
-                case 3: return "Contrast3";
-                default: return "FlatField";
-            }
+            return index >= 0 && index < ObjectDetectionDefectCoreKeys.Length
+                ? ObjectDetectionDefectCoreKeys[index]
+                : ObjectDetectionDefectCoreKeys[0];
         }
 
         private static void EnsureObjectDetectionDefectCores(
@@ -522,13 +614,16 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectDetectionCores = new System.Collections.Generic.List<ObjectDetectionDefectCoreSettings>();
             }
 
-            string[] keys = { "FlatField", "Contrast1", "Contrast2", "Contrast3" };
-            double[] gains = { 1.0, 1.25, 1.5, 2.0 };
+            string[] keys = ObjectDetectionDefectCoreKeys;
+            double[] gains = { 1.0, 1.25, 1.5, 2.0, 1.0, 1.0, 1.0 };
             for (int index = 0; index < keys.Length; index++)
             {
                 while (parameter.DefectDetectionCores.Count <= index)
                 {
-                    parameter.DefectDetectionCores.Add(new ObjectDetectionDefectCoreSettings());
+                    parameter.DefectDetectionCores.Add(new ObjectDetectionDefectCoreSettings
+                    {
+                        Enabled = index < 4
+                    });
                 }
 
                 ObjectDetectionDefectCoreSettings core = parameter.DefectDetectionCores[index];

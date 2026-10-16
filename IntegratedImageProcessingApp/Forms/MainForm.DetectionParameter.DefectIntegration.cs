@@ -26,6 +26,8 @@ namespace IntegratedImageProcessingApp.Forms
             public bool? IsBright { get; set; }
 
             public bool IsFrequency { get; set; }
+
+            public int FrequencyIndex { get; set; }
         }
 
         private const byte ObjectDetectionDefectIntegrationDarkFlag = 1;
@@ -49,6 +51,7 @@ namespace IntegratedImageProcessingApp.Forms
         private CheckBox objectDetectionDefectIntegrationBrightCheckBox;
         private CheckBox objectDetectionDefectIntegrationMixedCheckBox;
         private CheckBox objectDetectionDefectIntegrationFrequencyCheckBox;
+        private CheckBox objectDetectionDefectIntegrationFrequency2CheckBox;
         private NumericUpDown objectDetectionDefectIntegrationDistanceInput;
         private DataGridView objectDetectionDefectIntegrationResultsGrid;
         private Label objectDetectionDefectIntegrationResultsStatus;
@@ -69,7 +72,7 @@ namespace IntegratedImageProcessingApp.Forms
             var mergeGroup = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 138,
+                Height = 164,
                 Text = "缺陷合併方式",
                 Padding = new Padding(8, 16, 8, 4)
             };
@@ -105,14 +108,22 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDefectIntegrationFrequencyCheckBox = new CheckBox
             {
                 AutoSize = true,
-                Text = "納入頻域異常",
+                Text = "納入頻域異常一",
                 Checked = parameter.DefectIntegrationIncludeFrequency,
+                Margin = new Padding(2, 1, 0, 1)
+            };
+            objectDetectionDefectIntegrationFrequency2CheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "納入頻域異常二",
+                Checked = parameter.DefectIntegrationIncludeFrequency2,
                 Margin = new Padding(2, 1, 0, 1)
             };
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationDarkCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationBrightCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationMixedCheckBox);
             mergeOptions.Controls.Add(objectDetectionDefectIntegrationFrequencyCheckBox);
+            mergeOptions.Controls.Add(objectDetectionDefectIntegrationFrequency2CheckBox);
             mergeGroup.Controls.Add(mergeOptions);
 
             var distanceGroup = new GroupBox
@@ -247,6 +258,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionDefectIntegrationBrightCheckBox == null ||
                 objectDetectionDefectIntegrationMixedCheckBox == null ||
                 objectDetectionDefectIntegrationFrequencyCheckBox == null ||
+                objectDetectionDefectIntegrationFrequency2CheckBox == null ||
                 objectDetectionDefectIntegrationDistanceInput == null)
             {
                 return;
@@ -260,6 +272,8 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionDefectIntegrationMixedCheckBox.Checked;
             parameter.DefectIntegrationIncludeFrequency =
                 objectDetectionDefectIntegrationFrequencyCheckBox.Checked;
+            parameter.DefectIntegrationIncludeFrequency2 =
+                objectDetectionDefectIntegrationFrequency2CheckBox.Checked;
             parameter.DefectIntegrationMergeDistancePixels =
                 (double)objectDetectionDefectIntegrationDistanceInput.Value;
             InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
@@ -292,6 +306,8 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectIntegrationMergeDarkBright;
             objectDetectionDefectIntegrationFrequencyCheckBox.Checked =
                 parameter.DefectIntegrationIncludeFrequency;
+            objectDetectionDefectIntegrationFrequency2CheckBox.Checked =
+                parameter.DefectIntegrationIncludeFrequency2;
             objectDetectionDefectIntegrationDistanceInput.Value =
                 (decimal)Math.Max(0, Math.Min(
                     1000000,
@@ -344,7 +360,7 @@ namespace IntegratedImageProcessingApp.Forms
                 string type = string.Join("+", typeParts);
                 string sources = string.Join("、", group.Candidates
                     .Select(item => item.IsFrequency
-                        ? "頻域異常"
+                        ? (item.FrequencyIndex == 1 ? "頻域異常二" : "頻域異常一")
                         : GetObjectDetectionDefectCoreLabel(
                             GetObjectDetectionDefectCoreIndex(item.CoreKey)))
                     .Distinct(StringComparer.Ordinal));
@@ -361,18 +377,27 @@ namespace IntegratedImageProcessingApp.Forms
                 grid.Rows[rowIndex].Tag = group;
             }
 
-            bool frequencyRequired = IsObjectDetectionDefectFrequencyIntegrationRequired(parameter);
+            bool frequency1Required = IsObjectDetectionDefectFrequencyIntegrationRequired(
+                parameter,
+                0);
+            bool frequency2Required = IsObjectDetectionDefectFrequencyIntegrationRequired(
+                parameter,
+                1);
             ObjectDetectionFrequencyResult frequencyResult;
-            bool frequencyReady = !frequencyRequired ||
-                TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult);
-            string pendingAnalysisMessage = !frequencyReady
-                ? "已勾選納入頻域異常，但目前影像的頻域分析尚未完成；整合判定待確認。"
+            bool frequency1Ready = !frequency1Required ||
+                TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult, 0);
+            bool frequency2Ready = !frequency2Required ||
+                TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult, 1);
+            string pendingAnalysisMessage = !frequency1Ready || !frequency2Ready
+                ? "已勾選納入頻域異常，但對應分析尚未完成；整合判定待確認。"
                 : null;
             SetObjectDetectionDefectIntegrationResultsStatus(
                 pendingAnalysisMessage != null
                     ? pendingAnalysisMessage
-                    : parameter.DefectIntegrationIncludeFrequency && !parameter.DefectFrequencyEnabled
-                    ? "已勾選納入頻域異常，但頻域分析目前停用；本次僅整合其他缺陷來源。"
+                    : (parameter.DefectIntegrationIncludeFrequency && !parameter.DefectFrequencyEnabled) ||
+                        (parameter.DefectIntegrationIncludeFrequency2 &&
+                            !(parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings()).Enabled)
+                    ? "已勾選納入的頻域分析目前停用；本次僅整合其他已完成來源。"
                     : groups.Count == 0
                     ? selectedObjectDetectionNumber > 0
                         ? "物件" + selectedObjectDetectionNumber.ToString(CultureInfo.InvariantCulture) +
@@ -445,10 +470,17 @@ namespace IntegratedImageProcessingApp.Forms
         }
 
         private static bool IsObjectDetectionDefectFrequencyIntegrationRequired(
-            ObjectDetectionParameterSettings parameter)
+            ObjectDetectionParameterSettings parameter,
+            int frequencyIndex)
         {
-            return parameter != null && parameter.DefectIntegrationIncludeFrequency &&
-                parameter.DefectFrequencyEnabled;
+            if (parameter == null)
+            {
+                return false;
+            }
+            return frequencyIndex == 1
+                ? parameter.DefectIntegrationIncludeFrequency2 &&
+                    (parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings()).Enabled
+                : parameter.DefectIntegrationIncludeFrequency && parameter.DefectFrequencyEnabled;
         }
 
         private List<ObjectDetectionDefectIntegrationGroup> GetObjectDetectionDefectIntegrationGroups(
@@ -464,10 +496,14 @@ namespace IntegratedImageProcessingApp.Forms
                 return new List<ObjectDetectionDefectIntegrationGroup>();
             }
 
-            bool includeFrequency = IsObjectDetectionDefectFrequencyIntegrationRequired(parameter);
-            ObjectDetectionFrequencyResult frequencyResult = null;
-            bool frequencyResultAvailable = includeFrequency &&
-                TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult);
+            bool includeFrequency1 = IsObjectDetectionDefectFrequencyIntegrationRequired(parameter, 0);
+            bool includeFrequency2 = IsObjectDetectionDefectFrequencyIntegrationRequired(parameter, 1);
+            ObjectDetectionFrequencyResult frequencyResult1 = null;
+            ObjectDetectionFrequencyResult frequencyResult2 = null;
+            bool frequencyResult1Available = includeFrequency1 &&
+                TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult1, 0);
+            bool frequencyResult2Available = includeFrequency2 &&
+                TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult2, 1);
             List<ObjectDetectionDefectIntegrationGroup> cached;
             if (objectDetectionDefectIntegrationCache.TryGetValue(parameter.Id, out cached))
             {
@@ -499,30 +535,44 @@ namespace IntegratedImageProcessingApp.Forms
                     }));
             }
 
-            if (frequencyResultAvailable)
-            {
-                if (frequencyResult.Cells != null)
-                {
-                    candidates.AddRange(frequencyResult.Cells
-                        .Where(cell => cell != null &&
-                            (cell.IsAnomaly || cell.IsNeighborAnomaly) &&
-                            cell.ObjectNumber > 0)
-                        .Select(cell => new ObjectDetectionDefectIntegrationCandidate
-                        {
-                            CoreKey = "Frequency",
-                            ObjectNumber = cell.ObjectNumber,
-                            Bounds = cell.ValidBounds.Width > 0 && cell.ValidBounds.Height > 0
-                                ? cell.ValidBounds
-                                : cell.Bounds,
-                            IsFrequency = true
-                        }));
-                }
-            }
+            AddObjectDetectionFrequencyCandidates(
+                candidates,
+                frequencyResult1Available ? frequencyResult1 : null,
+                0);
+            AddObjectDetectionFrequencyCandidates(
+                candidates,
+                frequencyResult2Available ? frequencyResult2 : null,
+                1);
 
             List<ObjectDetectionDefectIntegrationGroup> groups =
                 MergeObjectDetectionDefectIntegrationCandidates(parameter, candidates);
             objectDetectionDefectIntegrationCache[parameter.Id] = groups;
             return groups;
+        }
+
+        private static void AddObjectDetectionFrequencyCandidates(
+            List<ObjectDetectionDefectIntegrationCandidate> candidates,
+            ObjectDetectionFrequencyResult result,
+            int frequencyIndex)
+        {
+            if (candidates == null || result == null || result.Cells == null)
+            {
+                return;
+            }
+            candidates.AddRange(result.Cells
+                .Where(cell => cell != null &&
+                    (cell.IsAnomaly || cell.IsNeighborAnomaly) &&
+                    cell.ObjectNumber > 0)
+                .Select(cell => new ObjectDetectionDefectIntegrationCandidate
+                {
+                    CoreKey = frequencyIndex == 1 ? "Frequency2" : "Frequency1",
+                    ObjectNumber = cell.ObjectNumber,
+                    Bounds = cell.ValidBounds.Width > 0 && cell.ValidBounds.Height > 0
+                        ? cell.ValidBounds
+                        : cell.Bounds,
+                    IsFrequency = true,
+                    FrequencyIndex = frequencyIndex
+                }));
         }
 
         private static List<ObjectDetectionDefectIntegrationGroup>
@@ -727,10 +777,16 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             RectangleF visibleBounds = visibleSourceRect;
-            ObjectDetectionFrequencyResult frequencyResult;
-            bool hasFrequencyResult = TryGetCurrentObjectDetectionFrequencyResult(
+            ObjectDetectionFrequencyResult frequencyResult1;
+            ObjectDetectionFrequencyResult frequencyResult2;
+            bool hasFrequencyResult1 = TryGetCurrentObjectDetectionFrequencyResult(
                 parameter,
-                out frequencyResult);
+                out frequencyResult1,
+                0);
+            bool hasFrequencyResult2 = TryGetCurrentObjectDetectionFrequencyResult(
+                parameter,
+                out frequencyResult2,
+                1);
             using (var darkPen = new Pen(Color.Red, Math.Max(1f, 2f * zoom)))
             using (var brightPen = new Pen(Color.DarkOrange, Math.Max(1f, 2f * zoom)))
             using (var mixedPen = new Pen(Color.Magenta, Math.Max(1f, 2f * zoom)))
@@ -777,7 +833,18 @@ namespace IntegratedImageProcessingApp.Forms
                     try
                     {
                         PointF[] imagePolygon;
-                        if (showFrequency && hasFrequencyResult &&
+                        ObjectDetectionDefectIntegrationCandidate frequencyCandidate =
+                            group.Candidates.FirstOrDefault(candidate => candidate.IsFrequency);
+                        int frequencyIndex = frequencyCandidate == null
+                            ? 0
+                            : frequencyCandidate.FrequencyIndex;
+                        ObjectDetectionFrequencyResult frequencyResult = frequencyIndex == 1
+                            ? frequencyResult2
+                            : frequencyResult1;
+                        bool hasFrequencyResult = frequencyIndex == 1
+                            ? hasFrequencyResult2
+                            : hasFrequencyResult1;
+                        if (showFrequency && hasFrequencyResult && frequencyResult != null &&
                             frequencyResult.ObjectPolygons != null &&
                             frequencyResult.ObjectPolygons.TryGetValue(
                                 group.ObjectNumber,

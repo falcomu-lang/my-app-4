@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
+using System.Linq;
 using System.Windows.Forms;
 using IntegratedImageProcessingApp.Controls;
 using IntegratedImageProcessingApp.Services;
@@ -9,6 +11,44 @@ namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm
     {
+        private sealed class ObjectDetectionRoiGroupChoice
+        {
+            public ObjectDetectionRoiGroupChoice(string id, string displayName)
+            {
+                Id = id ?? string.Empty;
+                DisplayName = displayName ?? string.Empty;
+            }
+
+            public string Id { get; private set; }
+
+            public string DisplayName { get; private set; }
+
+            public override string ToString()
+            {
+                return string.IsNullOrWhiteSpace(DisplayName)
+                    ? "未命名 ROI 組"
+                    : DisplayName;
+            }
+        }
+
+        private sealed class ObjectDetectionRoiGroupMemberChoice
+        {
+            public ObjectDetectionRoiGroupMemberChoice(int number, string text)
+            {
+                Number = number;
+                Text = text;
+            }
+
+            public int Number { get; private set; }
+
+            public string Text { get; private set; }
+
+            public override string ToString()
+            {
+                return Text;
+            }
+        }
+
         [Flags]
         private enum ObjectDetectionDefectRegionEdges
         {
@@ -36,6 +76,896 @@ namespace IntegratedImageProcessingApp.Forms
         private RectangleF objectDetectionDefectRegionDraft;
         private string objectDetectionDefectRegionDraftParameterId;
         private int objectDetectionDefectRegionDraftObjectNumber;
+        private ComboBox objectDetectionDefectRoiGroupManagerComboBox;
+        private CheckedListBox objectDetectionDefectRoiGroupMembersListBox;
+        private Label objectDetectionDefectRoiGroupStatusLabel;
+        private Button objectDetectionDefectRoiGroupRenameButton;
+        private Button objectDetectionDefectRoiGroupDeleteButton;
+        private Button objectDetectionDefectRoiGroupApplyButton;
+        private Button objectDetectionDefectRoiGroupCancelButton;
+        private Control objectDetectionDefectRoiGroupPanel;
+        private bool isLoadingObjectDetectionDefectRoiGroupMembers;
+        private bool isRefreshingObjectDetectionRoiGroupSelectors;
+
+        private Control BuildObjectDetectionDefectRoiGroupPanel(
+            ObjectDetectionParameterSettings parameter)
+        {
+            var group = new GroupBox
+            {
+                Dock = DockStyle.Top,
+                Height = 188,
+                Text = "檢測範圍組",
+                Padding = new Padding(8, 18, 8, 6)
+            };
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 4,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+
+            objectDetectionDefectRoiGroupManagerComboBox = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Margin = new Padding(0, 0, 0, 2)
+            };
+            objectDetectionDefectRoiGroupManagerComboBox.SelectedIndexChanged += delegate
+            {
+                LoadObjectDetectionDefectRoiGroupMembers(parameter);
+            };
+            var groupActions = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                WrapContents = false,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            var refreshButton = new Button
+            {
+                Text = "更新序號",
+                Width = 78,
+                Height = 26,
+                Margin = new Padding(0, 1, 4, 0)
+            };
+            refreshButton.Click += delegate
+            {
+                LoadObjectDetectionDefectRoiGroupMembers(parameter);
+            };
+            var createButton = new Button
+            {
+                Text = "新增組",
+                Width = 72,
+                Height = 26,
+                Margin = new Padding(0, 1, 4, 0)
+            };
+            objectDetectionDefectRoiGroupRenameButton = new Button
+            {
+                Text = "改名",
+                Width = 62,
+                Height = 26,
+                Margin = new Padding(0, 1, 4, 0)
+            };
+            objectDetectionDefectRoiGroupDeleteButton = new Button
+            {
+                Text = "刪除組",
+                Width = 72,
+                Height = 26,
+                Margin = new Padding(0, 1, 4, 0)
+            };
+            createButton.Click += delegate { CreateObjectDetectionDefectRoiGroup(parameter); };
+            objectDetectionDefectRoiGroupRenameButton.Click +=
+                delegate { RenameObjectDetectionDefectRoiGroup(parameter); };
+            objectDetectionDefectRoiGroupDeleteButton.Click +=
+                delegate { DeleteObjectDetectionDefectRoiGroup(parameter); };
+            groupActions.Controls.Add(refreshButton);
+            groupActions.Controls.Add(createButton);
+            groupActions.Controls.Add(objectDetectionDefectRoiGroupRenameButton);
+            groupActions.Controls.Add(objectDetectionDefectRoiGroupDeleteButton);
+
+            objectDetectionDefectRoiGroupMembersListBox = new CheckedListBox
+            {
+                Dock = DockStyle.Fill,
+                CheckOnClick = true,
+                IntegralHeight = false,
+                BorderStyle = BorderStyle.FixedSingle,
+                Margin = Padding.Empty
+            };
+            objectDetectionDefectRoiGroupMembersListBox.ItemCheck += delegate
+            {
+                if (!isLoadingObjectDetectionDefectRoiGroupMembers &&
+                    objectDetectionDefectRoiGroupStatusLabel != null)
+                {
+                    objectDetectionDefectRoiGroupStatusLabel.Text =
+                        "成員選擇尚未保存；按套用保存，或按取消還原。";
+                }
+            };
+            objectDetectionDefectRoiGroupStatusLabel = new Label
+            {
+                Dock = DockStyle.Fill,
+                AutoEllipsis = true,
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = Color.FromArgb(75, 83, 95),
+                Margin = new Padding(0, 2, 4, 0)
+            };
+            var footer = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 3,
+                RowCount = 1,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66));
+            objectDetectionDefectRoiGroupApplyButton = new Button
+            {
+                Text = "套用",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(2, 2, 2, 0)
+            };
+            objectDetectionDefectRoiGroupCancelButton = new Button
+            {
+                Text = "取消",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(2, 2, 0, 0)
+            };
+            objectDetectionDefectRoiGroupApplyButton.Click +=
+                delegate { ApplyObjectDetectionDefectRoiGroupMembers(parameter); };
+            objectDetectionDefectRoiGroupCancelButton.Click +=
+                delegate { LoadObjectDetectionDefectRoiGroupMembers(parameter); };
+            footer.Controls.Add(objectDetectionDefectRoiGroupStatusLabel, 0, 0);
+            footer.Controls.Add(objectDetectionDefectRoiGroupApplyButton, 1, 0);
+            footer.Controls.Add(objectDetectionDefectRoiGroupCancelButton, 2, 0);
+
+            layout.Controls.Add(objectDetectionDefectRoiGroupManagerComboBox, 0, 0);
+            layout.Controls.Add(groupActions, 0, 1);
+            layout.Controls.Add(objectDetectionDefectRoiGroupMembersListBox, 0, 2);
+            layout.Controls.Add(footer, 0, 3);
+            group.Controls.Add(layout);
+
+            RefreshObjectDetectionDefectRoiGroupManager(parameter, null);
+            objectDetectionDefectRoiGroupPanel = group;
+            return group;
+        }
+
+        private void RefreshObjectDetectionDefectRoiGroupManager(
+            ObjectDetectionParameterSettings parameter,
+            string selectedGroupId)
+        {
+            if (objectDetectionDefectRoiGroupManagerComboBox == null ||
+                objectDetectionDefectRoiGroupManagerComboBox.IsDisposed)
+            {
+                return;
+            }
+
+            isLoadingObjectDetectionDefectRoiGroupMembers = true;
+            try
+            {
+                ComboBox comboBox = objectDetectionDefectRoiGroupManagerComboBox;
+                comboBox.BeginUpdate();
+                comboBox.Items.Clear();
+                if (parameter != null && parameter.DefectInspectionRoiGroups != null)
+                {
+                    foreach (ObjectDetectionRoiGroupSettings roiGroup in
+                        parameter.DefectInspectionRoiGroups)
+                    {
+                        if (roiGroup != null)
+                        {
+                            comboBox.Items.Add(new ObjectDetectionRoiGroupChoice(
+                                roiGroup.Id,
+                                roiGroup.DisplayName));
+                        }
+                    }
+                }
+                ObjectDetectionRoiGroupChoice selected = comboBox.Items
+                    .Cast<ObjectDetectionRoiGroupChoice>()
+                    .FirstOrDefault(item => string.Equals(
+                        item.Id,
+                        selectedGroupId,
+                        StringComparison.Ordinal));
+                if (selected == null && comboBox.Items.Count > 0)
+                {
+                    selected = comboBox.Items[0] as ObjectDetectionRoiGroupChoice;
+                }
+                comboBox.SelectedItem = selected;
+                comboBox.EndUpdate();
+            }
+            finally
+            {
+                isLoadingObjectDetectionDefectRoiGroupMembers = false;
+            }
+            LoadObjectDetectionDefectRoiGroupMembers(parameter);
+        }
+
+        private void LoadObjectDetectionDefectRoiGroupMembers(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (isLoadingObjectDetectionDefectRoiGroupMembers ||
+                objectDetectionDefectRoiGroupMembersListBox == null ||
+                objectDetectionDefectRoiGroupMembersListBox.IsDisposed)
+            {
+                return;
+            }
+
+            ObjectDetectionRoiGroupChoice choice =
+                objectDetectionDefectRoiGroupManagerComboBox == null
+                    ? null
+                    : objectDetectionDefectRoiGroupManagerComboBox.SelectedItem
+                        as ObjectDetectionRoiGroupChoice;
+            ObjectDetectionRoiGroupSettings roiGroup =
+                FindObjectDetectionRoiGroup(parameter, choice == null ? null : choice.Id);
+            isLoadingObjectDetectionDefectRoiGroupMembers = true;
+            try
+            {
+                CheckedListBox list = objectDetectionDefectRoiGroupMembersListBox;
+                list.Items.Clear();
+                HashSet<int> savedNumbers = roiGroup == null || roiGroup.RoiObjectNumbers == null
+                    ? new HashSet<int>()
+                    : new HashSet<int>(roiGroup.RoiObjectNumbers.Where(number => number > 0));
+                List<ObjectDefinitionDetectedObject> objects =
+                    GetCompletedObjectDetectionRoiGroupObjects(roiGroup);
+                var availableNumbers = new HashSet<int>();
+                foreach (ObjectDefinitionDetectedObject item in objects)
+                {
+                    availableNumbers.Add(item.Number);
+                    int index = list.Items.Add(new ObjectDetectionRoiGroupMemberChoice(
+                        item.Number,
+                        "物件 " + item.Number.ToString(CultureInfo.CurrentCulture)));
+                    list.SetItemChecked(index, savedNumbers.Contains(item.Number));
+                }
+                foreach (int missingNumber in savedNumbers.Where(number =>
+                    !availableNumbers.Contains(number)).OrderBy(number => number))
+                {
+                    int index = list.Items.Add(new ObjectDetectionRoiGroupMemberChoice(
+                        missingNumber,
+                        "物件 " + missingNumber.ToString(CultureInfo.CurrentCulture) +
+                        "（目前未找到）"));
+                    list.SetItemChecked(index, true);
+                }
+
+                bool canEdit = roiGroup != null;
+                list.Enabled = canEdit;
+                if (objectDetectionDefectRoiGroupRenameButton != null)
+                {
+                    objectDetectionDefectRoiGroupRenameButton.Enabled = canEdit;
+                }
+                if (objectDetectionDefectRoiGroupDeleteButton != null)
+                {
+                    objectDetectionDefectRoiGroupDeleteButton.Enabled = canEdit;
+                }
+                if (objectDetectionDefectRoiGroupApplyButton != null)
+                {
+                    objectDetectionDefectRoiGroupApplyButton.Enabled = canEdit;
+                }
+                if (objectDetectionDefectRoiGroupCancelButton != null)
+                {
+                    objectDetectionDefectRoiGroupCancelButton.Enabled = canEdit;
+                }
+                if (objectDetectionDefectRoiGroupStatusLabel != null)
+                {
+                    objectDetectionDefectRoiGroupStatusLabel.Text = roiGroup == null
+                        ? "先新增 ROI 組，再勾選物件序號。"
+                        : objects.Count == 0
+                            ? "尚無已完成的物件定義結果；既有成員仍保留。"
+                            : "已勾選 " + savedNumbers.Count.ToString(CultureInfo.CurrentCulture) +
+                                " 個物件；變更後按套用保存。";
+                }
+            }
+            finally
+            {
+                isLoadingObjectDetectionDefectRoiGroupMembers = false;
+            }
+        }
+
+        private List<ObjectDefinitionDetectedObject> GetCompletedObjectDetectionRoiGroupObjects(
+            ObjectDetectionRoiGroupSettings roiGroup)
+        {
+            if (roiGroup == null || string.IsNullOrWhiteSpace(roiGroup.ObjectDefinitionId))
+            {
+                return new List<ObjectDefinitionDetectedObject>();
+            }
+            ObjectDefinitionSettings definition = FindObjectDefinition(roiGroup.ObjectDefinitionId);
+            if (definition == null)
+            {
+                return new List<ObjectDefinitionDetectedObject>();
+            }
+            string signature = CreateObjectDefinitionProcessingSignature(definition);
+            return HasCompletedObjectDefinitionResult(definition, signature)
+                ? SnapshotCompletedObjectDefinitionObjects(definition, signature)
+                : new List<ObjectDefinitionDetectedObject>();
+        }
+
+        private void CreateObjectDetectionDefectRoiGroup(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (parameter == null || string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId))
+            {
+                MessageBox.Show(
+                    this,
+                    "請先在主參數設定選擇物件定義，ROI 組才能知道成員物件的來源。",
+                    "新增檢測範圍組",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+            string name = PromptForObjectDetectionRoiGroupName("新增檢測範圍組", string.Empty);
+            if (name == null)
+            {
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                MessageBox.Show(this, "請輸入 ROI 組名稱。", "名稱不可空白",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (parameter.DefectInspectionRoiGroups == null)
+            {
+                parameter.DefectInspectionRoiGroups = new List<ObjectDetectionRoiGroupSettings>();
+            }
+            if (parameter.DefectInspectionRoiGroups.Any(group => group != null &&
+                string.Equals(group.DisplayName, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show(this, "此參數已存在相同名稱的 ROI 組。", "名稱重複",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            var newGroup = new ObjectDetectionRoiGroupSettings
+            {
+                DisplayName = name,
+                ObjectDefinitionId = parameter.ObjectDefinitionId
+            };
+            parameter.DefectInspectionRoiGroups.Add(newGroup);
+            SaveSystemParameters();
+            RefreshObjectDetectionDefectRoiGroupManager(parameter, newGroup.Id);
+            RefreshObjectDetectionRoiGroupSelectors(parameter);
+        }
+
+        private void RenameObjectDetectionDefectRoiGroup(
+            ObjectDetectionParameterSettings parameter)
+        {
+            ObjectDetectionRoiGroupSettings roiGroup = GetSelectedObjectDetectionRoiGroup(parameter);
+            if (roiGroup == null)
+            {
+                return;
+            }
+            string name = PromptForObjectDetectionRoiGroupName(
+                "修改檢測範圍組名稱",
+                roiGroup.DisplayName);
+            if (name == null || string.Equals(name, roiGroup.DisplayName, StringComparison.Ordinal))
+            {
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                MessageBox.Show(this, "請輸入 ROI 組名稱。", "名稱不可空白",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (parameter.DefectInspectionRoiGroups.Any(group => group != null &&
+                !string.Equals(group.Id, roiGroup.Id, StringComparison.Ordinal) &&
+                string.Equals(group.DisplayName, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                MessageBox.Show(this, "此參數已存在相同名稱的 ROI 組。", "名稱重複",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            roiGroup.DisplayName = name;
+            SaveSystemParameters();
+            RefreshObjectDetectionDefectRoiGroupManager(parameter, roiGroup.Id);
+            RefreshObjectDetectionRoiGroupSelectors(parameter);
+        }
+
+        private void DeleteObjectDetectionDefectRoiGroup(
+            ObjectDetectionParameterSettings parameter)
+        {
+            ObjectDetectionRoiGroupSettings roiGroup = GetSelectedObjectDetectionRoiGroup(parameter);
+            if (roiGroup == null)
+            {
+                return;
+            }
+            EnsureObjectDetectionDefectCores(parameter);
+            ObjectDetectionFrequencySettings frequency2 =
+                parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings();
+            bool referenced = parameter.DefectDetectionCores.Any(core => core != null &&
+                    string.Equals(core.RoiGroupId, roiGroup.Id, StringComparison.Ordinal)) ||
+                string.Equals(parameter.DefectFrequencyRoiGroupId, roiGroup.Id, StringComparison.Ordinal) ||
+                string.Equals(frequency2.RoiGroupId, roiGroup.Id, StringComparison.Ordinal) ||
+                (objectDetectionDefectCoreDrafts != null && objectDetectionDefectCoreDrafts.Any(core =>
+                    core != null && string.Equals(core.RoiGroupId, roiGroup.Id, StringComparison.Ordinal)));
+            if (referenced)
+            {
+                MessageBox.Show(
+                    this,
+                    "此 ROI 組仍被缺陷條件或頻域條件使用。請先將條件改為其他組，再刪除此組。",
+                    "無法刪除檢測範圍組",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+            if (MessageBox.Show(
+                    this,
+                    "確定刪除 ROI 組「" + roiGroup.DisplayName + "」嗎？",
+                    "刪除檢測範圍組",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question) != DialogResult.Yes)
+            {
+                return;
+            }
+            parameter.DefectInspectionRoiGroups.Remove(roiGroup);
+            SaveSystemParameters();
+            RefreshObjectDetectionDefectRoiGroupManager(parameter, null);
+            RefreshObjectDetectionRoiGroupSelectors(parameter);
+        }
+
+        private void ApplyObjectDetectionDefectRoiGroupMembers(
+            ObjectDetectionParameterSettings parameter)
+        {
+            ObjectDetectionRoiGroupSettings roiGroup = GetSelectedObjectDetectionRoiGroup(parameter);
+            if (roiGroup == null || objectDetectionDefectRoiGroupMembersListBox == null)
+            {
+                return;
+            }
+            roiGroup.RoiObjectNumbers = objectDetectionDefectRoiGroupMembersListBox.CheckedItems
+                .Cast<ObjectDetectionRoiGroupMemberChoice>()
+                .Select(item => item.Number)
+                .Where(number => number > 0)
+                .Distinct()
+                .OrderBy(number => number)
+                .ToList();
+            SaveSystemParameters();
+            InvalidateObjectDetectionDefectRoiGroupResults(parameter, roiGroup.Id);
+            RefreshObjectDetectionRoiGroupSelectors(parameter);
+            LoadObjectDetectionDefectRoiGroupMembers(parameter);
+            if (objectDetectionDefectRoiGroupStatusLabel != null)
+            {
+                objectDetectionDefectRoiGroupStatusLabel.Text = roiGroup.RoiObjectNumbers.Count == 0
+                    ? "已保存空組；指定至少一個物件後才能執行。"
+                    : "已保存 " + roiGroup.RoiObjectNumbers.Count.ToString(CultureInfo.CurrentCulture) +
+                        " 個物件。";
+            }
+        }
+
+        private void InvalidateObjectDetectionDefectRoiGroupResults(
+            ObjectDetectionParameterSettings parameter,
+            string roiGroupId)
+        {
+            if (parameter == null || string.IsNullOrWhiteSpace(roiGroupId))
+            {
+                return;
+            }
+            EnsureObjectDetectionDefectCores(parameter);
+            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores)
+            {
+                if (core != null && string.Equals(core.RoiGroupId, roiGroupId, StringComparison.Ordinal))
+                {
+                    RemoveObjectDetectionDefectCoreResult(parameter.Id, core.CoreKey);
+                }
+            }
+            if (string.Equals(parameter.DefectFrequencyRoiGroupId, roiGroupId, StringComparison.Ordinal))
+            {
+                RemoveObjectDetectionFrequencyResult(parameter.Id, 0);
+            }
+            if (parameter.DefectFrequency2Settings != null &&
+                string.Equals(parameter.DefectFrequency2Settings.RoiGroupId, roiGroupId, StringComparison.Ordinal))
+            {
+                RemoveObjectDetectionFrequencyResult(parameter.Id, 1);
+            }
+            InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
+            RefreshObjectDetectionDefectIntegrationResults(parameter);
+            InvalidateObjectDetectionDefectIntegrationDisplay();
+            for (int index = 0; index < ObjectDetectionDefectDisplayNames.Length - 1; index++)
+            {
+                ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(index);
+                if (display != null)
+                {
+                    display.InvalidateImageView();
+                }
+            }
+        }
+
+        private ObjectDetectionRoiGroupSettings GetSelectedObjectDetectionRoiGroup(
+            ObjectDetectionParameterSettings parameter)
+        {
+            ObjectDetectionRoiGroupChoice choice =
+                objectDetectionDefectRoiGroupManagerComboBox == null
+                    ? null
+                    : objectDetectionDefectRoiGroupManagerComboBox.SelectedItem
+                        as ObjectDetectionRoiGroupChoice;
+            return FindObjectDetectionRoiGroup(parameter, choice == null ? null : choice.Id);
+        }
+
+        private static ObjectDetectionRoiGroupSettings FindObjectDetectionRoiGroup(
+            ObjectDetectionParameterSettings parameter,
+            string roiGroupId)
+        {
+            return parameter == null || string.IsNullOrWhiteSpace(roiGroupId) ||
+                parameter.DefectInspectionRoiGroups == null
+                ? null
+                : parameter.DefectInspectionRoiGroups.FirstOrDefault(group => group != null &&
+                    string.Equals(group.Id, roiGroupId, StringComparison.Ordinal));
+        }
+
+        private string PromptForObjectDetectionRoiGroupName(string title, string initialValue)
+        {
+            using (var dialog = new Form
+            {
+                Text = title,
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent,
+                MinimizeBox = false,
+                MaximizeBox = false,
+                ShowInTaskbar = false,
+                ClientSize = new Size(330, 112)
+            })
+            {
+                var label = new Label
+                {
+                    AutoSize = false,
+                    Text = "檢測範圍組名稱",
+                    Location = new Point(12, 10),
+                    Size = new Size(300, 20)
+                };
+                var textBox = new TextBox
+                {
+                    Location = new Point(12, 34),
+                    Width = 306,
+                    MaxLength = 64,
+                    Text = initialValue ?? string.Empty
+                };
+                var ok = new Button
+                {
+                    Text = "確定",
+                    DialogResult = DialogResult.OK,
+                    Location = new Point(162, 72),
+                    Size = new Size(72, 28)
+                };
+                var cancel = new Button
+                {
+                    Text = "取消",
+                    DialogResult = DialogResult.Cancel,
+                    Location = new Point(244, 72),
+                    Size = new Size(72, 28)
+                };
+                dialog.Controls.Add(label);
+                dialog.Controls.Add(textBox);
+                dialog.Controls.Add(ok);
+                dialog.Controls.Add(cancel);
+                dialog.AcceptButton = ok;
+                dialog.CancelButton = cancel;
+                textBox.SelectAll();
+                return dialog.ShowDialog(this) == DialogResult.OK
+                    ? textBox.Text.Trim()
+                    : null;
+            }
+        }
+
+        private void PopulateObjectDetectionRoiGroupSelector(
+            ObjectDetectionParameterSettings parameter,
+            ComboBox selector,
+            string selectedGroupId)
+        {
+            if (selector == null || selector.IsDisposed)
+            {
+                return;
+            }
+            bool wasRefreshing = isRefreshingObjectDetectionRoiGroupSelectors;
+            isRefreshingObjectDetectionRoiGroupSelectors = true;
+            try
+            {
+                selector.BeginUpdate();
+                selector.Items.Clear();
+                selector.Items.Add(new ObjectDetectionRoiGroupChoice(string.Empty, "未指定 ROI 組"));
+                if (parameter != null && parameter.DefectInspectionRoiGroups != null)
+                {
+                    foreach (ObjectDetectionRoiGroupSettings roiGroup in
+                        parameter.DefectInspectionRoiGroups.Where(group => group != null &&
+                            string.Equals(group.ObjectDefinitionId, parameter.ObjectDefinitionId,
+                                StringComparison.Ordinal)))
+                    {
+                        selector.Items.Add(new ObjectDetectionRoiGroupChoice(
+                            roiGroup.Id,
+                            roiGroup.DisplayName));
+                    }
+                }
+                ObjectDetectionRoiGroupChoice selected = selector.Items
+                    .Cast<ObjectDetectionRoiGroupChoice>()
+                    .FirstOrDefault(choice => string.Equals(
+                        choice.Id,
+                        selectedGroupId ?? string.Empty,
+                        StringComparison.Ordinal));
+                selector.SelectedItem = selected ?? selector.Items[0];
+                selector.EndUpdate();
+            }
+            finally
+            {
+                isRefreshingObjectDetectionRoiGroupSelectors = wasRefreshing;
+            }
+        }
+
+        private void RefreshObjectDetectionRoiGroupSelectors(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (parameter == null)
+            {
+                return;
+            }
+            EnsureObjectDetectionDefectCores(parameter);
+            EnsureObjectDetectionDefectCoreDrafts(parameter);
+            if (objectDetectionDefectCoreRoiGroupSelectors != null)
+            {
+                for (int index = 0; index < objectDetectionDefectCoreRoiGroupSelectors.Length; index++)
+                {
+                    if (index < objectDetectionDefectCoreDrafts.Count)
+                    {
+                        PopulateObjectDetectionRoiGroupSelector(
+                            parameter,
+                            objectDetectionDefectCoreRoiGroupSelectors[index],
+                            objectDetectionDefectCoreDrafts[index].RoiGroupId);
+                    }
+                }
+            }
+            foreach (ObjectDetectionFrequencyUiState state in objectDetectionFrequencyUiStates)
+            {
+                if (state == null || state.RoiGroupSelector == null || state.RoiGroupSelector.IsDisposed ||
+                    !string.Equals(state.DraftParameterId, parameter.Id, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                ObjectDetectionRoiGroupChoice currentChoice =
+                    state.RoiGroupSelector.SelectedItem as ObjectDetectionRoiGroupChoice;
+                string groupId = currentChoice == null ? string.Empty : currentChoice.Id;
+                PopulateObjectDetectionRoiGroupSelector(
+                    parameter,
+                    state.RoiGroupSelector,
+                    groupId);
+            }
+        }
+
+        private bool TryValidateObjectDetectionRoiGroupAssignments(
+            ObjectDetectionParameterSettings parameter,
+            string singleCoreKey,
+            bool includeEnabledCores,
+            bool includeFrequency1,
+            bool includeFrequency2,
+            out string error)
+        {
+            error = null;
+            if (parameter == null)
+            {
+                error = "找不到所選檢測參數。";
+                return false;
+            }
+            EnsureObjectDetectionDefectCores(parameter);
+            var missing = new List<string>();
+            IEnumerable<ObjectDetectionDefectCoreSettings> selectedCores =
+                parameter.DefectDetectionCores.Take(ObjectDetectionDefectCoreKeys.Length);
+            if (!string.IsNullOrWhiteSpace(singleCoreKey))
+            {
+                selectedCores = selectedCores.Where(core => string.Equals(
+                    core.CoreKey,
+                    singleCoreKey,
+                    StringComparison.Ordinal));
+            }
+            else if (includeEnabledCores)
+            {
+                selectedCores = selectedCores.Where(core => core.Enabled);
+            }
+            else
+            {
+                selectedCores = Enumerable.Empty<ObjectDetectionDefectCoreSettings>();
+            }
+            List<ObjectDetectionDefectCoreSettings> coreList = selectedCores.ToList();
+            foreach (ObjectDetectionDefectCoreSettings core in coreList)
+            {
+                int index = GetObjectDetectionDefectCoreIndex(core.CoreKey);
+                if (!IsValidObjectDetectionRoiGroupAssignment(parameter, core.RoiGroupId))
+                {
+                    missing.Add(GetObjectDetectionDefectCoreLabel(index));
+                }
+            }
+            if (includeFrequency1 && parameter.DefectFrequencyEnabled &&
+                !IsValidObjectDetectionRoiGroupAssignment(parameter, parameter.DefectFrequencyRoiGroupId))
+            {
+                missing.Add("頻域異常一");
+            }
+            ObjectDetectionFrequencySettings frequency2 =
+                parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings();
+            if (includeFrequency2 && frequency2.Enabled &&
+                !IsValidObjectDetectionRoiGroupAssignment(parameter, frequency2.RoiGroupId))
+            {
+                missing.Add("頻域異常二");
+            }
+            if (missing.Count == 0)
+            {
+                ObjectDefinitionSettings definition = string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId)
+                    ? null
+                    : FindObjectDefinition(parameter.ObjectDefinitionId);
+                if (definition != null)
+                {
+                    string definitionSignature = CreateObjectDefinitionProcessingSignature(definition);
+                    if (HasCompletedObjectDefinitionResult(definition, definitionSignature))
+                    {
+                        Dictionary<string, HashSet<int>> resolvedMembers;
+                        string memberError;
+                        if (!TryValidateObjectDetectionDefectRoiGroupMembers(
+                            parameter,
+                            coreList,
+                            includeFrequency1,
+                            includeFrequency2,
+                            SnapshotCompletedObjectDefinitionObjects(definition, definitionSignature),
+                            out resolvedMembers,
+                            out memberError))
+                        {
+                            error = memberError;
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+            error = "以下啟用的檢測條件尚未指定有效 ROI 組，因此沒有開始運算：" +
+                string.Join("、", missing) + "。請在各條件的「使用 ROI 組」選擇組別。";
+            return false;
+        }
+
+        private static bool IsValidObjectDetectionRoiGroupAssignment(
+            ObjectDetectionParameterSettings parameter,
+            string roiGroupId)
+        {
+            ObjectDetectionRoiGroupSettings roiGroup =
+                FindObjectDetectionRoiGroup(parameter, roiGroupId);
+            return roiGroup != null &&
+                string.Equals(roiGroup.ObjectDefinitionId, parameter.ObjectDefinitionId,
+                    StringComparison.Ordinal) &&
+                roiGroup.RoiObjectNumbers != null &&
+                roiGroup.RoiObjectNumbers.Any(number => number > 0);
+        }
+
+        private bool TryResolveObjectDetectionRoiGroupMembers(
+            ObjectDetectionParameterSettings parameter,
+            string roiGroupId,
+            IList<ObjectDefinitionDetectedObject> objects,
+            out HashSet<int> memberNumbers,
+            out string error)
+        {
+            memberNumbers = new HashSet<int>();
+            error = null;
+            ObjectDetectionRoiGroupSettings roiGroup = FindObjectDetectionRoiGroup(
+                parameter,
+                roiGroupId);
+            if (!IsValidObjectDetectionRoiGroupAssignment(parameter, roiGroupId))
+            {
+                error = "缺少有效的 ROI 組指定，沒有開始運算。";
+                return false;
+            }
+            if (!string.Equals(roiGroup.ObjectDefinitionId, parameter.ObjectDefinitionId,
+                StringComparison.Ordinal))
+            {
+                error = "ROI 組「" + roiGroup.DisplayName + "」所屬的物件定義與目前參數不一致。";
+                return false;
+            }
+            var availableNumbers = new HashSet<int>((objects ??
+                new List<ObjectDefinitionDetectedObject>()).Where(item => item != null)
+                .Select(item => item.Number));
+            memberNumbers = new HashSet<int>(roiGroup.RoiObjectNumbers ?? new List<int>());
+            int[] unknownNumbers = memberNumbers.Where(number => !availableNumbers.Contains(number)).ToArray();
+            if (unknownNumbers.Length > 0)
+            {
+                error = "ROI 組「" + roiGroup.DisplayName + "」包含目前找不到的物件序號：" +
+                    string.Join("、", unknownNumbers.OrderBy(number => number)) +
+                    "。請重新整理該組成員後再執行。";
+                return false;
+            }
+            if (memberNumbers.Count == 0)
+            {
+                error = "ROI 組「" + roiGroup.DisplayName + "」沒有指定物件，沒有開始運算。";
+                return false;
+            }
+            return true;
+        }
+
+        private bool TryValidateObjectDetectionDefectRoiGroupMembers(
+            ObjectDetectionParameterSettings parameter,
+            IEnumerable<ObjectDetectionDefectCoreSettings> cores,
+            bool includeFrequency1,
+            bool includeFrequency2,
+            IList<ObjectDefinitionDetectedObject> objects,
+            out Dictionary<string, HashSet<int>> membersByGroupId,
+            out string error)
+        {
+            membersByGroupId = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
+            error = null;
+            var groups = new List<ObjectDetectionRoiGroupSettings>();
+            foreach (ObjectDetectionDefectCoreSettings core in cores ??
+                Enumerable.Empty<ObjectDetectionDefectCoreSettings>())
+            {
+                AddObjectDetectionRoiGroupToList(
+                    groups,
+                    FindObjectDetectionRoiGroup(parameter, core.RoiGroupId));
+            }
+            ObjectDetectionFrequencySettings frequency2 =
+                parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings();
+            if (includeFrequency1 && parameter.DefectFrequencyEnabled)
+            {
+                AddObjectDetectionRoiGroupToList(
+                    groups,
+                    FindObjectDetectionRoiGroup(parameter, parameter.DefectFrequencyRoiGroupId));
+            }
+            if (includeFrequency2 && frequency2.Enabled)
+            {
+                AddObjectDetectionRoiGroupToList(
+                    groups,
+                    FindObjectDetectionRoiGroup(parameter, frequency2.RoiGroupId));
+            }
+
+            var availableNumbers = new HashSet<int>((objects ??
+                new List<ObjectDefinitionDetectedObject>()).Where(item => item != null)
+                .Select(item => item.Number));
+            foreach (ObjectDetectionRoiGroupSettings roiGroup in groups)
+            {
+                if (!string.Equals(roiGroup.ObjectDefinitionId, parameter.ObjectDefinitionId,
+                    StringComparison.Ordinal))
+                {
+                    error = "ROI 組「" + roiGroup.DisplayName + "」所屬的物件定義與目前參數不一致。";
+                    return false;
+                }
+                var groupMembers = new HashSet<int>(roiGroup.RoiObjectNumbers ?? new List<int>());
+                int[] unknownNumbers = groupMembers.Where(number => !availableNumbers.Contains(number)).ToArray();
+                if (unknownNumbers.Length > 0)
+                {
+                    error = "ROI 組「" + roiGroup.DisplayName + "」包含目前找不到的物件序號：" +
+                        string.Join("、", unknownNumbers.OrderBy(number => number)) +
+                        "。請重新整理該組成員後再執行。";
+                    return false;
+                }
+                if (groupMembers.Count == 0)
+                {
+                    error = "ROI 組「" + roiGroup.DisplayName + "」沒有指定物件，沒有開始運算。";
+                    return false;
+                }
+                membersByGroupId[roiGroup.Id] = groupMembers;
+            }
+            return true;
+        }
+
+        private static void AddObjectDetectionRoiGroupToList(
+            IList<ObjectDetectionRoiGroupSettings> groups,
+            ObjectDetectionRoiGroupSettings roiGroup)
+        {
+            if (groups != null && roiGroup != null && !groups.Contains(roiGroup))
+            {
+                groups.Add(roiGroup);
+            }
+        }
+
+        private static string CreateObjectDetectionRoiGroupSignature(
+            ObjectDetectionParameterSettings parameter,
+            string roiGroupId)
+        {
+            ObjectDetectionRoiGroupSettings roiGroup =
+                FindObjectDetectionRoiGroup(parameter, roiGroupId);
+            return roiGroup == null
+                ? string.Empty
+                : string.Join(":", new[]
+                {
+                    roiGroup.Id ?? string.Empty,
+                    roiGroup.ObjectDefinitionId ?? string.Empty,
+                    string.Join(",", (roiGroup.RoiObjectNumbers ?? new List<int>())
+                        .Where(number => number > 0)
+                        .Distinct()
+                        .OrderBy(number => number)
+                        .Select(number => number.ToString(CultureInfo.InvariantCulture)))
+                });
+        }
 
         private Control BuildObjectDetectionDefectInspectionRegionPanel(
             ObjectDetectionParameterSettings parameter)
@@ -583,7 +1513,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             bool deferCoreDetailOverlay =
                 (displayIndex < ObjectDetectionDefectCoreKeys.Length ||
-                    displayIndex == ObjectDetectionDefectFrequencyDisplayIndex) &&
+                    displayIndex == ObjectDetectionDefectFrequencyDisplayIndex ||
+                    displayIndex == ObjectDetectionDefectFrequency2DisplayIndex) &&
                 display.IsPanOverlaySettling;
             if (!display.IsViewInteractionInProgress && !deferCoreDetailOverlay)
             {
@@ -595,13 +1526,15 @@ namespace IntegratedImageProcessingApp.Forms
                         e.Offset,
                         e.VisibleSourceRect);
                 }
-                else if (displayIndex == ObjectDetectionDefectFrequencyDisplayIndex)
+                else if (displayIndex == ObjectDetectionDefectFrequencyDisplayIndex ||
+                    displayIndex == ObjectDetectionDefectFrequency2DisplayIndex)
                 {
                     DrawObjectDetectionFrequencyAnomalies(
                         e.Graphics,
                         e.Zoom,
                         e.Offset,
-                        e.VisibleSourceRect);
+                        e.VisibleSourceRect,
+                        displayIndex == ObjectDetectionDefectFrequency2DisplayIndex ? 1 : 0);
                 }
                 else
                 {

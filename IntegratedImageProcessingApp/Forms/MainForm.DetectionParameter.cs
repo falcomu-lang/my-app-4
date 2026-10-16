@@ -20,6 +20,7 @@ namespace IntegratedImageProcessingApp.Forms
         private Panel objectDetectionParameterPanel;
         private TabControl objectDetectionParameterTabControl;
         private bool isObjectDetectionParameterImageLayout;
+        private TabPage objectDetectionParameterLastSelectedImageTabPage;
         private string activeObjectDetectionParameterId;
         private Label objectDetectionImageCheckStatusLabel;
         private TableLayoutPanel objectDetectionObjectNumberPanel;
@@ -636,6 +637,8 @@ namespace IntegratedImageProcessingApp.Forms
                         BuildObjectDetectionDefectCoreTabs(parameter));
                     contentPanel.Controls.Add(
                         BuildObjectDetectionDefectInspectionRegionPanel(parameter));
+                    contentPanel.Controls.Add(
+                        BuildObjectDetectionDefectRoiGroupPanel(parameter));
                     contentPanel.Controls.Add(objectDetectionDefectObjectNumberPanel);
                 }
 
@@ -1170,14 +1173,16 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (isObjectDetectionParameterImageLayout && leftImageTabControl.SelectedTab != null &&
+                leftImageTabControl.TabPages.Contains(leftImageTabControl.SelectedTab))
+            {
+                objectDetectionParameterLastSelectedImageTabPage = leftImageTabControl.SelectedTab;
+            }
+
             EnsureObjectDetectionMeasurementDisplay();
             EnsureObjectDetectionFlatFieldPreviewDisplay();
             EnsureObjectDetectionDefectDisplay();
             isObjectDetectionParameterImageLayout = enabled;
-            if (!enabled)
-            {
-                InvalidateObjectDetectionMeasurementMaskCache();
-            }
             EnsureObjectDetectionParameterTabs();
             if (isImageViewerMaximized)
             {
@@ -1197,7 +1202,13 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         leftImageTabControl.TabPages.Add(defectPage);
                     }
-                    leftImageTabControl.SelectedTab = leftOriginalTabPage;
+                    UpdateObjectDetectionDefectDisplayTabVisibility(
+                        FindObjectDetectionParameter(activeObjectDetectionParameterId));
+                    TabPage preferredImageTab = objectDetectionParameterLastSelectedImageTabPage;
+                    leftImageTabControl.SelectedTab = preferredImageTab != null &&
+                        leftImageTabControl.TabPages.Contains(preferredImageTab)
+                        ? preferredImageTab
+                        : leftOriginalTabPage;
                     objectDetectionMeasurementDisplayControl.TitleText = "左側 待量測";
                     objectDetectionFlatFieldPreviewDisplayControl.TitleText = "左側 平場校正";
                     for (int index = 0; index < objectDetectionDefectDisplayControls.Length; index++)

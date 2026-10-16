@@ -11,16 +11,20 @@ namespace IntegratedImageProcessingApp.Forms
     {
         private static readonly string[] ObjectDetectionDefectCoreKeys =
         {
-            "FlatField", "Contrast1", "Contrast2", "Contrast3"
+            "FlatField", "Contrast1", "Contrast2", "Contrast3",
+            "Contrast4", "Contrast5", "Contrast6"
         };
 
-        private const int ObjectDetectionDefectFrequencyDisplayIndex = 4;
-        private const int ObjectDetectionDefectIntegratedDisplayIndex = 5;
+        private const int ObjectDetectionDefectFrequencyDisplayIndex = 7;
+        private const int ObjectDetectionDefectFrequency2DisplayIndex = 8;
+        private const int ObjectDetectionDefectIntegratedDisplayIndex = 9;
 
         private static readonly string[] ObjectDetectionDefectDisplayNames =
         {
             "缺陷顯示-平場校正", "缺陷顯示-條件一", "缺陷顯示-條件二",
-            "缺陷顯示-條件三", "缺陷顯示-頻域異常", "缺陷顯示-綜合"
+            "缺陷顯示-條件三", "缺陷顯示-條件四", "缺陷顯示-條件五",
+            "缺陷顯示-條件六", "缺陷顯示-頻域異常一",
+            "缺陷顯示-頻域異常二", "缺陷顯示-綜合"
         };
 
         private TabPage[] objectDetectionDefectDisplayTabPages;
@@ -29,6 +33,7 @@ namespace IntegratedImageProcessingApp.Forms
         private Label[] objectDetectionDefectDisplayPlaceholders;
         private string[] objectDetectionDefectDisplayParameterIds;
         private int[] objectDetectionDefectDisplayImageGenerations;
+        private bool objectDetectionDefectDisplayVisibilityUpdating;
 
         // These aliases keep region editing and other existing interactions focused on the active core view.
         private TabPage objectDetectionDefectDisplayTabPage;
@@ -93,6 +98,116 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionDefectDisplayPlaceholders[index].BringToFront();
             }
             UpdateActiveObjectDetectionDefectDisplayAlias();
+        }
+
+        private void UpdateObjectDetectionDefectDisplayTabVisibility(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (!isObjectDetectionParameterImageLayout ||
+                leftImageTabControl == null || objectDetectionDefectDisplayTabPages == null)
+            {
+                return;
+            }
+
+            if (parameter != null)
+            {
+                EnsureObjectDetectionDefectCores(parameter);
+            }
+            bool visibilityChanged = objectDetectionDefectDisplayTabPages
+                .Select((page, index) =>
+                    leftImageTabControl.TabPages.Contains(page) !=
+                    IsObjectDetectionDefectDisplayEnabled(parameter, index))
+                .Any(changed => changed);
+            if (!visibilityChanged)
+            {
+                return;
+            }
+
+            TabPage previousSelection = leftImageTabControl.SelectedTab;
+            int previousDisplayIndex = GetObjectDetectionDefectDisplayIndex(previousSelection);
+            bool previousSelectionWillRemain = previousDisplayIndex < 0 ||
+                IsObjectDetectionDefectDisplayEnabled(parameter, previousDisplayIndex);
+            bool pagesChanged = false;
+            leftImageTabControl.SuspendLayout();
+            objectDetectionDefectDisplayVisibilityUpdating = true;
+            try
+            {
+                foreach (TabPage page in objectDetectionDefectDisplayTabPages)
+                {
+                    if (leftImageTabControl.TabPages.Contains(page))
+                    {
+                        leftImageTabControl.TabPages.Remove(page);
+                        pagesChanged = true;
+                    }
+                }
+
+                int insertIndex = leftImageTabControl.TabPages.Count;
+                for (int displayIndex = 0;
+                    displayIndex < objectDetectionDefectDisplayTabPages.Length;
+                    displayIndex++)
+                {
+                    if (!IsObjectDetectionDefectDisplayEnabled(parameter, displayIndex))
+                    {
+                        continue;
+                    }
+
+                    leftImageTabControl.TabPages.Insert(
+                        insertIndex++,
+                        objectDetectionDefectDisplayTabPages[displayIndex]);
+                    pagesChanged = true;
+                }
+
+                TabPage selection = previousSelectionWillRemain
+                    ? previousSelection
+                    : GetObjectDetectionDefectDisplayTabPage(
+                        ObjectDetectionDefectIntegratedDisplayIndex);
+                if (selection != null && leftImageTabControl.TabPages.Contains(selection))
+                {
+                    leftImageTabControl.SelectedTab = selection;
+                }
+            }
+            finally
+            {
+                objectDetectionDefectDisplayVisibilityUpdating = false;
+                leftImageTabControl.ResumeLayout(true);
+            }
+
+            if (!ReferenceEquals(previousSelection, leftImageTabControl.SelectedTab))
+            {
+                VisibleImageTabControl_SelectedIndexChanged(leftImageTabControl, EventArgs.Empty);
+            }
+            else if (pagesChanged)
+            {
+                UpdateActiveObjectDetectionDefectDisplayAlias();
+            }
+        }
+
+        private static bool IsObjectDetectionDefectDisplayEnabled(
+            ObjectDetectionParameterSettings parameter,
+            int displayIndex)
+        {
+            if (displayIndex == ObjectDetectionDefectIntegratedDisplayIndex)
+            {
+                return true;
+            }
+            if (parameter == null)
+            {
+                return false;
+            }
+            if (displayIndex >= 0 && displayIndex < ObjectDetectionDefectCoreKeys.Length)
+            {
+                return parameter.DefectDetectionCores[displayIndex].Enabled;
+            }
+            if (displayIndex == ObjectDetectionDefectFrequencyDisplayIndex)
+            {
+                return parameter.DefectFrequencyEnabled;
+            }
+            if (displayIndex == ObjectDetectionDefectFrequency2DisplayIndex)
+            {
+                return (parameter.DefectFrequency2Settings ??
+                    new ObjectDetectionFrequencySettings()).Enabled;
+            }
+            return false;
         }
 
         private ImageDisplayControl[] GetAllObjectDetectionDefectDisplayControls()
@@ -207,6 +322,10 @@ namespace IntegratedImageProcessingApp.Forms
         private void RefreshObjectDetectionDefectDisplay()
         {
             EnsureObjectDetectionDefectDisplay();
+            if (objectDetectionDefectDisplayVisibilityUpdating)
+            {
+                return;
+            }
             if (objectDetectionDefectDisplayControls == null ||
                 IsImageDisplayUpdateSuppressed ||
                 !isObjectDetectionParameterImageLayout ||

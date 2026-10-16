@@ -107,6 +107,35 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return;
             }
+            ObjectDetectionParameterSettings requestedParameter =
+                FindObjectDetectionParameter(parameterId);
+            bool includeFrequency1 = coreKey == null && !isResultReviewRun &&
+                requestedParameter != null && requestedParameter.DefectFrequencyEnabled;
+            bool includeFrequency2 = coreKey == null && !isResultReviewRun &&
+                requestedParameter != null && requestedParameter.DefectFrequency2Settings != null &&
+                requestedParameter.DefectFrequency2Settings.Enabled;
+            string assignmentError;
+            if (!TryValidateObjectDetectionRoiGroupAssignments(
+                requestedParameter,
+                coreKey,
+                coreKey == null,
+                includeFrequency1,
+                includeFrequency2,
+                out assignmentError))
+            {
+                if (statusLabel != null)
+                {
+                    statusLabel.Text = assignmentError;
+                }
+                SetObjectDetectionDefectRegionStatus(assignmentError);
+                MessageBox.Show(
+                    this,
+                    assignmentError,
+                    "缺陷檢測未執行",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
             int capturedRecipeGeneration = Interlocked.CompareExchange(
                 ref detectionRecipeGeneration, 0, 0);
             CancellationToken operationCancellationToken =
@@ -114,6 +143,10 @@ namespace IntegratedImageProcessingApp.Forms
             operationCancellationToken.ThrowIfCancellationRequested();
             objectDetectionDefectProcessingRequested = true;
             objectDetectionDefectLastRunCompleted = false;
+            if (objectDetectionDefectRoiGroupPanel != null)
+            {
+                objectDetectionDefectRoiGroupPanel.Enabled = false;
+            }
             if (objectDetectionDefectRunButton != null)
             {
                 objectDetectionDefectRunButton.Enabled = false;
@@ -166,6 +199,11 @@ namespace IntegratedImageProcessingApp.Forms
             finally
             {
                 objectDetectionDefectProcessingRequested = false;
+                if (objectDetectionDefectRoiGroupPanel != null &&
+                    !objectDetectionDefectRoiGroupPanel.IsDisposed)
+                {
+                    objectDetectionDefectRoiGroupPanel.Enabled = true;
+                }
                 if (!IsDisposed)
                 {
                     if (objectDetectionDefectCoreTabs != null && !objectDetectionDefectCoreTabs.IsDisposed)
@@ -196,15 +234,33 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (!parameter.DefectFrequencyEnabled)
+            ObjectDetectionFrequencySettings frequency2 =
+                parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings();
+            if (!parameter.DefectFrequencyEnabled && !frequency2.Enabled)
             {
                 return;
             }
 
             try
             {
-                await RunObjectDetectionFrequencyAnalysisAsync(
-                    parameterId, true, cancellationToken, capturedRecipeGeneration);
+                if (parameter.DefectFrequencyEnabled)
+                {
+                    await RunObjectDetectionFrequencyAnalysisAsync(
+                        parameterId,
+                        true,
+                        cancellationToken,
+                        capturedRecipeGeneration,
+                        frequencyIndex: 0);
+                }
+                if (frequency2.Enabled)
+                {
+                    await RunObjectDetectionFrequencyAnalysisAsync(
+                        parameterId,
+                        true,
+                        cancellationToken,
+                        capturedRecipeGeneration,
+                        frequencyIndex: 1);
+                }
             }
             catch (Exception exception)
             {
@@ -279,7 +335,9 @@ namespace IntegratedImageProcessingApp.Forms
                 !parameter.DefectDetectionCores[runDisplayIndex].Enabled)
             {
                 int firstEnabledCoreIndex = -1;
-                for (int index = 0; index < Math.Min(4, parameter.DefectDetectionCores.Count); index++)
+                for (int index = 0; index < Math.Min(
+                    ObjectDetectionDefectCoreKeys.Length,
+                    parameter.DefectDetectionCores.Count); index++)
                 {
                     if (parameter.DefectDetectionCores[index].Enabled)
                     {
@@ -402,7 +460,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             IEnumerable<ObjectDetectionDefectCoreSettings> configuredCores = parameter.DefectDetectionCores
-                .Take(4);
+                .Take(ObjectDetectionDefectCoreKeys.Length);
             if (!runAllCores)
             {
                 configuredCores = configuredCores.Where(core =>
@@ -418,6 +476,32 @@ namespace IntegratedImageProcessingApp.Forms
             if (coreSettings.Count == 0)
             {
                 statusLabel.Text = "找不到指定的缺陷處理核心。";
+                return;
+            }
+            Dictionary<string, HashSet<int>> membersByGroupId;
+            string groupMemberError;
+            if (!TryValidateObjectDetectionDefectRoiGroupMembers(
+                parameter,
+                coreSettings,
+                false,
+                false,
+                objects,
+                out membersByGroupId,
+                out groupMemberError))
+            {
+                statusLabel.Text = groupMemberError;
+                SetObjectDetectionDefectRegionStatus(groupMemberError);
+                return;
+            }
+            var coreRoiObjectNumbers = coreSettings
+                .Select(core => membersByGroupId[core.RoiGroupId])
+                .ToArray();
+            objects = objects.Where(detectedObject => coreRoiObjectNumbers.Any(memberNumbers =>
+                memberNumbers.Contains(detectedObject.Number))).ToList();
+            if (objects.Count == 0)
+            {
+                statusLabel.Text = "所選 ROI 組沒有可供缺陷檢測的物件。";
+                SetObjectDetectionDefectRegionStatus("所選 ROI 組沒有對應到任何物件，沒有開始運算。");
                 return;
             }
             var signatures = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -506,6 +590,7 @@ namespace IntegratedImageProcessingApp.Forms
                                     parameter.CameraXMillimetersPerPixel,
                                     parameter.CameraYMillimetersPerPixel,
                                     coreSettings,
+                                    coreRoiObjectNumbers,
                                     runParallel,
                                     progress,
                                     objectIndex,
@@ -841,6 +926,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Id = source.Id,
                 CoreKey = source.CoreKey,
+                InspectionPurpose = source.InspectionPurpose,
                 ContrastAdjustmentEnabled = source.ContrastAdjustmentEnabled,
                 ContrastGain = source.ContrastGain,
                 PreprocessMethod = source.PreprocessMethod,
@@ -872,6 +958,7 @@ namespace IntegratedImageProcessingApp.Forms
                 ShowMask = source.ShowMask,
                 ShowRedBoxes = source.ShowRedBoxes,
                 ShowOrangeBoxes = source.ShowOrangeBoxes,
+                RoiGroupId = source.RoiGroupId,
                 Enabled = source.Enabled
             };
         }
@@ -900,6 +987,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegionRight.ToString("R", CultureInfo.InvariantCulture),
                 parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 core.CoreKey ?? string.Empty,
+                CreateObjectDetectionRoiGroupSignature(parameter, core.RoiGroupId),
                 core.ContrastAdjustmentEnabled ? "1" : "0",
                 core.ContrastGain.ToString("R", CultureInfo.InvariantCulture),
                 core.PreprocessMethod ?? string.Empty,
@@ -944,6 +1032,7 @@ namespace IntegratedImageProcessingApp.Forms
             double xMillimetersPerPixel,
             double yMillimetersPerPixel,
             IList<ObjectDetectionDefectCoreSettings> cores,
+            IList<HashSet<int>> coreRoiObjectNumbers,
             bool runParallel,
             IProgress<string> progress,
             int objectIndex,
@@ -1006,6 +1095,11 @@ namespace IntegratedImageProcessingApp.Forms
 
                 Action<int> processCore = delegate(int coreIndex)
                 {
+                    if (coreRoiObjectNumbers == null || coreIndex >= coreRoiObjectNumbers.Count ||
+                        !coreRoiObjectNumbers[coreIndex].Contains(detectedObject.Number))
+                    {
+                        return;
+                    }
                     ObjectDetectionDefectCoreSettings core = cores[coreIndex];
                     string roiLabel = "ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
                         objectCount.ToString(CultureInfo.CurrentCulture);

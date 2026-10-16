@@ -240,37 +240,188 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionFrequencyResults =
                 new Dictionary<string, ObjectDetectionFrequencyResult>(StringComparer.Ordinal);
 
-        private NumericUpDown objectDetectionFrequencyScanHeightInput;
-        private ComboBox objectDetectionFrequencyVerticalStretchComboBox;
-        private NumericUpDown objectDetectionFrequencySensitivityInput;
-        private CheckBox objectDetectionFrequencyContrastEnabledCheckBox;
-        private NumericUpDown objectDetectionFrequencyContrastGainInput;
-        private GroupBox objectDetectionFrequencyPreprocessingGroup;
-        private ComboBox objectDetectionFrequencyPreprocessMethodComboBox;
-        private NumericUpDown objectDetectionFrequencyGaussianKernelWidthInput;
-        private NumericUpDown objectDetectionFrequencyGaussianKernelHeightInput;
-        private NumericUpDown objectDetectionFrequencyGaussianSigmaXInput;
-        private NumericUpDown objectDetectionFrequencyGaussianSigmaYInput;
-        private NumericUpDown objectDetectionFrequencyMedianKernelSizeInput;
-        private CheckBox objectDetectionFrequencyNeighborEnabledCheckBox;
-        private NumericUpDown objectDetectionFrequencyNeighborRadiusInput;
-        private NumericUpDown objectDetectionFrequencyNeighborSensitivityInput;
-        private CheckBox objectDetectionFrequencyEnabledCheckBox;
-        private CheckBox objectDetectionFrequencyShowHeatmapCheckBox;
-        private CheckBox objectDetectionFrequencyShowBoxesCheckBox;
-        private CheckBox objectDetectionFrequencyShowNeighborHeatmapCheckBox;
-        private CheckBox objectDetectionFrequencyShowNeighborBoxesCheckBox;
-        private CheckBox objectDetectionFrequencyShowReferenceCellsCheckBox;
-        private Label objectDetectionFrequencyWindowHint;
-        private Label objectDetectionFrequencyStatusLabel;
-        private Button objectDetectionFrequencyRunButton;
-        private bool objectDetectionFrequencyAnalysisRunning;
-        private string objectDetectionFrequencyDraftParameterId;
+        private sealed class ObjectDetectionFrequencyUiState
+        {
+            public NumericUpDown ScanHeightInput;
+            public ComboBox VerticalStretchComboBox;
+            public NumericUpDown SensitivityInput;
+            public CheckBox ContrastEnabledCheckBox;
+            public NumericUpDown ContrastGainInput;
+            public GroupBox PreprocessingGroup;
+            public ComboBox PreprocessMethodComboBox;
+            public NumericUpDown GaussianKernelWidthInput;
+            public NumericUpDown GaussianKernelHeightInput;
+            public NumericUpDown GaussianSigmaXInput;
+            public NumericUpDown GaussianSigmaYInput;
+            public NumericUpDown MedianKernelSizeInput;
+            public CheckBox NeighborEnabledCheckBox;
+            public NumericUpDown NeighborRadiusInput;
+            public NumericUpDown NeighborSensitivityInput;
+            public CheckBox EnabledCheckBox;
+            public ComboBox RoiGroupSelector;
+            public CheckBox ShowHeatmapCheckBox;
+            public CheckBox ShowBoxesCheckBox;
+            public CheckBox ShowNeighborHeatmapCheckBox;
+            public CheckBox ShowNeighborBoxesCheckBox;
+            public CheckBox ShowReferenceCellsCheckBox;
+            public Label WindowHint;
+            public Label StatusLabel;
+            public Button RunButton;
+            public bool AnalysisRunning;
+            public string DraftParameterId;
+        }
 
-        private TabPage BuildObjectDetectionDefectFrequencyTab(
+        private readonly ObjectDetectionFrequencyUiState[] objectDetectionFrequencyUiStates =
+        {
+            new ObjectDetectionFrequencyUiState(),
+            new ObjectDetectionFrequencyUiState()
+        };
+        private int activeObjectDetectionFrequencyUiIndex;
+
+        private ObjectDetectionFrequencyUiState ActiveObjectDetectionFrequencyUiState
+        {
+            get
+            {
+                int index = Math.Max(0, Math.Min(
+                    activeObjectDetectionFrequencyUiIndex,
+                    objectDetectionFrequencyUiStates.Length - 1));
+                return objectDetectionFrequencyUiStates[index];
+            }
+        }
+
+        private NumericUpDown objectDetectionFrequencyScanHeightInput { get { return ActiveObjectDetectionFrequencyUiState.ScanHeightInput; } set { ActiveObjectDetectionFrequencyUiState.ScanHeightInput = value; } }
+        private ComboBox objectDetectionFrequencyVerticalStretchComboBox { get { return ActiveObjectDetectionFrequencyUiState.VerticalStretchComboBox; } set { ActiveObjectDetectionFrequencyUiState.VerticalStretchComboBox = value; } }
+        private NumericUpDown objectDetectionFrequencySensitivityInput { get { return ActiveObjectDetectionFrequencyUiState.SensitivityInput; } set { ActiveObjectDetectionFrequencyUiState.SensitivityInput = value; } }
+        private CheckBox objectDetectionFrequencyContrastEnabledCheckBox { get { return ActiveObjectDetectionFrequencyUiState.ContrastEnabledCheckBox; } set { ActiveObjectDetectionFrequencyUiState.ContrastEnabledCheckBox = value; } }
+        private NumericUpDown objectDetectionFrequencyContrastGainInput { get { return ActiveObjectDetectionFrequencyUiState.ContrastGainInput; } set { ActiveObjectDetectionFrequencyUiState.ContrastGainInput = value; } }
+        private GroupBox objectDetectionFrequencyPreprocessingGroup { get { return ActiveObjectDetectionFrequencyUiState.PreprocessingGroup; } set { ActiveObjectDetectionFrequencyUiState.PreprocessingGroup = value; } }
+        private ComboBox objectDetectionFrequencyPreprocessMethodComboBox { get { return ActiveObjectDetectionFrequencyUiState.PreprocessMethodComboBox; } set { ActiveObjectDetectionFrequencyUiState.PreprocessMethodComboBox = value; } }
+        private NumericUpDown objectDetectionFrequencyGaussianKernelWidthInput { get { return ActiveObjectDetectionFrequencyUiState.GaussianKernelWidthInput; } set { ActiveObjectDetectionFrequencyUiState.GaussianKernelWidthInput = value; } }
+        private NumericUpDown objectDetectionFrequencyGaussianKernelHeightInput { get { return ActiveObjectDetectionFrequencyUiState.GaussianKernelHeightInput; } set { ActiveObjectDetectionFrequencyUiState.GaussianKernelHeightInput = value; } }
+        private NumericUpDown objectDetectionFrequencyGaussianSigmaXInput { get { return ActiveObjectDetectionFrequencyUiState.GaussianSigmaXInput; } set { ActiveObjectDetectionFrequencyUiState.GaussianSigmaXInput = value; } }
+        private NumericUpDown objectDetectionFrequencyGaussianSigmaYInput { get { return ActiveObjectDetectionFrequencyUiState.GaussianSigmaYInput; } set { ActiveObjectDetectionFrequencyUiState.GaussianSigmaYInput = value; } }
+        private NumericUpDown objectDetectionFrequencyMedianKernelSizeInput { get { return ActiveObjectDetectionFrequencyUiState.MedianKernelSizeInput; } set { ActiveObjectDetectionFrequencyUiState.MedianKernelSizeInput = value; } }
+        private CheckBox objectDetectionFrequencyNeighborEnabledCheckBox { get { return ActiveObjectDetectionFrequencyUiState.NeighborEnabledCheckBox; } set { ActiveObjectDetectionFrequencyUiState.NeighborEnabledCheckBox = value; } }
+        private NumericUpDown objectDetectionFrequencyNeighborRadiusInput { get { return ActiveObjectDetectionFrequencyUiState.NeighborRadiusInput; } set { ActiveObjectDetectionFrequencyUiState.NeighborRadiusInput = value; } }
+        private NumericUpDown objectDetectionFrequencyNeighborSensitivityInput { get { return ActiveObjectDetectionFrequencyUiState.NeighborSensitivityInput; } set { ActiveObjectDetectionFrequencyUiState.NeighborSensitivityInput = value; } }
+        private CheckBox objectDetectionFrequencyEnabledCheckBox { get { return ActiveObjectDetectionFrequencyUiState.EnabledCheckBox; } set { ActiveObjectDetectionFrequencyUiState.EnabledCheckBox = value; } }
+        private ComboBox objectDetectionFrequencyRoiGroupSelector { get { return ActiveObjectDetectionFrequencyUiState.RoiGroupSelector; } set { ActiveObjectDetectionFrequencyUiState.RoiGroupSelector = value; } }
+        private CheckBox objectDetectionFrequencyShowHeatmapCheckBox { get { return ActiveObjectDetectionFrequencyUiState.ShowHeatmapCheckBox; } set { ActiveObjectDetectionFrequencyUiState.ShowHeatmapCheckBox = value; } }
+        private CheckBox objectDetectionFrequencyShowBoxesCheckBox { get { return ActiveObjectDetectionFrequencyUiState.ShowBoxesCheckBox; } set { ActiveObjectDetectionFrequencyUiState.ShowBoxesCheckBox = value; } }
+        private CheckBox objectDetectionFrequencyShowNeighborHeatmapCheckBox { get { return ActiveObjectDetectionFrequencyUiState.ShowNeighborHeatmapCheckBox; } set { ActiveObjectDetectionFrequencyUiState.ShowNeighborHeatmapCheckBox = value; } }
+        private CheckBox objectDetectionFrequencyShowNeighborBoxesCheckBox { get { return ActiveObjectDetectionFrequencyUiState.ShowNeighborBoxesCheckBox; } set { ActiveObjectDetectionFrequencyUiState.ShowNeighborBoxesCheckBox = value; } }
+        private CheckBox objectDetectionFrequencyShowReferenceCellsCheckBox { get { return ActiveObjectDetectionFrequencyUiState.ShowReferenceCellsCheckBox; } set { ActiveObjectDetectionFrequencyUiState.ShowReferenceCellsCheckBox = value; } }
+        private Label objectDetectionFrequencyWindowHint { get { return ActiveObjectDetectionFrequencyUiState.WindowHint; } set { ActiveObjectDetectionFrequencyUiState.WindowHint = value; } }
+        private Label objectDetectionFrequencyStatusLabel { get { return ActiveObjectDetectionFrequencyUiState.StatusLabel; } set { ActiveObjectDetectionFrequencyUiState.StatusLabel = value; } }
+        private Button objectDetectionFrequencyRunButton { get { return ActiveObjectDetectionFrequencyUiState.RunButton; } set { ActiveObjectDetectionFrequencyUiState.RunButton = value; } }
+        private bool objectDetectionFrequencyAnalysisRunning { get { return ActiveObjectDetectionFrequencyUiState.AnalysisRunning; } set { ActiveObjectDetectionFrequencyUiState.AnalysisRunning = value; } }
+        private string objectDetectionFrequencyDraftParameterId { get { return ActiveObjectDetectionFrequencyUiState.DraftParameterId; } set { ActiveObjectDetectionFrequencyUiState.DraftParameterId = value; } }
+
+        private bool IsAnyObjectDetectionFrequencyAnalysisRunning
+        {
+            get { return objectDetectionFrequencyUiStates.Any(state => state.AnalysisRunning); }
+        }
+
+        private static ObjectDetectionFrequencySettings EnsureObjectDetectionFrequency2Settings(
             ObjectDetectionParameterSettings parameter)
         {
-            var page = new TabPage("頻域異常");
+            if (parameter.DefectFrequency2Settings == null)
+            {
+                parameter.DefectFrequency2Settings = new ObjectDetectionFrequencySettings();
+            }
+            return parameter.DefectFrequency2Settings;
+        }
+
+        private static ObjectDetectionParameterSettings CreateObjectDetectionFrequencyParameterView(
+            ObjectDetectionParameterSettings parameter,
+            int frequencyIndex)
+        {
+            if (parameter == null || frequencyIndex == 0)
+            {
+                return parameter;
+            }
+
+            ObjectDetectionFrequencySettings settings =
+                EnsureObjectDetectionFrequency2Settings(parameter);
+            ObjectDetectionParameterSettings view = parameter.CreateShallowCopy();
+            view.DefectFrequencyEnabled = settings.Enabled;
+            view.DefectFrequencyRoiGroupId = settings.RoiGroupId;
+            view.DefectFrequencyScanHeight = settings.ScanHeight;
+            view.DefectFrequencyVerticalStretchPercent = settings.VerticalStretchPercent;
+            view.DefectFrequencySensitivity = settings.Sensitivity;
+            view.DefectFrequencyContrastEnabled = settings.ContrastEnabled;
+            view.DefectFrequencyContrastGain = settings.ContrastGain;
+            view.DefectFrequencyPreprocessMethod = settings.PreprocessMethod;
+            view.DefectFrequencyGaussianKernelWidth = settings.GaussianKernelWidth;
+            view.DefectFrequencyGaussianKernelHeight = settings.GaussianKernelHeight;
+            view.DefectFrequencyGaussianSigmaX = settings.GaussianSigmaX;
+            view.DefectFrequencyGaussianSigmaY = settings.GaussianSigmaY;
+            view.DefectFrequencyMedianKernelSize = settings.MedianKernelSize;
+            view.DefectFrequencyNeighborComparisonEnabled = settings.NeighborComparisonEnabled;
+            view.DefectFrequencyNeighborReferenceRadius = settings.NeighborReferenceRadius;
+            view.DefectFrequencyNeighborSensitivity = settings.NeighborSensitivity;
+            view.DefectFrequencyEnhancementMethod = settings.EnhancementMethod;
+            view.DefectFrequencyLocalBackgroundKernelSize = settings.LocalBackgroundKernelSize;
+            view.DefectFrequencyLocalBackgroundGain = settings.LocalBackgroundGain;
+            view.DefectFrequencyClaheClipLimit = settings.ClaheClipLimit;
+            view.DefectFrequencyClaheTileGridSize = settings.ClaheTileGridSize;
+            view.DefectFrequencyShowHeatmap = settings.ShowHeatmap;
+            view.DefectFrequencyShowAnomalyBoxes = settings.ShowAnomalyBoxes;
+            view.DefectFrequencyShowNeighborHeatmap = settings.ShowNeighborHeatmap;
+            view.DefectFrequencyShowNeighborAnomalyBoxes = settings.ShowNeighborAnomalyBoxes;
+            view.DefectFrequencyShowHealthyReferenceCells = settings.ShowHealthyReferenceCells;
+            return view;
+        }
+
+        private static void CopyObjectDetectionFrequencyParameterViewToSettings(
+            ObjectDetectionParameterSettings source,
+            ObjectDetectionParameterSettings view,
+            int frequencyIndex)
+        {
+            if (source == null || view == null || frequencyIndex == 0)
+            {
+                return;
+            }
+
+            ObjectDetectionFrequencySettings settings =
+                EnsureObjectDetectionFrequency2Settings(source);
+            settings.Enabled = view.DefectFrequencyEnabled;
+            settings.RoiGroupId = view.DefectFrequencyRoiGroupId;
+            settings.ScanHeight = view.DefectFrequencyScanHeight;
+            settings.VerticalStretchPercent = view.DefectFrequencyVerticalStretchPercent;
+            settings.Sensitivity = view.DefectFrequencySensitivity;
+            settings.ContrastEnabled = view.DefectFrequencyContrastEnabled;
+            settings.ContrastGain = view.DefectFrequencyContrastGain;
+            settings.PreprocessMethod = view.DefectFrequencyPreprocessMethod;
+            settings.GaussianKernelWidth = view.DefectFrequencyGaussianKernelWidth;
+            settings.GaussianKernelHeight = view.DefectFrequencyGaussianKernelHeight;
+            settings.GaussianSigmaX = view.DefectFrequencyGaussianSigmaX;
+            settings.GaussianSigmaY = view.DefectFrequencyGaussianSigmaY;
+            settings.MedianKernelSize = view.DefectFrequencyMedianKernelSize;
+            settings.NeighborComparisonEnabled = view.DefectFrequencyNeighborComparisonEnabled;
+            settings.NeighborReferenceRadius = view.DefectFrequencyNeighborReferenceRadius;
+            settings.NeighborSensitivity = view.DefectFrequencyNeighborSensitivity;
+            settings.EnhancementMethod = view.DefectFrequencyEnhancementMethod;
+            settings.LocalBackgroundKernelSize = view.DefectFrequencyLocalBackgroundKernelSize;
+            settings.LocalBackgroundGain = view.DefectFrequencyLocalBackgroundGain;
+            settings.ClaheClipLimit = view.DefectFrequencyClaheClipLimit;
+            settings.ClaheTileGridSize = view.DefectFrequencyClaheTileGridSize;
+            settings.ShowHeatmap = view.DefectFrequencyShowHeatmap;
+            settings.ShowAnomalyBoxes = view.DefectFrequencyShowAnomalyBoxes;
+            settings.ShowNeighborHeatmap = view.DefectFrequencyShowNeighborHeatmap;
+            settings.ShowNeighborAnomalyBoxes = view.DefectFrequencyShowNeighborAnomalyBoxes;
+            settings.ShowHealthyReferenceCells = view.DefectFrequencyShowHealthyReferenceCells;
+        }
+
+        private TabPage BuildObjectDetectionDefectFrequencyTab(
+            ObjectDetectionParameterSettings parameter,
+            int frequencyIndex)
+        {
+            activeObjectDetectionFrequencyUiIndex = frequencyIndex;
+            parameter = CreateObjectDetectionFrequencyParameterView(
+                parameter,
+                frequencyIndex);
+            var page = new TabPage(frequencyIndex == 0 ? "頻域異常一" : "頻域異常二");
             var content = new Panel
             {
                 Dock = DockStyle.Fill,
@@ -363,9 +514,36 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 UpdateObjectDetectionFrequencyEnabled(
                     parameter,
-                    objectDetectionFrequencyEnabledCheckBox.Checked);
+                    objectDetectionFrequencyEnabledCheckBox.Checked,
+                    frequencyIndex);
             };
             enabledPanel.Controls.Add(objectDetectionFrequencyEnabledCheckBox);
+            var roiGroupPanel = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 52
+            };
+            roiGroupPanel.Controls.Add(new Label
+            {
+                AutoSize = false,
+                Text = "使用 ROI 組",
+                TextAlign = ContentAlignment.MiddleLeft,
+                Location = new Point(8, 3),
+                Size = new Size(88, 22)
+            });
+            objectDetectionFrequencyRoiGroupSelector = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                Location = new Point(98, 3),
+                Width = 280,
+                Height = 23
+            };
+            PopulateObjectDetectionRoiGroupSelector(
+                parameter,
+                objectDetectionFrequencyRoiGroupSelector,
+                parameter.DefectFrequencyRoiGroupId);
+            roiGroupPanel.Controls.Add(objectDetectionFrequencyRoiGroupSelector);
 
             var scanGroup = new GroupBox
             {
@@ -573,23 +751,23 @@ namespace IntegratedImageProcessingApp.Forms
             };
             objectDetectionFrequencyShowHeatmapCheckBox.CheckedChanged += delegate
             {
-                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter, frequencyIndex);
             };
             objectDetectionFrequencyShowBoxesCheckBox.CheckedChanged += delegate
             {
-                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter, frequencyIndex);
             };
             objectDetectionFrequencyShowNeighborHeatmapCheckBox.CheckedChanged += delegate
             {
-                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter, frequencyIndex);
             };
             objectDetectionFrequencyShowNeighborBoxesCheckBox.CheckedChanged += delegate
             {
-                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter, frequencyIndex);
             };
             objectDetectionFrequencyShowReferenceCellsCheckBox.CheckedChanged += delegate
             {
-                UpdateObjectDetectionFrequencyDisplayOptions(parameter);
+                UpdateObjectDetectionFrequencyDisplayOptions(parameter, frequencyIndex);
             };
             displayOptions.Controls.Add(objectDetectionFrequencyShowHeatmapCheckBox, 0, 0);
             displayOptions.Controls.Add(objectDetectionFrequencyShowBoxesCheckBox, 1, 0);
@@ -640,12 +818,20 @@ namespace IntegratedImageProcessingApp.Forms
                 Height = 27,
                 Margin = new Padding(3, 0, 0, 0)
             };
-            cancelButton.Click += delegate { CancelObjectDetectionFrequencySettings(parameter); };
-            applyButton.Click += delegate { ApplyObjectDetectionFrequencySettings(parameter); };
+            cancelButton.Click += delegate
+            {
+                CancelObjectDetectionFrequencySettings(parameter, frequencyIndex);
+            };
+            applyButton.Click += delegate
+            {
+                ApplyObjectDetectionFrequencySettings(parameter, frequencyIndex);
+            };
             objectDetectionFrequencyRunButton.Click += async delegate
             {
-                ApplyObjectDetectionFrequencySettings(parameter);
-                await RunObjectDetectionFrequencyAnalysisAsync(parameter.Id);
+                ApplyObjectDetectionFrequencySettings(parameter, frequencyIndex);
+                await RunObjectDetectionFrequencyAnalysisAsync(
+                    parameter.Id,
+                    frequencyIndex: frequencyIndex);
             };
             actionBar.Controls.Add(cancelButton);
             actionBar.Controls.Add(applyButton);
@@ -666,6 +852,7 @@ namespace IntegratedImageProcessingApp.Forms
             content.Controls.Add(scanGroup);
             content.Controls.Add(objectDetectionFrequencyPreprocessingGroup);
             content.Controls.Add(sourceGroup);
+            content.Controls.Add(roiGroupPanel);
             content.Controls.Add(enabledPanel);
             page.Controls.Add(content);
             UpdateObjectDetectionFrequencyWindowHint();
@@ -787,7 +974,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void UpdateObjectDetectionFrequencyEnabled(
             ObjectDetectionParameterSettings parameter,
-            bool enabled)
+            bool enabled,
+            int frequencyIndex)
         {
             if (parameter == null ||
                 !string.Equals(objectDetectionFrequencyDraftParameterId, parameter.Id,
@@ -797,11 +985,18 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             parameter.DefectFrequencyEnabled = enabled;
+            ObjectDetectionParameterSettings savedParameter =
+                FindObjectDetectionParameter(parameter.Id);
+            if (frequencyIndex == 1 && savedParameter != null)
+            {
+                EnsureObjectDetectionFrequency2Settings(savedParameter).Enabled = enabled;
+            }
             SaveSystemParameters();
+            UpdateObjectDetectionDefectDisplayTabVisibility(savedParameter ?? parameter);
             UpdateObjectDetectionFrequencyControlsEnabled(enabled);
             if (!enabled)
             {
-                RemoveObjectDetectionFrequencyResult(parameter.Id);
+                RemoveObjectDetectionFrequencyResult(parameter.Id, frequencyIndex);
                 if (objectDetectionFrequencyStatusLabel != null)
                 {
                     objectDetectionFrequencyStatusLabel.Text = "頻域分析已停用。";
@@ -812,11 +1007,11 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyStatusLabel.Text = "頻域分析已啟用，按「開始分析」更新結果。";
             }
 
-            RefreshObjectDetectionDefectIntegrationResults(parameter);
+            RefreshObjectDetectionDefectIntegrationResults(savedParameter ?? parameter);
             InvalidateObjectDetectionDefectIntegrationDisplay();
 
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
-                ObjectDetectionDefectFrequencyDisplayIndex);
+                GetObjectDetectionFrequencyDisplayIndex(frequencyIndex));
             if (display != null)
             {
                 display.InvalidateImageView();
@@ -907,16 +1102,35 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private void RemoveObjectDetectionFrequencyResult(string parameterId)
+        private void RemoveObjectDetectionFrequencyResult(
+            string parameterId,
+            int frequencyIndex = 0)
         {
             ObjectDetectionFrequencyResult previousResult;
+            string resultKey = GetObjectDetectionFrequencyResultKey(parameterId, frequencyIndex);
             if (!string.IsNullOrWhiteSpace(parameterId) &&
-                objectDetectionFrequencyResults.TryGetValue(parameterId, out previousResult))
+                objectDetectionFrequencyResults.TryGetValue(resultKey, out previousResult))
             {
-                objectDetectionFrequencyResults.Remove(parameterId);
+                objectDetectionFrequencyResults.Remove(resultKey);
                 DisposeObjectDetectionFrequencyResult(previousResult);
             }
             InvalidateObjectDetectionDefectIntegrationCache(parameterId);
+        }
+
+        private static string GetObjectDetectionFrequencyResultKey(
+            string parameterId,
+            int frequencyIndex)
+        {
+            return frequencyIndex == 1
+                ? (parameterId ?? string.Empty) + "|Frequency2"
+                : parameterId ?? string.Empty;
+        }
+
+        private static int GetObjectDetectionFrequencyDisplayIndex(int frequencyIndex)
+        {
+            return frequencyIndex == 1
+                ? ObjectDetectionDefectFrequency2DisplayIndex
+                : ObjectDetectionDefectFrequencyDisplayIndex;
         }
 
         private void InvalidateObjectDetectionDefectIntegrationDisplay()
@@ -955,7 +1169,8 @@ namespace IntegratedImageProcessingApp.Forms
         }
 
         private void ApplyObjectDetectionFrequencySettings(
-            ObjectDetectionParameterSettings parameter)
+            ObjectDetectionParameterSettings parameter,
+            int frequencyIndex)
         {
             if (parameter == null ||
                 !string.Equals(objectDetectionFrequencyDraftParameterId, parameter.Id,
@@ -977,6 +1192,14 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyContrastEnabledCheckBox.Checked;
             parameter.DefectFrequencyContrastGain = Decimal.ToDouble(
                 objectDetectionFrequencyContrastGainInput.Value);
+            ObjectDetectionRoiGroupChoice selectedRoiGroup =
+                objectDetectionFrequencyRoiGroupSelector == null
+                    ? null
+                    : objectDetectionFrequencyRoiGroupSelector.SelectedItem
+                        as ObjectDetectionRoiGroupChoice;
+            parameter.DefectFrequencyRoiGroupId = selectedRoiGroup == null
+                ? string.Empty
+                : selectedRoiGroup.Id;
             DefectCorePreprocessOption preprocessOption =
                 objectDetectionFrequencyPreprocessMethodComboBox.SelectedItem
                     as DefectCorePreprocessOption;
@@ -1009,12 +1232,21 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyShowNeighborBoxesCheckBox.Checked;
             parameter.DefectFrequencyShowHealthyReferenceCells =
                 objectDetectionFrequencyShowReferenceCellsCheckBox.Checked;
+            ObjectDetectionParameterSettings savedParameter =
+                FindObjectDetectionParameter(parameter.Id);
+            if (frequencyIndex == 1 && savedParameter != null)
+            {
+                CopyObjectDetectionFrequencyParameterViewToSettings(
+                    savedParameter,
+                    parameter,
+                    frequencyIndex);
+            }
             SaveSystemParameters();
-            RemoveObjectDetectionFrequencyResult(parameter.Id);
-            RefreshObjectDetectionDefectIntegrationResults(parameter);
+            RemoveObjectDetectionFrequencyResult(parameter.Id, frequencyIndex);
+            RefreshObjectDetectionDefectIntegrationResults(savedParameter ?? parameter);
             InvalidateObjectDetectionDefectIntegrationDisplay();
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
-                ObjectDetectionDefectFrequencyDisplayIndex);
+                GetObjectDetectionFrequencyDisplayIndex(frequencyIndex));
             if (display != null)
             {
                 display.InvalidateImageView();
@@ -1039,7 +1271,8 @@ namespace IntegratedImageProcessingApp.Forms
         }
 
         private void CancelObjectDetectionFrequencySettings(
-            ObjectDetectionParameterSettings parameter)
+            ObjectDetectionParameterSettings parameter,
+            int frequencyIndex)
         {
             if (parameter == null ||
                 !string.Equals(objectDetectionFrequencyDraftParameterId, parameter.Id,
@@ -1047,69 +1280,82 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return;
             }
+            ObjectDetectionParameterSettings restoredParameter =
+                frequencyIndex == 1
+                    ? CreateObjectDetectionFrequencyParameterView(
+                        FindObjectDetectionParameter(parameter.Id), frequencyIndex)
+                    : parameter;
+            if (restoredParameter == null)
+            {
+                return;
+            }
             objectDetectionFrequencyScanHeightInput.Value = Math.Max(
                 objectDetectionFrequencyScanHeightInput.Minimum,
                 Math.Min(objectDetectionFrequencyScanHeightInput.Maximum,
-                    parameter.DefectFrequencyScanHeight));
+                    restoredParameter.DefectFrequencyScanHeight));
             objectDetectionFrequencySensitivityInput.Value = (decimal)Math.Max(
                 (double)objectDetectionFrequencySensitivityInput.Minimum,
                 Math.Min((double)objectDetectionFrequencySensitivityInput.Maximum,
-                    parameter.DefectFrequencySensitivity));
+                    restoredParameter.DefectFrequencySensitivity));
             if (objectDetectionFrequencyVerticalStretchComboBox != null)
             {
                 objectDetectionFrequencyVerticalStretchComboBox.SelectedIndex =
                     GetObjectDetectionFrequencyVerticalStretchIndex(
-                        parameter.DefectFrequencyVerticalStretchPercent);
+                        restoredParameter.DefectFrequencyVerticalStretchPercent);
             }
             objectDetectionFrequencyContrastEnabledCheckBox.Checked =
-                parameter.DefectFrequencyContrastEnabled;
+                restoredParameter.DefectFrequencyContrastEnabled;
+            PopulateObjectDetectionRoiGroupSelector(
+                restoredParameter,
+                objectDetectionFrequencyRoiGroupSelector,
+                restoredParameter.DefectFrequencyRoiGroupId);
             objectDetectionFrequencyContrastGainInput.Value = (decimal)Math.Max(
                 (double)objectDetectionFrequencyContrastGainInput.Minimum,
                 Math.Min((double)objectDetectionFrequencyContrastGainInput.Maximum,
-                    parameter.DefectFrequencyContrastGain));
+                    restoredParameter.DefectFrequencyContrastGain));
             SelectDefectCorePreprocessOption(
                 objectDetectionFrequencyPreprocessMethodComboBox,
-                parameter.DefectFrequencyPreprocessMethod);
+                restoredParameter.DefectFrequencyPreprocessMethod);
             objectDetectionFrequencyGaussianKernelWidthInput.Value = Math.Max(
                 objectDetectionFrequencyGaussianKernelWidthInput.Minimum,
                 Math.Min(objectDetectionFrequencyGaussianKernelWidthInput.Maximum,
-                    parameter.DefectFrequencyGaussianKernelWidth));
+                    restoredParameter.DefectFrequencyGaussianKernelWidth));
             objectDetectionFrequencyGaussianKernelHeightInput.Value = Math.Max(
                 objectDetectionFrequencyGaussianKernelHeightInput.Minimum,
                 Math.Min(objectDetectionFrequencyGaussianKernelHeightInput.Maximum,
-                    parameter.DefectFrequencyGaussianKernelHeight));
+                    restoredParameter.DefectFrequencyGaussianKernelHeight));
             objectDetectionFrequencyGaussianSigmaXInput.Value = (decimal)Math.Max(
                 (double)objectDetectionFrequencyGaussianSigmaXInput.Minimum,
                 Math.Min((double)objectDetectionFrequencyGaussianSigmaXInput.Maximum,
-                    parameter.DefectFrequencyGaussianSigmaX));
+                    restoredParameter.DefectFrequencyGaussianSigmaX));
             objectDetectionFrequencyGaussianSigmaYInput.Value = (decimal)Math.Max(
                 (double)objectDetectionFrequencyGaussianSigmaYInput.Minimum,
                 Math.Min((double)objectDetectionFrequencyGaussianSigmaYInput.Maximum,
-                    parameter.DefectFrequencyGaussianSigmaY));
+                    restoredParameter.DefectFrequencyGaussianSigmaY));
             objectDetectionFrequencyMedianKernelSizeInput.Value = Math.Max(
                 objectDetectionFrequencyMedianKernelSizeInput.Minimum,
                 Math.Min(objectDetectionFrequencyMedianKernelSizeInput.Maximum,
-                    parameter.DefectFrequencyMedianKernelSize));
+                    restoredParameter.DefectFrequencyMedianKernelSize));
             objectDetectionFrequencyNeighborEnabledCheckBox.Checked =
-                parameter.DefectFrequencyNeighborComparisonEnabled;
+                restoredParameter.DefectFrequencyNeighborComparisonEnabled;
             objectDetectionFrequencyNeighborRadiusInput.Value = Math.Max(
                 objectDetectionFrequencyNeighborRadiusInput.Minimum,
                 Math.Min(objectDetectionFrequencyNeighborRadiusInput.Maximum,
-                    parameter.DefectFrequencyNeighborReferenceRadius));
+                    restoredParameter.DefectFrequencyNeighborReferenceRadius));
             objectDetectionFrequencyNeighborSensitivityInput.Value = (decimal)Math.Max(
                 (double)objectDetectionFrequencyNeighborSensitivityInput.Minimum,
                 Math.Min((double)objectDetectionFrequencyNeighborSensitivityInput.Maximum,
-                    parameter.DefectFrequencyNeighborSensitivity));
+                    restoredParameter.DefectFrequencyNeighborSensitivity));
             objectDetectionFrequencyShowHeatmapCheckBox.Checked =
-                parameter.DefectFrequencyShowHeatmap;
+                restoredParameter.DefectFrequencyShowHeatmap;
             objectDetectionFrequencyShowBoxesCheckBox.Checked =
-                parameter.DefectFrequencyShowAnomalyBoxes;
+                restoredParameter.DefectFrequencyShowAnomalyBoxes;
             objectDetectionFrequencyShowNeighborHeatmapCheckBox.Checked =
-                parameter.DefectFrequencyShowNeighborHeatmap;
+                restoredParameter.DefectFrequencyShowNeighborHeatmap;
             objectDetectionFrequencyShowNeighborBoxesCheckBox.Checked =
-                parameter.DefectFrequencyShowNeighborAnomalyBoxes;
+                restoredParameter.DefectFrequencyShowNeighborAnomalyBoxes;
             objectDetectionFrequencyShowReferenceCellsCheckBox.Checked =
-                parameter.DefectFrequencyShowHealthyReferenceCells;
+                restoredParameter.DefectFrequencyShowHealthyReferenceCells;
             UpdateObjectDetectionFrequencyControlsEnabled(
                 objectDetectionFrequencyEnabledCheckBox != null &&
                 objectDetectionFrequencyEnabledCheckBox.Checked);
@@ -1117,7 +1363,8 @@ namespace IntegratedImageProcessingApp.Forms
         }
 
         private void UpdateObjectDetectionFrequencyDisplayOptions(
-            ObjectDetectionParameterSettings parameter)
+            ObjectDetectionParameterSettings parameter,
+            int frequencyIndex)
         {
             if (parameter == null || objectDetectionFrequencyShowHeatmapCheckBox == null ||
                 objectDetectionFrequencyShowBoxesCheckBox == null)
@@ -1134,9 +1381,21 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionFrequencyShowNeighborBoxesCheckBox.Checked;
             parameter.DefectFrequencyShowHealthyReferenceCells =
                 objectDetectionFrequencyShowReferenceCellsCheckBox.Checked;
+            ObjectDetectionParameterSettings savedParameter =
+                FindObjectDetectionParameter(parameter.Id);
+            if (frequencyIndex == 1 && savedParameter != null)
+            {
+                ObjectDetectionFrequencySettings settings =
+                    EnsureObjectDetectionFrequency2Settings(savedParameter);
+                settings.ShowHeatmap = parameter.DefectFrequencyShowHeatmap;
+                settings.ShowAnomalyBoxes = parameter.DefectFrequencyShowAnomalyBoxes;
+                settings.ShowNeighborHeatmap = parameter.DefectFrequencyShowNeighborHeatmap;
+                settings.ShowNeighborAnomalyBoxes = parameter.DefectFrequencyShowNeighborAnomalyBoxes;
+                settings.ShowHealthyReferenceCells = parameter.DefectFrequencyShowHealthyReferenceCells;
+            }
             SaveSystemParameters();
             ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
-                ObjectDetectionDefectFrequencyDisplayIndex);
+                GetObjectDetectionFrequencyDisplayIndex(frequencyIndex));
             if (display != null)
             {
                 display.InvalidateImageView();
@@ -1148,21 +1407,48 @@ namespace IntegratedImageProcessingApp.Forms
             bool isCoordinatedRun = false,
             CancellationToken cancellationToken = default(CancellationToken),
             int capturedRecipeGeneration = -1,
-            bool includeIndependentCoreDefects = true)
+            bool includeIndependentCoreDefects = true,
+            int frequencyIndex = 0)
         {
-            if (objectDetectionFrequencyAnalysisRunning)
+            activeObjectDetectionFrequencyUiIndex = frequencyIndex;
+            ObjectDetectionFrequencyUiState uiState = objectDetectionFrequencyUiStates[
+                Math.Max(0, Math.Min(frequencyIndex, objectDetectionFrequencyUiStates.Length - 1))];
+            if (uiState.AnalysisRunning)
             {
                 return;
             }
-            ObjectDetectionParameterSettings parameter = FindObjectDetectionParameter(parameterId);
-            if (parameter == null)
+            ObjectDetectionParameterSettings savedParameter = FindObjectDetectionParameter(parameterId);
+            if (savedParameter == null)
             {
                 SetObjectDetectionDefectRegionStatus("找不到頻域分析所屬的檢測參數。 ");
                 return;
             }
+            ObjectDetectionParameterSettings parameter =
+                CreateObjectDetectionFrequencyParameterView(savedParameter, frequencyIndex);
             if (!parameter.DefectFrequencyEnabled)
             {
                 SetObjectDetectionDefectRegionStatus("頻域異常分析目前已停用。 ");
+                return;
+            }
+            string roiGroupAssignmentError;
+            if (!TryValidateObjectDetectionRoiGroupAssignments(
+                savedParameter,
+                null,
+                false,
+                frequencyIndex == 0,
+                frequencyIndex == 1,
+                out roiGroupAssignmentError))
+            {
+                SetObjectDetectionDefectRegionStatus(roiGroupAssignmentError);
+                if (!isCoordinatedRun)
+                {
+                    MessageBox.Show(
+                        this,
+                        roiGroupAssignmentError,
+                        "頻域分析未執行",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
                 return;
             }
             if (!parameter.DefectInspectionRegionConfigured ||
@@ -1199,10 +1485,14 @@ namespace IntegratedImageProcessingApp.Forms
             }
             EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
 
-            objectDetectionFrequencyAnalysisRunning = true;
-            if (!isCoordinatedRun && objectDetectionFrequencyRunButton != null)
+            uiState.AnalysisRunning = true;
+            if (!isCoordinatedRun && objectDetectionDefectRoiGroupPanel != null)
             {
-                objectDetectionFrequencyRunButton.Enabled = false;
+                objectDetectionDefectRoiGroupPanel.Enabled = false;
+            }
+            if (!isCoordinatedRun && uiState.RunButton != null)
+            {
+                uiState.RunButton.Enabled = false;
             }
             if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null)
             {
@@ -1211,7 +1501,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (!isCoordinatedRun && leftImageTabControl != null)
             {
                 leftImageTabControl.SelectedTab = GetObjectDetectionDefectDisplayTabPage(
-                    ObjectDetectionDefectFrequencyDisplayIndex);
+                    GetObjectDetectionFrequencyDisplayIndex(frequencyIndex));
                 RefreshObjectDetectionDefectDisplay();
             }
 
@@ -1235,6 +1525,25 @@ namespace IntegratedImageProcessingApp.Forms
                 if (objects.Count == 0)
                 {
                     SetObjectDetectionDefectRegionStatus("沒有已完成定義的 ROI 物件可供頻域掃描。 ");
+                    return;
+                }
+                HashSet<int> selectedRoiNumbers;
+                string memberError;
+                if (!TryResolveObjectDetectionRoiGroupMembers(
+                    parameter,
+                    parameter.DefectFrequencyRoiGroupId,
+                    objects,
+                    out selectedRoiNumbers,
+                    out memberError))
+                {
+                    SetObjectDetectionDefectRegionStatus(memberError);
+                    return;
+                }
+                objects = objects.Where(item => selectedRoiNumbers.Contains(item.Number)).ToList();
+                if (objects.Count == 0)
+                {
+                    SetObjectDetectionDefectRegionStatus(
+                        "選取的 ROI 組沒有對應到物件，頻域分析未執行。 ");
                     return;
                 }
 
@@ -1284,9 +1593,9 @@ namespace IntegratedImageProcessingApp.Forms
                         scanHeight.ToString(CultureInfo.CurrentCulture) + " × " +
                         scanHeight.ToString(CultureInfo.CurrentCulture) +
                         " px；本次未執行。請降低掃描高度或擴大檢測範圍。";
-                    if (objectDetectionFrequencyStatusLabel != null)
+                    if (uiState.StatusLabel != null)
                     {
-                        objectDetectionFrequencyStatusLabel.Text = message;
+                        uiState.StatusLabel.Text = message;
                     }
                     if (statusLabel != null)
                     {
@@ -1390,18 +1699,19 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
-                RemoveObjectDetectionFrequencyResult(parameter.Id);
-                objectDetectionFrequencyResults[parameter.Id] = result;
+                RemoveObjectDetectionFrequencyResult(parameter.Id, frequencyIndex);
+                objectDetectionFrequencyResults[
+                    GetObjectDetectionFrequencyResultKey(parameter.Id, frequencyIndex)] = result;
                 InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
-                RefreshObjectDetectionDefectIntegrationResults(parameter);
+                RefreshObjectDetectionDefectIntegrationResults(savedParameter);
                 InvalidateObjectDetectionDefectIntegrationDisplay();
                 ImageDisplayControl display = GetObjectDetectionDefectDisplayControl(
-                    ObjectDetectionDefectFrequencyDisplayIndex);
+                    GetObjectDetectionFrequencyDisplayIndex(frequencyIndex));
                 if (display != null)
                 {
                     display.InvalidateImageView();
                 }
-                string summary = UpdateObjectDetectionFrequencyResultSummary(result);
+                string summary = UpdateObjectDetectionFrequencyResultSummary(result, frequencyIndex);
                 if (statusLabel != null)
                 {
                     statusLabel.Text = string.Format(
@@ -1412,7 +1722,7 @@ namespace IntegratedImageProcessingApp.Forms
                         result.TotalElapsedMilliseconds);
                 }
                 SetObjectDetectionDefectRegionStatus(summary +
-                    (IsObjectDetectionDefectFrequencyIntegrationRequired(parameter)
+                    (IsObjectDetectionDefectFrequencyIntegrationRequired(savedParameter, frequencyIndex)
                         ? "頻域異常已納入缺陷整合與結果判定。 "
                         : "目前未納入缺陷整合判定。 "));
             }
@@ -1432,16 +1742,23 @@ namespace IntegratedImageProcessingApp.Forms
             }
             finally
             {
-                objectDetectionFrequencyAnalysisRunning = false;
+                uiState.AnalysisRunning = false;
                 if (!IsDisposed)
                 {
-                    if (!isCoordinatedRun && objectDetectionFrequencyRunButton != null &&
-                        !objectDetectionFrequencyRunButton.IsDisposed)
+                    if (!isCoordinatedRun && objectDetectionDefectRoiGroupPanel != null &&
+                        !objectDetectionDefectRoiGroupPanel.IsDisposed)
+                    {
+                        objectDetectionDefectRoiGroupPanel.Enabled = true;
+                    }
+                    if (!isCoordinatedRun && uiState.RunButton != null &&
+                        !uiState.RunButton.IsDisposed)
                     {
                         ObjectDetectionParameterSettings currentParameter =
                             FindObjectDetectionParameter(activeObjectDetectionParameterId);
-                        objectDetectionFrequencyRunButton.Enabled =
-                            currentParameter != null && currentParameter.DefectFrequencyEnabled;
+                        ObjectDetectionParameterSettings currentFrequencyParameter =
+                            CreateObjectDetectionFrequencyParameterView(currentParameter, frequencyIndex);
+                        uiState.RunButton.Enabled = currentFrequencyParameter != null &&
+                            currentFrequencyParameter.DefectFrequencyEnabled;
                     }
                     if (!isCoordinatedRun && objectDetectionDefectCoreTabs != null &&
                         !objectDetectionDefectCoreTabs.IsDisposed)
@@ -2382,9 +2699,12 @@ namespace IntegratedImageProcessingApp.Forms
         }
 
         private string UpdateObjectDetectionFrequencyResultSummary(
-            ObjectDetectionFrequencyResult result)
+            ObjectDetectionFrequencyResult result,
+            int frequencyIndex = 0)
         {
-            if (result == null || objectDetectionFrequencyStatusLabel == null)
+            int uiIndex = Math.Max(0, Math.Min(frequencyIndex, objectDetectionFrequencyUiStates.Length - 1));
+            Label statusLabel = objectDetectionFrequencyUiStates[uiIndex].StatusLabel;
+            if (result == null || statusLabel == null)
             {
                 return string.Empty;
             }
@@ -2410,7 +2730,7 @@ namespace IntegratedImageProcessingApp.Forms
                 FormatObjectDetectionFrequencyVerticalStretch(result.VerticalStretchPercent),
                 neighborAnomalyCount,
                 result.NeighborComparisonMilliseconds);
-            objectDetectionFrequencyStatusLabel.Text = summary;
+            statusLabel.Text = summary;
             return summary;
         }
 
@@ -2435,6 +2755,9 @@ namespace IntegratedImageProcessingApp.Forms
             return string.Join("|", new[]
             {
                 parameter.Id ?? string.Empty,
+                CreateObjectDetectionRoiGroupSignature(
+                    parameter,
+                    parameter.DefectFrequencyRoiGroupId),
                 parameter.DefectFrequencyEnabled ? "1" : "0",
                 definitionSignature ?? string.Empty,
                 imageGeneration.ToString(CultureInfo.InvariantCulture),
@@ -2464,6 +2787,11 @@ namespace IntegratedImageProcessingApp.Forms
                     .ToString("R", CultureInfo.InvariantCulture),
                 NormalizeDefectKernel(parameter.DefectFrequencyMedianKernelSize)
                     .ToString(CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyEnhancementMethod ?? "None",
+                parameter.DefectFrequencyLocalBackgroundKernelSize.ToString(CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyLocalBackgroundGain.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyClaheClipLimit.ToString("R", CultureInfo.InvariantCulture),
+                parameter.DefectFrequencyClaheTileGridSize.ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldTargetGray.ToString(CultureInfo.InvariantCulture),
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,
                 CreateObjectDetectionFlatFieldSettingsSignature(parameter)
@@ -2472,16 +2800,28 @@ namespace IntegratedImageProcessingApp.Forms
 
         private bool TryGetCurrentObjectDetectionFrequencyResult(
             ObjectDetectionParameterSettings parameter,
-            out ObjectDetectionFrequencyResult result)
+            out ObjectDetectionFrequencyResult result,
+            int frequencyIndex = 0)
         {
             result = null;
             if (IsActiveObjectDetectionResultReviewSnapshot(parameter))
             {
-                result = objectDetectionResultReviewSnapshot.FrequencyResult;
-                return result != null && parameter.DefectFrequencyEnabled;
+                result = frequencyIndex == 1
+                    ? objectDetectionResultReviewSnapshot.Frequency2Result
+                    : objectDetectionResultReviewSnapshot.FrequencyResult;
+                ObjectDetectionParameterSettings snapshotParameter =
+                    CreateObjectDetectionFrequencyParameterView(parameter, frequencyIndex);
+                return result != null && snapshotParameter.DefectFrequencyEnabled;
             }
-            if (parameter == null || !parameter.DefectFrequencyEnabled ||
-                !objectDetectionFrequencyResults.TryGetValue(parameter.Id, out result))
+            if (parameter == null)
+            {
+                return false;
+            }
+            ObjectDetectionParameterSettings frequencyParameter =
+                CreateObjectDetectionFrequencyParameterView(parameter, frequencyIndex);
+            string resultKey = GetObjectDetectionFrequencyResultKey(parameter.Id, frequencyIndex);
+            if (!frequencyParameter.DefectFrequencyEnabled ||
+                !objectDetectionFrequencyResults.TryGetValue(resultKey, out result))
             {
                 return false;
             }
@@ -2490,19 +2830,19 @@ namespace IntegratedImageProcessingApp.Forms
                 : FindObjectDefinition(parameter.ObjectDefinitionId);
             if (definition == null)
             {
-                RemoveObjectDetectionFrequencyResult(parameter.Id);
+                RemoveObjectDetectionFrequencyResult(parameter.Id, frequencyIndex);
                 result = null;
                 return false;
             }
             string definitionSignature = CreateObjectDefinitionProcessingSignature(definition);
             string expectedSignature = CreateObjectDetectionFrequencySignature(
-                parameter,
+                frequencyParameter,
                 definitionSignature,
                 imageSourceGeneration,
                 objectDetectionFlatFieldEvaluationGeneration);
             if (!string.Equals(result.Signature, expectedSignature, StringComparison.Ordinal))
             {
-                RemoveObjectDetectionFrequencyResult(parameter.Id);
+                RemoveObjectDetectionFrequencyResult(parameter.Id, frequencyIndex);
                 result = null;
                 return false;
             }
@@ -2513,15 +2853,18 @@ namespace IntegratedImageProcessingApp.Forms
             Graphics graphics,
             float zoom,
             PointF offset,
-            Rectangle visibleSourceRect)
+            Rectangle visibleSourceRect,
+            int frequencyIndex = 0)
         {
             if (graphics == null || zoom <= 0 || !isObjectDetectionParameterImageLayout)
             {
                 return;
             }
-            ObjectDetectionParameterSettings parameter = GetObjectDetectionParameterForDisplay();
+            ObjectDetectionParameterSettings parameter = CreateObjectDetectionFrequencyParameterView(
+                GetObjectDetectionParameterForDisplay(),
+                frequencyIndex);
             ObjectDetectionFrequencyResult result;
-            if (!TryGetCurrentObjectDetectionFrequencyResult(parameter, out result) ||
+            if (!TryGetCurrentObjectDetectionFrequencyResult(parameter, out result, frequencyIndex) ||
                 (result.Cells == null || result.Cells.Count == 0) &&
                 (result.ProcessedPatches == null || result.ProcessedPatches.Count == 0))
             {

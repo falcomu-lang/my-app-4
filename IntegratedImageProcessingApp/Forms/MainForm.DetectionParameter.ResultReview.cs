@@ -84,6 +84,7 @@ namespace IntegratedImageProcessingApp.Forms
             public Dictionary<string, ObjectDetectionDefectCoreResult> CoreResults { get; set; }
             public Dictionary<string, Cv.Mat> MeasurementMasks { get; set; }
             public ObjectDetectionFrequencyResult FrequencyResult { get; set; }
+            public ObjectDetectionFrequencyResult Frequency2Result { get; set; }
             public List<ObjectDetectionDefectIntegrationGroup> IntegrationGroups { get; set; }
             public LargeImageSource OriginalLargeSource { get; set; }
             public LargeImageSource CorrectedLargeSource { get; set; }
@@ -109,6 +110,11 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     DisposeObjectDetectionFrequencyResult(FrequencyResult);
                     FrequencyResult = null;
+                }
+                if (Frequency2Result != null)
+                {
+                    DisposeObjectDetectionFrequencyResult(Frequency2Result);
+                    Frequency2Result = null;
                 }
                 if (MeasurementMasks != null)
                 {
@@ -346,6 +352,7 @@ namespace IntegratedImageProcessingApp.Forms
                 StringComparison.Ordinal);
             ObjectDetectionParameterSettings currentReviewParameter =
                 FindObjectDetectionParameter(objectDetectionResultReviewSelectedParameterId);
+            UpdateObjectDetectionDefectDisplayTabVisibility(currentReviewParameter);
             ObjectDefinitionSettings currentReviewDefinition = currentReviewParameter == null ||
                 string.IsNullOrWhiteSpace(currentReviewParameter.ObjectDefinitionId)
                 ? null
@@ -1034,6 +1041,26 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionResultReviewStatusLabel.Text = "目前參數沒有有效 ROI，無法執行確認。";
                 return;
             }
+            ObjectDetectionFrequencySettings preflightFrequency2 =
+                parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings();
+            bool preflightFrequency1Enabled = parameter.DefectFrequencyEnabled &&
+                (parameter.DefectIntegrationIncludeFrequency ||
+                    parameter.DefectFrequencyNeighborComparisonEnabled);
+            bool preflightFrequency2Enabled = preflightFrequency2.Enabled &&
+                (parameter.DefectIntegrationIncludeFrequency2 ||
+                    preflightFrequency2.NeighborComparisonEnabled);
+            string roiGroupAssignmentError;
+            if (!TryValidateObjectDetectionRoiGroupAssignments(
+                parameter,
+                null,
+                true,
+                preflightFrequency1Enabled,
+                preflightFrequency2Enabled,
+                out roiGroupAssignmentError))
+            {
+                objectDetectionResultReviewStatusLabel.Text = roiGroupAssignmentError;
+                return;
+            }
 
             string currentSettingsSignature =
                 CreateObjectDetectionResultReviewSettingsSignature(parameter, definition);
@@ -1097,6 +1124,22 @@ namespace IntegratedImageProcessingApp.Forms
                 if (objects.Count == 0)
                 {
                     throw new InvalidOperationException("物件定義沒有找到可檢測的物件。");
+                }
+                EnsureObjectDetectionDefectCores(parameter);
+                Dictionary<string, HashSet<int>> reviewRoiGroupMembers;
+                if (!TryValidateObjectDetectionDefectRoiGroupMembers(
+                    parameter,
+                    parameter.DefectDetectionCores
+                        .Take(ObjectDetectionDefectCoreKeys.Length)
+                        .Where(core => core != null && core.Enabled),
+                    preflightFrequency1Enabled,
+                    preflightFrequency2Enabled,
+                    objects,
+                    out reviewRoiGroupMembers,
+                    out roiGroupAssignmentError))
+                {
+                    objectDetectionResultReviewStatusLabel.Text = roiGroupAssignmentError;
+                    return;
                 }
 
                 selectedObjectDetectionNumber = -1;
@@ -1213,16 +1256,27 @@ namespace IntegratedImageProcessingApp.Forms
                 bool includeFrequency = parameter.DefectFrequencyEnabled &&
                     (parameter.DefectIntegrationIncludeFrequency ||
                         parameter.DefectFrequencyNeighborComparisonEnabled);
+                ObjectDetectionFrequencySettings frequency2Settings =
+                    parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings();
+                bool includeFrequency2 = frequency2Settings.Enabled &&
+                    (parameter.DefectIntegrationIncludeFrequency2 ||
+                        frequency2Settings.NeighborComparisonEnabled);
                 ObjectDetectionFrequencyResult frequencyResult;
+                ObjectDetectionFrequencyResult frequency2Result;
                 bool frequencyAlreadyReady = !includeFrequency ||
                     !settingsChangedSinceLastSuccessfulRun &&
                     TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult);
+                bool frequency2AlreadyReady = !includeFrequency2 ||
+                    !settingsChangedSinceLastSuccessfulRun &&
+                    TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequency2Result, 1);
 
                 if (parameter.DefectParallelExecutionEnabled)
                 {
                     objectDetectionResultReviewStatusLabel.Text =
                         "正在平行執行一般缺陷條件" +
-                        (includeFrequency && !frequencyAlreadyReady ? "、頻域異常" : string.Empty) +
+                        ((includeFrequency && !frequencyAlreadyReady) ||
+                            (includeFrequency2 && !frequency2AlreadyReady)
+                            ? "、頻域異常分析" : string.Empty) +
                         "...";
                     Stopwatch parallelDefectStopwatch = Stopwatch.StartNew();
                     var defectTasks = new List<Task>
@@ -1243,7 +1297,16 @@ namespace IntegratedImageProcessingApp.Forms
                         defectTasks.Add(RunObjectDetectionFrequencyAnalysisAsync(
                             parameter.Id,
                             true,
-                            includeIndependentCoreDefects: false));
+                            includeIndependentCoreDefects: false,
+                            frequencyIndex: 0));
+                    }
+                    if (includeFrequency2 && !frequency2AlreadyReady)
+                    {
+                        defectTasks.Add(RunObjectDetectionFrequencyAnalysisAsync(
+                            parameter.Id,
+                            true,
+                            includeIndependentCoreDefects: false,
+                            frequencyIndex: 1));
                     }
                     await Task.WhenAll(defectTasks);
                     EnsureDetectionRecipeGenerationIsCurrent(
@@ -1258,7 +1321,7 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionResultReviewDefectMilliseconds =
                         parallelDefectStopwatch.ElapsedMilliseconds;
                     UpdateObjectDetectionResultReviewTimingMemo();
-                    if (includeFrequency)
+                    if (includeFrequency || includeFrequency2)
                     {
                         leftImageTabControl.SelectedTab =
                             objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
@@ -1290,7 +1353,7 @@ namespace IntegratedImageProcessingApp.Forms
                         return;
                     }
 
-                    if (includeFrequency)
+                    if (includeFrequency || includeFrequency2)
                     {
                         if (!frequencyAlreadyReady)
                         {
@@ -1299,7 +1362,8 @@ namespace IntegratedImageProcessingApp.Forms
                             await RunObjectDetectionFrequencyAnalysisAsync(
                                 parameter.Id,
                                 true,
-                                includeIndependentCoreDefects: false);
+                                includeIndependentCoreDefects: false,
+                                frequencyIndex: 0);
                             EnsureDetectionRecipeGenerationIsCurrent(
                                 capturedRecipeGeneration,
                                 cancellationToken);
@@ -1313,6 +1377,34 @@ namespace IntegratedImageProcessingApp.Forms
                                 objectDetectionResultReviewDefectMilliseconds =
                                     (objectDetectionResultReviewDefectMilliseconds ?? 0) +
                                     frequencyResult.TotalElapsedMilliseconds;
+                                UpdateObjectDetectionResultReviewTimingMemo();
+                            }
+                        }
+                        if (includeFrequency2 && !frequency2AlreadyReady)
+                        {
+                            objectDetectionResultReviewStatusLabel.Text =
+                                "一般缺陷條件完成，正在執行頻域異常二...";
+                            await RunObjectDetectionFrequencyAnalysisAsync(
+                                parameter.Id,
+                                true,
+                                includeIndependentCoreDefects: false,
+                                frequencyIndex: 1);
+                            EnsureDetectionRecipeGenerationIsCurrent(
+                                capturedRecipeGeneration,
+                                cancellationToken);
+                            if (!IsObjectDetectionResultReviewUiAvailable())
+                            {
+                                await measurementTask;
+                                return;
+                            }
+                            if (TryGetCurrentObjectDetectionFrequencyResult(
+                                parameter,
+                                out frequency2Result,
+                                1))
+                            {
+                                objectDetectionResultReviewDefectMilliseconds =
+                                    (objectDetectionResultReviewDefectMilliseconds ?? 0) +
+                                    frequency2Result.TotalElapsedMilliseconds;
                                 UpdateObjectDetectionResultReviewTimingMemo();
                             }
                         }
@@ -1341,6 +1433,30 @@ namespace IntegratedImageProcessingApp.Forms
                     InvalidateObjectDetectionDefectIntegrationDisplay();
                     ImageDisplayControl frequencyDisplay = GetObjectDetectionDefectDisplayControl(
                         ObjectDetectionDefectFrequencyDisplayIndex);
+                    if (frequencyDisplay != null)
+                    {
+                        frequencyDisplay.InvalidateImageView();
+                    }
+                }
+                if (includeFrequency2 && frequency2Settings.NeighborComparisonEnabled &&
+                    TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequency2Result, 1))
+                {
+                    Stopwatch neighborComparisonStopwatch = Stopwatch.StartNew();
+                    CalculateObjectDetectionFrequencyNeighborComparison(
+                        CreateObjectDetectionFrequencyParameterView(parameter, 1),
+                        frequency2Result,
+                        true);
+                    neighborComparisonStopwatch.Stop();
+                    frequency2Result.NeighborComparisonMilliseconds +=
+                        neighborComparisonStopwatch.ElapsedMilliseconds;
+                    frequency2Result.TotalElapsedMilliseconds +=
+                        neighborComparisonStopwatch.ElapsedMilliseconds;
+                    UpdateObjectDetectionFrequencyResultSummary(frequency2Result, 1);
+                    InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
+                    RefreshObjectDetectionDefectIntegrationResults(parameter);
+                    InvalidateObjectDetectionDefectIntegrationDisplay();
+                    ImageDisplayControl frequencyDisplay = GetObjectDetectionDefectDisplayControl(
+                        ObjectDetectionDefectFrequency2DisplayIndex);
                     if (frequencyDisplay != null)
                     {
                         frequencyDisplay.InvalidateImageView();
@@ -2054,7 +2170,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             EnsureObjectDetectionDefectCores(parameter);
             bool hasEnabledAnalysis = false;
-            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4))
+            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
+                .Take(ObjectDetectionDefectCoreKeys.Length))
             {
                 if (core == null || !core.Enabled)
                 {
@@ -2075,11 +2192,22 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            if (IsObjectDetectionDefectFrequencyIntegrationRequired(parameter))
+            if (IsObjectDetectionDefectFrequencyIntegrationRequired(parameter, 0))
             {
                 hasEnabledAnalysis = true;
                 ObjectDetectionFrequencyResult frequencyResult;
                 if (!TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult) ||
+                    frequencyResult == null)
+                {
+                    return grades;
+                }
+            }
+
+            if (IsObjectDetectionDefectFrequencyIntegrationRequired(parameter, 1))
+            {
+                hasEnabledAnalysis = true;
+                ObjectDetectionFrequencyResult frequencyResult;
+                if (!TryGetCurrentObjectDetectionFrequencyResult(parameter, out frequencyResult, 1) ||
                     frequencyResult == null)
                 {
                     return grades;
@@ -2206,7 +2334,8 @@ namespace IntegratedImageProcessingApp.Forms
             EnsureObjectDetectionDefectCores(parameter);
             bool allRequiredResultsReady = true;
             int totalComponents = 0;
-            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4))
+            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
+                .Take(ObjectDetectionDefectCoreKeys.Length))
             {
                 bool required = core.Enabled;
                 if (!required)
@@ -2291,6 +2420,60 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
+            ObjectDetectionFrequencySettings frequency2Settings =
+                parameter.DefectFrequency2Settings ?? new ObjectDetectionFrequencySettings();
+            if (parameter.DefectIntegrationIncludeFrequency2 ||
+                frequency2Settings.NeighborComparisonEnabled)
+            {
+                if (!frequency2Settings.Enabled)
+                {
+                    objectDetectionResultReviewDefectsGrid.Rows.Add(
+                        "頻域異常二", "-", "-", "未啟用", "第二組頻域分析已停用，未產生掃描結果");
+                }
+                else
+                {
+                    ObjectDetectionFrequencyResult frequency2Result;
+                    if (TryGetCurrentObjectDetectionFrequencyResult(
+                        parameter,
+                        out frequency2Result,
+                        1))
+                    {
+                        int energyAnomalyCount = frequency2Result.Cells == null
+                            ? 0
+                            : frequency2Result.Cells.Count(cell => cell != null && cell.IsAnomaly &&
+                                (!selectedObjectNumber.HasValue ||
+                                    cell.ObjectNumber == selectedObjectNumber.Value));
+                        int neighborAnomalyCount = frequency2Result.Cells == null
+                            ? 0
+                            : frequency2Result.Cells.Count(cell => cell != null && cell.IsNeighborAnomaly &&
+                                (!selectedObjectNumber.HasValue ||
+                                    cell.ObjectNumber == selectedObjectNumber.Value));
+                        int anomalyCount = frequency2Result.Cells == null
+                            ? 0
+                            : frequency2Result.Cells.Count(cell => cell != null &&
+                                (cell.IsAnomaly || cell.IsNeighborAnomaly) &&
+                                (!selectedObjectNumber.HasValue ||
+                                    cell.ObjectNumber == selectedObjectNumber.Value));
+                        objectDetectionResultReviewDefectsGrid.Rows.Add(
+                            "頻域異常二",
+                            anomalyCount,
+                            selectedObjectNumber.HasValue
+                                ? (object)"-"
+                                : frequency2Result.TotalElapsedMilliseconds,
+                            anomalyCount > 0 ? "檢出異常格" : "未檢出",
+                            "能量異常 " + energyAnomalyCount.ToString("N0", CultureInfo.CurrentCulture) +
+                            " 格；鄰格比較 " + neighborAnomalyCount.ToString("N0", CultureInfo.CurrentCulture) +
+                            " 格；僅勾選納入頻域異常二時才併入整合結果");
+                    }
+                    else
+                    {
+                        allRequiredResultsReady = false;
+                        objectDetectionResultReviewDefectsGrid.Rows.Add(
+                            "頻域異常二", "-", "-", "未完成", "目前影像的第二組頻域分析尚未完成或已過期");
+                    }
+                }
+            }
+
             if (allRequiredResultsReady)
             {
                 IEnumerable<ObjectDetectionDefectIntegrationGroup> groups =
@@ -2337,7 +2520,8 @@ namespace IntegratedImageProcessingApp.Forms
             int objectNumber)
         {
             int total = 0;
-            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores.Take(4))
+            foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
+                .Take(ObjectDetectionDefectCoreKeys.Length))
             {
                 if (!core.Enabled)
                 {
@@ -2754,6 +2938,14 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     snapshot.FrequencyResult = frequencyResult;
                     objectDetectionFrequencyResults.Remove(parameter.Id);
+                }
+                if (objectDetectionFrequencyResults.TryGetValue(
+                    GetObjectDetectionFrequencyResultKey(parameter.Id, 1),
+                    out frequencyResult))
+                {
+                    snapshot.Frequency2Result = frequencyResult;
+                    objectDetectionFrequencyResults.Remove(
+                        GetObjectDetectionFrequencyResultKey(parameter.Id, 1));
                 }
                 ClearObjectDetectionResultReviewSnapshot();
                 objectDetectionResultReviewSnapshot = snapshot;
