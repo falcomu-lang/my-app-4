@@ -704,6 +704,9 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".DefectInspectionRegionBottom",
                         1),
+                    DefectInspectionRegions = ReadObjectDetectionInspectionRegions(
+                        sections,
+                        prefix),
                     DefectInspectionRoiGroups = ReadObjectDetectionRoiGroups(
                         sections,
                         prefix),
@@ -1261,6 +1264,10 @@ namespace IntegratedImageProcessingApp.Services
                     writer.WriteLine("{0}.DefectInspectionRegionTop={1}", prefix, parameter.DefectInspectionRegionTop.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectInspectionRegionRight={1}", prefix, parameter.DefectInspectionRegionRight.ToString("R", CultureInfo.InvariantCulture));
                     writer.WriteLine("{0}.DefectInspectionRegionBottom={1}", prefix, parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture));
+                    WriteObjectDetectionInspectionRegions(
+                        writer,
+                        prefix,
+                        parameter.DefectInspectionRegions);
                     WriteObjectDetectionRoiGroups(writer, prefix, parameter.DefectInspectionRoiGroups);
                     writer.WriteLine("{0}.DefectFrequencyRoiGroupId={1}", prefix, Escape(parameter.DefectFrequencyRoiGroupId));
                     writer.WriteLine("{0}.DefectParallelExecutionEnabled={1}", prefix, parameter.DefectParallelExecutionEnabled ? "1" : "0");
@@ -1446,6 +1453,7 @@ namespace IntegratedImageProcessingApp.Services
 
             var objectDetectionParameterIds = new HashSet<string>(StringComparer.Ordinal);
             var defectInspectionRegionIds = new HashSet<string>(StringComparer.Ordinal);
+            var defectInspectionItemIds = new HashSet<string>(StringComparer.Ordinal);
             var defectCoreIds = new HashSet<string>(StringComparer.Ordinal);
             var defectRoiGroupIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (ObjectDetectionParameterSettings parameter in settings.ObjectDetectionParameters)
@@ -1454,6 +1462,27 @@ namespace IntegratedImageProcessingApp.Services
                 parameter.DefectInspectionRegionId = EnsureUniqueId(
                     parameter.DefectInspectionRegionId,
                     defectInspectionRegionIds);
+                parameter.DefectInspectionRegions = (parameter.DefectInspectionRegions ??
+                    new List<ObjectDetectionInspectionRegionSettings>())
+                    .Where(region => region != null)
+                    .ToList();
+                for (int regionIndex = 0;
+                    regionIndex < parameter.DefectInspectionRegions.Count;
+                    regionIndex++)
+                {
+                    ObjectDetectionInspectionRegionSettings region =
+                        parameter.DefectInspectionRegions[regionIndex];
+                    region.Id = EnsureUniqueId(region.Id, defectInspectionItemIds);
+                    region.DisplayName = string.IsNullOrWhiteSpace(region.DisplayName)
+                        ? "ROI " + (regionIndex + 1).ToString(CultureInfo.InvariantCulture)
+                        : region.DisplayName.Trim();
+                    region.ObjectDefinitionId = region.ObjectDefinitionId ?? string.Empty;
+                    region.ObjectNumber = Math.Max(0, region.ObjectNumber);
+                    region.Left = ClampUnit(region.Left);
+                    region.Top = ClampUnit(region.Top);
+                    region.Right = ClampUnit(region.Right);
+                    region.Bottom = ClampUnit(region.Bottom);
+                }
                 parameter.DefectInspectionRoiGroups = parameter.DefectInspectionRoiGroups ??
                     new List<ObjectDetectionRoiGroupSettings>();
                 parameter.DefectFrequencyRoiGroupId = parameter.DefectFrequencyRoiGroupId ?? string.Empty;
@@ -1476,7 +1505,12 @@ namespace IntegratedImageProcessingApp.Services
                         .Distinct()
                         .OrderBy(number => number)
                         .ToList();
+                    group.RoiIds = (group.RoiIds ?? new List<string>())
+                        .Where(id => !string.IsNullOrWhiteSpace(id))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
                 }
+                MigrateLegacyObjectDetectionInspectionRegions(parameter);
                 if (parameter.DefectDetectionCores == null)
                 {
                     parameter.DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>();
@@ -2199,10 +2233,157 @@ namespace IntegratedImageProcessingApp.Services
                     Id = GetValue(sections, SectionObjectDetection, groupPrefix + ".Id", string.Empty),
                     DisplayName = GetValue(sections, SectionObjectDetection, groupPrefix + ".DisplayName", string.Empty),
                     ObjectDefinitionId = GetValue(sections, SectionObjectDetection, groupPrefix + ".ObjectDefinitionId", string.Empty),
-                    RoiObjectNumbers = members
+                    RoiObjectNumbers = members,
+                    RoiIds = ReadObjectDetectionStringList(
+                        sections,
+                        groupPrefix + ".RoiCount",
+                        groupPrefix + ".Roi")
                 });
             }
             return groups;
+        }
+
+        private static List<ObjectDetectionInspectionRegionSettings> ReadObjectDetectionInspectionRegions(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string parameterPrefix)
+        {
+            var regions = new List<ObjectDetectionInspectionRegionSettings>();
+            int count = Math.Max(0, Math.Min(10000, GetInt(
+                sections,
+                SectionObjectDetection,
+                parameterPrefix + ".DefectInspectionRegionCount",
+                0)));
+            for (int index = 1; index <= count; index++)
+            {
+                string prefix = parameterPrefix + ".DefectInspectionRegion" +
+                    index.ToString(CultureInfo.InvariantCulture);
+                regions.Add(new ObjectDetectionInspectionRegionSettings
+                {
+                    Id = GetValue(sections, SectionObjectDetection, prefix + ".Id", string.Empty),
+                    DisplayName = GetValue(sections, SectionObjectDetection, prefix + ".DisplayName", string.Empty),
+                    ObjectDefinitionId = GetValue(sections, SectionObjectDetection, prefix + ".ObjectDefinitionId", string.Empty),
+                    ObjectNumber = GetInt(sections, SectionObjectDetection, prefix + ".ObjectNumber", 0),
+                    Left = GetDouble(sections, SectionObjectDetection, prefix + ".Left", 0),
+                    Top = GetDouble(sections, SectionObjectDetection, prefix + ".Top", 0),
+                    Right = GetDouble(sections, SectionObjectDetection, prefix + ".Right", 1),
+                    Bottom = GetDouble(sections, SectionObjectDetection, prefix + ".Bottom", 1)
+                });
+            }
+            return regions;
+        }
+
+        private static List<string> ReadObjectDetectionStringList(
+            Dictionary<string, Dictionary<string, string>> sections,
+            string countKey,
+            string itemPrefix)
+        {
+            int count = Math.Max(0, Math.Min(10000, GetInt(
+                sections,
+                SectionObjectDetection,
+                countKey,
+                0)));
+            var items = new List<string>();
+            for (int index = 1; index <= count; index++)
+            {
+                string value = GetValue(
+                    sections,
+                    SectionObjectDetection,
+                    itemPrefix + index.ToString(CultureInfo.InvariantCulture),
+                    string.Empty);
+                if (!string.IsNullOrWhiteSpace(value) && !items.Contains(value))
+                {
+                    items.Add(value);
+                }
+            }
+            return items;
+        }
+
+        private static void WriteObjectDetectionInspectionRegions(
+            StreamWriter writer,
+            string parameterPrefix,
+            List<ObjectDetectionInspectionRegionSettings> regions)
+        {
+            regions = (regions ?? new List<ObjectDetectionInspectionRegionSettings>())
+                .Where(region => region != null)
+                .ToList();
+            writer.WriteLine(
+                "{0}.DefectInspectionRegionCount={1}",
+                parameterPrefix,
+                regions.Count.ToString(CultureInfo.InvariantCulture));
+            for (int index = 0; index < regions.Count; index++)
+            {
+                ObjectDetectionInspectionRegionSettings region = regions[index];
+                string prefix = parameterPrefix + ".DefectInspectionRegion" +
+                    (index + 1).ToString(CultureInfo.InvariantCulture);
+                writer.WriteLine("{0}.Id={1}", prefix, Escape(region.Id));
+                writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(region.DisplayName));
+                writer.WriteLine("{0}.ObjectDefinitionId={1}", prefix, Escape(region.ObjectDefinitionId));
+                writer.WriteLine("{0}.ObjectNumber={1}", prefix, region.ObjectNumber.ToString(CultureInfo.InvariantCulture));
+                writer.WriteLine("{0}.Left={1}", prefix, region.Left.ToString("R", CultureInfo.InvariantCulture));
+                writer.WriteLine("{0}.Top={1}", prefix, region.Top.ToString("R", CultureInfo.InvariantCulture));
+                writer.WriteLine("{0}.Right={1}", prefix, region.Right.ToString("R", CultureInfo.InvariantCulture));
+                writer.WriteLine("{0}.Bottom={1}", prefix, region.Bottom.ToString("R", CultureInfo.InvariantCulture));
+            }
+        }
+
+        private static void MigrateLegacyObjectDetectionInspectionRegions(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (parameter == null || parameter.DefectInspectionRegions == null ||
+                parameter.DefectInspectionRegions.Count > 0 ||
+                !parameter.DefectInspectionRegionConfigured ||
+                parameter.DefectInspectionRegionReferenceObjectNumber <= 0)
+            {
+                return;
+            }
+
+            var groups = parameter.DefectInspectionRoiGroups ??
+                new List<ObjectDetectionRoiGroupSettings>();
+            var legacyMembers = groups
+                .Where(group => group != null && group.RoiIds != null && group.RoiIds.Count == 0)
+                .SelectMany(group => group.RoiObjectNumbers ?? new List<int>())
+                .Where(number => number > 0)
+                .Distinct()
+                .ToList();
+            if (legacyMembers.Count == 0)
+            {
+                legacyMembers.Add(parameter.DefectInspectionRegionReferenceObjectNumber);
+            }
+
+            foreach (int objectNumber in legacyMembers)
+            {
+                var region = new ObjectDetectionInspectionRegionSettings
+                {
+                    DisplayName = "ROI 物件 " + objectNumber.ToString(CultureInfo.InvariantCulture),
+                    ObjectDefinitionId = parameter.DefectInspectionRegionObjectDefinitionId ?? string.Empty,
+                    ObjectNumber = objectNumber,
+                    Left = ClampUnit(parameter.DefectInspectionRegionLeft),
+                    Top = ClampUnit(parameter.DefectInspectionRegionTop),
+                    Right = ClampUnit(parameter.DefectInspectionRegionRight),
+                    Bottom = ClampUnit(parameter.DefectInspectionRegionBottom)
+                };
+                parameter.DefectInspectionRegions.Add(region);
+                foreach (ObjectDetectionRoiGroupSettings group in groups.Where(item => item != null &&
+                    (item.RoiObjectNumbers ?? new List<int>()).Contains(objectNumber)))
+                {
+                    group.RoiIds = group.RoiIds ?? new List<string>();
+                    group.RoiIds.Add(region.Id);
+                }
+            }
+
+            foreach (ObjectDetectionRoiGroupSettings group in groups.Where(item => item != null))
+            {
+                group.RoiObjectNumbers = new List<int>();
+            }
+        }
+
+        private static double ClampUnit(double value)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                return 0;
+            }
+            return Math.Max(0, Math.Min(1, value));
         }
 
         private static void WriteObjectDetectionRoiGroups(
@@ -2228,6 +2409,10 @@ namespace IntegratedImageProcessingApp.Services
                     .Where(number => number > 0)
                     .Distinct()
                     .ToList();
+                List<string> roiIds = (group.RoiIds ?? new List<string>())
+                    .Where(id => !string.IsNullOrWhiteSpace(id))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
                 writer.WriteLine("{0}.Id={1}", groupPrefix, Escape(group.Id));
                 writer.WriteLine("{0}.DisplayName={1}", groupPrefix, Escape(group.DisplayName));
                 writer.WriteLine("{0}.ObjectDefinitionId={1}", groupPrefix, Escape(group.ObjectDefinitionId));
@@ -2239,6 +2424,15 @@ namespace IntegratedImageProcessingApp.Services
                         groupPrefix,
                         (memberIndex + 1).ToString(CultureInfo.InvariantCulture),
                         members[memberIndex].ToString(CultureInfo.InvariantCulture));
+                }
+                writer.WriteLine("{0}.RoiCount={1}", groupPrefix, roiIds.Count.ToString(CultureInfo.InvariantCulture));
+                for (int roiIndex = 0; roiIndex < roiIds.Count; roiIndex++)
+                {
+                    writer.WriteLine(
+                        "{0}.Roi{1}={2}",
+                        groupPrefix,
+                        (roiIndex + 1).ToString(CultureInfo.InvariantCulture),
+                        Escape(roiIds[roiIndex]));
                 }
             }
         }

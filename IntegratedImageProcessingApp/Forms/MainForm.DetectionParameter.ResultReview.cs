@@ -1126,7 +1126,7 @@ namespace IntegratedImageProcessingApp.Forms
                     throw new InvalidOperationException("物件定義沒有找到可檢測的物件。");
                 }
                 EnsureObjectDetectionDefectCores(parameter);
-                Dictionary<string, HashSet<int>> reviewRoiGroupMembers;
+                Dictionary<string, List<ObjectDetectionInspectionRegionWorkItem>> reviewRoiGroupMembers;
                 if (!TryValidateObjectDetectionDefectRoiGroupMembers(
                     parameter,
                     parameter.DefectDetectionCores
@@ -2159,11 +2159,12 @@ namespace IntegratedImageProcessingApp.Forms
                 : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
             ObjectDetectionParameterSettings parameter = choice == null ? null : choice.Parameter;
             if (parameter == null ||
-                !parameter.DefectInspectionRegionConfigured ||
-                !string.Equals(
-                    parameter.DefectInspectionRegionObjectDefinitionId,
-                    parameter.ObjectDefinitionId,
-                    StringComparison.Ordinal))
+                parameter.DefectInspectionRegions == null ||
+                !parameter.DefectInspectionRegions.Any(region => region != null &&
+                    string.Equals(region.ObjectDefinitionId,
+                        parameter.ObjectDefinitionId, StringComparison.Ordinal) &&
+                    region.ObjectNumber > 0 && region.Right > region.Left &&
+                    region.Bottom > region.Top))
             {
                 return grades;
             }
@@ -2510,6 +2511,7 @@ namespace IntegratedImageProcessingApp.Forms
                 : result.Contours
                     .Where(contour => contour != null && contour.ObjectNumber == objectNumber)
                     .Select(contour => (contour.IsBright ? "B" : "D") + ":" +
+                        (contour.InspectionRegionId ?? string.Empty) + ":" +
                         contour.ComponentLabel.ToString(CultureInfo.InvariantCulture))
                     .Distinct(StringComparer.Ordinal)
                     .Count();
@@ -2547,9 +2549,12 @@ namespace IntegratedImageProcessingApp.Forms
             bool sizeUnknown = !sizeHasRules || objectDetectionResultReviewGoodJudgementResults.Count == 0 ||
                 objectDetectionResultReviewGoodJudgementResults.Any(result =>
                     result.Grade == ResultReviewGoodJudgementGrade.Pending);
-            bool hasDefectConfig = parameter.DefectInspectionRegionConfigured &&
-                string.Equals(parameter.DefectInspectionRegionObjectDefinitionId,
-                    parameter.ObjectDefinitionId, StringComparison.Ordinal);
+            bool hasDefectConfig = parameter.DefectInspectionRegions != null &&
+                parameter.DefectInspectionRegions.Any(region => region != null &&
+                    string.Equals(region.ObjectDefinitionId,
+                        parameter.ObjectDefinitionId, StringComparison.Ordinal) &&
+                    region.ObjectNumber > 0 && region.Right > region.Left &&
+                    region.Bottom > region.Top);
             DataGridViewRow integratedRow = objectDetectionResultReviewDefectsGrid.Rows
                 .Cast<DataGridViewRow>()
                 .FirstOrDefault(row => string.Equals(

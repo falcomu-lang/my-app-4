@@ -410,6 +410,7 @@ namespace IntegratedImageProcessingApp.Services
             DisplayName = string.Empty;
             ObjectDefinitionId = string.Empty;
             RoiObjectNumbers = new List<int>();
+            RoiIds = new List<string>();
         }
 
         public string Id { get; set; }
@@ -419,6 +420,38 @@ namespace IntegratedImageProcessingApp.Services
         public string ObjectDefinitionId { get; set; }
 
         public List<int> RoiObjectNumbers { get; set; }
+
+        public List<string> RoiIds { get; set; }
+    }
+
+    public class ObjectDetectionInspectionRegionSettings
+    {
+        public ObjectDetectionInspectionRegionSettings()
+        {
+            Id = Guid.NewGuid().ToString("N");
+            DisplayName = string.Empty;
+            ObjectDefinitionId = string.Empty;
+            Left = 0;
+            Top = 0;
+            Right = 1;
+            Bottom = 1;
+        }
+
+        public string Id { get; set; }
+
+        public string DisplayName { get; set; }
+
+        public string ObjectDefinitionId { get; set; }
+
+        public int ObjectNumber { get; set; }
+
+        public double Left { get; set; }
+
+        public double Top { get; set; }
+
+        public double Right { get; set; }
+
+        public double Bottom { get; set; }
     }
 
     public class ObjectDetectionParameterSettings
@@ -481,6 +514,7 @@ namespace IntegratedImageProcessingApp.Services
             DefectInspectionRegionTop = 0;
             DefectInspectionRegionRight = 1;
             DefectInspectionRegionBottom = 1;
+            DefectInspectionRegions = new List<ObjectDetectionInspectionRegionSettings>();
             DefectInspectionRoiGroups = new List<ObjectDetectionRoiGroupSettings>();
             DefectFrequencyRoiGroupId = string.Empty;
             DefectParallelExecutionEnabled = false;
@@ -690,6 +724,8 @@ namespace IntegratedImageProcessingApp.Services
         public double DefectInspectionRegionRight { get; set; }
 
         public double DefectInspectionRegionBottom { get; set; }
+
+        public List<ObjectDetectionInspectionRegionSettings> DefectInspectionRegions { get; set; }
 
         public List<ObjectDetectionRoiGroupSettings> DefectInspectionRoiGroups { get; set; }
 

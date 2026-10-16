@@ -832,7 +832,7 @@ namespace IntegratedImageProcessingApp.Forms
                     GraphicsState state = graphics.Save();
                     try
                     {
-                        PointF[] imagePolygon;
+                        List<PointF[]> imagePolygons;
                         ObjectDetectionDefectIntegrationCandidate frequencyCandidate =
                             group.Candidates.FirstOrDefault(candidate => candidate.IsFrequency);
                         int frequencyIndex = frequencyCandidate == null
@@ -848,16 +848,24 @@ namespace IntegratedImageProcessingApp.Forms
                             frequencyResult.ObjectPolygons != null &&
                             frequencyResult.ObjectPolygons.TryGetValue(
                                 group.ObjectNumber,
-                                out imagePolygon) &&
-                            imagePolygon != null && imagePolygon.Length >= 3)
+                                out imagePolygons) &&
+                            imagePolygons != null && imagePolygons.Count > 0)
                         {
-                            PointF[] screenPolygon = imagePolygon.Select(point => new PointF(
-                                offset.X + point.X * zoom,
-                                offset.Y + point.Y * zoom)).ToArray();
                             using (var clipPath = new GraphicsPath())
                             {
-                                clipPath.AddPolygon(screenPolygon);
-                                graphics.SetClip(clipPath, CombineMode.Intersect);
+                                clipPath.FillMode = FillMode.Winding;
+                                foreach (PointF[] imagePolygon in imagePolygons.Where(polygon =>
+                                    polygon != null && polygon.Length >= 3))
+                                {
+                                    PointF[] screenPolygon = imagePolygon.Select(point => new PointF(
+                                        offset.X + point.X * zoom,
+                                        offset.Y + point.Y * zoom)).ToArray();
+                                    clipPath.AddPolygon(screenPolygon);
+                                }
+                                if (clipPath.PointCount > 0)
+                                {
+                                    graphics.SetClip(clipPath, CombineMode.Intersect);
+                                }
                             }
                         }
 

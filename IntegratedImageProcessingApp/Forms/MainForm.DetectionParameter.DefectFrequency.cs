@@ -54,6 +54,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private sealed class ObjectDetectionFrequencyCell
         {
+            public string RoiId { get; set; }
+
             public int ObjectNumber { get; set; }
 
             public Rectangle Bounds { get; set; }
@@ -131,7 +133,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             public long ScannedWindowCount { get; set; }
 
-            public Dictionary<int, PointF[]> ObjectPolygons { get; set; }
+            public Dictionary<int, List<PointF[]>> ObjectPolygons { get; set; }
 
             public Dictionary<int, List<ObjectDetectionFrequencyCell>> CellsByObject { get; set; }
 
@@ -1451,11 +1453,10 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 return;
             }
-            if (!parameter.DefectInspectionRegionConfigured ||
-                !string.Equals(parameter.DefectInspectionRegionObjectDefinitionId,
-                    parameter.ObjectDefinitionId, StringComparison.Ordinal))
+            if (parameter.DefectInspectionRegions == null ||
+                parameter.DefectInspectionRegions.Count == 0)
             {
-                SetObjectDetectionDefectRegionStatus("請先框選並套用缺陷檢測範圍，再執行頻域分析。 ");
+                SetObjectDetectionDefectRegionStatus("請先建立獨立檢測 ROI，再執行頻域分析。 ");
                 return;
             }
 
@@ -1527,32 +1528,26 @@ namespace IntegratedImageProcessingApp.Forms
                     SetObjectDetectionDefectRegionStatus("沒有已完成定義的 ROI 物件可供頻域掃描。 ");
                     return;
                 }
-                HashSet<int> selectedRoiNumbers;
+                List<ObjectDetectionInspectionRegionWorkItem> roiWorkItems;
                 string memberError;
                 if (!TryResolveObjectDetectionRoiGroupMembers(
                     parameter,
                     parameter.DefectFrequencyRoiGroupId,
                     objects,
-                    out selectedRoiNumbers,
+                    out roiWorkItems,
                     out memberError))
                 {
                     SetObjectDetectionDefectRegionStatus(memberError);
                     return;
                 }
-                objects = objects.Where(item => selectedRoiNumbers.Contains(item.Number)).ToList();
-                if (objects.Count == 0)
+                if (roiWorkItems.Count == 0)
                 {
                     SetObjectDetectionDefectRegionStatus(
-                        "選取的 ROI 組沒有對應到物件，頻域分析未執行。 ");
+                        "選取的 ROI 組沒有有效的獨立區域，頻域分析未執行。 ");
                     return;
                 }
 
                 Rectangle imageBounds = new Rectangle(0, 0, source.Width, source.Height);
-                RectangleF normalizedRegion = RectangleF.FromLTRB(
-                    ClampUnit((float)parameter.DefectInspectionRegionLeft),
-                    ClampUnit((float)parameter.DefectInspectionRegionTop),
-                    ClampUnit((float)parameter.DefectInspectionRegionRight),
-                    ClampUnit((float)parameter.DefectInspectionRegionBottom));
                 int scanHeight = Math.Max(8, Math.Min(1000, parameter.DefectFrequencyScanHeight));
                 bool contrastEnabled = parameter.DefectFrequencyContrastEnabled;
                 double contrastGain = Math.Max(0.1, Math.Min(5.0, parameter.DefectFrequencyContrastGain));
@@ -1571,13 +1566,13 @@ namespace IntegratedImageProcessingApp.Forms
                         parameter.DefectFrequencyVerticalStretchPercent)
                     ? parameter.DefectFrequencyVerticalStretchPercent
                     : 100;
-                var undersizedObjects = objects
-                    .Select(detectedObject => new
+                var undersizedObjects = roiWorkItems
+                    .Select(workItem => new
                     {
-                        Object = detectedObject,
+                        WorkItem = workItem,
                         RegionSize = GetObjectDetectionFrequencyRegionSize(
-                            detectedObject,
-                            normalizedRegion)
+                            workItem.DetectedObject,
+                            workItem.NormalizedRegion)
                     })
                     .Where(item => item.RegionSize.Width < scanHeight ||
                         item.RegionSize.Height < scanHeight)
@@ -1586,7 +1581,8 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     string objectList = string.Join("、", undersizedObjects
                         .Take(5)
-                        .Select(item => "ROI " + item.Object.Number.ToString(CultureInfo.CurrentCulture) +
+                        .Select(item => item.WorkItem.Region.DisplayName + "（物件 " +
+                            item.WorkItem.DetectedObject.Number.ToString(CultureInfo.CurrentCulture) + "）" +
                             " (" + item.RegionSize.Width.ToString(CultureInfo.CurrentCulture) + " × " +
                             item.RegionSize.Height.ToString(CultureInfo.CurrentCulture) + " px)"));
                     string message = objectList + " 的檢測範圍小於完整掃描格 " +
@@ -1628,16 +1624,15 @@ namespace IntegratedImageProcessingApp.Forms
 
                 Stopwatch scanStopwatch = Stopwatch.StartNew();
                 SetObjectDetectionDefectRegionStatus(runParallel
-                    ? "平行頻域掃描中：各物件 ROI 同時處理... "
-                    : "頻域掃描中：各物件 ROI 依序處理... ");
+                    ? "平行頻域掃描中：群組內獨立 ROI 同時處理... "
+                    : "頻域掃描中：群組內獨立 ROI 依序處理... ");
                 ObjectDetectionFrequencyResult result = await Task.Run(delegate
                 {
                     try
                     {
                         return ScanObjectDetectionFrequencyRegions(
                             sourceReference,
-                            objects,
-                            normalizedRegion,
+                            roiWorkItems,
                             imageBounds,
                             scanHeight,
                             verticalStretchPercent,
@@ -1833,8 +1828,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static ObjectDetectionFrequencyResult ScanObjectDetectionFrequencyRegions(
             LargeImageSource source,
-            IList<ObjectDefinitionDetectedObject> objects,
-            RectangleF normalizedRegion,
+            IList<ObjectDetectionInspectionRegionWorkItem> roiWorkItems,
             Rectangle imageBounds,
             int requestedWindowSize,
             int verticalStretchPercent,
@@ -1847,16 +1841,18 @@ namespace IntegratedImageProcessingApp.Forms
             IProgress<string> progress,
             CancellationToken cancellationToken)
         {
-            var cellsByObjectIndex = new List<ObjectDetectionFrequencyCell>[objects.Count];
-            var polygonsByObjectIndex = new PointF[objects.Count][];
-            var processedPatchesByObjectIndex = new ObjectDetectionDefectProcessedPatch[objects.Count];
+            var cellsByRoiIndex = new List<ObjectDetectionFrequencyCell>[roiWorkItems.Count];
+            var polygonsByRoiIndex = new PointF[roiWorkItems.Count][];
+            var processedPatchesByRoiIndex = new ObjectDetectionDefectProcessedPatch[roiWorkItems.Count];
             long cellLoopElapsedTicks = 0;
             long previewGenerationElapsedTicks = 0;
             long scannedWindowCount = 0;
-            Action<int> scanObject = delegate(int objectIndex)
+            Action<int> scanRoi = delegate(int roiIndex)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                ObjectDefinitionDetectedObject detectedObject = objects[objectIndex];
+                ObjectDetectionInspectionRegionWorkItem workItem = roiWorkItems[roiIndex];
+                ObjectDefinitionDetectedObject detectedObject = workItem.DetectedObject;
+                RectangleF normalizedRegion = workItem.NormalizedRegion;
                 ObjectDetectionMeasurementFrame frame =
                     CreateObjectDetectionMeasurementFrame(detectedObject);
                 float localRegionLeft = (normalizedRegion.Left - 0.5f) * frame.Width;
@@ -1867,8 +1863,8 @@ namespace IntegratedImageProcessingApp.Forms
                     detectedObject,
                     normalizedRegion);
                 var objectCells = new List<ObjectDetectionFrequencyCell>();
-                cellsByObjectIndex[objectIndex] = objectCells;
-                polygonsByObjectIndex[objectIndex] = corners;
+                cellsByRoiIndex[roiIndex] = objectCells;
+                polygonsByRoiIndex[roiIndex] = corners;
                 int left = (int)Math.Floor(corners.Min(point => point.X));
                 int top = (int)Math.Floor(corners.Min(point => point.Y));
                 int right = (int)Math.Ceiling(corners.Max(point => point.X));
@@ -1911,7 +1907,7 @@ namespace IntegratedImageProcessingApp.Forms
                     Interlocked.Add(
                         ref previewGenerationElapsedTicks,
                         previewStopwatch.ElapsedTicks);
-                    processedPatchesByObjectIndex[objectIndex] = new ObjectDetectionDefectProcessedPatch
+                    processedPatchesByRoiIndex[roiIndex] = new ObjectDetectionDefectProcessedPatch
                     {
                         Bounds = crop,
                         InspectionPolygon = corners.ToArray(),
@@ -1997,6 +1993,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 }
                                 objectCells.Add(new ObjectDetectionFrequencyCell
                                 {
+                                    RoiId = workItem.Region.Id,
                                     ObjectNumber = detectedObject.Number,
                                     Bounds = cellBounds,
                                     ValidBounds = validBounds,
@@ -2015,27 +2012,27 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                 }
                 progress?.Report(
-                    "頻域掃描 ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
-                    objects.Count.ToString(CultureInfo.CurrentCulture) + " 完成... ");
+                    "頻域掃描 ROI " + (roiIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
+                    roiWorkItems.Count.ToString(CultureInfo.CurrentCulture) + " 完成... ");
             };
 
-            if (runParallel && objects.Count > 1)
+            if (runParallel && roiWorkItems.Count > 1)
             {
                 try
                 {
                     Parallel.For(
                         0,
-                        objects.Count,
+                        roiWorkItems.Count,
                         new ParallelOptions
                         {
-                            MaxDegreeOfParallelism = objects.Count,
+                            MaxDegreeOfParallelism = roiWorkItems.Count,
                             CancellationToken = cancellationToken
                         },
-                        scanObject);
+                        scanRoi);
                 }
                 catch
                 {
-                    foreach (ObjectDetectionDefectProcessedPatch patch in processedPatchesByObjectIndex)
+                    foreach (ObjectDetectionDefectProcessedPatch patch in processedPatchesByRoiIndex)
                     {
                         DisposeObjectDetectionDefectProcessedPatch(patch);
                     }
@@ -2046,14 +2043,14 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 try
                 {
-                    for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+                for (int roiIndex = 0; roiIndex < roiWorkItems.Count; roiIndex++)
                     {
-                        scanObject(objectIndex);
+                    scanRoi(roiIndex);
                     }
                 }
                 catch
                 {
-                    foreach (ObjectDetectionDefectProcessedPatch patch in processedPatchesByObjectIndex)
+                    foreach (ObjectDetectionDefectProcessedPatch patch in processedPatchesByRoiIndex)
                     {
                         DisposeObjectDetectionDefectProcessedPatch(patch);
                     }
@@ -2064,7 +2061,7 @@ namespace IntegratedImageProcessingApp.Forms
             var result = new ObjectDetectionFrequencyResult
             {
                 Cells = new List<ObjectDetectionFrequencyCell>(),
-                ObjectPolygons = new Dictionary<int, PointF[]>(),
+                ObjectPolygons = new Dictionary<int, List<PointF[]>>(),
                 CellsByObject = new Dictionary<int, List<ObjectDetectionFrequencyCell>>(),
                 ProcessedPatches = new List<ObjectDetectionDefectProcessedPatch>()
             };
@@ -2073,21 +2070,33 @@ namespace IntegratedImageProcessingApp.Forms
             result.PreviewGenerationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(
                 previewGenerationElapsedTicks);
             result.ScannedWindowCount = scannedWindowCount;
-            for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+            for (int roiIndex = 0; roiIndex < roiWorkItems.Count; roiIndex++)
             {
-                List<ObjectDetectionFrequencyCell> objectCells = cellsByObjectIndex[objectIndex];
+                List<ObjectDetectionFrequencyCell> objectCells = cellsByRoiIndex[roiIndex];
                 if (objectCells == null)
                 {
                     continue;
                 }
-                int objectNumber = objects[objectIndex].Number;
-                result.ObjectPolygons[objectNumber] = polygonsByObjectIndex[objectIndex];
-                result.CellsByObject[objectNumber] = objectCells;
-                result.Cells.AddRange(objectCells);
-                if (processedPatchesByObjectIndex[objectIndex] != null)
+                int objectNumber = roiWorkItems[roiIndex].DetectedObject.Number;
+                List<PointF[]> objectPolygons;
+                if (!result.ObjectPolygons.TryGetValue(objectNumber, out objectPolygons))
                 {
-                    result.ProcessedPatches.Add(processedPatchesByObjectIndex[objectIndex]);
-                    processedPatchesByObjectIndex[objectIndex] = null;
+                    objectPolygons = new List<PointF[]>();
+                    result.ObjectPolygons.Add(objectNumber, objectPolygons);
+                }
+                objectPolygons.Add(polygonsByRoiIndex[roiIndex]);
+                List<ObjectDetectionFrequencyCell> cellsForObject;
+                if (!result.CellsByObject.TryGetValue(objectNumber, out cellsForObject))
+                {
+                    cellsForObject = new List<ObjectDetectionFrequencyCell>();
+                    result.CellsByObject.Add(objectNumber, cellsForObject);
+                }
+                cellsForObject.AddRange(objectCells);
+                result.Cells.AddRange(objectCells);
+                if (processedPatchesByRoiIndex[roiIndex] != null)
+                {
+                    result.ProcessedPatches.Add(processedPatchesByRoiIndex[roiIndex]);
+                    processedPatchesByRoiIndex[roiIndex] = null;
                 }
             }
 
@@ -2154,8 +2163,9 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 EnsureObjectDetectionDefectCores(parameter);
                 const int bucketSize = 512;
-                var independentDefectsByObject =
-                    new Dictionary<int, Dictionary<long, List<ObjectDetectionDefectContour>>>();
+                var independentDefectsByRegion =
+                    new Dictionary<string, Dictionary<long, List<ObjectDetectionDefectContour>>>(
+                        StringComparer.Ordinal);
                 foreach (ObjectDetectionDefectCoreSettings core in parameter.DefectDetectionCores
                     .Take(ObjectDetectionDefectCoreKeys.Length)
                     .Where(item => item != null && item.Enabled))
@@ -2166,7 +2176,8 @@ namespace IntegratedImageProcessingApp.Forms
                     {
                         foreach (ObjectDetectionDefectContour contour in coreResult.Contours)
                         {
-                            if (contour == null || contour.ObjectNumber <= 0)
+                            if (contour == null || contour.ObjectNumber <= 0 ||
+                                string.IsNullOrWhiteSpace(contour.InspectionRegionId))
                             {
                                 continue;
                             }
@@ -2175,13 +2186,13 @@ namespace IntegratedImageProcessingApp.Forms
                             {
                                 continue;
                             }
-                            Dictionary<long, List<ObjectDetectionDefectContour>> objectBuckets;
-                            if (!independentDefectsByObject.TryGetValue(
-                                contour.ObjectNumber,
-                                out objectBuckets))
+                            Dictionary<long, List<ObjectDetectionDefectContour>> regionBuckets;
+                            if (!independentDefectsByRegion.TryGetValue(
+                                contour.InspectionRegionId,
+                                out regionBuckets))
                             {
-                                objectBuckets = new Dictionary<long, List<ObjectDetectionDefectContour>>();
-                                independentDefectsByObject.Add(contour.ObjectNumber, objectBuckets);
+                                regionBuckets = new Dictionary<long, List<ObjectDetectionDefectContour>>();
+                                independentDefectsByRegion.Add(contour.InspectionRegionId, regionBuckets);
                             }
                             int firstBucketX = (int)Math.Floor(bounds.Left / (double)bucketSize);
                             int lastBucketX = (int)Math.Floor((bounds.Right - 1) / (double)bucketSize);
@@ -2193,10 +2204,10 @@ namespace IntegratedImageProcessingApp.Forms
                                 {
                                     long key = GetObjectDetectionFrequencySpatialBucketKey(bucketX, bucketY);
                                     List<ObjectDetectionDefectContour> bucket;
-                                    if (!objectBuckets.TryGetValue(key, out bucket))
+                                    if (!regionBuckets.TryGetValue(key, out bucket))
                                     {
                                         bucket = new List<ObjectDetectionDefectContour>();
-                                        objectBuckets.Add(key, bucket);
+                                        regionBuckets.Add(key, bucket);
                                     }
                                     bucket.Add(contour);
                                 }
@@ -2207,8 +2218,8 @@ namespace IntegratedImageProcessingApp.Forms
 
                 foreach (ObjectDetectionFrequencyCell cell in result.Cells)
                 {
-                    Dictionary<long, List<ObjectDetectionDefectContour>> objectBuckets;
-                    if (!independentDefectsByObject.TryGetValue(cell.ObjectNumber, out objectBuckets))
+                    Dictionary<long, List<ObjectDetectionDefectContour>> regionBuckets;
+                    if (!independentDefectsByRegion.TryGetValue(cell.RoiId, out regionBuckets))
                     {
                         continue;
                     }
@@ -2222,7 +2233,7 @@ namespace IntegratedImageProcessingApp.Forms
                         for (int bucketX = firstBucketX; bucketX <= lastBucketX; bucketX++)
                         {
                             List<ObjectDetectionDefectContour> bucket;
-                            if (objectBuckets.TryGetValue(
+                            if (regionBuckets.TryGetValue(
                                 GetObjectDetectionFrequencySpatialBucketKey(bucketX, bucketY),
                                 out bucket))
                             {
@@ -2236,13 +2247,13 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             var usedReferenceCells = new HashSet<ObjectDetectionFrequencyCell>();
-            foreach (IGrouping<int, ObjectDetectionFrequencyCell> objectCells in result.Cells
-                .GroupBy(cell => cell.ObjectNumber))
+            foreach (IGrouping<string, ObjectDetectionFrequencyCell> regionCells in result.Cells
+                .GroupBy(cell => cell.RoiId, StringComparer.Ordinal))
             {
-                var cellsByGrid = objectCells.ToDictionary(
+                var cellsByGrid = regionCells.ToDictionary(
                     cell => ((long)cell.GridRow << 32) | (uint)cell.GridColumn,
                     cell => cell);
-                foreach (ObjectDetectionFrequencyCell cell in objectCells)
+                foreach (ObjectDetectionFrequencyCell cell in regionCells)
                 {
                     var references = new List<ObjectDetectionFrequencyCell>();
                     for (int rowOffset = -result.NeighborReferenceRadius;
@@ -2945,20 +2956,28 @@ namespace IntegratedImageProcessingApp.Forms
                     foreach (KeyValuePair<int, List<ObjectDetectionFrequencyCell>> objectEntry in
                         result.CellsByObject)
                     {
-                        PointF[] imagePolygon;
+                        List<PointF[]> imagePolygons;
                         if (result.ObjectPolygons == null ||
-                            !result.ObjectPolygons.TryGetValue(objectEntry.Key, out imagePolygon) ||
-                            imagePolygon == null || imagePolygon.Length < 3)
+                            !result.ObjectPolygons.TryGetValue(objectEntry.Key, out imagePolygons) ||
+                            imagePolygons == null || imagePolygons.Count == 0)
                         {
                             continue;
                         }
 
-                        PointF[] screenPolygon = imagePolygon.Select(point => new PointF(
-                            offset.X + point.X * zoom,
-                            offset.Y + point.Y * zoom)).ToArray();
                         using (var clipPath = new GraphicsPath())
                         {
-                            clipPath.AddPolygon(screenPolygon);
+                            foreach (PointF[] imagePolygon in imagePolygons.Where(polygon =>
+                                polygon != null && polygon.Length >= 3))
+                            {
+                                PointF[] screenPolygon = imagePolygon.Select(point => new PointF(
+                                    offset.X + point.X * zoom,
+                                    offset.Y + point.Y * zoom)).ToArray();
+                                clipPath.AddPolygon(screenPolygon);
+                            }
+                            if (clipPath.PointCount == 0)
+                            {
+                                continue;
+                            }
                             GraphicsState state = graphics.Save();
                             try
                             {

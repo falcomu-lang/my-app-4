@@ -22,6 +22,8 @@ namespace IntegratedImageProcessingApp.Forms
         {
             public int ObjectNumber { get; set; }
 
+            public string InspectionRegionId { get; set; }
+
             public bool IsBright { get; set; }
 
             public int ComponentLabel { get; set; }
@@ -291,9 +293,8 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (!parameter.DefectInspectionRegionConfigured ||
-                !string.Equals(parameter.DefectInspectionRegionObjectDefinitionId,
-                    parameter.ObjectDefinitionId, StringComparison.Ordinal))
+            if (parameter.DefectInspectionRegions == null ||
+                parameter.DefectInspectionRegions.Count == 0)
             {
                 statusLabel.Text = "請先框選並套用缺陷檢測範圍。";
                 SetObjectDetectionDefectRegionStatus("尚未設定有效的檢測範圍。請先框選並套用。");
@@ -448,16 +449,6 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             Rectangle imageBounds = new Rectangle(0, 0, correctedSource.Width, correctedSource.Height);
-            RectangleF normalizedRegion = RectangleF.FromLTRB(
-                ClampUnit((float)parameter.DefectInspectionRegionLeft),
-                ClampUnit((float)parameter.DefectInspectionRegionTop),
-                ClampUnit((float)parameter.DefectInspectionRegionRight),
-                ClampUnit((float)parameter.DefectInspectionRegionBottom));
-            if (normalizedRegion.Width <= 0 || normalizedRegion.Height <= 0)
-            {
-                statusLabel.Text = "檢測範圍無效，請重新框選。";
-                return;
-            }
 
             IEnumerable<ObjectDetectionDefectCoreSettings> configuredCores = parameter.DefectDetectionCores
                 .Take(ObjectDetectionDefectCoreKeys.Length);
@@ -478,7 +469,7 @@ namespace IntegratedImageProcessingApp.Forms
                 statusLabel.Text = "找不到指定的缺陷處理核心。";
                 return;
             }
-            Dictionary<string, HashSet<int>> membersByGroupId;
+            Dictionary<string, List<ObjectDetectionInspectionRegionWorkItem>> workItemsByGroupId;
             string groupMemberError;
             if (!TryValidateObjectDetectionDefectRoiGroupMembers(
                 parameter,
@@ -486,22 +477,27 @@ namespace IntegratedImageProcessingApp.Forms
                 false,
                 false,
                 objects,
-                out membersByGroupId,
+                out workItemsByGroupId,
                 out groupMemberError))
             {
                 statusLabel.Text = groupMemberError;
                 SetObjectDetectionDefectRegionStatus(groupMemberError);
                 return;
             }
-            var coreRoiObjectNumbers = coreSettings
-                .Select(core => membersByGroupId[core.RoiGroupId])
+            var coreRoiIds = coreSettings
+                .Select(core => new HashSet<string>(
+                    workItemsByGroupId[core.RoiGroupId].Select(item => item.Region.Id),
+                    StringComparer.Ordinal))
                 .ToArray();
-            objects = objects.Where(detectedObject => coreRoiObjectNumbers.Any(memberNumbers =>
-                memberNumbers.Contains(detectedObject.Number))).ToList();
-            if (objects.Count == 0)
+            List<ObjectDetectionInspectionRegionWorkItem> roiWorkItems = coreSettings
+                .SelectMany(core => workItemsByGroupId[core.RoiGroupId])
+                .GroupBy(item => item.Region.Id, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .ToList();
+            if (roiWorkItems.Count == 0)
             {
-                statusLabel.Text = "所選 ROI 組沒有可供缺陷檢測的物件。";
-                SetObjectDetectionDefectRegionStatus("所選 ROI 組沒有對應到任何物件，沒有開始運算。");
+                statusLabel.Text = "所選 ROI 組沒有可供缺陷檢測的獨立 ROI。";
+                SetObjectDetectionDefectRegionStatus("所選 ROI 組沒有有效的檢測區域，沒有開始運算。");
                 return;
             }
             var signatures = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -530,11 +526,11 @@ namespace IntegratedImageProcessingApp.Forms
             statusLabel.Text = parameter.DisplayName + "：" + processingScope + "缺陷檢測運算中...";
             SetObjectDetectionDefectRegionStatus(runParallel
                 ? runAllCores
-                    ? "所有物件 ROI 同時排程；已啟用的缺陷核心同時運算..."
-                    : "所有物件 ROI 的「" + processingScope + "」同時運算..."
+                    ? "群組中的獨立 ROI 同時排程；已啟用的缺陷核心同時運算..."
+                    : "群組中的獨立 ROI 對「" + processingScope + "」同時運算..."
                 : runAllCores
-                    ? "每個物件 ROI 的已啟用缺陷核心依序運算..."
-                    : "所有物件 ROI 的「" + processingScope + "」依序運算...");
+                    ? "群組中的獨立 ROI 與已啟用缺陷核心依序運算..."
+                    : "群組中的獨立 ROI 對「" + processingScope + "」依序運算...");
 
             Dictionary<string, ObjectDetectionDefectCoreResult> results = null;
             bool resultsStored = false;
@@ -567,8 +563,8 @@ namespace IntegratedImageProcessingApp.Forms
                             };
                         }
 
-                        var roiCoreContours = new List<ObjectDetectionDefectContour>[coreSettings.Count, objects.Count];
-                        var roiCorePatches = new ObjectDetectionDefectProcessedPatch[coreSettings.Count, objects.Count];
+                        var roiCoreContours = new List<ObjectDetectionDefectContour>[coreSettings.Count, roiWorkItems.Count];
+                        var roiCorePatches = new ObjectDetectionDefectProcessedPatch[coreSettings.Count, roiWorkItems.Count];
                         var coreElapsedTicks = new long[coreSettings.Count];
                         var contrastAdjustmentElapsedTicks = new long[coreSettings.Count];
                         var preprocessingElapsedTicks = new long[coreSettings.Count];
@@ -577,29 +573,37 @@ namespace IntegratedImageProcessingApp.Forms
                         var previewGenerationElapsedTicks = new long[coreSettings.Count];
                         long roiPreparationElapsedTicks = 0;
                         int completedRois = 0;
-                        Action<int> processRoi = delegate(int objectIndex)
+                        Action<int> processRoi = delegate(int roiIndex)
                         {
                             operationCancellationToken.ThrowIfCancellationRequested();
+                            ObjectDetectionInspectionRegionWorkItem workItem = roiWorkItems[roiIndex];
                             ObjectDetectionDefectPerObjectResult objectResult =
                                 ProcessObjectDetectionDefectObject(
                                     correctedSource,
-                                    objects[objectIndex],
-                                    normalizedRegion,
+                                    workItem.DetectedObject,
+                                    workItem.NormalizedRegion,
                                     imageBounds,
                                     flatFieldTargetGray,
                                     parameter.CameraXMillimetersPerPixel,
                                     parameter.CameraYMillimetersPerPixel,
                                     coreSettings,
-                                    coreRoiObjectNumbers,
+                                    coreRoiIds,
+                                    workItem.Region.Id,
                                     runParallel,
                                     progress,
-                                    objectIndex,
-                                    objects.Count);
+                                    roiIndex,
+                                    roiWorkItems.Count);
                             for (int coreIndex = 0; coreIndex < coreSettings.Count; coreIndex++)
                             {
-                                roiCoreContours[coreIndex, objectIndex] =
+                                roiCoreContours[coreIndex, roiIndex] =
                                     objectResult.ContoursByCore[coreIndex];
-                                roiCorePatches[coreIndex, objectIndex] =
+                                foreach (ObjectDetectionDefectContour contour in
+                                    roiCoreContours[coreIndex, roiIndex] ??
+                                        new List<ObjectDetectionDefectContour>())
+                                {
+                                    contour.InspectionRegionId = workItem.Region.Id;
+                                }
+                                roiCorePatches[coreIndex, roiIndex] =
                                     objectResult.ProcessedPatchesByCore[coreIndex];
                                 System.Threading.Interlocked.Add(
                                     ref contrastAdjustmentElapsedTicks[coreIndex],
@@ -629,33 +633,33 @@ namespace IntegratedImageProcessingApp.Forms
                                 ? "已啟用的缺陷核心"
                                 : "「" + processingScope + "」核心";
                             progress.Report(
-                                "物件 ROI 完成 " +
+                                "獨立 ROI 完成 " +
                                 completed.ToString(CultureInfo.CurrentCulture) + "/" +
-                                objects.Count.ToString(CultureInfo.CurrentCulture) +
+                                roiWorkItems.Count.ToString(CultureInfo.CurrentCulture) +
                                 "；" + coreProgress +
                                 (runParallel ? "運算完成..." : "依序完成..."));
                         };
 
                         try
                         {
-                            if (runParallel && objects.Count > 1)
+                            if (runParallel && roiWorkItems.Count > 1)
                             {
                                 Parallel.For(
                                     0,
-                                    objects.Count,
+                                    roiWorkItems.Count,
                                     new ParallelOptions
                                     {
-                                        MaxDegreeOfParallelism = objects.Count,
+                                        MaxDegreeOfParallelism = roiWorkItems.Count,
                                         CancellationToken = operationCancellationToken
                                     },
                                     processRoi);
                             }
                             else
                             {
-                                for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+                                for (int roiIndex = 0; roiIndex < roiWorkItems.Count; roiIndex++)
                                 {
                                     operationCancellationToken.ThrowIfCancellationRequested();
-                                    processRoi(objectIndex);
+                                    processRoi(roiIndex);
                                 }
                             }
                         }
@@ -692,19 +696,20 @@ namespace IntegratedImageProcessingApp.Forms
                                 ConvertObjectDetectionDefectTicksToMilliseconds(
                                     previewGenerationElapsedTicks[coreIndex]);
                             coreResult.ParallelExecutionEnabled = runParallel;
-                            for (int objectIndex = 0; objectIndex < objects.Count; objectIndex++)
+                            for (int roiIndex = 0; roiIndex < roiWorkItems.Count; roiIndex++)
                             {
-                                if (roiCoreContours[coreIndex, objectIndex] != null)
+                                if (roiCoreContours[coreIndex, roiIndex] != null)
                                 {
-                                    coreResult.Contours.AddRange(roiCoreContours[coreIndex, objectIndex]);
+                                    coreResult.Contours.AddRange(roiCoreContours[coreIndex, roiIndex]);
                                 }
-                                if (roiCorePatches[coreIndex, objectIndex] != null)
+                                if (roiCorePatches[coreIndex, roiIndex] != null)
                                 {
-                                    coreResult.ProcessedPatches.Add(roiCorePatches[coreIndex, objectIndex]);
+                                    coreResult.ProcessedPatches.Add(roiCorePatches[coreIndex, roiIndex]);
                                 }
                             }
                             coreResult.DetectedComponentCount = coreResult.Contours
                                 .Select(contour => contour.ObjectNumber.ToString(CultureInfo.InvariantCulture) +
+                                    ":" + (contour.InspectionRegionId ?? string.Empty) +
                                     ":" + (contour.IsBright ? "B" : "D") + ":" +
                                     contour.ComponentLabel.ToString(CultureInfo.InvariantCulture))
                                 .Distinct(StringComparer.Ordinal)
@@ -1032,11 +1037,12 @@ namespace IntegratedImageProcessingApp.Forms
             double xMillimetersPerPixel,
             double yMillimetersPerPixel,
             IList<ObjectDetectionDefectCoreSettings> cores,
-            IList<HashSet<int>> coreRoiObjectNumbers,
+            IList<HashSet<string>> coreRoiIds,
+            string roiId,
             bool runParallel,
             IProgress<string> progress,
-            int objectIndex,
-            int objectCount)
+            int roiIndex,
+            int roiCount)
         {
             var result = new ObjectDetectionDefectPerObjectResult
             {
@@ -1076,8 +1082,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
             try
             {
-                progress?.Report("ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
-                    objectCount.ToString(CultureInfo.CurrentCulture) + "：正在準備 ROI 影像區塊...");
+                progress?.Report("獨立 ROI " + (roiIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
+                    roiCount.ToString(CultureInfo.CurrentCulture) + "：正在準備影像區塊...");
                 Stopwatch roiPreparationStopwatch = Stopwatch.StartNew();
                 using (Cv.Mat gray = CreateObjectDetectionDefectGrayRegionMat(source, crop))
                 using (var polygonMask = new Cv.Mat(
@@ -1095,14 +1101,15 @@ namespace IntegratedImageProcessingApp.Forms
 
                 Action<int> processCore = delegate(int coreIndex)
                 {
-                    if (coreRoiObjectNumbers == null || coreIndex >= coreRoiObjectNumbers.Count ||
-                        !coreRoiObjectNumbers[coreIndex].Contains(detectedObject.Number))
+                    if (coreRoiIds == null || coreIndex >= coreRoiIds.Count ||
+                        !coreRoiIds[coreIndex].Contains(roiId))
                     {
                         return;
                     }
                     ObjectDetectionDefectCoreSettings core = cores[coreIndex];
-                    string roiLabel = "ROI " + (objectIndex + 1).ToString(CultureInfo.CurrentCulture) + "/" +
-                        objectCount.ToString(CultureInfo.CurrentCulture);
+                    string roiLabel = "ROI " + roiIndex.ToString(CultureInfo.CurrentCulture) + "/" +
+                        roiCount.ToString(CultureInfo.CurrentCulture) +
+                        "（物件 " + detectedObject.Number.ToString(CultureInfo.CurrentCulture) + "）";
                     string coreLabel = GetObjectDetectionDefectCoreLabel(coreIndex);
                     progress?.Report(roiLabel + "／" + coreLabel + "：對比調整與影像前處理...");
                     Stopwatch stopwatch = Stopwatch.StartNew();
@@ -1783,9 +1790,12 @@ namespace IntegratedImageProcessingApp.Forms
                         coreKey ?? string.Empty,
                         out result);
             }
-            if (parameter == null || !parameter.DefectInspectionRegionConfigured ||
-                !string.Equals(parameter.DefectInspectionRegionObjectDefinitionId,
-                    parameter.ObjectDefinitionId, StringComparison.Ordinal))
+            if (parameter == null || parameter.DefectInspectionRegions == null ||
+                !parameter.DefectInspectionRegions.Any(region => region != null &&
+                    string.Equals(region.ObjectDefinitionId,
+                        parameter.ObjectDefinitionId, StringComparison.Ordinal) &&
+                    region.ObjectNumber > 0 && region.Right > region.Left &&
+                    region.Bottom > region.Top))
             {
                 return false;
             }

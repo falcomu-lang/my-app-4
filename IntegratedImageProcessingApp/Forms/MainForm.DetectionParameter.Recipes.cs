@@ -297,9 +297,12 @@ namespace IntegratedImageProcessingApp.Forms
                 ReportAppliedRecipeProcessingFailure(recipeName, "參數沒有有效的 ROI，無法重新處理影像。");
                 return;
             }
-            if (!parameter.DefectInspectionRegionConfigured ||
-                !string.Equals(parameter.DefectInspectionRegionObjectDefinitionId,
-                    parameter.ObjectDefinitionId, StringComparison.Ordinal))
+            if (parameter.DefectInspectionRegions == null ||
+                !parameter.DefectInspectionRegions.Any(region => region != null &&
+                    string.Equals(region.ObjectDefinitionId,
+                        parameter.ObjectDefinitionId, StringComparison.Ordinal) &&
+                    region.ObjectNumber > 0 && region.Right > region.Left &&
+                    region.Bottom > region.Top))
             {
                 ReportAppliedRecipeProcessingFailure(recipeName, "參數沒有對應目前物件定義的有效缺陷檢測範圍。");
                 return;
