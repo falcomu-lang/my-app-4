@@ -380,21 +380,6 @@ namespace IntegratedImageProcessingApp.Services
                         SectionObjectDetection,
                         prefix + ".RowCount",
                         0),
-                    CameraXMillimetersPerPixel = GetPositiveDouble(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".CameraXMillimetersPerPixel",
-                        1.0),
-                    CameraYMillimetersPerPixel = GetPositiveDouble(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".CameraYMillimetersPerPixel",
-                        1.0),
-                    CameraPrecisionConfigured = GetBool(
-                        sections,
-                        SectionObjectDetection,
-                        prefix + ".CameraPrecisionConfigured",
-                        false),
                     SourceMaskMode = GetValue(
                         sections,
                         SectionObjectDetection,
@@ -1144,18 +1129,6 @@ namespace IntegratedImageProcessingApp.Services
                         "{0}.RowCount={1}",
                         prefix,
                         parameter.RowCount.ToString(CultureInfo.InvariantCulture));
-                    writer.WriteLine(
-                        "{0}.CameraXMillimetersPerPixel={1}",
-                        prefix,
-                        parameter.CameraXMillimetersPerPixel.ToString("R", CultureInfo.InvariantCulture));
-                    writer.WriteLine(
-                        "{0}.CameraYMillimetersPerPixel={1}",
-                        prefix,
-                        parameter.CameraYMillimetersPerPixel.ToString("R", CultureInfo.InvariantCulture));
-                    writer.WriteLine(
-                        "{0}.CameraPrecisionConfigured={1}",
-                        prefix,
-                        parameter.CameraPrecisionConfigured ? "1" : "0");
                     writer.WriteLine("{0}.SourceMaskMode={1}", prefix, Escape(parameter.SourceMaskMode));
                     writer.WriteLine("{0}.SourceMaskPrimaryType={1}", prefix, Escape(parameter.SourceMaskPrimaryType));
                     writer.WriteLine("{0}.SourceMaskPrimaryId={1}", prefix, Escape(parameter.SourceMaskPrimaryId));

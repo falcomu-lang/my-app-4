@@ -1468,6 +1468,13 @@ namespace IntegratedImageProcessingApp.Forms
                 EnsureDetectionRecipeGenerationIsCurrent(
                     capturedRecipeGeneration,
                     cancellationToken);
+                if (!string.Equals(
+                    currentSettingsSignature,
+                    CreateObjectDetectionResultReviewSettingsSignature(parameter, definition),
+                    StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException("結果確認期間全域或檢測參數已變更，請重新執行確認。");
+                }
                 if (capturedImageGeneration != System.Threading.Interlocked.CompareExchange(
                     ref imageSourceGeneration, 0, 0))
                 {
@@ -1874,7 +1881,7 @@ namespace IntegratedImageProcessingApp.Forms
                         string.Equals(record.Mode, "Parallel", StringComparison.OrdinalIgnoreCase)
                             ? Math.Max(2, record.LineCount).ToString(CultureInfo.CurrentCulture) : "1",
                         string.Empty, string.Empty, string.Empty,
-                        IsObjectDetectionCameraPrecisionEnabled(parameter) ? "mm" : "px",
+                        IsObjectDetectionCameraPrecisionEnabled() ? "mm" : "px",
                         "無法量測：" + row.Error);
                 }
                 objectDetectionResultReviewMeasurementsGrid.Rows[rowIndex].Tag =
@@ -2681,6 +2688,12 @@ namespace IntegratedImageProcessingApp.Forms
             AppendObjectDetectionResultReviewSignatureValue(builder, parameter, new HashSet<object>());
             builder.Append('|');
             AppendObjectDetectionResultReviewSignatureValue(builder, definition, new HashSet<object>());
+            builder.Append("|camera:")
+                .Append(GetCameraXMillimetersPerPixel().ToString("R", CultureInfo.InvariantCulture))
+                .Append('|')
+                .Append(GetCameraYMillimetersPerPixel().ToString("R", CultureInfo.InvariantCulture))
+                .Append('|')
+                .Append(IsCameraMillimeterConversionEnabled() ? '1' : '0');
             using (SHA256 hash = SHA256.Create())
             {
                 byte[] digest = hash.ComputeHash(Encoding.UTF8.GetBytes(builder.ToString()));

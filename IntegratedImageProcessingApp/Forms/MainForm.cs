@@ -145,7 +145,7 @@ namespace IntegratedImageProcessingApp.Forms
             ImageDisplayControl.SuppressViewUpdates = IsImageDisplayUpdateSuppressed;
             if (centerPanel != null)
             {
-                centerPanel.Visible = !IsImageDisplayUpdateSuppressed;
+                centerPanel.Visible = isGlobalSettingsActive || !IsImageDisplayUpdateSuppressed;
             }
 
             if (IsImageDisplayUpdateSuppressed)
@@ -286,6 +286,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string ObjectDefinitionMenuText = "物件定義";
         private const string ObjectDetectionParameterMenuText = "檢測參數設定";
         private const string ObjectDetectionResultReviewMenuText = "參數結果確認";
+        private const string GlobalSettingsMenuText = "全域設定";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
         private const string MoveDownImageProcessingStepMenuText = "      下移";
@@ -312,7 +313,8 @@ namespace IntegratedImageProcessingApp.Forms
             Relation,
             Object,
             Filter,
-            Measure
+            Measure,
+            Settings
         }
 
         public MainForm()
@@ -320,6 +322,9 @@ namespace IntegratedImageProcessingApp.Forms
             systemParameterService = new SystemParameterIniService(
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SystemParameters.ini"));
             systemParameters = systemParameterService.Load();
+            cameraDeviceSettingsIniService = new CameraDeviceSettingsIniService(
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config", "device-settings.ini"));
+            cameraDeviceSettings = cameraDeviceSettingsIniService.Load();
             LoadSavedObjectDetectionFlatFieldProfiles();
 
             InitializeComponent();
@@ -388,6 +393,13 @@ namespace IntegratedImageProcessingApp.Forms
                 functionListBox.Items.Insert(
                     objectDetectionParameterIndex < 0 ? functionListBox.Items.Count : objectDetectionParameterIndex + 1,
                     ObjectDetectionResultReviewMenuText);
+            }
+            if (!functionListBox.Items.Contains(GlobalSettingsMenuText))
+            {
+                int resultReviewIndex = functionListBox.Items.IndexOf(ObjectDetectionResultReviewMenuText);
+                functionListBox.Items.Insert(
+                    resultReviewIndex < 0 ? functionListBox.Items.Count : resultReviewIndex + 1,
+                    GlobalSettingsMenuText);
             }
             MoveFunctionListItemAfter(FindObjectFlowMenuText, RoiMenuText);
             MoveFunctionListItemAfter(ImagePreprocessingMenuText, FindObjectFlowMenuText);
@@ -2621,6 +2633,8 @@ namespace IntegratedImageProcessingApp.Forms
                     return FunctionMenuIcon.Measure;
                 case ObjectDetectionResultReviewMenuText:
                     return FunctionMenuIcon.Measure;
+                case GlobalSettingsMenuText:
+                    return FunctionMenuIcon.Settings;
                 default:
                     return FunctionMenuIcon.None;
             }
@@ -2691,6 +2705,14 @@ namespace IntegratedImageProcessingApp.Forms
                         graphics.DrawLine(pen, bounds.Left + 1, bounds.Bottom - 3, bounds.Right - 1, bounds.Top + 3);
                         graphics.DrawLine(pen, bounds.Left + 4, bounds.Bottom - 5, bounds.Left + 6, bounds.Bottom - 2);
                         graphics.DrawLine(pen, bounds.Left + 8, bounds.Top + 5, bounds.Left + 10, bounds.Top + 8);
+                        break;
+                    case FunctionMenuIcon.Settings:
+                        graphics.DrawEllipse(pen, bounds.Left + 4, bounds.Top + 4, 8, 8);
+                        graphics.DrawEllipse(pen, bounds.Left + 7, bounds.Top + 7, 2, 2);
+                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Top + 1, bounds.Left + 8, bounds.Top + 4);
+                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Top + 12, bounds.Left + 8, bounds.Top + 15);
+                        graphics.DrawLine(pen, bounds.Left + 1, bounds.Top + 8, bounds.Left + 4, bounds.Top + 8);
+                        graphics.DrawLine(pen, bounds.Left + 12, bounds.Top + 8, bounds.Left + 15, bounds.Top + 8);
                         break;
                 }
             }

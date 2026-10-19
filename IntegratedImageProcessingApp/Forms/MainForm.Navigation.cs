@@ -184,6 +184,11 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string selectedFunction = functionListBox.SelectedItem as string;
+            if (selectedFunction != GlobalSettingsMenuText)
+            {
+                HideGlobalSettingsPanel();
+            }
+
             if (string.IsNullOrEmpty(selectedFunction))
             {
                 ResetRightFunctionPanel();
@@ -192,6 +197,14 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ResetRightFunctionPanel();
+            if (selectedFunction == GlobalSettingsMenuText)
+            {
+                rightPanelTitleLabel.Text = "全域設定";
+                ShowGlobalSettingsPanel();
+                statusLabel.Text = "目前選擇：全域設定";
+                return;
+            }
+
             rightPanelTitleLabel.Text = selectedFunction + " 參數";
             string objectDetectionParameterGroupName;
             if (visibleObjectDetectionParameterGroupNames.TryGetValue(

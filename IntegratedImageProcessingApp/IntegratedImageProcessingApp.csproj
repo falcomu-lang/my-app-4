@@ -78,6 +78,7 @@
     <Compile Include="Controls\LargeImageSource.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Services\SystemParameterIniService.cs" />
+    <Compile Include="Services\CameraDeviceSettingsIniService.cs" />
     <Compile Include="Services\SystemParameterSettings.cs" />
     <Compile Include="Services\DetectionRecipeCatalogService.cs" />
     <Compile Include="Services\OpenCvThresholdService.cs" />
@@ -92,6 +93,10 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\MainForm.Navigation.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\MainForm.GlobalSettings.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
       <SubType>Form</SubType>
     </Compile>
@@ -245,6 +250,11 @@
     <Compile Include="Forms\MainForm.Designer.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
     </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="config\device-settings.ini">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Forms\MainForm.resx">

@@ -470,9 +470,6 @@ namespace IntegratedImageProcessingApp.Services
             ObjectDefinitionId = string.Empty;
             ColumnCount = 0;
             RowCount = 0;
-            CameraXMillimetersPerPixel = 1.0;
-            CameraYMillimetersPerPixel = 1.0;
-            CameraPrecisionConfigured = false;
             SourceMaskMode = "ObjectDefinition";
             SourceMaskPrimaryType = "ObjectDefinition";
             SourceMaskPrimaryId = string.Empty;
@@ -585,12 +582,6 @@ namespace IntegratedImageProcessingApp.Services
         public int ColumnCount { get; set; }
 
         public int RowCount { get; set; }
-
-        public double CameraXMillimetersPerPixel { get; set; }
-
-        public double CameraYMillimetersPerPixel { get; set; }
-
-        public bool CameraPrecisionConfigured { get; set; }
 
         // One shared source-MASK definition is applied to every numbered
         // object in this detection parameter.

@@ -461,7 +461,7 @@ namespace IntegratedImageProcessingApp.Forms
                     var lengths = new double[lineCount];
                     var measuredLines = new ObjectDetectionImageLine[lineCount];
                     var measuredLineSegments = new List<ObjectDetectionImageLine>[lineCount];
-                    bool useMillimeters = IsObjectDetectionCameraPrecisionEnabled(parameter);
+                    bool useMillimeters = IsObjectDetectionCameraPrecisionEnabled();
                     Action<int> measureLine = index =>
                     {
                         double ratio = lineCount == 1
@@ -484,8 +484,8 @@ namespace IntegratedImageProcessingApp.Forms
                             length = ConvertObjectDetectionPixelsToMillimeters(
                                 length,
                                 line,
-                                parameter.CameraXMillimetersPerPixel,
-                                parameter.CameraYMillimetersPerPixel);
+                                GetCameraXMillimetersPerPixel(),
+                                GetCameraYMillimetersPerPixel());
                         }
 
                         lengths[index] = length;
@@ -680,16 +680,14 @@ namespace IntegratedImageProcessingApp.Forms
                 out visibleSegments);
         }
 
-        private static bool IsObjectDetectionCameraPrecisionEnabled(
-            ObjectDetectionParameterSettings parameter)
+        private bool IsObjectDetectionCameraPrecisionEnabled()
         {
-            return parameter != null && parameter.CameraPrecisionConfigured &&
-                parameter.CameraXMillimetersPerPixel > 0.0 &&
-                parameter.CameraYMillimetersPerPixel > 0.0 &&
-                !double.IsNaN(parameter.CameraXMillimetersPerPixel) &&
-                !double.IsNaN(parameter.CameraYMillimetersPerPixel) &&
-                !double.IsInfinity(parameter.CameraXMillimetersPerPixel) &&
-                !double.IsInfinity(parameter.CameraYMillimetersPerPixel);
+            double xScale = GetCameraXMillimetersPerPixel();
+            double yScale = GetCameraYMillimetersPerPixel();
+            return IsCameraMillimeterConversionEnabled() &&
+                xScale > 0.0 && yScale > 0.0 &&
+                !double.IsNaN(xScale) && !double.IsNaN(yScale) &&
+                !double.IsInfinity(xScale) && !double.IsInfinity(yScale);
         }
 
         private static double ConvertObjectDetectionPixelsToMillimeters(

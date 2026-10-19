@@ -1040,92 +1040,6 @@ namespace IntegratedImageProcessingApp.Forms
                 };
                 group.Controls.Add(confirm);
 
-                var internalParametersGroup = new GroupBox
-                {
-                    Text = "內部參數",
-                    Dock = DockStyle.Top,
-                    Height = 176,
-                    Padding = new Padding(10)
-                };
-                var xPrecisionLabel = new Label
-                {
-                    Text = "攝影機 X 向精度 (mm/pixel)：",
-                    Left = 12,
-                    Top = 27,
-                    Width = 205,
-                    Height = 24,
-                    TextAlign = ContentAlignment.MiddleLeft
-                };
-                var xPrecisionBox = new NumericUpDown
-                {
-                    Left = 220,
-                    Top = 27,
-                    Width = 138,
-                    Minimum = 0,
-                    Maximum = 1000,
-                    DecimalPlaces = 6,
-                    Increment = 0.000001m,
-                    Value = (decimal)ClampObjectDetectionCameraPrecision(
-                        parameter.CameraXMillimetersPerPixel)
-                };
-                var yPrecisionLabel = new Label
-                {
-                    Text = "攝影機 Y 向精度 (mm/pixel)：",
-                    Left = 12,
-                    Top = 58,
-                    Width = 205,
-                    Height = 24,
-                    TextAlign = ContentAlignment.MiddleLeft
-                };
-                var yPrecisionBox = new NumericUpDown
-                {
-                    Left = 220,
-                    Top = 58,
-                    Width = 138,
-                    Minimum = 0,
-                    Maximum = 1000,
-                    DecimalPlaces = 6,
-                    Increment = 0.000001m,
-                    Value = (decimal)ClampObjectDetectionCameraPrecision(
-                        parameter.CameraYMillimetersPerPixel)
-                };
-                var applyPrecision = new Button
-                {
-                    Text = "套用內部參數",
-                    Left = 12,
-                    Top = 94,
-                    Width = 346,
-                    Height = 28
-                };
-                var enableMillimeterConversion = new CheckBox
-                {
-                    Left = 12,
-                    Top = 124,
-                    Width = 346,
-                    Height = 22,
-                    Text = "啟用 mm 換算（未啟用時以 pixel 計算）",
-                    Checked = parameter.CameraPrecisionConfigured
-                };
-                applyPrecision.Click += delegate
-                {
-                    parameter.CameraXMillimetersPerPixel = Decimal.ToDouble(xPrecisionBox.Value);
-                    parameter.CameraYMillimetersPerPixel = Decimal.ToDouble(yPrecisionBox.Value);
-                    parameter.CameraPrecisionConfigured = enableMillimeterConversion.Checked;
-                    SaveSystemParameters();
-                    statusLabel.Text = parameter.DisplayName + " 已套用攝影機精度：X " +
-                        parameter.CameraXMillimetersPerPixel.ToString("0.######", CultureInfo.InvariantCulture) +
-                        "、Y " +
-                        parameter.CameraYMillimetersPerPixel.ToString("0.######", CultureInfo.InvariantCulture) +
-                        " mm/pixel；尺寸量測以 " +
-                        (parameter.CameraPrecisionConfigured ? "mm" : "pixel") + " 顯示";
-                };
-                internalParametersGroup.Controls.Add(xPrecisionLabel);
-                internalParametersGroup.Controls.Add(xPrecisionBox);
-                internalParametersGroup.Controls.Add(yPrecisionLabel);
-                internalParametersGroup.Controls.Add(yPrecisionBox);
-                internalParametersGroup.Controls.Add(applyPrecision);
-                internalParametersGroup.Controls.Add(enableMillimeterConversion);
-
                 objectDetectionImageCheckStatusLabel = new Label
                 {
                     Dock = DockStyle.Top,
@@ -1136,7 +1050,6 @@ namespace IntegratedImageProcessingApp.Forms
                     ForeColor = Color.FromArgb(75, 83, 95)
                 };
                 contentPanel.Controls.Add(objectDetectionImageCheckStatusLabel);
-                contentPanel.Controls.Add(internalParametersGroup);
                 contentPanel.Controls.Add(group);
                 contentPanel.Controls.Add(sourceLabel);
                 tabPage.Controls.Add(contentPanel);
@@ -1145,16 +1058,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 tabPage.ResumeLayout(true);
             }
-        }
-
-        private static double ClampObjectDetectionCameraPrecision(double value)
-        {
-            if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0.0)
-            {
-                return 1.0;
-            }
-
-            return Math.Max(0.000001, Math.Min(1000.0, value));
         }
 
         private void SetObjectDetectionParameterTabText(int tabIndex, string text)

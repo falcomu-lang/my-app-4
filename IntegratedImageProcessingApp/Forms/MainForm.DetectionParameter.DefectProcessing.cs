@@ -322,6 +322,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             EnsureObjectDetectionDefectCores(parameter);
+            double cameraXMillimetersPerPixel = GetCameraXMillimetersPerPixel();
+            double cameraYMillimetersPerPixel = GetCameraYMillimetersPerPixel();
             int runDisplayIndex = Math.Max(0, Math.Min(
                 selectedObjectDetectionDefectCoreIndex,
                 ObjectDetectionDefectCoreKeys.Length - 1));
@@ -587,8 +589,8 @@ namespace IntegratedImageProcessingApp.Forms
                                     workItem.NormalizedRegions,
                                     imageBounds,
                                     flatFieldTargetGray,
-                                    parameter.CameraXMillimetersPerPixel,
-                                    parameter.CameraYMillimetersPerPixel,
+                                    cameraXMillimetersPerPixel,
+                                    cameraYMillimetersPerPixel,
                                     coreSettings,
                                     coreRoiGroupIds,
                                     workItem.GroupId,
@@ -736,6 +738,18 @@ namespace IntegratedImageProcessingApp.Forms
                     capturedImageGeneration != imageSourceGeneration ||
                     capturedFlatFieldGeneration != objectDetectionFlatFieldEvaluationGeneration ||
                     capturedCalibrationGeneration != objectDetectionFlatFieldCalibrationGeneration ||
+                    !coreSettings.All(core =>
+                    {
+                        string expectedSignature;
+                        return signatures.TryGetValue(core.CoreKey, out expectedSignature) &&
+                            string.Equals(
+                                expectedSignature,
+                                CreateObjectDetectionDefectCoreSignature(
+                                    parameter,
+                                    core,
+                                    definitionSignature),
+                                StringComparison.Ordinal);
+                    }) ||
                     !string.Equals(CreateObjectDefinitionProcessingSignature(definition),
                         definitionSignature, StringComparison.Ordinal) ||
                     !HasCompletedObjectDefinitionResult(definition, definitionSignature) ||
@@ -1020,9 +1034,9 @@ namespace IntegratedImageProcessingApp.Forms
                 core.MaximumWidthMillimeters.ToString("R", CultureInfo.InvariantCulture),
                 core.MinimumHeightMillimeters.ToString("R", CultureInfo.InvariantCulture),
                 core.MaximumHeightMillimeters.ToString("R", CultureInfo.InvariantCulture),
-                GetObjectDetectionDefectDimensionScale(parameter.CameraXMillimetersPerPixel)
+                GetObjectDetectionDefectDimensionScale(GetCameraXMillimetersPerPixel())
                     .ToString("R", CultureInfo.InvariantCulture),
-                GetObjectDetectionDefectDimensionScale(parameter.CameraYMillimetersPerPixel)
+                GetObjectDetectionDefectDimensionScale(GetCameraYMillimetersPerPixel())
                     .ToString("R", CultureInfo.InvariantCulture)
             });
         }

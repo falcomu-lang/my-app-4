@@ -1060,9 +1060,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Top,
                 Height = 142,
-                Text = parameter != null && parameter.CameraPrecisionConfigured
-                    ? "物件篩選（X/Y mm；依攝影機精度換算）"
-                    : "物件篩選（X/Y mm；未設定精度時暫用 1 mm/pixel）",
+                Text = "物件篩選（X/Y mm；依全域攝影機精度換算）",
                 Padding = new Padding(8, 16, 8, 4)
             };
             var layout = CreateDefectCoreTable(4, 5);
@@ -1090,9 +1088,9 @@ namespace IntegratedImageProcessingApp.Forms
             layout.Controls.Add(CreateDefectCoreLabel("約 pixel"), 4, 1);
 
             double xScale = GetObjectDetectionDefectDimensionScale(
-                parameter == null ? 1.0 : parameter.CameraXMillimetersPerPixel);
+                GetCameraXMillimetersPerPixel());
             double yScale = GetObjectDetectionDefectDimensionScale(
-                parameter == null ? 1.0 : parameter.CameraYMillimetersPerPixel);
+                GetCameraYMillimetersPerPixel());
             NumericUpDown minimumWidth = CreateDefectCoreNumber(
                 0m, 1000000m, 0.1m, 3, (decimal)Math.Max(0, Math.Min(1000000, core.MinimumWidthMillimeters)));
             NumericUpDown maximumWidth = CreateDefectCoreNumber(
