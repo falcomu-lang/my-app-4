@@ -2084,7 +2084,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             ObjectDefinitionDetectedObject selectedObject;
-            if (TryGetSelectedObjectDetectionObject(out selectedObject))
+            bool hasSelectedObject = TryGetSelectedObjectDetectionObject(out selectedObject);
+            if (hasSelectedObject)
             {
                 using (var roiPen = new Pen(Color.LimeGreen, 2f))
                 {
@@ -2100,9 +2101,43 @@ namespace IntegratedImageProcessingApp.Forms
             string draftRoiId = objectDetectionDefectRegionDraftRoiId ?? string.Empty;
             List<ObjectDefinitionDetectedObject> inspectionObjects =
                 GetObjectDetectionObjectsForParameter(parameter);
-            foreach (ObjectDetectionInspectionRegionSettings region in
+            IEnumerable<ObjectDetectionInspectionRegionSettings> regionsToDraw =
                 parameter.DefectInspectionRegions ??
-                    new List<ObjectDetectionInspectionRegionSettings>())
+                    new List<ObjectDetectionInspectionRegionSettings>();
+            bool selectedGroupPreview = hasSelectedObject &&
+                selectedObjectDetectionNumber > 0 &&
+                objectDetectionParameterTabControl != null &&
+                !isObjectDetectionResultReviewMode &&
+                objectDetectionParameterTabControl.SelectedIndex == 4 &&
+                displayIndex >= 0 && displayIndex < ObjectDetectionDefectCoreKeys.Length;
+            if (selectedGroupPreview)
+            {
+                regionsToDraw = Enumerable.Empty<ObjectDetectionInspectionRegionSettings>();
+                inspectionObjects = new List<ObjectDefinitionDetectedObject>
+                {
+                    selectedObject
+                };
+                string roiGroupId = GetObjectDetectionDefectRoiGroupIdForDisplay(
+                    parameter,
+                    displayIndex);
+                if (!string.IsNullOrWhiteSpace(roiGroupId) &&
+                    TryResolveObjectDetectionRoiGroupMembers(
+                        parameter,
+                        roiGroupId,
+                        new[] { selectedObject },
+                        out List<ObjectDetectionInspectionRegionWorkItem> selectedGroupItems,
+                        out _))
+                {
+                    ObjectDetectionInspectionRegionWorkItem selectedGroupItem =
+                        selectedGroupItems.FirstOrDefault();
+                    if (selectedGroupItem != null)
+                    {
+                        regionsToDraw = selectedGroupItem.Regions;
+                    }
+                }
+            }
+
+            foreach (ObjectDetectionInspectionRegionSettings region in regionsToDraw)
             {
                 if (region == null || string.Equals(region.Id, draftRoiId, StringComparison.Ordinal))
                 {
@@ -2177,6 +2212,28 @@ namespace IntegratedImageProcessingApp.Forms
                     Color.FromArgb(48, 255, 166, 0),
                     Color.DarkOrange);
             }
+        }
+
+        private string GetObjectDetectionDefectRoiGroupIdForDisplay(
+            ObjectDetectionParameterSettings parameter,
+            int displayIndex)
+        {
+            if (parameter == null || displayIndex < 0 ||
+                displayIndex >= ObjectDetectionDefectCoreKeys.Length)
+            {
+                return string.Empty;
+            }
+
+            if (objectDetectionDefectCoreDrafts != null &&
+                string.Equals(objectDetectionDefectDraftParameterId, parameter.Id,
+                    StringComparison.Ordinal) &&
+                displayIndex < objectDetectionDefectCoreDrafts.Count)
+            {
+                return objectDetectionDefectCoreDrafts[displayIndex].RoiGroupId ?? string.Empty;
+            }
+
+            EnsureObjectDetectionDefectCores(parameter);
+            return parameter.DefectDetectionCores[displayIndex].RoiGroupId ?? string.Empty;
         }
 
         private static void DrawObjectDetectionInspectionRegion(

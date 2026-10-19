@@ -348,6 +348,7 @@ namespace IntegratedImageProcessingApp.Forms
                     roiGroupSelector.SelectedItem as ObjectDetectionRoiGroupChoice;
                 objectDetectionDefectCoreDrafts[coreIndex].RoiGroupId =
                     choice == null ? string.Empty : choice.Id;
+                InvalidateObjectDetectionDefectRegionDisplay();
             };
             panel.Controls.Add(useCondition);
             panel.Controls.Add(roiGroupLabel);
