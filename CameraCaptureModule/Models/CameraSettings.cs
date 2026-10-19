@@ -62,6 +62,10 @@ namespace CameraCaptureApp.Models
 
         public ImageSaveFormat ImageSaveFormat { get; set; }
 
+        public bool ShowCameraImage { get; set; }
+
+        public bool ForwardAcquiredImageToInspection { get; set; }
+
         public int MeterWheelCompareIncrement { get; set; }
 
         public int MeterWheelEncoderValue { get; set; }
@@ -118,6 +122,8 @@ namespace CameraCaptureApp.Models
                 SaveFolder = string.Empty,
                 FileNamePattern = "capture_{yyyyMMdd_HHmmss}",
                 ImageSaveFormat = ImageSaveFormat.Png,
+                ShowCameraImage = true,
+                ForwardAcquiredImageToInspection = false,
                 MeterWheelCompareIncrement = 0,
                 MeterWheelEncoderValue = 0,
                 MeterWheelCompareValue = 0,

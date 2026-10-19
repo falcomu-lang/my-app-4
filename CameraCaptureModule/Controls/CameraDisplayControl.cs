@@ -27,6 +27,7 @@ namespace CameraCaptureApp.Controls
         private readonly List<Bitmap> _rollingPreviewFrames = new List<Bitmap>();
         private Bitmap _sourceBitmap;
         private LargeImageSource _largeImageSource;
+        private bool _isLivePreviewImage;
         private int _rollingPreviewFrameWidth;
         private int _rollingPreviewFrameHeight;
         private int _rollingPreviewFrameCount;
@@ -145,6 +146,34 @@ namespace CameraCaptureApp.Controls
             }
         }
 
+        public void ClearLivePreview(string message)
+        {
+            bool shouldUpdateEmptyDisplay = false;
+            lock (_imageLock)
+            {
+                if (_isLivePreviewImage)
+                {
+                    Interlocked.Increment(ref _imageVersion);
+                    DisposeCurrentImage();
+                    DisposeRollingPreviewFrames();
+                    shouldUpdateEmptyDisplay = true;
+                }
+                else
+                {
+                    shouldUpdateEmptyDisplay = _sourceBitmap == null &&
+                        _largeImageSource == null && _rollingPreviewFrames.Count == 0;
+                }
+            }
+
+            if (shouldUpdateEmptyDisplay)
+            {
+                OverlayText = message ?? string.Empty;
+                StatusText = message ?? string.Empty;
+                ResolutionText = string.Empty;
+                viewerPanel.Invalidate();
+            }
+        }
+
         private IGrayPixelSource CreateCurrentGrayPixelSource()
         {
             lock (_imageLock)
@@ -253,6 +282,7 @@ namespace CameraCaptureApp.Controls
                 DisposeCurrentImage();
                 DisposeRollingPreviewFrames();
                 _largeImageSource = source;
+                _isLivePreviewImage = false;
             }
 
             _lastDisplayUpdateUtc = DateTime.UtcNow;
@@ -289,6 +319,7 @@ namespace CameraCaptureApp.Controls
                 DisposeCurrentImage();
                 DisposeRollingPreviewFrames();
                 _sourceBitmap = bitmap;
+                _isLivePreviewImage = true;
             }
 
             _lastDisplayUpdateUtc = DateTime.UtcNow;
@@ -346,6 +377,7 @@ namespace CameraCaptureApp.Controls
                 _rollingPreviewFrameCount = frameCount;
                 _rollingPreviewDirection = direction;
                 _rollingPreviewFrames.Insert(0, bitmap);
+                _isLivePreviewImage = true;
                 while (_rollingPreviewFrames.Count > frameCount)
                 {
                     var lastIndex = _rollingPreviewFrames.Count - 1;
@@ -917,6 +949,7 @@ namespace CameraCaptureApp.Controls
             }
 
             ClearGrayWaveformSelectionUnsafe();
+            _isLivePreviewImage = false;
         }
 
         private void DisposeRollingPreviewFrames()

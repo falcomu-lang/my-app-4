@@ -5,8 +5,8 @@
 ## 專案狀態
 
 - 文件快照：2026-10-19。
-- 線掃描取像已整合為獨立 `CameraCaptureModule`，嵌入「全域設定 → 與線掃描取像結合」；相機原有設定／波形等彈出視窗保留。完整取像影像事件介面已建立，但目前沒有接入任何檢測流程。
-- 目前程式基準為 `6c97e89`（`Narrow global camera settings panel`）；新增「全域設定」與獨立攝影機精度檔，並將精度輸入區縮至頁面約三分之一寬。此版已 Debug 建置，GUI 與實際取像設備尚未驗收。
+- 線掃描取像已整合為獨立 `CameraCaptureModule`，嵌入「全域設定 → 與線掃描取像結合」；相機原有設定／波形等彈出視窗保留。「顯示攝影機影像」控制原本的相機預覽區；獨立的送檢開關可將新影格交由目前選取的參數執行結果確認流程。此接線尚未完成相機實機驗收，且目前透過暫存 TIFF／UI 流程處理，還不是生產用純記憶體檢測服務。
+- Git 基準為 `6c97e89`（`Narrow global camera settings panel`）；目前工作目錄另有尚未提交的相機影格送檢與預覽開關修改。基準版已 Debug 建置；最新修改已分別建置相機模組並 Compile 主程式，GUI 與實際取像設備尚未驗收。
 - 缺陷檢測範圍組可由勾選框選成員、將已勾選 ROI 上下排序；物件序號下方另有「顯示檢測範圍的 ROI 框」開關。選到物件時可顯示目前條件所選群組的 ROI；未選群組仍須核對預覽與運算一致性。
 - Recipe 參數管理已加入：可將參數檔加入軟體根目錄 `recipe`、編輯名稱與說明、調整清單順序，以及選取一組套用；套用後會重新跑相關物件流程與已啟用的缺陷分析。已 Debug 建置，尚待 GUI／實際產線影像端到端驗收。
 - 平場校正設定或 MASK 變更造成的過期工作取消，已改為預期取消而非未處理錯誤；需在快速切換設定的 GUI 情境確認取消與新工作結果。
@@ -39,7 +39,9 @@
 ## 全域設定與取像
 
 - 左側「全域設定」開啟獨立頁面，分為「與線掃描取像結合」及「內部參數」。取像頁嵌入原攝影機程式的完整主操作畫面，原有相機設定、波形及測速輪等彈出視窗仍獨立開啟；模組首次顯示時才初始化。此頁不顯示主檢測影像／參數編輯區。
-- 攝影機完整影像透過 `ICameraImageSource.ImageAcquired` 提供；事件帶有序號、時間、尺寸、像素格式與可複製的影像。此階段沒有訂閱者，也沒有連接缺陷／尺寸檢測，避免取像直接觸發檢測。
+- 「取得影像後事件」有兩個獨立勾選：「顯示攝影機影像」控制相機原有預覽區；取消後清除目前即時影像並停止預覽影格轉換／繪製，但不停止取像、記錄、自動保存或送檢。設定頁沒有新增第二個影像顯示框。
+- 「將取得的影像送入影像處理」預設關閉。啟用時，`ICameraImageSource.ImageAcquired` 事件會把完整影格傳給主程式；主程式複製影格、檢查尺寸，保存至 `%LocalAppData%\IntegratedImageProcessingApp\CameraFrames\` 暫存 TIFF，再載入「參數結果確認」並以目前選取的 Recipe 執行物件搜尋、尺寸、平場及已啟用的缺陷／頻域分析。送檢忙碌時新影格會略過、不排隊；送檢會切換到結果確認並取代該頁目前影像。
+- 這是目前已接通的 UI 驗證路徑，不是純記憶體的獨立 pipeline；尚未實機驗證，也尚無生產級錯誤重試、逾時、結果持久化或整體併發管理。未來應抽出接收 Bitmap／Recipe 快照的檢測服務，讓相機與人工載圖共用，避免檢測核心依賴 UI 導覽與暫存檔。
 - 相機設定使用執行檔目錄的 `captureSetting.ini`；首次找不到時會從同一目錄的舊 `settings.ini` 或 `setting.ini` 複製遷移。若舊設定仍在獨立相機程式的輸出資料夾，首次開啟整合程式前先把舊檔放到主程式執行檔旁，才會沿用原設定。預設影像儲存於 `CameraCapture/Captures`，相機記錄寫入 `logs/camera/app.log`。攝影機設定、資料與 `config/device-settings.ini` 保持分離。
 - 「內部參數」設定攝影機 X/Y 精度（mm/pixel）與是否啟用 mm 換算。程式啟動時讀取執行檔目錄的 `config/device-settings.ini`；缺檔時 X/Y 預設 1、mm 換算關閉，尺寸量測以 pixel 計算。單一精度值無效時該軸回退為 1，但若檔案仍設定啟用 mm 換算，開關不會自動關閉；現場需檢查完整設定。套用後寫入此檔，不隨 Recipe 切換。
 - 舊 Recipe／`SystemParameters.ini` 中的攝影機精度欄位不再讀寫，也不自動轉入全域設定檔。缺陷 X/Y 尺寸門檻仍以全域 X/Y 精度換算 pixel；即使尺寸量測的 mm 換算未啟用，也不可把預設 1 mm/pixel 誤當成已標定的實際精度。換機或使用舊參數前須校對全域設定。
@@ -55,7 +57,7 @@
 - **共用 ROI 的比例映射是關鍵驗收項目**：ROI 不再依物件序號建立不同副本；使用參考物件定義的正規化局部矩形，套用至同一物件定義下所有已找到物件。若物件尺寸比例、旋轉方向或局部結構不一致，固定比例可能不是每枚物件都適合的檢測位置。需以尺寸差異、旋轉物件、定位偏移及部分物件漏檢的代表影像確認框位與遮罩聯集。
 - **Recipe 與作用中設定的保存範圍需分清楚**：在檢測參數畫面修改 ROI 組時會保存目前系統參數，但不會自動更新 Recipe 目錄中的原始參數檔。若要把修改永久納入 Recipe，需明確提供更新／另存版本的流程，或匯出後重新加入 Recipe。
 - **攝影機精度已改為設備層設定**：`config/device-settings.ini` 與 Recipe 分離；切換 Recipe 不會替換 X/Y 標定值。缺檔時的 1 只是保護性預設，不能用於實際 mm 判定的驗收。
-- **攝影機取像尚未接入**：目前是檔案影像與人工觸發工作流程；未見相機接收、忙碌時丟棄新影格、重試／逾時及每影格追蹤 ID 的完整生命週期。未來需在 UI 外建立有界佇列與明確 backpressure 政策，才符合設備即時取像需求。
+- **相機已接到初步檢測流程，尚未產品化**：送檢開關啟用時，影格會進入結果確認並以當前參數執行物件搜尋、尺寸與缺陷分析；一次只處理一張，忙碌時略過新影格。現況仍由 `MainForm` 協調、經暫存 TIFF 與 UI 載圖，會切換／替換結果確認頁的影像；尚未拆成純記憶體服務，也未完成實機壓力、錯誤恢復、逾時及結果追蹤驗收。進入設備長時間運轉前，需先抽出獨立檢測 pipeline 並明確定義丟棄策略與結果契約。
 - **參數持久化可維護性是風險**：設定模型為強型別，但 INI 讀寫採手動欄位序列化；目前沒有明確的格式版本／遷移機制，舊參數相容性需持續驗證。
 - **Recipe 與作用中設定**：多個 Recipe 可存於目錄並供使用者選擇，但同一時間只有一組載入為作用中設定；套用會替換目前設定並自動重跑相關流程，不是兩組參數同時執行的隔離工作階段。
 - **驗證基礎仍需補強**：目前未找到專用自動化測試專案；建置成功不能替代影像算法、參數往返與 GUI 端到端驗收。
@@ -118,7 +120,9 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 
 - `IntegratedImageProcessingApp\Controls`：影像顯示、縮放平移、大型影像來源與預覽／分塊繪製。
 - `CameraCaptureModule`：從攝影機取像專案複製到主方案的獨立 x64 WinForms 模組，含相機服務、主操作視窗及其原有彈出視窗；後續原相機專案更新不會自動同步到此模組。由 `CameraCaptureHostControl` 嵌入主程式全域設定頁。
-- `IntegratedImageProcessingApp\Controls\CameraCaptureHostControl.cs`：延遲建立／承載相機主視窗、轉送未接檢測的完整影像事件，並於主程式關閉時釋放相機。
+- `IntegratedImageProcessingApp\Controls\CameraCaptureHostControl.cs`：延遲建立／承載相機主視窗；送檢開啟時訂閱並轉送完整影格事件，並於主程式關閉時釋放相機。
+- `IntegratedImageProcessingApp\Forms\MainForm.CameraCapture.cs`：接收相機影格、處理忙碌丟棄／尺寸檢查／暫存 TIFF，並以目前參數啟動結果確認。
+- `CameraCaptureModule\Forms\CameraSettingsForm.cs` 與 `CameraCaptureModule\Forms\MainForm.cs`：設定兩個獨立事件開關；顯示開關控制原預覽區，送檢開關控制完整影格事件訂閱。
 - `IntegratedImageProcessingApp\Forms`：WinForms 主視窗與各功能流程；`MainForm` 以 partial 檔分工，仍負責主要 UI 協調。
 - `IntegratedImageProcessingApp\Services`：OpenCV 運算、INI 參數、灰階解碼及 ROI／MASK 快取與建置。
 - `IntegratedImageProcessingApp\Forms\MainForm.GlobalSettings.cs`：全域設定頁、攝影機 X/Y 精度與套用 UI。
@@ -129,4 +133,4 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 
 ## 驗收狀態
 
-2026-10-19 `6c97e89` 基準加上相機模組整合已以 Visual Studio 2019 MSBuild Debug 建置成功，整合輸出位於系統暫存驗證目錄；未覆寫正被執行中的 `bin/Debug/IntegratedImageProcessingApp.exe`。取像模組已整合至方案；相機實機、彈出視窗、設定遷移及完整影像事件尚未端到端驗收。已找到並設置 x64 `LSI8181_64.dll` 的輸出複製，硬體 runtime／驅動仍須實機驗證。缺陷與頻域等既有流程仍需代表性影像驗收。
+2026-10-19 `6c97e89` 基準加相機取像接線已完成最新編譯驗證：`CameraCaptureModule` Debug Build 成功，主程式 Compile 成功；完整 Solution Build 因執行中的輸出檔鎖定未完成，未關閉使用者程式。相機實機、兩個開關的 GUI 行為、Sapera／測速輪硬體及影格送入結果確認的端到端流程仍待驗收。建置需包含 Sapera managed DLL 與 x64 `LSI8181_64.dll`；硬體 runtime／驅動需在設備上驗證。缺陷與頻域等既有流程仍需代表性影像驗收。

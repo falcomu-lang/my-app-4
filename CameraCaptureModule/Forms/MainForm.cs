@@ -45,6 +45,13 @@ namespace CameraCaptureApp.Forms
         private int _softwareTriggerCaptureQueued;
         private EventHandler<CameraImageAcquiredEventArgs> _imageAcquiredHandlers;
 
+        public event EventHandler ImageProcessingEnabledChanged;
+
+        public bool IsImageProcessingEnabled
+        {
+            get { return _settings != null && _settings.ForwardAcquiredImageToInspection; }
+        }
+
         public event EventHandler<CameraImageAcquiredEventArgs> ImageAcquired
         {
             add
@@ -117,6 +124,12 @@ namespace CameraCaptureApp.Forms
             try
             {
                 form = new CameraSettingsForm(dialogSettings, _cameraService);
+                bool settingsCommittedWhileOpen = false;
+                form.SettingsCommitted += delegate
+                {
+                    CommitCameraSettings(form.Settings);
+                    settingsCommittedWhileOpen = true;
+                };
                 DialogResult dialogResult;
                 dialogResult = form.ShowDialog(this);
 
@@ -125,15 +138,10 @@ namespace CameraCaptureApp.Forms
                     return;
                 }
 
-                _settings = form.Settings.Clone();
-                _settingsService.Save(_settings);
-                _cameraService.ApplySettings(_settings);
-                if (_meterWheelControlForm != null && !_meterWheelControlForm.IsDisposed)
+                if (!settingsCommittedWhileOpen)
                 {
-                    _meterWheelControlForm.UpdateSettings(_settings);
+                    CommitCameraSettings(form.Settings);
                 }
-                ApplySettingsToUi();
-                UpdateStatus();
             }
             catch (Exception ex)
             {
@@ -151,6 +159,29 @@ namespace CameraCaptureApp.Forms
                 if (form != null)
                 {
                     form.Dispose();
+                }
+            }
+        }
+
+        private void CommitCameraSettings(CameraSettings settings)
+        {
+            bool previousImageProcessingEnabled = IsImageProcessingEnabled;
+            _settings = (settings ?? CameraSettings.CreateDefault()).Clone();
+            _settingsService.Save(_settings);
+            _cameraService.ApplySettings(_settings);
+            if (_meterWheelControlForm != null && !_meterWheelControlForm.IsDisposed)
+            {
+                _meterWheelControlForm.UpdateSettings(_settings);
+            }
+            ApplySettingsToUi();
+            UpdateStatus();
+
+            if (previousImageProcessingEnabled != IsImageProcessingEnabled)
+            {
+                EventHandler handler = ImageProcessingEnabledChanged;
+                if (handler != null)
+                {
+                    handler(this, EventArgs.Empty);
                 }
             }
         }
@@ -761,6 +792,12 @@ namespace CameraCaptureApp.Forms
 
             QueueSoftwareTriggerAutoSave();
             SaveLatestRecordedFrameIfRequestedAsync();
+            if (!_settings.ShowCameraImage)
+            {
+                e.Frame.Dispose();
+                return;
+            }
+
             if (_settings.RollingCaptureEnabled)
             {
                 lock (_pendingPreviewFramesLock)
@@ -1089,6 +1126,12 @@ namespace CameraCaptureApp.Forms
                 {
                     return;
                 }
+                if (!_settings.ShowCameraImage)
+                {
+                    frame.Dispose();
+                    frame = null;
+                    return;
+                }
 
                 await DisplayPreviewFrameAsync(frame);
                 frame = null;
@@ -1194,7 +1237,20 @@ namespace CameraCaptureApp.Forms
             labelHeaderTriggerValue.Text = GetTriggerModeDisplay(_settings.TriggerMode);
             labelHeaderCameraValue.Text = _settings.CameraName;
             _cameraDisplayControl.ResolutionText = _settings.Width + " x " + _settings.Height;
-            _cameraDisplayControl.OverlayText = "Ready for preview";
+            if (_settings.ShowCameraImage)
+            {
+                _cameraDisplayControl.OverlayText = "Ready for preview";
+                return;
+            }
+
+            CancelPendingPreviewFrame();
+            ClearPendingRollingPreviewFrames();
+            var pendingFrame = Interlocked.Exchange(ref _pendingPreviewFrame, null);
+            if (pendingFrame != null)
+            {
+                pendingFrame.Dispose();
+            }
+            _cameraDisplayControl.ClearLivePreview("Camera image display is disabled.");
         }
 
         private void UpdateStatus()

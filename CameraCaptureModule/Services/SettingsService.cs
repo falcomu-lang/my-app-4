@@ -63,6 +63,12 @@ namespace CameraCaptureApp.Services
             settings.SaveFolder = GetString(values, "SaveFolder", settings.SaveFolder);
             settings.FileNamePattern = GetString(values, "FileNamePattern", settings.FileNamePattern);
             settings.ImageSaveFormat = GetEnum(values, "ImageSaveFormat", settings.ImageSaveFormat);
+            settings.ShowCameraImage = GetBool(
+                values,
+                "ShowCameraImage",
+                GetBool(values, "ShowAcquiredImageInSettings", settings.ShowCameraImage));
+            settings.ForwardAcquiredImageToInspection = GetBool(
+                values, "ForwardAcquiredImageToInspection", settings.ForwardAcquiredImageToInspection);
             settings.MeterWheelCompareIncrement = GetInt(values, "MeterWheelCompareIncrement", settings.MeterWheelCompareIncrement);
             settings.MeterWheelEncoderValue = GetInt(values, "MeterWheelEncoderValue", settings.MeterWheelEncoderValue);
             settings.MeterWheelCompareValue = GetInt(values, "MeterWheelCompareValue", settings.MeterWheelCompareValue);
@@ -120,6 +126,8 @@ namespace CameraCaptureApp.Services
                 "SaveFolder=" + settings.SaveFolder,
                 "FileNamePattern=" + settings.FileNamePattern,
                 "ImageSaveFormat=" + settings.ImageSaveFormat.ToString(),
+                "ShowCameraImage=" + settings.ShowCameraImage.ToString(),
+                "ForwardAcquiredImageToInspection=" + settings.ForwardAcquiredImageToInspection.ToString(),
                 "MeterWheelCompareIncrement=" + settings.MeterWheelCompareIncrement.ToString(CultureInfo.InvariantCulture),
                 "MeterWheelEncoderValue=" + settings.MeterWheelEncoderValue.ToString(CultureInfo.InvariantCulture),
                 "MeterWheelCompareValue=" + settings.MeterWheelCompareValue.ToString(CultureInfo.InvariantCulture),

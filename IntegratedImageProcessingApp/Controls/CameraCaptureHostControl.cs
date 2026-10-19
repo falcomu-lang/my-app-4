@@ -11,6 +11,7 @@ namespace IntegratedImageProcessingApp.Controls
         private MainForm cameraForm;
         private EventHandler<CameraImageAcquiredEventArgs> imageAcquiredHandlers;
         private bool disposing;
+        private bool cameraImageAcquiredSubscribed;
 
         public event EventHandler<CameraImageAcquiredEventArgs> ImageAcquired
         {
@@ -23,9 +24,9 @@ namespace IntegratedImageProcessingApp.Controls
 
                 bool wasUnsubscribed = imageAcquiredHandlers == null;
                 imageAcquiredHandlers += value;
-                if (wasUnsubscribed && cameraForm != null)
+                if (wasUnsubscribed)
                 {
-                    cameraForm.ImageAcquired += CameraForm_ImageAcquired;
+                    UpdateCameraImageAcquiredSubscription();
                 }
             }
             remove
@@ -36,9 +37,9 @@ namespace IntegratedImageProcessingApp.Controls
                 }
 
                 imageAcquiredHandlers -= value;
-                if (imageAcquiredHandlers == null && cameraForm != null)
+                if (imageAcquiredHandlers == null)
                 {
-                    cameraForm.ImageAcquired -= CameraForm_ImageAcquired;
+                    UpdateCameraImageAcquiredSubscription();
                 }
             }
         }
@@ -59,7 +60,12 @@ namespace IntegratedImageProcessingApp.Controls
                 this.disposing = true;
                 if (cameraForm != null)
                 {
-                    cameraForm.ImageAcquired -= CameraForm_ImageAcquired;
+                    if (cameraImageAcquiredSubscribed)
+                    {
+                        cameraForm.ImageAcquired -= CameraForm_ImageAcquired;
+                        cameraImageAcquiredSubscribed = false;
+                    }
+                    cameraForm.ImageProcessingEnabledChanged -= CameraForm_ImageProcessingEnabledChanged;
                     if (!cameraForm.IsDisposed)
                     {
                         cameraForm.Close();
@@ -88,13 +94,42 @@ namespace IntegratedImageProcessingApp.Controls
                 MinimumSize = Size.Empty,
                 Dock = DockStyle.Fill
             };
-            if (imageAcquiredHandlers != null)
-            {
-                cameraForm.ImageAcquired += CameraForm_ImageAcquired;
-            }
+            cameraForm.ImageProcessingEnabledChanged += CameraForm_ImageProcessingEnabledChanged;
             Controls.Add(cameraForm);
             cameraForm.Show();
             cameraForm.BringToFront();
+            UpdateCameraImageAcquiredSubscription();
+        }
+
+        private void CameraForm_ImageProcessingEnabledChanged(object sender, EventArgs e)
+        {
+            UpdateCameraImageAcquiredSubscription();
+        }
+
+        private void UpdateCameraImageAcquiredSubscription()
+        {
+            if (cameraForm == null || cameraForm.IsDisposed)
+            {
+                return;
+            }
+
+            bool shouldSubscribe = !disposing && imageAcquiredHandlers != null &&
+                cameraForm.IsImageProcessingEnabled;
+            if (shouldSubscribe == cameraImageAcquiredSubscribed)
+            {
+                return;
+            }
+
+            if (shouldSubscribe)
+            {
+                cameraForm.ImageAcquired += CameraForm_ImageAcquired;
+                cameraImageAcquiredSubscribed = true;
+            }
+            else
+            {
+                cameraForm.ImageAcquired -= CameraForm_ImageAcquired;
+                cameraImageAcquiredSubscribed = false;
+            }
         }
 
         private void CameraForm_ImageAcquired(object sender, CameraImageAcquiredEventArgs e)

@@ -12,6 +12,11 @@ namespace CameraCaptureApp.Forms
     public partial class CameraSettingsForm : Form
     {
         private readonly ICameraService _cameraService;
+        private TabPage _acquiredImageEventPage;
+        private CheckBox _showCameraImageCheckBox;
+        private CheckBox _forwardAcquiredImageCheckBox;
+
+        public event EventHandler SettingsCommitted;
 
         public CameraSettingsForm(CameraSettings settings, ICameraService cameraService)
         {
@@ -20,6 +25,7 @@ namespace CameraCaptureApp.Forms
                 _cameraService = cameraService;
                 Settings = (settings ?? CameraSettings.CreateDefault()).Clone();
                 InitializeComponent();
+                InitializeAcquiredImageEventPage();
                 BindSettings();
             }
             catch (Exception ex)
@@ -84,7 +90,39 @@ namespace CameraCaptureApp.Forms
             checkBoxAutoSaveOnExternalTriggerOneFrame.Checked = Settings.AutoSaveOnExternalTriggerOneFrame;
             checkBoxAutoSaveOnSoftwareTriggerFrame.Checked = Settings.AutoSaveOnSoftwareTriggerFrame;
             comboBoxImageSaveFormat.SelectedIndex = GetImageSaveFormatIndex(Settings.ImageSaveFormat);
+            _showCameraImageCheckBox.Checked = Settings.ShowCameraImage;
+            _forwardAcquiredImageCheckBox.Checked = Settings.ForwardAcquiredImageToInspection;
             labelReadResult.Text = "Load Sapera settings first, then read supported CCF values into the fields.";
+        }
+
+        private void InitializeAcquiredImageEventPage()
+        {
+            _acquiredImageEventPage = new TabPage("取得影像後事件");
+            var options = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(8),
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Margin = Padding.Empty,
+                AutoScroll = true
+            };
+            _showCameraImageCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "顯示攝影機影像",
+                Margin = new Padding(4, 4, 24, 4)
+            };
+            _forwardAcquiredImageCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "將取得的影像送入影像處理",
+                Margin = new Padding(4, 4, 4, 4)
+            };
+            options.Controls.Add(_showCameraImageCheckBox);
+            options.Controls.Add(_forwardAcquiredImageCheckBox);
+            _acquiredImageEventPage.Controls.Add(options);
+            tabControlSettings.TabPages.Add(_acquiredImageEventPage);
         }
 
         private void buttonBrowseSapera_Click(object sender, EventArgs e)
@@ -192,6 +230,11 @@ namespace CameraCaptureApp.Forms
             _cameraService.ApplySettings(Settings);
             SettingsApplied = true;
             ShowApplyResult();
+            EventHandler handler = SettingsCommitted;
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
         }
 
         private void buttonProbeLiveFeatures_Click(object sender, EventArgs e)
@@ -247,6 +290,11 @@ namespace CameraCaptureApp.Forms
             _cameraService.ApplySettings(Settings);
             SettingsApplied = true;
             ShowApplyResult();
+            EventHandler handler = SettingsCommitted;
+            if (handler != null)
+            {
+                handler(this, EventArgs.Empty);
+            }
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -288,6 +336,8 @@ namespace CameraCaptureApp.Forms
             Settings.AutoSaveOnExternalTriggerOneFrame = checkBoxAutoSaveOnExternalTriggerOneFrame.Checked;
             Settings.AutoSaveOnSoftwareTriggerFrame = checkBoxAutoSaveOnSoftwareTriggerFrame.Checked;
             Settings.ImageSaveFormat = GetImageSaveFormatFromIndex(comboBoxImageSaveFormat.SelectedIndex);
+            Settings.ShowCameraImage = _showCameraImageCheckBox.Checked;
+            Settings.ForwardAcquiredImageToInspection = _forwardAcquiredImageCheckBox.Checked;
         }
 
         private void comboBoxTriggerMode_SelectedIndexChanged(object sender, EventArgs e)

@@ -129,6 +129,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Fill,
                 Name = "cameraCaptureHostControl"
             };
+            cameraCaptureHostControl.ImageAcquired += CameraCaptureHostControl_ImageAcquired;
             lineScanPage.Controls.Add(cameraCaptureHostControl);
 
             var internalParameterPage = new TabPage("內部參數")

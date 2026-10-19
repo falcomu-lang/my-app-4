@@ -30,5 +30,6 @@ namespace CameraCaptureApp.Services
         {
             return (Bitmap)image.Clone();
         }
+
     }
 }
