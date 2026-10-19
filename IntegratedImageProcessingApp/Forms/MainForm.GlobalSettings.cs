@@ -146,7 +146,8 @@ namespace IntegratedImageProcessingApp.Forms
         {
             var group = new GroupBox
             {
-                Dock = DockStyle.Top,
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                Width = 480,
                 Height = 220,
                 Text = "攝影機精度",
                 Padding = new Padding(10)
@@ -188,8 +189,7 @@ namespace IntegratedImageProcessingApp.Forms
                 AutoSize = true,
                 Text = "設定檔：config/device-settings.ini",
                 ForeColor = Color.FromArgb(92, 101, 116),
-                Dock = DockStyle.Top,
-                Padding = new Padding(4, 8, 0, 0)
+                Padding = new Padding(0, 4, 0, 0)
             };
 
             layout.Controls.Add(CreateCameraPrecisionLabel("攝影機 X 向精度 (mm/pixel)"), 0, 0);
@@ -233,8 +233,19 @@ namespace IntegratedImageProcessingApp.Forms
             };
 
             var container = new Panel { Dock = DockStyle.Top, Height = 255 };
-            container.Controls.Add(pathLabel);
             container.Controls.Add(group);
+            container.Controls.Add(pathLabel);
+            Action updateGroupWidth = delegate
+            {
+                int availableWidth = container.ClientSize.Width;
+                if (availableWidth > 0)
+                {
+                    group.Width = Math.Min(availableWidth, Math.Max(410, availableWidth / 3));
+                }
+                pathLabel.Location = new Point(4, group.Bottom + 2);
+            };
+            container.Resize += delegate { updateGroupWidth(); };
+            updateGroupWidth();
             return container;
         }
 
