@@ -124,6 +124,8 @@ namespace IntegratedImageProcessingApp.Forms
         private bool isRefreshingObjectDetectionRoiGroupSelectors;
         private bool objectDetectionDefectRoiGroupMemberMouseDown;
         private bool objectDetectionDefectRoiGroupMemberMouseDownOnCheckbox;
+        private CheckBox objectDetectionDefectInspectionRegionVisibleCheckBox;
+        private bool showObjectDetectionDefectInspectionRegionFrames = true;
 
         private Control BuildObjectDetectionDefectRoiGroupPanel(
             ObjectDetectionParameterSettings parameter)
@@ -2423,6 +2425,13 @@ namespace IntegratedImageProcessingApp.Forms
                 !isObjectDetectionResultReviewMode &&
                 objectDetectionParameterTabControl.SelectedIndex == 4 &&
                 displayIndex >= 0 && displayIndex < ObjectDetectionDefectCoreKeys.Length;
+            bool inspectionRegionVisibilityOptionApplies =
+                !isObjectDetectionResultReviewMode &&
+                objectDetectionParameterTabControl != null &&
+                objectDetectionParameterTabControl.SelectedIndex == 4;
+            bool showInspectionRegionFrames = !inspectionRegionVisibilityOptionApplies ||
+                objectDetectionDefectInspectionRegionVisibleCheckBox == null ||
+                objectDetectionDefectInspectionRegionVisibleCheckBox.Checked;
             if (selectedGroupPreview)
             {
                 regionsToDraw = Enumerable.Empty<ObjectDetectionInspectionRegionSettings>();
@@ -2450,32 +2459,36 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
 
-            foreach (ObjectDetectionInspectionRegionSettings region in regionsToDraw)
+            if (showInspectionRegionFrames)
             {
-                if (region == null || string.Equals(region.Id, draftRoiId, StringComparison.Ordinal))
+                foreach (ObjectDetectionInspectionRegionSettings region in regionsToDraw)
                 {
-                    continue;
-                }
-                RectangleF savedRegion = RectangleF.FromLTRB(
-                    ClampUnit((float)region.Left),
-                    ClampUnit((float)region.Top),
-                    ClampUnit((float)region.Right),
-                    ClampUnit((float)region.Bottom));
-                foreach (ObjectDefinitionDetectedObject inspectionObject in inspectionObjects)
-                {
-                    DrawObjectDetectionInspectionRegion(
-                        e.Graphics,
-                        inspectionObject,
-                        savedRegion,
-                        e.Zoom,
-                        e.Offset,
-                        Color.FromArgb(42, 0, 150, 220),
-                        Color.DeepSkyBlue);
+                    if (region == null || string.Equals(region.Id, draftRoiId, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+                    RectangleF savedRegion = RectangleF.FromLTRB(
+                        ClampUnit((float)region.Left),
+                        ClampUnit((float)region.Top),
+                        ClampUnit((float)region.Right),
+                        ClampUnit((float)region.Bottom));
+                    foreach (ObjectDefinitionDetectedObject inspectionObject in inspectionObjects)
+                    {
+                        DrawObjectDetectionInspectionRegion(
+                            e.Graphics,
+                            inspectionObject,
+                            savedRegion,
+                            e.Zoom,
+                            e.Offset,
+                            Color.FromArgb(42, 0, 150, 220),
+                            Color.DeepSkyBlue);
+                    }
                 }
             }
 
             ObjectDefinitionDetectedObject draftObject;
-            if (!TryGetObjectDetectionDefectRegionInteractionObject(out draftObject))
+            if (!showInspectionRegionFrames ||
+                !TryGetObjectDetectionDefectRegionInteractionObject(out draftObject))
             {
                 return;
             }

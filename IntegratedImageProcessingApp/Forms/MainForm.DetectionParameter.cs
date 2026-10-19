@@ -639,6 +639,24 @@ namespace IntegratedImageProcessingApp.Forms
                         BuildObjectDetectionDefectInspectionRegionPanel(parameter));
                     contentPanel.Controls.Add(
                         BuildObjectDetectionDefectRoiGroupPanel(parameter));
+                    objectDetectionDefectInspectionRegionVisibleCheckBox = new CheckBox
+                    {
+                        Dock = DockStyle.Top,
+                        AutoSize = false,
+                        Height = 26,
+                        Text = "顯示檢測範圍的 ROI 框",
+                        TextAlign = ContentAlignment.MiddleLeft,
+                        Checked = showObjectDetectionDefectInspectionRegionFrames,
+                        Margin = new Padding(2, 1, 0, 1)
+                    };
+                    objectDetectionDefectInspectionRegionVisibleCheckBox.CheckedChanged += delegate
+                    {
+                        showObjectDetectionDefectInspectionRegionFrames =
+                            objectDetectionDefectInspectionRegionVisibleCheckBox.Checked;
+                        InvalidateObjectDetectionDefectRegionDisplay();
+                    };
+                    contentPanel.Controls.Add(
+                        objectDetectionDefectInspectionRegionVisibleCheckBox);
                     contentPanel.Controls.Add(objectDetectionDefectObjectNumberPanel);
                 }
 
