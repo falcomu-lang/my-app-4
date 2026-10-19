@@ -114,11 +114,16 @@ namespace IntegratedImageProcessingApp.Forms
         private Label objectDetectionDefectRoiGroupStatusLabel;
         private Button objectDetectionDefectRoiGroupRenameButton;
         private Button objectDetectionDefectRoiGroupDeleteButton;
+        private Button objectDetectionDefectRoiGroupMoveUpButton;
+        private Button objectDetectionDefectRoiGroupMoveDownButton;
+        private ToolTip objectDetectionDefectRoiGroupMoveToolTip;
         private Button objectDetectionDefectRoiGroupApplyButton;
         private Button objectDetectionDefectRoiGroupCancelButton;
         private Control objectDetectionDefectRoiGroupPanel;
         private bool isLoadingObjectDetectionDefectRoiGroupMembers;
         private bool isRefreshingObjectDetectionRoiGroupSelectors;
+        private bool objectDetectionDefectRoiGroupMemberMouseDown;
+        private bool objectDetectionDefectRoiGroupMemberMouseDownOnCheckbox;
 
         private Control BuildObjectDetectionDefectRoiGroupPanel(
             ObjectDetectionParameterSettings parameter)
@@ -210,13 +215,72 @@ namespace IntegratedImageProcessingApp.Forms
                 BorderStyle = BorderStyle.FixedSingle,
                 Margin = Padding.Empty
             };
-            objectDetectionDefectRoiGroupMembersListBox.ItemCheck += delegate
+            objectDetectionDefectRoiGroupMembersListBox.MouseDown += delegate(object sender, MouseEventArgs e)
             {
-                if (!isLoadingObjectDetectionDefectRoiGroupMembers &&
-                    objectDetectionDefectRoiGroupStatusLabel != null)
+                objectDetectionDefectRoiGroupMemberMouseDown = e.Button == MouseButtons.Left;
+                objectDetectionDefectRoiGroupMemberMouseDownOnCheckbox =
+                    objectDetectionDefectRoiGroupMemberMouseDown &&
+                    IsObjectDetectionRoiGroupCheckboxHit(
+                        objectDetectionDefectRoiGroupMembersListBox,
+                        e.Location);
+            };
+            objectDetectionDefectRoiGroupMembersListBox.MouseUp += delegate
+            {
+                CheckedListBox list = objectDetectionDefectRoiGroupMembersListBox;
+                if (list != null && !list.IsDisposed && list.IsHandleCreated)
+                {
+                    list.BeginInvoke((MethodInvoker)delegate
+                    {
+                        objectDetectionDefectRoiGroupMemberMouseDown = false;
+                        objectDetectionDefectRoiGroupMemberMouseDownOnCheckbox = false;
+                    });
+                }
+                else
+                {
+                    objectDetectionDefectRoiGroupMemberMouseDown = false;
+                    objectDetectionDefectRoiGroupMemberMouseDownOnCheckbox = false;
+                }
+            };
+            objectDetectionDefectRoiGroupMembersListBox.SelectedIndexChanged += delegate
+            {
+                UpdateObjectDetectionDefectRoiGroupMoveButtons();
+            };
+            objectDetectionDefectRoiGroupMembersListBox.ItemCheck += delegate(object sender, ItemCheckEventArgs e)
+            {
+                if (isLoadingObjectDetectionDefectRoiGroupMembers)
+                {
+                    return;
+                }
+
+                if (objectDetectionDefectRoiGroupMemberMouseDown &&
+                    !objectDetectionDefectRoiGroupMemberMouseDownOnCheckbox)
+                {
+                    e.NewValue = e.CurrentValue;
+                    return;
+                }
+
+                if (objectDetectionDefectRoiGroupStatusLabel != null)
                 {
                     objectDetectionDefectRoiGroupStatusLabel.Text =
                         "成員選擇尚未保存；按套用保存，或按取消還原。";
+                }
+
+                CheckedListBox list = sender as CheckedListBox;
+                if (list != null && e.Index >= 0 && e.Index < list.Items.Count)
+                {
+                    ObjectDetectionRoiGroupMemberChoice changedChoice =
+                        list.Items[e.Index] as ObjectDetectionRoiGroupMemberChoice;
+                    CheckState changedState = e.NewValue;
+                    if (list.IsHandleCreated)
+                    {
+                        list.BeginInvoke((MethodInvoker)delegate
+                        {
+                            ReorderObjectDetectionRoiGroupMembersAfterCheck(
+                                list,
+                                changedChoice,
+                                changedState);
+                        });
+                    }
                 }
             };
             objectDetectionDefectRoiGroupStatusLabel = new Label
@@ -230,14 +294,50 @@ namespace IntegratedImageProcessingApp.Forms
             var footer = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 3,
+                ColumnCount = 5,
                 RowCount = 1,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty
             };
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
+            footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66));
             footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66));
+            objectDetectionDefectRoiGroupMoveUpButton = new Button
+            {
+                Text = "↑",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(1, 2, 1, 0),
+                AccessibleName = "上移選取的 ROI",
+                AccessibleDescription = "將勾選的 ROI 在目前群組中往前移動"
+            };
+            objectDetectionDefectRoiGroupMoveDownButton = new Button
+            {
+                Text = "↓",
+                Dock = DockStyle.Fill,
+                Margin = new Padding(1, 2, 1, 0),
+                AccessibleName = "下移選取的 ROI",
+                AccessibleDescription = "將勾選的 ROI 在目前群組中往後移動"
+            };
+            objectDetectionDefectRoiGroupMoveToolTip = new ToolTip
+            {
+                ShowAlways = true
+            };
+            objectDetectionDefectRoiGroupMoveToolTip.SetToolTip(
+                objectDetectionDefectRoiGroupMoveUpButton,
+                "上移所選且已勾選的 ROI");
+            objectDetectionDefectRoiGroupMoveToolTip.SetToolTip(
+                objectDetectionDefectRoiGroupMoveDownButton,
+                "下移所選且已勾選的 ROI");
+            objectDetectionDefectRoiGroupMoveUpButton.Click += delegate
+            {
+                MoveSelectedObjectDetectionRoiGroupMember(-1);
+            };
+            objectDetectionDefectRoiGroupMoveDownButton.Click += delegate
+            {
+                MoveSelectedObjectDetectionRoiGroupMember(1);
+            };
             objectDetectionDefectRoiGroupApplyButton = new Button
             {
                 Text = "套用",
@@ -255,8 +355,10 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDefectRoiGroupCancelButton.Click +=
                 delegate { LoadObjectDetectionDefectRoiGroupMembers(parameter); };
             footer.Controls.Add(objectDetectionDefectRoiGroupStatusLabel, 0, 0);
-            footer.Controls.Add(objectDetectionDefectRoiGroupApplyButton, 1, 0);
-            footer.Controls.Add(objectDetectionDefectRoiGroupCancelButton, 2, 0);
+            footer.Controls.Add(objectDetectionDefectRoiGroupMoveUpButton, 1, 0);
+            footer.Controls.Add(objectDetectionDefectRoiGroupMoveDownButton, 2, 0);
+            footer.Controls.Add(objectDetectionDefectRoiGroupApplyButton, 3, 0);
+            footer.Controls.Add(objectDetectionDefectRoiGroupCancelButton, 4, 0);
 
             layout.Controls.Add(objectDetectionDefectRoiGroupManagerComboBox, 0, 0);
             layout.Controls.Add(groupActions, 0, 1);
@@ -343,6 +445,12 @@ namespace IntegratedImageProcessingApp.Forms
                 HashSet<string> savedRoiIds = roiGroup == null || roiGroup.RoiIds == null
                     ? new HashSet<string>(StringComparer.Ordinal)
                     : new HashSet<string>(roiGroup.RoiIds, StringComparer.Ordinal);
+                List<string> savedRoiOrder = roiGroup == null || roiGroup.RoiIds == null
+                    ? new List<string>()
+                    : roiGroup.RoiIds
+                        .Where(id => !string.IsNullOrWhiteSpace(id))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
                 List<ObjectDetectionInspectionRegionSettings> regions = parameter == null
                     ? new List<ObjectDetectionInspectionRegionSettings>()
                     : (parameter.DefectInspectionRegions ??
@@ -354,7 +462,16 @@ namespace IntegratedImageProcessingApp.Forms
                         .OrderBy(region => region.DisplayName, StringComparer.CurrentCulture)
                         .ToList();
                 var availableIds = new HashSet<string>(StringComparer.Ordinal);
-                foreach (ObjectDetectionInspectionRegionSettings region in regions)
+                Dictionary<string, ObjectDetectionInspectionRegionSettings> regionsById = regions
+                    .Where(region => !string.IsNullOrWhiteSpace(region.Id))
+                    .GroupBy(region => region.Id, StringComparer.Ordinal)
+                    .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+                List<ObjectDetectionInspectionRegionSettings> orderedRegions = savedRoiOrder
+                    .Where(regionsById.ContainsKey)
+                    .Select(id => regionsById[id])
+                    .Concat(regions.Where(region => !savedRoiIds.Contains(region.Id)))
+                    .ToList();
+                foreach (ObjectDetectionInspectionRegionSettings region in orderedRegions)
                 {
                     availableIds.Add(region.Id);
                     int index = list.Items.Add(new ObjectDetectionRoiGroupMemberChoice(
@@ -362,7 +479,7 @@ namespace IntegratedImageProcessingApp.Forms
                         region.DisplayName));
                     list.SetItemChecked(index, savedRoiIds.Contains(region.Id));
                 }
-                foreach (string missingRoiId in savedRoiIds.Where(id => !availableIds.Contains(id)))
+                foreach (string missingRoiId in savedRoiOrder.Where(id => !availableIds.Contains(id)))
                 {
                     int index = list.Items.Add(new ObjectDetectionRoiGroupMemberChoice(
                         missingRoiId,
@@ -402,6 +519,200 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 isLoadingObjectDetectionDefectRoiGroupMembers = false;
             }
+            UpdateObjectDetectionDefectRoiGroupMoveButtons();
+        }
+
+        private static bool IsObjectDetectionRoiGroupCheckboxHit(
+            CheckedListBox list,
+            Point location)
+        {
+            if (list == null)
+            {
+                return false;
+            }
+
+            int index = list.IndexFromPoint(location);
+            if (index < 0 || index >= list.Items.Count)
+            {
+                return false;
+            }
+
+            Rectangle itemBounds = list.GetItemRectangle(index);
+            int checkAreaWidth = Math.Max(16, SystemInformation.MenuCheckSize.Width + 4);
+            Rectangle checkArea = new Rectangle(
+                itemBounds.Left,
+                itemBounds.Top,
+                Math.Min(checkAreaWidth, itemBounds.Width),
+                itemBounds.Height);
+            return checkArea.Contains(location);
+        }
+
+        private void ReorderObjectDetectionRoiGroupMembersAfterCheck(
+            CheckedListBox list,
+            ObjectDetectionRoiGroupMemberChoice changedChoice,
+            CheckState changedState)
+        {
+            if (list == null || list.IsDisposed ||
+                !ReferenceEquals(list, objectDetectionDefectRoiGroupMembersListBox))
+            {
+                return;
+            }
+
+            var rows = new List<KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool>>();
+            for (int index = 0; index < list.Items.Count; index++)
+            {
+                ObjectDetectionRoiGroupMemberChoice item =
+                    list.Items[index] as ObjectDetectionRoiGroupMemberChoice;
+                if (item == null)
+                {
+                    continue;
+                }
+                bool isChangedItem = changedChoice != null &&
+                    string.Equals(item.RoiId, changedChoice.RoiId, StringComparison.Ordinal);
+                bool isChecked = isChangedItem
+                    ? changedState == CheckState.Checked
+                    : list.GetItemChecked(index);
+                rows.Add(new KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool>(
+                    item,
+                    isChecked));
+            }
+
+            List<KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool>> checkedRows = rows
+                .Where(row => row.Value && (changedChoice == null ||
+                    !string.Equals(row.Key.RoiId, changedChoice.RoiId, StringComparison.Ordinal)))
+                .ToList();
+            if (changedChoice != null && changedState == CheckState.Checked)
+            {
+                checkedRows.Add(new KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool>(
+                    changedChoice,
+                    true));
+            }
+            List<KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool>> uncheckedRows = rows
+                .Where(row => !row.Value && (changedChoice == null ||
+                    !string.Equals(row.Key.RoiId, changedChoice.RoiId, StringComparison.Ordinal)))
+                .OrderBy(row => row.Key.Text, StringComparer.CurrentCulture)
+                .ToList();
+            if (changedChoice != null && changedState != CheckState.Checked)
+            {
+                uncheckedRows.Add(new KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool>(
+                    changedChoice,
+                    false));
+                uncheckedRows = uncheckedRows
+                    .OrderBy(row => row.Key.Text, StringComparer.CurrentCulture)
+                    .ToList();
+            }
+
+            string selectedRoiId = changedChoice == null
+                ? (list.SelectedItem as ObjectDetectionRoiGroupMemberChoice)?.RoiId
+                : changedChoice.RoiId;
+            ReplaceObjectDetectionRoiGroupMemberRows(
+                list,
+                checkedRows.Concat(uncheckedRows),
+                selectedRoiId);
+            if (objectDetectionDefectRoiGroupStatusLabel != null)
+            {
+                objectDetectionDefectRoiGroupStatusLabel.Text =
+                    "成員選擇尚未保存；按套用保存，或按取消還原。";
+            }
+        }
+
+        private void MoveSelectedObjectDetectionRoiGroupMember(int direction)
+        {
+            CheckedListBox list = objectDetectionDefectRoiGroupMembersListBox;
+            if (list == null || list.IsDisposed || !list.Enabled ||
+                list.SelectedIndex < 0 || !list.GetItemChecked(list.SelectedIndex) ||
+                direction == 0)
+            {
+                return;
+            }
+
+            var rows = Enumerable.Range(0, list.Items.Count)
+                .Select(index => new KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool>(
+                    list.Items[index] as ObjectDetectionRoiGroupMemberChoice,
+                    list.GetItemChecked(index)))
+                .ToList();
+            List<int> checkedIndices = rows
+                .Select((row, index) => new { row, index })
+                .Where(item => item.row.Key != null && item.row.Value)
+                .Select(item => item.index)
+                .ToList();
+            int selectedPosition = checkedIndices.IndexOf(list.SelectedIndex);
+            int targetPosition = selectedPosition + Math.Sign(direction);
+            if (selectedPosition < 0 || targetPosition < 0 || targetPosition >= checkedIndices.Count)
+            {
+                UpdateObjectDetectionDefectRoiGroupMoveButtons();
+                return;
+            }
+
+            int sourceIndex = checkedIndices[selectedPosition];
+            int targetIndex = checkedIndices[targetPosition];
+            KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool> movedRow = rows[sourceIndex];
+            rows[sourceIndex] = rows[targetIndex];
+            rows[targetIndex] = movedRow;
+            ReplaceObjectDetectionRoiGroupMemberRows(list, rows, movedRow.Key.RoiId);
+            if (objectDetectionDefectRoiGroupStatusLabel != null)
+            {
+                objectDetectionDefectRoiGroupStatusLabel.Text =
+                    "群組順序尚未保存；按套用保存，或按取消還原。";
+            }
+        }
+
+        private void ReplaceObjectDetectionRoiGroupMemberRows(
+            CheckedListBox list,
+            IEnumerable<KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool>> rows,
+            string selectedRoiId)
+        {
+            bool wasLoading = isLoadingObjectDetectionDefectRoiGroupMembers;
+            isLoadingObjectDetectionDefectRoiGroupMembers = true;
+            list.BeginUpdate();
+            try
+            {
+                list.Items.Clear();
+                int selectedIndex = -1;
+                foreach (KeyValuePair<ObjectDetectionRoiGroupMemberChoice, bool> row in rows)
+                {
+                    if (row.Key == null)
+                    {
+                        continue;
+                    }
+                    int index = list.Items.Add(row.Key);
+                    list.SetItemChecked(index, row.Value);
+                    if (string.Equals(row.Key.RoiId, selectedRoiId, StringComparison.Ordinal))
+                    {
+                        selectedIndex = index;
+                    }
+                }
+                list.SelectedIndex = selectedIndex;
+            }
+            finally
+            {
+                list.EndUpdate();
+                isLoadingObjectDetectionDefectRoiGroupMembers = wasLoading;
+            }
+            UpdateObjectDetectionDefectRoiGroupMoveButtons();
+        }
+
+        private void UpdateObjectDetectionDefectRoiGroupMoveButtons()
+        {
+            if (objectDetectionDefectRoiGroupMoveUpButton == null ||
+                objectDetectionDefectRoiGroupMoveDownButton == null)
+            {
+                return;
+            }
+
+            CheckedListBox list = objectDetectionDefectRoiGroupMembersListBox;
+            int selectedIndex = list == null ? -1 : list.SelectedIndex;
+            List<int> checkedIndices = list == null
+                ? new List<int>()
+                : Enumerable.Range(0, list.Items.Count)
+                    .Where(index => list.GetItemChecked(index))
+                    .ToList();
+            int selectedPosition = checkedIndices.IndexOf(selectedIndex);
+            bool canMove = list != null && !list.IsDisposed && list.Enabled &&
+                selectedIndex >= 0 && selectedPosition >= 0;
+            objectDetectionDefectRoiGroupMoveUpButton.Enabled = canMove && selectedPosition > 0;
+            objectDetectionDefectRoiGroupMoveDownButton.Enabled = canMove &&
+                selectedPosition < checkedIndices.Count - 1;
         }
 
         private void CreateObjectDetectionDefectRoiGroup(
@@ -535,12 +846,14 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 return;
             }
-            roiGroup.RoiIds = objectDetectionDefectRoiGroupMembersListBox.CheckedItems
-                .Cast<ObjectDetectionRoiGroupMemberChoice>()
+            CheckedListBox list = objectDetectionDefectRoiGroupMembersListBox;
+            roiGroup.RoiIds = Enumerable.Range(0, list.Items.Count)
+                .Where(index => list.GetItemChecked(index))
+                .Select(index => list.Items[index] as ObjectDetectionRoiGroupMemberChoice)
+                .Where(item => item != null)
                 .Select(item => item.RoiId)
                 .Where(id => !string.IsNullOrWhiteSpace(id))
                 .Distinct(StringComparer.Ordinal)
-                .OrderBy(id => id, StringComparer.Ordinal)
                 .ToList();
             roiGroup.RoiObjectNumbers = new List<int>();
             SaveSystemParameters();
