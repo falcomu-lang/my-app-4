@@ -66,7 +66,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             public Rectangle Bounds { get; set; }
 
-            public PointF[] InspectionPolygon { get; set; }
+            public PointF[][] InspectionPolygons { get; set; }
 
             public Bitmap ProcessedImage { get; set; }
         }
@@ -484,19 +484,22 @@ namespace IntegratedImageProcessingApp.Forms
                 SetObjectDetectionDefectRegionStatus(groupMemberError);
                 return;
             }
-            var coreRoiIds = coreSettings
+            var coreRoiGroupIds = coreSettings
                 .Select(core => new HashSet<string>(
-                    workItemsByGroupId[core.RoiGroupId].Select(item => item.Region.Id),
+                    new[] { core.RoiGroupId ?? string.Empty },
                     StringComparer.Ordinal))
                 .ToArray();
             List<ObjectDetectionInspectionRegionWorkItem> roiWorkItems = coreSettings
                 .SelectMany(core => workItemsByGroupId[core.RoiGroupId])
-                .GroupBy(item => item.Region.Id, StringComparer.Ordinal)
+                .GroupBy(item => CreateObjectDetectionRoiGroupObjectKey(
+                    item.GroupId,
+                    item.DetectedObject.Number),
+                    StringComparer.Ordinal)
                 .Select(group => group.First())
                 .ToList();
             if (roiWorkItems.Count == 0)
             {
-                statusLabel.Text = "所選 ROI 組沒有可供缺陷檢測的獨立 ROI。";
+                statusLabel.Text = "所選 ROI 組沒有可供缺陷檢測的共用 ROI。";
                 SetObjectDetectionDefectRegionStatus("所選 ROI 組沒有有效的檢測區域，沒有開始運算。");
                 return;
             }
@@ -526,11 +529,11 @@ namespace IntegratedImageProcessingApp.Forms
             statusLabel.Text = parameter.DisplayName + "：" + processingScope + "缺陷檢測運算中...";
             SetObjectDetectionDefectRegionStatus(runParallel
                 ? runAllCores
-                    ? "群組中的獨立 ROI 同時排程；已啟用的缺陷核心同時運算..."
-                    : "群組中的獨立 ROI 對「" + processingScope + "」同時運算..."
+                    ? "各範圍組的 ROI 聯集依物件排程；已啟用的缺陷核心同時運算..."
+                    : "範圍組 ROI 聯集對「" + processingScope + "」依物件平行運算..."
                 : runAllCores
-                    ? "群組中的獨立 ROI 與已啟用缺陷核心依序運算..."
-                    : "群組中的獨立 ROI 對「" + processingScope + "」依序運算...");
+                    ? "各範圍組的 ROI 聯集與已啟用缺陷核心依序運算..."
+                    : "範圍組 ROI 聯集對「" + processingScope + "」依序運算...");
 
             Dictionary<string, ObjectDetectionDefectCoreResult> results = null;
             bool resultsStored = false;
@@ -581,14 +584,14 @@ namespace IntegratedImageProcessingApp.Forms
                                 ProcessObjectDetectionDefectObject(
                                     correctedSource,
                                     workItem.DetectedObject,
-                                    workItem.NormalizedRegion,
+                                    workItem.NormalizedRegions,
                                     imageBounds,
                                     flatFieldTargetGray,
                                     parameter.CameraXMillimetersPerPixel,
                                     parameter.CameraYMillimetersPerPixel,
                                     coreSettings,
-                                    coreRoiIds,
-                                    workItem.Region.Id,
+                                    coreRoiGroupIds,
+                                    workItem.GroupId,
                                     runParallel,
                                     progress,
                                     roiIndex,
@@ -601,7 +604,10 @@ namespace IntegratedImageProcessingApp.Forms
                                     roiCoreContours[coreIndex, roiIndex] ??
                                         new List<ObjectDetectionDefectContour>())
                                 {
-                                    contour.InspectionRegionId = workItem.Region.Id;
+                                    contour.InspectionRegionId =
+                                        CreateObjectDetectionRoiGroupObjectKey(
+                                            workItem.GroupId,
+                                            workItem.DetectedObject.Number);
                                 }
                                 roiCorePatches[coreIndex, roiIndex] =
                                     objectResult.ProcessedPatchesByCore[coreIndex];
@@ -984,13 +990,6 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.ObjectDefinitionId ?? string.Empty,
                 definitionSignature ?? string.Empty,
                 parameter.FlatFieldSavedSettingsSignature ?? string.Empty,
-                parameter.DefectInspectionRegionId ?? string.Empty,
-                parameter.DefectInspectionRegionObjectDefinitionId ?? string.Empty,
-                parameter.DefectInspectionRegionReferenceObjectNumber.ToString(CultureInfo.InvariantCulture),
-                parameter.DefectInspectionRegionLeft.ToString("R", CultureInfo.InvariantCulture),
-                parameter.DefectInspectionRegionTop.ToString("R", CultureInfo.InvariantCulture),
-                parameter.DefectInspectionRegionRight.ToString("R", CultureInfo.InvariantCulture),
-                parameter.DefectInspectionRegionBottom.ToString("R", CultureInfo.InvariantCulture),
                 core.CoreKey ?? string.Empty,
                 CreateObjectDetectionRoiGroupSignature(parameter, core.RoiGroupId),
                 core.ContrastAdjustmentEnabled ? "1" : "0",
@@ -1031,14 +1030,14 @@ namespace IntegratedImageProcessingApp.Forms
         private static ObjectDetectionDefectPerObjectResult ProcessObjectDetectionDefectObject(
             LargeImageSource source,
             ObjectDefinitionDetectedObject detectedObject,
-            RectangleF normalizedRegion,
+            IList<RectangleF> normalizedRegions,
             Rectangle imageBounds,
             int pivotGray,
             double xMillimetersPerPixel,
             double yMillimetersPerPixel,
             IList<ObjectDetectionDefectCoreSettings> cores,
-            IList<HashSet<string>> coreRoiIds,
-            string roiId,
+            IList<HashSet<string>> coreRoiGroupIds,
+            string roiGroupId,
             bool runParallel,
             IProgress<string> progress,
             int roiIndex,
@@ -1060,13 +1059,21 @@ namespace IntegratedImageProcessingApp.Forms
                 result.ContoursByCore[coreIndex] = new List<ObjectDetectionDefectContour>();
             }
 
-            PointF[] corners = CreateObjectDetectionDefectRegionImageCorners(
-                detectedObject,
-                normalizedRegion);
-            float minX = corners.Min(point => point.X);
-            float minY = corners.Min(point => point.Y);
-            float maxX = corners.Max(point => point.X);
-            float maxY = corners.Max(point => point.Y);
+            PointF[][] polygons = (normalizedRegions ?? new List<RectangleF>())
+                .Where(region => region.Width > 0 && region.Height > 0)
+                .Select(region => CreateObjectDetectionDefectRegionImageCorners(
+                    detectedObject,
+                    region))
+                .ToArray();
+            if (polygons.Length == 0)
+            {
+                return result;
+            }
+            IEnumerable<PointF> allCorners = polygons.SelectMany(polygon => polygon);
+            float minX = allCorners.Min(point => point.X);
+            float minY = allCorners.Min(point => point.Y);
+            float maxX = allCorners.Max(point => point.X);
+            float maxY = allCorners.Max(point => point.Y);
             int left = (int)Math.Floor(minX);
             int top = (int)Math.Floor(minY);
             int right = (int)Math.Ceiling(maxX);
@@ -1092,22 +1099,25 @@ namespace IntegratedImageProcessingApp.Forms
                     Cv.MatType.CV_8UC1,
                     Cv.Scalar.Black))
                 {
-                    Cv.Point[] polygon = corners.Select(point => new Cv.Point(
-                        (int)Math.Round(point.X - crop.X),
-                        (int)Math.Round(point.Y - crop.Y))).ToArray();
-                    Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
+                    foreach (PointF[] corners in polygons)
+                    {
+                        Cv.Point[] polygon = corners.Select(point => new Cv.Point(
+                            (int)Math.Round(point.X - crop.X),
+                            (int)Math.Round(point.Y - crop.Y))).ToArray();
+                        Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
+                    }
                     roiPreparationStopwatch.Stop();
                     result.RoiPreparationElapsedTicks = roiPreparationStopwatch.ElapsedTicks;
 
                 Action<int> processCore = delegate(int coreIndex)
                 {
-                    if (coreRoiIds == null || coreIndex >= coreRoiIds.Count ||
-                        !coreRoiIds[coreIndex].Contains(roiId))
+                    if (coreRoiGroupIds == null || coreIndex >= coreRoiGroupIds.Count ||
+                        !coreRoiGroupIds[coreIndex].Contains(roiGroupId))
                     {
                         return;
                     }
                     ObjectDetectionDefectCoreSettings core = cores[coreIndex];
-                    string roiLabel = "ROI " + roiIndex.ToString(CultureInfo.CurrentCulture) + "/" +
+                    string roiLabel = "範圍組區塊 " + roiIndex.ToString(CultureInfo.CurrentCulture) + "/" +
                         roiCount.ToString(CultureInfo.CurrentCulture) +
                         "（物件 " + detectedObject.Number.ToString(CultureInfo.CurrentCulture) + "）";
                     string coreLabel = GetObjectDetectionDefectCoreLabel(coreIndex);
@@ -1225,7 +1235,7 @@ namespace IntegratedImageProcessingApp.Forms
                         result.ProcessedPatchesByCore[coreIndex] = new ObjectDetectionDefectProcessedPatch
                         {
                             Bounds = crop,
-                            InspectionPolygon = corners.ToArray(),
+                            InspectionPolygons = polygons,
                             ProcessedImage = processedBitmap
                         };
                         processedBitmap = null;
@@ -1794,7 +1804,7 @@ namespace IntegratedImageProcessingApp.Forms
                 !parameter.DefectInspectionRegions.Any(region => region != null &&
                     string.Equals(region.ObjectDefinitionId,
                         parameter.ObjectDefinitionId, StringComparison.Ordinal) &&
-                    region.ObjectNumber > 0 && region.Right > region.Left &&
+                    region.Right > region.Left &&
                     region.Bottom > region.Top))
             {
                 return false;
@@ -1864,22 +1874,24 @@ namespace IntegratedImageProcessingApp.Forms
                     continue;
                 }
 
-                PointF[] polygon = patch.InspectionPolygon;
                 GraphicsState state = graphics.Save();
                 try
                 {
-                    if (polygon != null && polygon.Length >= 3)
+                    if (patch.InspectionPolygons != null && patch.InspectionPolygons.Length > 0)
                     {
-                        var screenPolygon = new PointF[polygon.Length];
-                        for (int index = 0; index < polygon.Length; index++)
+                        using (var clip = new GraphicsPath(FillMode.Winding))
                         {
-                            screenPolygon[index] = new PointF(
-                                offset.X + polygon[index].X * zoom,
-                                offset.Y + polygon[index].Y * zoom);
-                        }
-                        using (var clip = new GraphicsPath())
-                        {
-                            clip.AddPolygon(screenPolygon);
+                            foreach (PointF[] polygon in patch.InspectionPolygons)
+                            {
+                                if (polygon == null || polygon.Length < 3)
+                                {
+                                    continue;
+                                }
+                                PointF[] screenPolygon = polygon.Select(point => new PointF(
+                                    offset.X + point.X * zoom,
+                                    offset.Y + point.Y * zoom)).ToArray();
+                                clip.AddPolygon(screenPolygon);
+                            }
                             graphics.SetClip(clip, System.Drawing.Drawing2D.CombineMode.Intersect);
                         }
                     }

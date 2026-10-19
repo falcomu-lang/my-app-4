@@ -301,7 +301,7 @@ namespace IntegratedImageProcessingApp.Forms
                 !parameter.DefectInspectionRegions.Any(region => region != null &&
                     string.Equals(region.ObjectDefinitionId,
                         parameter.ObjectDefinitionId, StringComparison.Ordinal) &&
-                    region.ObjectNumber > 0 && region.Right > region.Left &&
+                    region.Right > region.Left &&
                     region.Bottom > region.Top))
             {
                 ReportAppliedRecipeProcessingFailure(recipeName, "參數沒有對應目前物件定義的有效缺陷檢測範圍。");

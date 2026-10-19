@@ -1,6 +1,6 @@
 # Project Handoff：整合式影像處理軟體
 
-文件快照：2026-10-16。檢測範圍已修正為「獨立 ROI 清單＋ROI 群組」：每個 ROI 有穩定 ID、所屬物件與相對矩形；群組只保存 ROI ID，七個一般缺陷分支及兩組頻域分析各自選擇群組。最新修改已在本機 Debug 建置成功，尚未提交或推送；GUI／實圖端到端驗收尚未完成。紋理異常判定已移除。
+文件快照：2026-10-19。檢測範圍採「全物件共用 ROI 定義＋ROI 群組」：每個 ROI 有穩定 ID 與唯一名稱，以參考物件的局部比例定義位置，再套用到同一物件定義下所有已找到物件；群組只保存 ROI ID。七個一般缺陷分支及頻域一／二各自選擇群組，同組重疊 ROI 以聯集遮罩處理。本版已重新在本機 Debug 建置成功；GUI／實圖端到端驗收尚未完成。紋理異常判定已移除。
 
 ## 1. 專案與 Git 狀態
 
@@ -8,7 +8,7 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C#、Windows Forms、.NET Framework 4.7.2、OpenCvSharp。
-- 分支：`main`，目前 `HEAD`／`origin/main` 為 `ad4eb21`（`Add object-based defect inspection ROI groups`）。工作目錄有 8 個未提交程式檔修改，已把舊有物件序號群組修正為獨立 ROI ID 群組；README 與本文件已同步描述。不要用重設／還原方式覆蓋這些修改。
+- 分支：`main`；本次更新以 `84f560e`（`Use independent ROIs for defect inspection groups`）為基底，包含 7 個程式檔的跨物件共用 ROI、唯一名稱及穩定 ID 群組關聯修改，README 與本文件已同步描述。
 - 2026-09-28 曾以獨立輸出 `IntegratedImageProcessingApp\bin\Debug-Codex-Sharp\` 建置成功。一般 `bin\Debug` 輸出曾因程式執行中鎖住 EXE 而無法覆寫；未關閉使用者程式。
 - 2026-10-05 頻域直接記憶體運算版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyEnergyPointerValidation\`；尚未啟動 GUI 或用使用者實際大圖量測加速幅度及完成端到端驗收。
 - 2026-10-05 頻域結果整合版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyIntegrationValidation\`；尚未啟動 GUI 或用實際影像驗收群組位置及最終判定。
@@ -16,7 +16,7 @@
 - 2026-10-08 `a1a072e` Recipe 管理及自動重跑版已推送並 Debug 建置成功；加入參數目錄、描述與排序管理、使用中參數刪除保護、作用中 Recipe ID 保存，套用後重跑物件／影像流程與所有啟用的缺陷分析。GUI 端到端、Recipe 參數完整回復及不同參數切換時結果隔離仍待手動驗收。
 - 2026-10-08 Recipe 選擇視窗版面與文件同步已推送；上移／下移／保存順序按鈕移至「參數說明」標題右側同列，說明文字框放在下一列並橫跨整個寬度，清單高度略縮。獨立輸出 Debug 建置與 `git diff --check` 通過；尚待實際開啟視窗確認顯示比例與按鈕可操作性。
 - 2026-10-13 `d3c6f7e` 結果確認快照已推送；保存選用參數、來源影像／校正影像、物件、量測 MASK、平場與缺陷分析結果、整合群組及各影像頁的檢視狀態。離開結果確認切換其他功能再返回時，若影像與參數未變則還原快照，不要求重跑；來源影像或參數簽章改變時清除舊結果並要求重新確認。Debug 建置成功，尚待 GUI／實圖確認切頁、改參數、換圖及記憶體生命週期。
-- 2026-10-13 平移卡頓的本機調整：overlay 安定等待由 120 ms 增至 250 ms，並在平場 MASK overlay 繪製時檢查平移安定狀態。這只能延後昂貴 overlay 重繪，未把 MASK／輪廓／格線 overlay 改成快取圖層；目前未提交、未推送，須實測卡頓是否改善及放開後 overlay 是否正常補畫。
+- 2026-10-13 平移卡頓調整紀錄：overlay 安定等待由 120 ms 增至 250 ms，並在平場 MASK overlay 繪製時檢查平移安定狀態。這只能延後昂貴 overlay 重繪，未把 MASK／輪廓／格線 overlay 改成快取圖層；須實測卡頓是否改善及放開後 overlay 是否正常補畫。
 
 ## 2. 系統流程與責任邊界
 
@@ -47,13 +47,13 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 - `partial MainForm` 主要是檔案層級的分工，仍共享主視窗欄位、控制項與可變執行狀態。多個核心檔案仍超過千行，因此功能邊界尚未等同於可獨立測試的模組。
 - 參數結果確認已用記憶體快照隔離「已完成結果的保留與顯示」：保存該次參數、影像來源、物件、量測／MASK、缺陷與整合結果及視圖狀態；離開頁面後其他流程不再直接清掉這份快照。但執行本身仍由 `MainForm` 協調並共用部分服務／狀態，快照也不是跨程式重啟的磁碟保存，因此不能等同完整獨立的檢測執行環境。
 - 缺陷分析在物件 ROI 與核心兩層使用平行迴圈，且保留每個 ROI／核心的預覽 patch 與結果。這是吞吐與記憶體之間的取捨，尚需設定整體並行上限並以實際影像測試，不能把 ROI 數乘核心數視為固定執行緒數。
-- 檢測範圍使用兩層模型：獨立 ROI 保存自身穩定 ID、所屬物件定義／物件序號及相對矩形；ROI 群組保存多個 ROI ID。一般缺陷核心與頻域一／二各自選用群組，運算只解析並處理該群組內的 ROI。設定、INI 遷移、執行前驗證、分析簽章與結果失效均已接上；物件序號仍是 ROI 所屬物件的定位方式，換圖後物件重新編號造成錯配的風險仍待處理。
+- 檢測範圍使用兩層模型：共用 ROI 保存穩定 ID、唯一顯示名稱、物件定義 ID、參考物件序號及正規化局部矩形；參考物件序號只作為編輯／顯示錨點，ROI 會映射到該物件定義下所有已找到物件。ROI 群組保存多個 ROI ID；一般缺陷核心與頻域一／二各自選用群組，依每枚物件建立所選 ROI 的聯集遮罩。同組 ROI 重疊部分不重複處理。設定、INI 遷移、執行前驗證、分析簽章與結果失效均已接上；主要待驗風險改為不同物件的相對幾何是否適合共用同一比例選區，而非序號 owner 錯配。
 - 平行執行存在巢狀工作：一般缺陷對物件 ROI 和核心分別使用 `Parallel.For`，頻域與尺寸流程也可對物件平行；目前最大平行度依物件／核心數設定，尚未看到統一的全域併發／記憶體預算。結果確認平行模式可用 `Task.WhenAll` 同時排入缺陷與需補算的頻域分析，但參數設定頁的「執行缺陷檢測」會先完成一般核心，再依序執行頻域一、頻域二，兩個入口的平行語意不同。
 - `SystemParameterSettings` 是型別化模型，但 `SystemParameterIniService` 手動處理大量欄位；目前未見明確的格式版本／遷移標記。隨設定增加，舊檔讀取、預設值與相依 ID 的往返相容性需靠測試保障。
 - 多組 Recipe 已可分別存放於根目錄 `recipe` 並供使用者選擇；目前套用時將所選 Recipe 載入為唯一作用中設定，再重跑流程，並非同時載入兩套執行環境。Recipe 各自保存完整設定快照與一組檢測參數，須特別驗收跨 Recipe 切換後 ROI／MASK／物件定義與快取沒有沿用錯誤資料。
 - 目前未找到專用自動化測試專案。建置成功只能證明程式可編譯，不能證明影像算法、參數往返、頁面切換或整體判定正確。
 
-下一步先以多枚物件、多個獨立 ROI 驗收新增／編輯／刪除、ROI 組勾選、不同條件選不同組、運算範圍裁切及跨影像物件對應，再驗收 Recipe 重載與舊參數遷移。長期替 ROI 組解析／快取簽章、量測計算、缺陷分割／合併、良品規則和 INI 往返建立可重複測試。之後再把檢測輸入／輸出契約與純運算服務抽離 `MainForm`，明確限制全域平行度、管理暫存影像生命週期及設定格式版本。不要只為降低行數一次重寫整個 `MainForm`。
+下一步先用多枚物件驗收共用 ROI 的新增／命名／改名／編輯／刪除、ROI 組勾選、不同條件選不同組、重疊聯集、運算邊界裁切及物件尺寸／旋轉差異，再驗收 Recipe 重載與舊參數遷移。長期替 ROI 組解析／快取簽章、量測計算、缺陷分割／合併、良品規則和 INI 往返建立可重複測試。之後再把檢測輸入／輸出契約與純運算服務抽離 `MainForm`，明確限制全域平行度、管理暫存影像生命週期及設定格式版本。不要只為降低行數一次重寫整個 `MainForm`。
 
 ## 3. 目前功能狀態
 
@@ -93,22 +93,23 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 
 - 一般缺陷檢測共有七個分支：平場校正影像及條件一至六；另有頻域異常一、二兩組分析。平場分支以平場校正後灰階影像為底；條件分支使用各自的對比、前處理、門檻、MASK 形態學與物件大小設定。
 - 每個分支可設定影像前處理（例如 Gaussian／Median）、灰階門檻、侵蝕／膨脹、最小面積，以及 X/Y 實際尺寸篩選。尺寸輸入以 mm 時需依 X/Y mm-per-pixel 顯示換算 pixel 值；精度未啟用時採像素尺度。
-- 每個檢測範圍是附屬於一枚已找到物件的獨立矩形 ROI，以該物件局部座標的比例保存；同一物件可有多個互不綁定的 ROI，也能逐一選取和編輯。ROI 群組把多個 ROI ID 組合起來，條件選群組後才會掃描該群組中的 ROI；不是把群組直接綁成物件序號集合，也不是額外產生一份共用 MASK。需驗證編輯選區時可平移圖片且 viewport 不被重置。
+- 檢測範圍為跨物件共用的矩形 ROI 定義，以參考物件局部座標的比例保存；執行時將相同正規化矩形映射到同一物件定義下所有已找到物件。同一參數可建立多個共用 ROI，並各自命名、選取和編輯。ROI 群組把多個 ROI ID 組合起來，條件選群組後才會掃描該群組中的 ROI；同組多個矩形轉成遮罩聯集，重疊像素只處理一次。需驗證編輯選區時可平移圖片且 viewport 不被重置。
 - 預覽底圖是實際處理後的灰階圖。亮／白缺陷 MASK 以半透明黃色呈現，暗／黑缺陷 MASK 以半透明粉紅色呈現；只有符合缺陷定義的連通元件才顯示紅框。
 - 每個分支有自己的 MASK 與紅框顯示勾選框。切換 overlay 可見性只改變繪圖，不應重新跑影像運算。
 - 分支「套用」只更新目前分支；「執行缺陷檢測」處理已啟用的一般分支，之後再執行已啟用的頻域分析一、二。參數設定頁中的頻域附加分析目前依序執行；結果確認頁在平行模式下可與一般缺陷並行。兩處行為不同，實際用戶體驗需確認是否符合預期。
 - 平行開啟時，一般缺陷對物件 ROI 與每個 ROI 內啟用的分支各自使用 `Parallel.For`；平行度最大值分別設為物件數及分支數。這不是保證固定建立 ROI 數乘核心數的 OS 執行緒，但可能形成高併發工作並增加大圖暫存記憶體。頻域與尺寸量測也有依物件平行的路徑；仍需全域限流與實圖壓力測試。
 - 重新執行、載入圖片、刪除檢測參數及關閉視窗時會釋放舊結果預覽等資源；仍需以大圖反覆操作觀察記憶體回收。
 
-#### 獨立 ROI 與 ROI 群組（2026-10-16）
+#### 全物件共用 ROI 與 ROI 群組（2026-10-16）
 
-- 每個 ROI 是獨立資料項，可在左側已找到的物件影像上 Ctrl 拖曳新增；選擇既有 ROI 可單獨移動／調整邊線，再按「套用」保存。各 ROI 保存自己的 `Id`、顯示名稱、`ObjectDefinitionId`、所屬 `ObjectNumber` 及依物件局部座標正規化的 `Left/Top/Right/Bottom`。
-- ROI 群組只保存多個獨立 ROI 的穩定 ID（`RoiIds`），可新增、改名、刪除與勾選成員。刪除仍被條件使用的群組會被阻止；刪除 ROI 時會從相關群組移除。群組名稱可變，群組 ID 與 ROI ID 是關聯依據。
-- 七個一般缺陷核心及頻域異常一、二都能各自選 ROI 群組；缺少群組、空群組、所屬物件定義不符或物件不存在時不開始相關運算。一般缺陷核心逐 ROI 裁切影像／MASK 後處理；頻域掃描也逐 ROI 建立遮罩與格子，多個 ROI 的鄰格基準彼此隔離。結果整合仍按物件編號呈現，但頻域結果顯示裁切可包含同一物件內多個 ROI 多邊形。
-- `ObjectDetectionInspectionRegionSettings` 是獨立 ROI 模型，`ObjectDetectionRoiGroupSettings.RoiIds` 是群組成員；每個條件保存自己的 `RoiGroupId`。處理結果簽章含群組及成員 ROI 幾何，修改 ROI／群組會使依賴它的缺陷、頻域與整合結果失效。
-- 舊參數相容：載入舊版共用矩形與物件序號成員時，會按舊群組中各物件展開為獨立 ROI，並將新 ROI ID 寫入原群組；舊群組序號欄位保留讀取相容但新資料不再使用它。新設定存入 `SystemParameters.ini`，不會自動覆寫 Recipe 目錄中的 `<ID>.ini`。
-- **高優先風險：ROI 所屬物件仍以 `ObjectNumber` 對應目前物件定義結果。** 物件重新排序、漏檢或誤檢可能使序號對應不同實體；ROI ID 穩定不代表跨影像的 owner 身分已穩定。需以物件漏檢、插入誤檢、位置偏移和排序變動的影像測試；長期應採用穩定格位／幾何特徵匹配，或在物件定義結果改變時要求重新指定 ROI owner。
-- 主要程式位置：`MainForm.DetectionParameter.DefectRegion.cs` 管理 ROI 編輯、群組 UI、驗證、解析與簽章；`MainForm.DetectionParameter.DefectProcessing.cs` 逐 ROI 運算七個一般核心；`MainForm.DetectionParameter.DefectFrequency.cs` 逐 ROI 頻域掃描、同 ROI 鄰格比較與多 ROI 預覽；`MainForm.DetectionParameter.DefectIntegration.cs` 裁切頻域整合框；`SystemParameterSettings.cs`／`SystemParameterIniService.cs` 定義、遷移及保存模型。
+- 每個 ROI 是獨立資料項，可在任一已找到物件上 Ctrl 拖曳新增；該物件僅作為框選參考。ROI 儲存相對於物件局部框的正規化 `Left/Top/Right/Bottom`，運算時將相同比例位置套用至目前物件定義下所有已找到物件。
+- ROI 具有穩定 `Id`、顯示名稱、`ObjectDefinitionId`、`ReferenceObjectNumber` 及 `SharedAcrossObjects`。名稱在同一參數的 ROI 清單中不可重複（忽略大小寫）；改名只改顯示文字，不改 ID，因此不會破壞群組成員關聯。參考物件序號只用於 UI 定位／編輯錨點，舊 `ObjectNumber` 欄位保留參數相容。
+- ROI 群組只保存多個 ROI 的穩定 ID（`RoiIds`），可新增、改名、刪除與勾選成員。條件保存穩定 `RoiGroupId`；群組顯示名稱變更不影響對應。刪除 ROI 時會從相關群組移除；空群組或找不到 ROI 時不開始相關運算。
+- 七個一般缺陷核心及頻域異常一、二都能各自選 ROI 群組。每個群組會對每枚已找到物件映射所選 ROI 的多個多邊形，並以遮罩聯集限定分析區；同一群組內重疊區域不重複檢查。頻域掃描在每個群組／物件的聯集範圍內掃描，鄰格參考以群組與物件為界隔離。結果整合仍按物件編號呈現。
+- `ObjectDetectionInspectionRegionSettings` 是共用 ROI 模型，`ObjectDetectionRoiGroupSettings.RoiIds` 是群組成員；每個條件保存自己的 `RoiGroupId`。處理結果簽章含群組及成員 ROI 幾何，修改 ROI／群組會使依賴它的缺陷、頻域與整合結果失效。
+- 舊參數相容：舊單一共用矩形會轉成一個套用所有物件的 ROI；舊版依物件序號複製、幾何相同的 ROI 會合併成一個共用 ROI，並將重複 ID 映射到同一 canonical ID、群組成員去重。舊群組序號欄位仍可讀取；新參數另存參考物件序號及 `SharedAcrossObjects`。新設定存入 `SystemParameters.ini`，不會自動覆寫 Recipe 目錄中的 `<ID>.ini`。
+- **主要待驗風險：比例選區是否適用所有物件。** 若同一物件定義中的物件有不同寬高比例、局部方向、旋轉角度或位置結構，參考物件上畫的固定正規化矩形可能不會落在每一枚物件期待的位置。需用尺寸、旋轉、定位偏移不同的實際影像確認映射、遮罩聯集及邊界裁切；若物件幾何並非同構，未來需考慮按物件類型分組或提供明確對位模型。
+- 主要程式位置：`MainForm.DetectionParameter.DefectRegion.cs` 管理 ROI 編輯、唯一名稱、群組 UI、驗證、解析與簽章；`MainForm.DetectionParameter.DefectProcessing.cs` 對每枚物件使用所選 ROI 聯集運算七個一般核心；`MainForm.DetectionParameter.DefectFrequency.cs` 對 ROI 聯集進行頻域掃描、群組／物件鄰格比較與多多邊形預覽；`MainForm.DetectionParameter.DefectIntegration.cs` 繪製整合候選；`SystemParameterSettings.cs`／`SystemParameterIniService.cs` 定義、遷移及保存模型。
 
 ### 3.6 頻域異常分析
 
@@ -225,11 +226,11 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 | `Forms/MainForm.FlatFieldCalibration.Correction.cs` | 592 | 校正影像預覽、保存結果套用、分塊像素補正與計時；將設定／MASK 變動造成的舊工作取消視為正常取消。 |
 | `Forms/MainForm.FlatFieldCalibration.Masks.cs` | 846 | 校正來源／使用位置 MASK 套用、ROI MASK 建立、遮罩快取及預覽 overlay；平移安定前略過昂貴 MASK 疊圖。 |
 | `Forms/MainForm.DetectionParameter.DefectDisplay.cs` | 495 | 七個一般缺陷影像分支及兩個頻域結果頁的建立、分流與顯示狀態。 |
-| `Forms/MainForm.DetectionParameter.DefectRegion.cs` | 2,358 | 獨立 ROI 新增／編輯／刪除、物件相對座標繪製、ROI 群組管理、條件選組驗證與運算範圍解析。 |
+| `Forms/MainForm.DetectionParameter.DefectRegion.cs` | 2,499 | 全物件共用 ROI 新增／命名／編輯／刪除、物件相對座標映射、ROI 群組管理、條件選組驗證與運算範圍解析。 |
 | `Forms/MainForm.DetectionParameter.DefectCores.cs` | 1,213 | 平場及條件一至六的設定頁、每分支控制項與單分支／全部啟用分支命令。 |
 | `Forms/MainForm.DetectionParameter.DefectIntegration.cs` | 827 | 暗／亮／頻域異常候選依物件與距離合併、群組表格及整合框繪製；頻域框依多個 ROI 多邊形裁切。 |
-| `Forms/MainForm.DetectionParameter.DefectProcessing.cs` | 1,920 | 缺陷核心依所選 ROI 群組逐個 ROI 運算、尺寸篩選、巢狀平行工作與結果套用；元件識別納入 ROI ID。 |
-| `Forms/MainForm.DetectionParameter.DefectFrequency.cs` | 2,906 | 頻域一／二設定 UI、平場來源、ROI 群組逐 ROI 掃描、直接記憶體能量計算、同 ROI 鄰格比較、結果快取與分析協調。 |
+| `Forms/MainForm.DetectionParameter.DefectProcessing.cs` | 1,932 | 缺陷核心依所選 ROI 群組對每枚物件處理 ROI 聯集、尺寸篩選、巢狀平行工作與結果套用；元件識別納入群組／物件。 |
+| `Forms/MainForm.DetectionParameter.DefectFrequency.cs` | 2,944 | 頻域一／二設定 UI、平場來源、每群組／物件 ROI 聯集掃描、直接記憶體能量計算、鄰格比較、結果快取與分析協調。 |
 | `Forms/MainForm.DetectionParameter.ResultReview.cs` | 3,217 | 唯讀參數結果確認；物件／平場／尺寸量測、一般缺陷／頻域分析協調、平行執行，以及結果與各影像視圖快照的保存／還原／失效判定。 |
 | `Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs` | 788 | 結果確認頁的逐物件尺寸良品判定、A／B 規則計算及判定結果呈現。 |
 | `Forms/DetectionRecipeDialogs.cs` | 476 | Recipe 中繼資料編輯與參數選擇視窗；提供清單操作、排序、保存順序、編輯、刪除確認及套用。 |
@@ -246,8 +247,8 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 | `Services/LargeImageGrayscaleDecoder.cs` | 89 | 大圖灰階解碼支援。 |
 | `Services/LargeRoiGrayscaleCache.cs` | 125 | 大圖 ROI 灰階資料快取。 |
 | `Services/LargeRoiMaskBuilder.cs` | 187 | 依大型 ROI 建立或裁切對應 MASK。 |
-| `Services/SystemParameterSettings.cs` | 676 | 檢測參數及應用設定資料模型，含獨立 ROI、ROI 群組、頻域一／二、作用中 Recipe ID 與各檢測流程設定。 |
-| `Services/SystemParameterIniService.cs` | 2,699 | 手動 INI 參數讀寫、預設值與相容欄位解析，含舊 ROI 群組遷移及獨立 ROI ID／幾何持久化。 |
+| `Services/SystemParameterSettings.cs` | 681 | 檢測參數及應用設定資料模型，含全物件共用 ROI、ROI 群組、頻域一／二、作用中 Recipe ID 與各檢測流程設定。 |
+| `Services/SystemParameterIniService.cs` | 2,790 | 手動 INI 參數讀寫、預設值與相容欄位解析，含舊物件序號 ROI 合併遷移、唯一名稱正規化及共用 ROI ID／幾何持久化。 |
 | `Services/DetectionRecipeCatalogService.cs` | 379 | Recipe 目錄 JSON 讀寫、參數檔驗證／複製、排序保存、刪除保護、作用中設定比對及暫存檔復原。 |
 
 `LargeImageMaskCache` 目前只管理影像處理步驟與關聯群組共用的大圖 MASK。物件判定、物件定義、量測和平場校正的快取仍由各自功能管理，因為它們的結果型態、key 和失效時機不同；後續若要共用，需先確認語意和生命週期一致。
@@ -262,23 +263,23 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU"
 
 Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLayout` 是先前使用的輸出資料夾，不代表目前最新測試版。
 
-2026-10-16 獨立 ROI／ROI 群組修改以 Visual Studio 2019 MSBuild Debug 建置成功，輸出至 `IntegratedImageProcessingApp/bin/Debug-RoiModelValidation/`；`git diff --check` 通過。此建置只確認可編譯，尚未完成 GUI／實圖端到端驗收。
+2026-10-19 全物件共用 ROI／ROI 群組修改已重新以 Visual Studio 2019 MSBuild Debug 建置成功，輸出至 `IntegratedImageProcessingApp/bin/Debug/`；`git diff --check` 通過。此建置只確認可編譯，尚未完成 GUI／實圖端到端驗收。
 
 ## 7. 驗證與注意事項
 
-### 2026-10-16 獨立 ROI／ROI 群組修正檢視
+### 2026-10-16 全物件共用 ROI／ROI 群組修正檢視
 
-- 已核對獨立 ROI／群組設定模型、ROI 選取／編輯 UI、群組成員勾選、一般缺陷與頻域一／二逐 ROI 運算、ROI 遮罩裁切、頻域鄰格分組、結果整合繪製、INI 相容遷移、分析簽章與結果確認驗證。
-- 已確認空組、缺失 ROI、物件定義不符、找不到 ROI owner 等情況會阻止運算；修改 ROI 幾何或群組成員會使相關結果／整合顯示失效。
-- ROI 及群組都有穩定 ID，但 ROI owner 仍用物件序號對應目前物件定義；序號可能在物件漏檢／誤檢或排序變更後指向另一實體，需以跨影像測試驗證。
-- 舊版共享矩形與物件序號群組讀取時會遷移成各物件獨立 ROI，再由原群組保存新 ROI ID。參數編輯仍寫目前 `SystemParameters.ini`，不是 Recipe 來源檔。
-- 此回合以 Visual Studio 2019 MSBuild Debug 建置成功；沒有專用自動化測試專案。建置不代表 GUI 操作、多 ROI 運算邊界或真實影像判定已驗收。
+- 已核對全物件共用 ROI／群組設定模型、ROI 唯一名稱與穩定 ID、群組成員勾選、一般缺陷與頻域一／二每物件聯集運算、遮罩裁切、頻域鄰格分組、結果整合繪製、INI 相容遷移、分析簽章與結果確認驗證。
+- 已確認空組、缺失 ROI、物件定義不符或沒有可用物件時會阻止運算；改 ROI 幾何或群組成員會使相關結果／整合顯示失效。ROI 名稱重複（忽略大小寫）會被拒絕；改名保留 ID，群組關聯不變。
+- ROI 的參考物件序號只作為 UI 編輯／顯示錨點；運算會把相同的正規化局部矩形映射至同一物件定義下所有已找到物件。此映射對尺寸比例、旋轉與定位差異的適用性仍待實際影像驗收。
+- 舊版按物件序號複製且幾何相同的 ROI 會合併為共用定義，群組中的重複 ROI ID 會映射與去重；舊單一範圍遷移為共用 ROI。參數編輯仍寫目前 `SystemParameters.ini`，不是 Recipe 來源檔。
+- 此回合以 Visual Studio 2019 MSBuild Debug 建置成功；沒有專用自動化測試專案。建置不代表 GUI 操作、重疊聯集邊界或真實影像判定已驗收。
 
 ### ROI 群組優先驗收
 
-- 在單一物件建立至少兩個不同 ROI，分別調整／保存，確認不會互相覆蓋；再將 ROI 分入兩組，讓一般核心與頻域一／二選不同群組，核對每個預覽、結果表及整合候選只處理指定 ROI。
-- 確認已啟用條件未指定組、選擇空組、組別來源不符、ROI 遺失或 owner 不存在時不會開始或回報通過；未啟用的條件不應無故阻止其他條件執行。
-- 新影像依序測試 owner 物件漏檢、中間新增誤檢、物件排序改變及原物件位移。核對獨立 ROI 是否仍掛在正確實體；若序號映射錯誤，應限制換圖沿用 ROI 或建立穩定格位／幾何成員鍵。
+- 在參考物件上建立至少兩個不同共用 ROI，確認預覽中同一 ROI 定義映射到所有已找到物件；分別調整／保存，再將 ROI 分入兩組，讓一般核心與頻域一／二選不同群組，核對每個預覽、結果表及整合候選只處理指定 ROI。
+- 確認 ROI 名稱新增與改名唯一（大小寫不同也視為重複），改名後群組仍指向相同 ROI ID；檢查空組、組別來源不符、ROI 遺失或沒有已找到物件時不會開始或回報通過，未啟用條件不應無故阻止其他條件執行。
+- 以物件寬高比例不同、旋轉角度不同、定位偏移及部分物件漏檢的影像驗證正規化矩形映射；確認映射後的框位符合產品結構，並不會因物件序號改變而把 ROI 當成只屬於另一枚物件。
 - 新增、改名、刪除群組及套用／取消成員選取後，關閉重開程式確認 `SystemParameters.ini` 讀回正確；另行套用 Recipe，確認 Recipe 是否預期還原自己的群組版本。
 - 改變群組成員後，核對關聯核心／頻域結果、整合表、缺陷顯示及參數結果確認快照都失效或重跑，且不殘留前一版框線／數量。
 - 在有 1、數個及大量物件的圖上比較序列／平行結果一致性、牆鐘時間、CPU、峰值記憶體、取消及錯誤收尾；注意參數設定頁先跑一般核心，再依序跑頻域一、二，結果確認平行模式則能同時排入一般缺陷與需補算的頻域工作。
@@ -321,7 +322,7 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 - 啟動程式，檢查原圖、待測、平場、條件一至六、頻域一／二及整合預覽外框、影像位置、縮放平移一致性。
 - 使用最新版 `Debug-Codex-Sharp` 對同一張大圖測試 `0.03X`、`0.04X`、`0.05X`、`0.06X`、`0.14X` 平移：分別記錄流暢度、平移中清晰度、放開滑鼠後清晰度及遮罩／ROI 對位；確認 64 塊上限不會在較大視窗或不同影像尺寸下重新造成卡頓。
 - 在待量測頁測試 1000 條線的遠景顯示，確認沒有多餘的垂直／斜向連接線、線距觀感可接受，且縮放後顯示與實際統計一致。
-- 選一個物件建立缺陷矩形，再切換其他物件，確認 ROI 相對座標與旋轉方向對應正確；拖曳編輯時可平移且不意外縮放／重置視圖。
+- 在一枚參考物件上建立共用 ROI，再確認所有已找到物件上的相對框位及旋轉方向；切換參考物件編輯時不應改變影像縮放／平移狀態。
 - 分別按各分支「套用」，確認僅該分支結果更新；再按「執行缺陷檢測」，確認所有啟用的一般分支及啟用的頻域分析按目前流程更新。確認 MASK／紅框勾選不觸發影像運算。
 - 用含亮缺陷、暗缺陷、門檻邊界和面積邊界的測試影像，檢查黃／粉紅 MASK、紅框與 component 尺寸篩選正確。
 - 開關平行運算比較時間與結果一致性；測試取消、例外與重複執行時資源釋放。不要假定物件數乘分支數就是固定 OS 執行緒數，但須監測巢狀平行工作及記憶體峰值。
@@ -332,8 +333,8 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 
 ## 8. 後續建議順序
 
-1. 用同一物件上的多個 ROI 驗證獨立編輯、ROI 群組組合及條件分派，確認一般缺陷、頻域、鄰格比較、預覽與結果整合都只使用所選 ROI。
-2. 用物件漏檢、誤檢、排序變化及位移的不同影像驗證 ROI owner 跨圖片身份；目前 owner 仍以序號配對，是可能靜默選錯實體物件的最高風險。
+1. 用多枚物件驗證全物件共用 ROI 的比例映射、名稱唯一／改名保留關聯、重疊 ROI 聯集、ROI 群組組合與條件分派，確認一般缺陷、頻域、鄰格比較、預覽與結果整合都只使用所選 ROI。
+2. 使用物件尺寸比例、旋轉角度、定位差異及部分漏檢的影像驗證共用 ROI 是否仍落在預期產品區域；若相對幾何並非一致，需重新評估是否以物件類型或穩定特徵區分 ROI 定義。
 3. 驗證空組／失效 ROI 防呆、ROI 或群組修改後快取／整合／結果確認快照失效，以及重新啟動後 INI 讀回與舊參數遷移。
 4. 明確決定 Recipe 是不可變版本還是可更新配方；目前 ROI 編輯只更新 `SystemParameters.ini`，不回寫 `recipe/<ID>.ini`。
 5. 為 ROI 解析、參數保存／讀回、尺寸量測、缺陷分割／合併與良品算式建立可重複測試；目前沒有專用自動化測試專案。
@@ -354,6 +355,6 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 - OpenCvSharp `Mat`、`Bitmap`、ROI buffer 和平行工作產生的暫存資料要明確管理生命週期；勿讓 UI overlay 或快取無限保留完整大圖複本。
 - 影像運算不要阻塞 UI 執行緒；但也要限制並行度及同時存在的完整影像副本，避免記憶體壓力。
 - MASK 名稱只是顯示資訊；跨參數文件保存時要以穩定 ID 和來源脈絡解析，處理來源不存在或 ID 過期的情況。
-- ROI／群組 ID 穩定，但 ROI owner 仍以當次物件定義的序號定位；不能因序號存在就推論實體物件正確。若物件定義重新執行或影像內容改變，須驗證 owner 對應或要求重新指定／確認 ROI。
+- ROI／群組以穩定 ID 關聯，顯示名稱可變；參考物件序號只作為編輯錨點。運算使用正規化幾何映射至所有已找到物件，因此更換圖片或重新排序不會改變 ROI 定義；仍須驗證物件局部比例映射在不同產品姿態／尺寸下符合實際區域。
 - `SystemParameters.ini` 是目前正在編輯的系統設定；Recipe INI 是目錄中的參數快照。兩者更新不是自動雙向同步，切換 Recipe 會以 Recipe 快照覆蓋作用中參數。
 - 設定頁的平行選項目前主要控制一般缺陷的物件／分支內平行及頻域／量測的各自執行；參數設定按鈕會在一般分支完成後才依序跑頻域一、二。結果確認頁另有 `Task.WhenAll` 路徑，不能假設兩個入口的併發和耗時完全相同。

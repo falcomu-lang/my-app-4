@@ -431,6 +431,8 @@ namespace IntegratedImageProcessingApp.Services
             Id = Guid.NewGuid().ToString("N");
             DisplayName = string.Empty;
             ObjectDefinitionId = string.Empty;
+            ReferenceObjectNumber = 0;
+            SharedAcrossObjects = true;
             Left = 0;
             Top = 0;
             Right = 1;
@@ -443,7 +445,12 @@ namespace IntegratedImageProcessingApp.Services
 
         public string ObjectDefinitionId { get; set; }
 
+        // Retained for older parameter files; new processing uses this only as an edit anchor.
         public int ObjectNumber { get; set; }
+
+        public int ReferenceObjectNumber { get; set; }
+
+        public bool SharedAcrossObjects { get; set; }
 
         public double Left { get; set; }
 

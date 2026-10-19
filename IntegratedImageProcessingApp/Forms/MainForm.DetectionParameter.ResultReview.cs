@@ -2163,7 +2163,7 @@ namespace IntegratedImageProcessingApp.Forms
                 !parameter.DefectInspectionRegions.Any(region => region != null &&
                     string.Equals(region.ObjectDefinitionId,
                         parameter.ObjectDefinitionId, StringComparison.Ordinal) &&
-                    region.ObjectNumber > 0 && region.Right > region.Left &&
+                    region.Right > region.Left &&
                     region.Bottom > region.Top))
             {
                 return grades;
@@ -2553,7 +2553,7 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.DefectInspectionRegions.Any(region => region != null &&
                     string.Equals(region.ObjectDefinitionId,
                         parameter.ObjectDefinitionId, StringComparison.Ordinal) &&
-                    region.ObjectNumber > 0 && region.Right > region.Left &&
+                    region.Right > region.Left &&
                     region.Bottom > region.Top);
             DataGridViewRow integratedRow = objectDetectionResultReviewDefectsGrid.Rows
                 .Cast<DataGridViewRow>()

@@ -69,11 +69,13 @@ namespace IntegratedImageProcessingApp.Forms
 
         private sealed class ObjectDetectionInspectionRegionWorkItem
         {
-            public ObjectDetectionInspectionRegionSettings Region { get; set; }
+            public string GroupId { get; set; }
 
             public ObjectDefinitionDetectedObject DetectedObject { get; set; }
 
-            public RectangleF NormalizedRegion { get; set; }
+            public List<ObjectDetectionInspectionRegionSettings> Regions { get; set; }
+
+            public List<RectangleF> NormalizedRegions { get; set; }
         }
 
         [Flags]
@@ -105,6 +107,7 @@ namespace IntegratedImageProcessingApp.Forms
         private int objectDetectionDefectRegionDraftObjectNumber;
         private string objectDetectionDefectRegionDraftRoiId;
         private ComboBox objectDetectionDefectRegionRoiSelector;
+        private TextBox objectDetectionDefectRegionNameTextBox;
         private bool isRefreshingObjectDetectionInspectionRegionSelector;
         private ComboBox objectDetectionDefectRoiGroupManagerComboBox;
         private CheckedListBox objectDetectionDefectRoiGroupMembersListBox;
@@ -348,8 +351,7 @@ namespace IntegratedImageProcessingApp.Forms
                             roiGroup != null &&
                             string.Equals(region.ObjectDefinitionId, roiGroup.ObjectDefinitionId,
                                 StringComparison.Ordinal))
-                        .OrderBy(region => region.ObjectNumber)
-                        .ThenBy(region => region.DisplayName, StringComparer.CurrentCulture)
+                        .OrderBy(region => region.DisplayName, StringComparer.CurrentCulture)
                         .ToList();
                 var availableIds = new HashSet<string>(StringComparer.Ordinal);
                 foreach (ObjectDetectionInspectionRegionSettings region in regions)
@@ -357,8 +359,7 @@ namespace IntegratedImageProcessingApp.Forms
                     availableIds.Add(region.Id);
                     int index = list.Items.Add(new ObjectDetectionRoiGroupMemberChoice(
                         region.Id,
-                        region.DisplayName + "（物件 " +
-                            region.ObjectNumber.ToString(CultureInfo.CurrentCulture) + "）"));
+                        region.DisplayName));
                     list.SetItemChecked(index, savedRoiIds.Contains(region.Id));
                 }
                 foreach (string missingRoiId in savedRoiIds.Where(id => !availableIds.Contains(id)))
@@ -390,9 +391,9 @@ namespace IntegratedImageProcessingApp.Forms
                 if (objectDetectionDefectRoiGroupStatusLabel != null)
                 {
                     objectDetectionDefectRoiGroupStatusLabel.Text = roiGroup == null
-                        ? "先新增 ROI 組，再勾選獨立 ROI。"
+                        ? "先新增範圍組，再勾選共用 ROI。"
                         : regions.Count == 0
-                            ? "尚未建立檢測 ROI；先在左側選物件並框選新增。"
+                            ? "尚未建立共用 ROI；先在左側任一物件上框選新增。"
                             : "已勾選 " + savedRoiIds.Count.ToString(CultureInfo.CurrentCulture) +
                                 " 個 ROI；變更後按套用保存。";
                 }
@@ -549,9 +550,9 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDetectionDefectRoiGroupStatusLabel != null)
             {
                 objectDetectionDefectRoiGroupStatusLabel.Text = roiGroup.RoiIds.Count == 0
-                    ? "已保存空組；至少勾選一個獨立 ROI 後才能執行。"
+                    ? "已保存空組；至少勾選一個共用 ROI 後才能執行。"
                     : "已保存 " + roiGroup.RoiIds.Count.ToString(CultureInfo.CurrentCulture) +
-                        " 個獨立 ROI。";
+                        " 個共用 ROI。";
             }
         }
 
@@ -894,7 +895,6 @@ namespace IntegratedImageProcessingApp.Forms
                 return regionsById.TryGetValue(id, out region) &&
                     string.Equals(region.ObjectDefinitionId, parameter.ObjectDefinitionId,
                         StringComparison.Ordinal) &&
-                    region.ObjectNumber > 0 &&
                     region.Right > region.Left && region.Bottom > region.Top;
             });
         }
@@ -922,31 +922,19 @@ namespace IntegratedImageProcessingApp.Forms
                 error = "ROI 組「" + roiGroup.DisplayName + "」所屬的物件定義與目前參數不一致。";
                 return false;
             }
-            Dictionary<int, ObjectDefinitionDetectedObject> objectsByNumber = (objects ??
-                new List<ObjectDefinitionDetectedObject>())
-                .Where(item => item != null)
-                .GroupBy(item => item.Number)
-                .ToDictionary(group => group.Key, group => group.First());
             Dictionary<string, ObjectDetectionInspectionRegionSettings> regionsById =
                 (parameter.DefectInspectionRegions ??
                     new List<ObjectDetectionInspectionRegionSettings>())
                 .Where(region => region != null && !string.IsNullOrWhiteSpace(region.Id))
                 .GroupBy(region => region.Id, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            var selectedRegions = new List<ObjectDetectionInspectionRegionSettings>();
             foreach (string roiId in roiGroup.RoiIds ?? new List<string>())
             {
                 ObjectDetectionInspectionRegionSettings region;
-                ObjectDefinitionDetectedObject detectedObject;
                 if (!regionsById.TryGetValue(roiId, out region))
                 {
                     error = "ROI 組「" + roiGroup.DisplayName + "」包含不存在的 ROI；請重新選擇成員。";
-                    return false;
-                }
-                if (!objectsByNumber.TryGetValue(region.ObjectNumber, out detectedObject))
-                {
-                    error = "ROI「" + region.DisplayName + "」所屬的物件序號 " +
-                        region.ObjectNumber.ToString(CultureInfo.CurrentCulture) +
-                        " 目前找不到；請重新執行物件定義並確認 ROI。";
                     return false;
                 }
                 if (!string.Equals(region.ObjectDefinitionId, parameter.ObjectDefinitionId,
@@ -965,16 +953,42 @@ namespace IntegratedImageProcessingApp.Forms
                     error = "ROI「" + region.DisplayName + "」範圍無效，請重新編輯。";
                     return false;
                 }
+                selectedRegions.Add(region);
+            }
+            if (selectedRegions.Count == 0)
+            {
+                error = "ROI 組「" + roiGroup.DisplayName + "」沒有指定共用 ROI，沒有開始運算。";
+                return false;
+            }
+
+            foreach (ObjectDefinitionDetectedObject detectedObject in (objects ??
+                new List<ObjectDefinitionDetectedObject>()).Where(item => item != null)
+                .GroupBy(item => item.Number)
+                .Select(group => group.First()))
+            {
+                List<RectangleF> normalizedRegions = selectedRegions
+                    .Select(region => RectangleF.FromLTRB(
+                        ClampUnit((float)region.Left),
+                        ClampUnit((float)region.Top),
+                        ClampUnit((float)region.Right),
+                        ClampUnit((float)region.Bottom)))
+                    .Where(region => region.Width > 0 && region.Height > 0)
+                    .ToList();
+                if (normalizedRegions.Count == 0)
+                {
+                    continue;
+                }
                 workItems.Add(new ObjectDetectionInspectionRegionWorkItem
                 {
-                    Region = region,
+                    GroupId = roiGroup.Id,
+                    Regions = selectedRegions,
                     DetectedObject = detectedObject,
-                    NormalizedRegion = normalized
+                    NormalizedRegions = normalizedRegions
                 });
             }
             if (workItems.Count == 0)
             {
-                error = "ROI 組「" + roiGroup.DisplayName + "」沒有指定獨立 ROI，沒有開始運算。";
+                error = "沒有已找到的物件可供套用 ROI 組「" + roiGroup.DisplayName + "」。";
                 return false;
             }
             return true;
@@ -1047,6 +1061,14 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
+        private static string CreateObjectDetectionRoiGroupObjectKey(
+            string roiGroupId,
+            int objectNumber)
+        {
+            return (roiGroupId ?? string.Empty) + ":" +
+                objectNumber.ToString(CultureInfo.InvariantCulture);
+        }
+
         private static string CreateObjectDetectionRoiGroupSignature(
             ObjectDetectionParameterSettings parameter,
             string roiGroupId)
@@ -1075,7 +1097,6 @@ namespace IntegratedImageProcessingApp.Forms
                                 : string.Join(":", new[]
                                 {
                                     id,
-                                    region.ObjectNumber.ToString(CultureInfo.InvariantCulture),
                                     region.Left.ToString("R", CultureInfo.InvariantCulture),
                                     region.Top.ToString("R", CultureInfo.InvariantCulture),
                                     region.Right.ToString("R", CultureInfo.InvariantCulture),
@@ -1100,7 +1121,7 @@ namespace IntegratedImageProcessingApp.Forms
             var group = new GroupBox
             {
                 Dock = DockStyle.Top,
-                Height = 188,
+                Height = 214,
                 Text = "檢測範圍",
                 Padding = new Padding(8, 18, 8, 6)
             };
@@ -1108,12 +1129,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 4,
+                RowCount = 5,
                 Margin = Padding.Empty,
                 Padding = Padding.Empty
             };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -1132,10 +1154,35 @@ namespace IntegratedImageProcessingApp.Forms
                 LoadObjectDetectionInspectionRegionForEditing(parameter);
             };
 
+            var nameRow = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
+            };
+            nameRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 84));
+            nameRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            var nameLabel = new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "ROI 名稱",
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = Padding.Empty
+            };
+            objectDetectionDefectRegionNameTextBox = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                MaxLength = 64,
+                Margin = new Padding(0, 1, 0, 1)
+            };
+            nameRow.Controls.Add(nameLabel, 0, 0);
+            nameRow.Controls.Add(objectDetectionDefectRegionNameTextBox, 1, 0);
             var instruction = new Label
             {
                 Dock = DockStyle.Fill,
-                Text = "選擇既有 ROI 可編輯；選「新增 ROI」後框選新的獨立區域。",
+                Text = "名稱需唯一；ROI 會依各物件框的位置與比例套用到所有物件。",
                 TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(75, 83, 95)
             };
@@ -1199,9 +1246,10 @@ namespace IntegratedImageProcessingApp.Forms
                 ForeColor = Color.FromArgb(75, 83, 95)
             };
             layout.Controls.Add(objectDetectionDefectRegionRoiSelector, 0, 0);
-            layout.Controls.Add(instruction, 0, 1);
-            layout.Controls.Add(buttons, 0, 2);
-            layout.Controls.Add(objectDetectionDefectRegionStatusLabel, 0, 3);
+            layout.Controls.Add(nameRow, 0, 1);
+            layout.Controls.Add(instruction, 0, 2);
+            layout.Controls.Add(buttons, 0, 3);
+            layout.Controls.Add(objectDetectionDefectRegionStatusLabel, 0, 4);
             group.Controls.Add(layout);
 
             RefreshObjectDetectionInspectionRegionSelector(parameter, string.Empty);
@@ -1236,13 +1284,11 @@ namespace IntegratedImageProcessingApp.Forms
                         .Where(region => region != null &&
                             string.Equals(region.ObjectDefinitionId,
                                 parameter.ObjectDefinitionId, StringComparison.Ordinal))
-                        .OrderBy(region => region.ObjectNumber)
-                        .ThenBy(region => region.DisplayName, StringComparer.CurrentCulture))
+                        .OrderBy(region => region.DisplayName, StringComparer.CurrentCulture))
                     {
                         selector.Items.Add(new ObjectDetectionInspectionRegionChoice(
                             region.Id,
-                            region.DisplayName + "（物件 " +
-                                region.ObjectNumber.ToString(CultureInfo.CurrentCulture) + "）"));
+                            region.DisplayName));
                     }
                 }
                 ObjectDetectionInspectionRegionChoice selected = selector.Items
@@ -1290,30 +1336,40 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 objectDetectionDefectRegionDraftRoiId = string.Empty;
                 objectDetectionDefectRegionDraftConfigured = false;
+                if (objectDetectionDefectRegionNameTextBox != null)
+                {
+                    objectDetectionDefectRegionNameTextBox.Text =
+                        GetNextObjectDetectionInspectionRegionName(parameter);
+                }
                 UpdateObjectDetectionDefectInspectionRegionControls(parameter);
                 InvalidateObjectDetectionDefectRegionDisplay();
                 return;
             }
 
             ObjectDefinitionDetectedObject owner;
-            if (!TryGetObjectDetectionObjectByNumber(
-                parameter,
-                selectedRegion.ObjectNumber,
-                out owner))
+            if (!TryGetSelectedObjectDetectionObject(out owner) &&
+                !TryGetObjectDetectionObjectByNumber(
+                    parameter,
+                    selectedRegion.ReferenceObjectNumber,
+                    out owner) &&
+                !TryGetFirstObjectDetectionObject(parameter, out owner))
             {
-                SetObjectDetectionDefectRegionStatus(
-                    selectedRegion.DisplayName + " 的所屬物件目前不存在；請重新執行物件定義。 ");
+                SetObjectDetectionDefectRegionStatus("目前沒有已找到的物件可供編輯共用 ROI。 ");
                 return;
             }
             objectDetectionDefectRegionDraftParameterId = parameter.Id;
             objectDetectionDefectRegionDraftRoiId = selectedRegion.Id;
-            objectDetectionDefectRegionDraftObjectNumber = selectedRegion.ObjectNumber;
+            objectDetectionDefectRegionDraftObjectNumber = owner.Number;
             objectDetectionDefectRegionDraft = RectangleF.FromLTRB(
                 ClampUnit((float)selectedRegion.Left),
                 ClampUnit((float)selectedRegion.Top),
                 ClampUnit((float)selectedRegion.Right),
                 ClampUnit((float)selectedRegion.Bottom));
             objectDetectionDefectRegionDraftConfigured = true;
+            if (objectDetectionDefectRegionNameTextBox != null)
+            {
+                objectDetectionDefectRegionNameTextBox.Text = selectedRegion.DisplayName;
+            }
             FocusObjectDetectionImage(owner.Bounds);
             UpdateObjectDetectionDefectInspectionRegionControls(parameter);
             InvalidateObjectDetectionDefectRegionDisplay();
@@ -1343,6 +1399,56 @@ namespace IntegratedImageProcessingApp.Forms
             detectedObject = SnapshotCompletedObjectDefinitionObjects(definition, signature)
                 .FirstOrDefault(item => item != null && item.Number == objectNumber);
             return detectedObject != null;
+        }
+
+        private bool TryGetFirstObjectDetectionObject(
+            ObjectDetectionParameterSettings parameter,
+            out ObjectDefinitionDetectedObject detectedObject)
+        {
+            detectedObject = GetObjectDetectionObjectsForParameter(parameter)
+                .FirstOrDefault(item => item != null);
+            return detectedObject != null;
+        }
+
+        private List<ObjectDefinitionDetectedObject> GetObjectDetectionObjectsForParameter(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (parameter == null || string.IsNullOrWhiteSpace(parameter.ObjectDefinitionId))
+            {
+                return new List<ObjectDefinitionDetectedObject>();
+            }
+            ObjectDefinitionSettings definition = FindObjectDefinition(parameter.ObjectDefinitionId);
+            if (definition == null)
+            {
+                return new List<ObjectDefinitionDetectedObject>();
+            }
+            string signature = CreateObjectDefinitionProcessingSignature(definition);
+            return !HasCompletedObjectDefinitionResult(definition, signature)
+                ? new List<ObjectDefinitionDetectedObject>()
+                : SnapshotCompletedObjectDefinitionObjects(definition, signature)
+                    .Where(item => item != null)
+                    .ToList();
+        }
+
+        private static string GetNextObjectDetectionInspectionRegionName(
+            ObjectDetectionParameterSettings parameter)
+        {
+            List<ObjectDetectionInspectionRegionSettings> regions = parameter == null
+                ? new List<ObjectDetectionInspectionRegionSettings>()
+                : parameter.DefectInspectionRegions ??
+                    new List<ObjectDetectionInspectionRegionSettings>();
+            int suffix = 1;
+            string name;
+            do
+            {
+                name = "ROI " + suffix.ToString(CultureInfo.InvariantCulture);
+                suffix++;
+            }
+            while (regions.Any(region => region != null && string.Equals(
+                region.DisplayName,
+                name,
+                StringComparison.OrdinalIgnoreCase)));
+            return name;
         }
 
         private bool TryGetObjectDetectionDefectRegionInteractionObject(
@@ -1461,24 +1567,30 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDefinitionDetectedObject selectedObject = null;
             if (selectedRegion != null)
             {
-                if (!TryGetObjectDetectionObjectByNumber(
-                    parameter,
-                    selectedRegion.ObjectNumber,
-                    out selectedObject))
+                if (!TryGetSelectedObjectDetectionObject(out selectedObject) &&
+                    !TryGetObjectDetectionObjectByNumber(
+                        parameter,
+                        selectedRegion.ReferenceObjectNumber,
+                        out selectedObject) &&
+                    !TryGetFirstObjectDetectionObject(parameter, out selectedObject))
                 {
                     SetObjectDetectionDefectRegionStatus(
-                        "所選 ROI 的所屬物件目前不存在；請先重新執行物件定義。 ");
+                        "目前沒有已找到的物件可供編輯共用 ROI。 ");
                     return;
                 }
                 objectDetectionDefectRegionDraftParameterId = parameter.Id;
                 objectDetectionDefectRegionDraftRoiId = selectedRegion.Id;
-                objectDetectionDefectRegionDraftObjectNumber = selectedRegion.ObjectNumber;
+                objectDetectionDefectRegionDraftObjectNumber = selectedObject.Number;
                 objectDetectionDefectRegionDraft = RectangleF.FromLTRB(
                     ClampUnit((float)selectedRegion.Left),
                     ClampUnit((float)selectedRegion.Top),
                     ClampUnit((float)selectedRegion.Right),
                     ClampUnit((float)selectedRegion.Bottom));
                 objectDetectionDefectRegionDraftConfigured = true;
+                if (objectDetectionDefectRegionNameTextBox != null)
+                {
+                    objectDetectionDefectRegionNameTextBox.Text = selectedRegion.DisplayName;
+                }
             }
             else
             {
@@ -1492,6 +1604,11 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionDefectRegionDraftParameterId = parameter.Id;
                 objectDetectionDefectRegionDraftObjectNumber = selectedObject.Number;
                 objectDetectionDefectRegionDraft = RectangleF.Empty;
+                if (objectDetectionDefectRegionNameTextBox != null)
+                {
+                    objectDetectionDefectRegionNameTextBox.Text =
+                        GetNextObjectDetectionInspectionRegionName(parameter);
+                }
             }
 
             if (IsImageDisplayUpdateSuppressed)
@@ -1528,8 +1645,8 @@ namespace IntegratedImageProcessingApp.Forms
             objectDetectionDefectRegionDrawButton.Text = "停止框選";
             UpdateObjectDetectionDefectInspectionRegionControls(parameter);
             SetObjectDetectionDefectRegionStatus(selectedRegion == null
-                ? "物件 " + selectedObject.Number.ToString(CultureInfo.InvariantCulture) +
-                    "：Ctrl 拖曳新增 ROI；放開後按「套用」。"
+                ? "以物件 " + selectedObject.Number.ToString(CultureInfo.InvariantCulture) +
+                    " 為參考：Ctrl 拖曳新增共用 ROI；放開後命名並套用。"
                 : selectedRegion.DisplayName + "：Ctrl 拖曳可調整位置或框線；放開後按「套用」。");
             InvalidateObjectDetectionDefectRegionDisplay();
         }
@@ -1554,6 +1671,16 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            string displayName = objectDetectionDefectRegionNameTextBox == null
+                ? string.Empty
+                : objectDetectionDefectRegionNameTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                SetObjectDetectionDefectRegionStatus("請輸入檢測 ROI 名稱；名稱不可空白。 ");
+                objectDetectionDefectRegionNameTextBox?.Focus();
+                return;
+            }
+
             parameter.DefectInspectionRegions = parameter.DefectInspectionRegions ??
                 new List<ObjectDetectionInspectionRegionSettings>();
             ObjectDetectionInspectionRegionSettings region = parameter.DefectInspectionRegions
@@ -1561,17 +1688,37 @@ namespace IntegratedImageProcessingApp.Forms
                     !string.IsNullOrWhiteSpace(objectDetectionDefectRegionDraftRoiId) &&
                     string.Equals(item.Id, objectDetectionDefectRegionDraftRoiId,
                         StringComparison.Ordinal));
+            bool geometryChanged = region != null &&
+                (!string.Equals(region.ObjectDefinitionId, parameter.ObjectDefinitionId,
+                    StringComparison.Ordinal) ||
+                region.Left != objectDetectionDefectRegionDraft.Left ||
+                region.Top != objectDetectionDefectRegionDraft.Top ||
+                region.Right != objectDetectionDefectRegionDraft.Right ||
+                region.Bottom != objectDetectionDefectRegionDraft.Bottom);
+            if (parameter.DefectInspectionRegions.Any(item => item != null &&
+                (region == null || !string.Equals(item.Id, region.Id, StringComparison.Ordinal)) &&
+                string.Equals(item.DisplayName?.Trim(), displayName,
+                    StringComparison.OrdinalIgnoreCase)))
+            {
+                SetObjectDetectionDefectRegionStatus(
+                    "檢測 ROI 名稱「" + displayName + "」已存在；請使用唯一名稱。 ");
+                objectDetectionDefectRegionNameTextBox?.Focus();
+                objectDetectionDefectRegionNameTextBox?.SelectAll();
+                return;
+            }
             if (region == null)
             {
                 region = new ObjectDetectionInspectionRegionSettings
                 {
-                    DisplayName = "ROI " + (parameter.DefectInspectionRegions.Count + 1)
-                        .ToString(CultureInfo.InvariantCulture)
+                    DisplayName = displayName
                 };
                 parameter.DefectInspectionRegions.Add(region);
             }
+            region.DisplayName = displayName;
             region.ObjectDefinitionId = parameter.ObjectDefinitionId;
             region.ObjectNumber = objectDetectionDefectRegionDraftObjectNumber;
+            region.ReferenceObjectNumber = objectDetectionDefectRegionDraftObjectNumber;
+            region.SharedAcrossObjects = true;
             region.Left = objectDetectionDefectRegionDraft.Left;
             region.Top = objectDetectionDefectRegionDraft.Top;
             region.Right = objectDetectionDefectRegionDraft.Right;
@@ -1601,9 +1748,20 @@ namespace IntegratedImageProcessingApp.Forms
             RefreshObjectDetectionDefectRoiGroupManager(
                 parameter,
                 GetSelectedObjectDetectionRoiGroup(parameter)?.Id);
-            InvalidateObjectDetectionDefectRegionResults(parameter);
+            if (geometryChanged)
+            {
+                foreach (ObjectDetectionRoiGroupSettings affectedGroup in
+                    (parameter.DefectInspectionRoiGroups ??
+                        new List<ObjectDetectionRoiGroupSettings>())
+                    .Where(group => group != null && group.RoiIds != null &&
+                        group.RoiIds.Contains(region.Id, StringComparer.Ordinal))
+                    .ToList())
+                {
+                    InvalidateObjectDetectionDefectRoiGroupResults(parameter, affectedGroup.Id);
+                }
+            }
             SetObjectDetectionDefectRegionStatus(
-                "已保存獨立 ROI「" + region.DisplayName + "」；請在 ROI 組中勾選它供檢測條件使用。");
+                "已保存共用 ROI「" + region.DisplayName + "」；會套用到所有已找到物件，並可加入 ROI 組。 ");
             UpdateObjectDetectionDefectInspectionRegionControls(parameter);
             InvalidateObjectDetectionDefectRegionDisplay();
             if (statusLabel != null)
@@ -1636,7 +1794,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (selectedRegion != null &&
                 MessageBox.Show(
                     this,
-                    "確定刪除獨立 ROI「" + selectedRegion.DisplayName + "」嗎？它也會從所有 ROI 組中移除。",
+                    "確定刪除共用 ROI「" + selectedRegion.DisplayName + "」嗎？它也會從所有範圍組中移除。",
                     "刪除檢測 ROI",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question) != DialogResult.Yes)
@@ -1670,7 +1828,7 @@ namespace IntegratedImageProcessingApp.Forms
             UpdateObjectDetectionDefectInspectionRegionControls(parameter);
             SetObjectDetectionDefectRegionStatus(selectedRegion == null
                 ? "目前沒有選取 ROI。"
-                : "已刪除獨立 ROI，並從相關 ROI 組移除。");
+                : "已刪除共用 ROI，並從相關範圍組移除。");
             InvalidateObjectDetectionDefectRegionDisplay();
         }
 
@@ -1940,6 +2098,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string draftRoiId = objectDetectionDefectRegionDraftRoiId ?? string.Empty;
+            List<ObjectDefinitionDetectedObject> inspectionObjects =
+                GetObjectDetectionObjectsForParameter(parameter);
             foreach (ObjectDetectionInspectionRegionSettings region in
                 parameter.DefectInspectionRegions ??
                     new List<ObjectDetectionInspectionRegionSettings>())
@@ -1948,24 +2108,22 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     continue;
                 }
-                ObjectDefinitionDetectedObject owner;
-                if (!TryGetObjectDetectionObjectByNumber(parameter, region.ObjectNumber, out owner))
-                {
-                    continue;
-                }
                 RectangleF savedRegion = RectangleF.FromLTRB(
                     ClampUnit((float)region.Left),
                     ClampUnit((float)region.Top),
                     ClampUnit((float)region.Right),
                     ClampUnit((float)region.Bottom));
-                DrawObjectDetectionInspectionRegion(
-                    e.Graphics,
-                    owner,
-                    savedRegion,
-                    e.Zoom,
-                    e.Offset,
-                    Color.FromArgb(42, 0, 150, 220),
-                    Color.DeepSkyBlue);
+                foreach (ObjectDefinitionDetectedObject inspectionObject in inspectionObjects)
+                {
+                    DrawObjectDetectionInspectionRegion(
+                        e.Graphics,
+                        inspectionObject,
+                        savedRegion,
+                        e.Zoom,
+                        e.Offset,
+                        Color.FromArgb(42, 0, 150, 220),
+                        Color.DeepSkyBlue);
+                }
             }
 
             ObjectDefinitionDetectedObject draftObject;
@@ -2008,16 +2166,17 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            PointF[] imageCorners = CreateObjectDetectionDefectRegionImageCorners(
-                draftObject,
-                normalizedRegion);
-            DrawObjectDetectionInspectionRegionPolygon(
-                e.Graphics,
-                imageCorners,
-                e.Zoom,
-                e.Offset,
-                Color.FromArgb(48, 255, 166, 0),
-                Color.DarkOrange);
+            foreach (ObjectDefinitionDetectedObject inspectionObject in inspectionObjects)
+            {
+                DrawObjectDetectionInspectionRegion(
+                    e.Graphics,
+                    inspectionObject,
+                    normalizedRegion,
+                    e.Zoom,
+                    e.Offset,
+                    Color.FromArgb(48, 255, 166, 0),
+                    Color.DarkOrange);
+            }
         }
 
         private static void DrawObjectDetectionInspectionRegion(
@@ -2108,8 +2267,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             ObjectDetectionInspectionRegionSettings selectedRegion =
                 GetSelectedObjectDetectionInspectionRegion(parameter);
-            if (selectedRegion == null || selectedRegion.ObjectNumber != selectedObject.Number ||
-                !string.Equals(selectedRegion.ObjectDefinitionId,
+            if (selectedRegion == null || !string.Equals(selectedRegion.ObjectDefinitionId,
                     parameter.ObjectDefinitionId, StringComparison.Ordinal))
             {
                 return false;
@@ -2343,11 +2501,7 @@ namespace IntegratedImageProcessingApp.Forms
                 out ObjectDefinitionDetectedObject selectedObject);
             ObjectDetectionInspectionRegionSettings selectedRegion =
                 GetSelectedObjectDetectionInspectionRegion(parameter);
-            bool hasSelectedRegionOwner = selectedRegion != null &&
-                TryGetObjectDetectionObjectByNumber(
-                    parameter,
-                    selectedRegion.ObjectNumber,
-                    out ObjectDefinitionDetectedObject selectedRegionOwner);
+            bool hasAnyObjects = GetObjectDetectionObjectsForParameter(parameter).Count > 0;
             bool sourceMatches = parameter != null && !string.IsNullOrWhiteSpace(
                 parameter.ObjectDefinitionId);
             int regionCount = parameter == null || parameter.DefectInspectionRegions == null
@@ -2358,7 +2512,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDetectionDefectRegionDrawButton != null)
             {
                 objectDetectionDefectRegionDrawButton.Enabled = parameter != null &&
-                    (hasSelectedObject || hasSelectedRegionOwner);
+                    (hasSelectedObject || hasAnyObjects);
                 objectDetectionDefectRegionDrawButton.Text = objectDetectionDefectRegionDrawMode
                     ? "停止框選"
                     : "框選 ROI";
@@ -2403,35 +2557,29 @@ namespace IntegratedImageProcessingApp.Forms
                 RectangleF region = objectDetectionDefectRegionDraft;
                 objectDetectionDefectRegionStatusLabel.Text =
                     (string.IsNullOrWhiteSpace(objectDetectionDefectRegionDraftRoiId)
-                        ? "新增 ROI／物件 "
-                        : "編輯 ROI／物件 ") +
+                        ? "新增共用 ROI／參考物件 "
+                        : "編輯共用 ROI／參考物件 ") +
                     objectDetectionDefectRegionDraftObjectNumber.ToString(CultureInfo.InvariantCulture) +
                     "；X " + (region.Left * 100f).ToString("0.0", CultureInfo.CurrentCulture) +
                     "%，Y " + (region.Top * 100f).ToString("0.0", CultureInfo.CurrentCulture) +
                     "%，寬 " + (region.Width * 100f).ToString("0.0", CultureInfo.CurrentCulture) +
                     "%，高 " + (region.Height * 100f).ToString("0.0", CultureInfo.CurrentCulture) + "%。";
             }
-            else if (selectedRegion != null && !hasSelectedRegionOwner)
-            {
-                objectDetectionDefectRegionStatusLabel.Text =
-                    "所選 ROI 的所屬物件目前不存在；請重新執行物件定義。";
-            }
             else if (selectedRegion != null)
             {
                 objectDetectionDefectRegionStatusLabel.Text =
-                    "已選取「" + selectedRegion.DisplayName + "」，所屬物件 " +
-                    selectedRegion.ObjectNumber.ToString(CultureInfo.CurrentCulture) +
-                    "。可編輯後按套用，或在 ROI 組勾選使用。";
+                    "已選取共用 ROI「" + selectedRegion.DisplayName +
+                    "」，套用於所有已找到物件；可編輯後按套用，或在範圍組中勾選使用。";
             }
-            else if (!hasSelectedObject)
+            else if (!hasSelectedObject && !hasAnyObjects)
             {
-                objectDetectionDefectRegionStatusLabel.Text = "請先選擇已找到的物件序號。";
+                objectDetectionDefectRegionStatusLabel.Text = "請先完成物件定義，找出可套用 ROI 的物件。";
             }
             else if (regionCount > 0)
             {
                 objectDetectionDefectRegionStatusLabel.Text = "已建立 " +
                     regionCount.ToString(CultureInfo.CurrentCulture) +
-                    " 個獨立 ROI；選 ROI 組勾選要使用的範圍。";
+                    " 個共用 ROI；每個定義會套用到所有已找到物件。";
             }
             else
             {

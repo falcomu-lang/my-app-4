@@ -1570,9 +1570,12 @@ namespace IntegratedImageProcessingApp.Forms
                     .Select(workItem => new
                     {
                         WorkItem = workItem,
+                        RegionNames = string.Join("、", workItem.Regions
+                            .Select(region => region.DisplayName)
+                            .Distinct(StringComparer.CurrentCulture)),
                         RegionSize = GetObjectDetectionFrequencyRegionSize(
                             workItem.DetectedObject,
-                            workItem.NormalizedRegion)
+                            workItem.NormalizedRegions)
                     })
                     .Where(item => item.RegionSize.Width < scanHeight ||
                         item.RegionSize.Height < scanHeight)
@@ -1581,7 +1584,7 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     string objectList = string.Join("、", undersizedObjects
                         .Take(5)
-                        .Select(item => item.WorkItem.Region.DisplayName + "（物件 " +
+                        .Select(item => item.RegionNames + "（物件 " +
                             item.WorkItem.DetectedObject.Number.ToString(CultureInfo.CurrentCulture) + "）" +
                             " (" + item.RegionSize.Width.ToString(CultureInfo.CurrentCulture) + " × " +
                             item.RegionSize.Height.ToString(CultureInfo.CurrentCulture) + " px)"));
@@ -1842,7 +1845,7 @@ namespace IntegratedImageProcessingApp.Forms
             CancellationToken cancellationToken)
         {
             var cellsByRoiIndex = new List<ObjectDetectionFrequencyCell>[roiWorkItems.Count];
-            var polygonsByRoiIndex = new PointF[roiWorkItems.Count][];
+            var polygonsByRoiIndex = new PointF[roiWorkItems.Count][][];
             var processedPatchesByRoiIndex = new ObjectDetectionDefectProcessedPatch[roiWorkItems.Count];
             long cellLoopElapsedTicks = 0;
             long previewGenerationElapsedTicks = 0;
@@ -1852,23 +1855,38 @@ namespace IntegratedImageProcessingApp.Forms
                 cancellationToken.ThrowIfCancellationRequested();
                 ObjectDetectionInspectionRegionWorkItem workItem = roiWorkItems[roiIndex];
                 ObjectDefinitionDetectedObject detectedObject = workItem.DetectedObject;
-                RectangleF normalizedRegion = workItem.NormalizedRegion;
                 ObjectDetectionMeasurementFrame frame =
                     CreateObjectDetectionMeasurementFrame(detectedObject);
-                float localRegionLeft = (normalizedRegion.Left - 0.5f) * frame.Width;
-                float localRegionTop = (normalizedRegion.Top - 0.5f) * frame.Height;
-                int regionWidth = Math.Max(0, (int)Math.Floor(normalizedRegion.Width * frame.Width));
-                int regionHeight = Math.Max(0, (int)Math.Floor(normalizedRegion.Height * frame.Height));
-                PointF[] corners = CreateObjectDetectionDefectRegionImageCorners(
-                    detectedObject,
-                    normalizedRegion);
+                RectangleF[] localRegions = workItem.NormalizedRegions
+                    .Select(region => new RectangleF(
+                        (region.Left - 0.5f) * frame.Width,
+                        (region.Top - 0.5f) * frame.Height,
+                        region.Width * frame.Width,
+                        region.Height * frame.Height))
+                    .ToArray();
+                float unionLocalLeft = localRegions.Min(region => region.Left);
+                float unionLocalTop = localRegions.Min(region => region.Top);
+                float unionLocalRight = localRegions.Max(region => region.Right);
+                float unionLocalBottom = localRegions.Max(region => region.Bottom);
+                float localRegionLeft = (float)Math.Floor(unionLocalLeft);
+                float localRegionTop = (float)Math.Floor(unionLocalTop);
+                int regionWidth = Math.Max(0, (int)Math.Ceiling(unionLocalRight) -
+                    (int)localRegionLeft);
+                int regionHeight = Math.Max(0, (int)Math.Ceiling(unionLocalBottom) -
+                    (int)localRegionTop);
+                PointF[][] corners = workItem.NormalizedRegions
+                    .Select(region => CreateObjectDetectionDefectRegionImageCorners(
+                        detectedObject,
+                        region))
+                    .ToArray();
                 var objectCells = new List<ObjectDetectionFrequencyCell>();
                 cellsByRoiIndex[roiIndex] = objectCells;
                 polygonsByRoiIndex[roiIndex] = corners;
-                int left = (int)Math.Floor(corners.Min(point => point.X));
-                int top = (int)Math.Floor(corners.Min(point => point.Y));
-                int right = (int)Math.Ceiling(corners.Max(point => point.X));
-                int bottom = (int)Math.Ceiling(corners.Max(point => point.Y));
+                IEnumerable<PointF> allCorners = corners.SelectMany(polygon => polygon);
+                int left = (int)Math.Floor(allCorners.Min(point => point.X));
+                int top = (int)Math.Floor(allCorners.Min(point => point.Y));
+                int right = (int)Math.Ceiling(allCorners.Max(point => point.X));
+                int bottom = (int)Math.Ceiling(allCorners.Max(point => point.Y));
                 Rectangle crop = Rectangle.Intersect(
                     Rectangle.FromLTRB(left, top, right, bottom),
                     imageBounds);
@@ -1910,13 +1928,16 @@ namespace IntegratedImageProcessingApp.Forms
                     processedPatchesByRoiIndex[roiIndex] = new ObjectDetectionDefectProcessedPatch
                     {
                         Bounds = crop,
-                        InspectionPolygon = corners.ToArray(),
+                        InspectionPolygons = corners,
                         ProcessedImage = processedPreview
                     };
-                    Cv.Point[] polygon = corners.Select(point => new Cv.Point(
-                        (int)Math.Round(point.X - crop.X),
-                        (int)Math.Round(point.Y - crop.Y))).ToArray();
-                    Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
+                    foreach (PointF[] regionCorners in corners)
+                    {
+                        Cv.Point[] polygon = regionCorners.Select(point => new Cv.Point(
+                            (int)Math.Round(point.X - crop.X),
+                            (int)Math.Round(point.Y - crop.Y))).ToArray();
+                        Cv.Cv2.FillPoly(polygonMask, new[] { polygon }, Cv.Scalar.White);
+                    }
                     Cv.Cv2.WarpAffine(
                         analysisGray,
                         rectifiedGray,
@@ -1993,7 +2014,9 @@ namespace IntegratedImageProcessingApp.Forms
                                 }
                                 objectCells.Add(new ObjectDetectionFrequencyCell
                                 {
-                                    RoiId = workItem.Region.Id,
+                                    RoiId = CreateObjectDetectionRoiGroupObjectKey(
+                                        workItem.GroupId,
+                                        detectedObject.Number),
                                     ObjectNumber = detectedObject.Number,
                                     Bounds = cellBounds,
                                     ValidBounds = validBounds,
@@ -2084,7 +2107,7 @@ namespace IntegratedImageProcessingApp.Forms
                     objectPolygons = new List<PointF[]>();
                     result.ObjectPolygons.Add(objectNumber, objectPolygons);
                 }
-                objectPolygons.Add(polygonsByRoiIndex[roiIndex]);
+                objectPolygons.AddRange(polygonsByRoiIndex[roiIndex]);
                 List<ObjectDetectionFrequencyCell> cellsForObject;
                 if (!result.CellsByObject.TryGetValue(objectNumber, out cellsForObject))
                 {
@@ -2432,13 +2455,21 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static Size GetObjectDetectionFrequencyRegionSize(
             ObjectDefinitionDetectedObject detectedObject,
-            RectangleF normalizedRegion)
+            IList<RectangleF> normalizedRegions)
         {
             ObjectDetectionMeasurementFrame frame =
                 CreateObjectDetectionMeasurementFrame(detectedObject);
+            if (normalizedRegions == null || normalizedRegions.Count == 0)
+            {
+                return Size.Empty;
+            }
+            float width = normalizedRegions.Max(region => region.Right) -
+                normalizedRegions.Min(region => region.Left);
+            float height = normalizedRegions.Max(region => region.Bottom) -
+                normalizedRegions.Min(region => region.Top);
             return new Size(
-                Math.Max(0, (int)Math.Floor(normalizedRegion.Width * frame.Width)),
-                Math.Max(0, (int)Math.Floor(normalizedRegion.Height * frame.Height)));
+                Math.Max(0, (int)Math.Floor(width * frame.Width)),
+                Math.Max(0, (int)Math.Floor(height * frame.Height)));
         }
 
         private static Cv.Mat CreateObjectDetectionFrequencyAffineTransform(
@@ -2895,14 +2926,21 @@ namespace IntegratedImageProcessingApp.Forms
                     GraphicsState patchState = graphics.Save();
                     try
                     {
-                        if (patch.InspectionPolygon != null && patch.InspectionPolygon.Length >= 3)
+                        if (patch.InspectionPolygons != null && patch.InspectionPolygons.Length > 0)
                         {
-                            PointF[] screenPolygon = patch.InspectionPolygon.Select(point => new PointF(
-                                offset.X + point.X * zoom,
-                                offset.Y + point.Y * zoom)).ToArray();
-                            using (var clip = new GraphicsPath())
+                            using (var clip = new GraphicsPath(FillMode.Winding))
                             {
-                                clip.AddPolygon(screenPolygon);
+                                foreach (PointF[] polygon in patch.InspectionPolygons)
+                                {
+                                    if (polygon == null || polygon.Length < 3)
+                                    {
+                                        continue;
+                                    }
+                                    PointF[] screenPolygon = polygon.Select(point => new PointF(
+                                        offset.X + point.X * zoom,
+                                        offset.Y + point.Y * zoom)).ToArray();
+                                    clip.AddPolygon(screenPolygon);
+                                }
                                 graphics.SetClip(clip, CombineMode.Intersect);
                             }
                         }

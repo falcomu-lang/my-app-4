@@ -1477,7 +1477,11 @@ namespace IntegratedImageProcessingApp.Services
                         ? "ROI " + (regionIndex + 1).ToString(CultureInfo.InvariantCulture)
                         : region.DisplayName.Trim();
                     region.ObjectDefinitionId = region.ObjectDefinitionId ?? string.Empty;
-                    region.ObjectNumber = Math.Max(0, region.ObjectNumber);
+                    region.ReferenceObjectNumber = Math.Max(0,
+                        region.ReferenceObjectNumber > 0
+                            ? region.ReferenceObjectNumber
+                            : region.ObjectNumber);
+                    region.ObjectNumber = region.ReferenceObjectNumber;
                     region.Left = ClampUnit(region.Left);
                     region.Top = ClampUnit(region.Top);
                     region.Right = ClampUnit(region.Right);
@@ -1511,6 +1515,7 @@ namespace IntegratedImageProcessingApp.Services
                         .ToList();
                 }
                 MigrateLegacyObjectDetectionInspectionRegions(parameter);
+                NormalizeSharedObjectDetectionInspectionRegions(parameter);
                 if (parameter.DefectDetectionCores == null)
                 {
                     parameter.DefectDetectionCores = new List<ObjectDetectionDefectCoreSettings>();
@@ -2263,6 +2268,16 @@ namespace IntegratedImageProcessingApp.Services
                     DisplayName = GetValue(sections, SectionObjectDetection, prefix + ".DisplayName", string.Empty),
                     ObjectDefinitionId = GetValue(sections, SectionObjectDetection, prefix + ".ObjectDefinitionId", string.Empty),
                     ObjectNumber = GetInt(sections, SectionObjectDetection, prefix + ".ObjectNumber", 0),
+                    ReferenceObjectNumber = GetInt(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".ReferenceObjectNumber",
+                        GetInt(sections, SectionObjectDetection, prefix + ".ObjectNumber", 0)),
+                    SharedAcrossObjects = GetBool(
+                        sections,
+                        SectionObjectDetection,
+                        prefix + ".SharedAcrossObjects",
+                        false),
                     Left = GetDouble(sections, SectionObjectDetection, prefix + ".Left", 0),
                     Top = GetDouble(sections, SectionObjectDetection, prefix + ".Top", 0),
                     Right = GetDouble(sections, SectionObjectDetection, prefix + ".Right", 1),
@@ -2318,7 +2333,9 @@ namespace IntegratedImageProcessingApp.Services
                 writer.WriteLine("{0}.Id={1}", prefix, Escape(region.Id));
                 writer.WriteLine("{0}.DisplayName={1}", prefix, Escape(region.DisplayName));
                 writer.WriteLine("{0}.ObjectDefinitionId={1}", prefix, Escape(region.ObjectDefinitionId));
-                writer.WriteLine("{0}.ObjectNumber={1}", prefix, region.ObjectNumber.ToString(CultureInfo.InvariantCulture));
+                writer.WriteLine("{0}.ObjectNumber={1}", prefix, region.ReferenceObjectNumber.ToString(CultureInfo.InvariantCulture));
+                writer.WriteLine("{0}.ReferenceObjectNumber={1}", prefix, region.ReferenceObjectNumber.ToString(CultureInfo.InvariantCulture));
+                writer.WriteLine("{0}.SharedAcrossObjects={1}", prefix, region.SharedAcrossObjects ? "1" : "0");
                 writer.WriteLine("{0}.Left={1}", prefix, region.Left.ToString("R", CultureInfo.InvariantCulture));
                 writer.WriteLine("{0}.Top={1}", prefix, region.Top.ToString("R", CultureInfo.InvariantCulture));
                 writer.WriteLine("{0}.Right={1}", prefix, region.Right.ToString("R", CultureInfo.InvariantCulture));
@@ -2340,7 +2357,7 @@ namespace IntegratedImageProcessingApp.Services
             var groups = parameter.DefectInspectionRoiGroups ??
                 new List<ObjectDetectionRoiGroupSettings>();
             var legacyMembers = groups
-                .Where(group => group != null && group.RoiIds != null && group.RoiIds.Count == 0)
+                .Where(group => group != null)
                 .SelectMany(group => group.RoiObjectNumbers ?? new List<int>())
                 .Where(number => number > 0)
                 .Distinct()
@@ -2350,31 +2367,108 @@ namespace IntegratedImageProcessingApp.Services
                 legacyMembers.Add(parameter.DefectInspectionRegionReferenceObjectNumber);
             }
 
-            foreach (int objectNumber in legacyMembers)
+            var region = new ObjectDetectionInspectionRegionSettings
             {
-                var region = new ObjectDetectionInspectionRegionSettings
+                DisplayName = "ROI 1",
+                ObjectDefinitionId = parameter.DefectInspectionRegionObjectDefinitionId ?? string.Empty,
+                ObjectNumber = parameter.DefectInspectionRegionReferenceObjectNumber,
+                ReferenceObjectNumber = parameter.DefectInspectionRegionReferenceObjectNumber,
+                SharedAcrossObjects = true,
+                Left = ClampUnit(parameter.DefectInspectionRegionLeft),
+                Top = ClampUnit(parameter.DefectInspectionRegionTop),
+                Right = ClampUnit(parameter.DefectInspectionRegionRight),
+                Bottom = ClampUnit(parameter.DefectInspectionRegionBottom)
+            };
+            parameter.DefectInspectionRegions.Add(region);
+            foreach (ObjectDetectionRoiGroupSettings group in groups.Where(item => item != null))
+            {
+                bool hadLegacyMembers = (group.RoiObjectNumbers ?? new List<int>())
+                    .Any(legacyMembers.Contains);
+                if (hadLegacyMembers)
                 {
-                    DisplayName = "ROI 物件 " + objectNumber.ToString(CultureInfo.InvariantCulture),
-                    ObjectDefinitionId = parameter.DefectInspectionRegionObjectDefinitionId ?? string.Empty,
-                    ObjectNumber = objectNumber,
-                    Left = ClampUnit(parameter.DefectInspectionRegionLeft),
-                    Top = ClampUnit(parameter.DefectInspectionRegionTop),
-                    Right = ClampUnit(parameter.DefectInspectionRegionRight),
-                    Bottom = ClampUnit(parameter.DefectInspectionRegionBottom)
-                };
-                parameter.DefectInspectionRegions.Add(region);
-                foreach (ObjectDetectionRoiGroupSettings group in groups.Where(item => item != null &&
-                    (item.RoiObjectNumbers ?? new List<int>()).Contains(objectNumber)))
+                    group.RoiIds = new List<string> { region.Id };
+                }
+                group.RoiObjectNumbers = new List<int>();
+            }
+        }
+
+        private static void NormalizeSharedObjectDetectionInspectionRegions(
+            ObjectDetectionParameterSettings parameter)
+        {
+            if (parameter == null)
+            {
+                return;
+            }
+
+            List<ObjectDetectionInspectionRegionSettings> regions = parameter.DefectInspectionRegions ??
+                new List<ObjectDetectionInspectionRegionSettings>();
+            var legacyRegionsByGeometry = regions
+                .Where(region => region != null && !region.SharedAcrossObjects)
+                .GroupBy(region => string.Join("|", new[]
                 {
-                    group.RoiIds = group.RoiIds ?? new List<string>();
-                    group.RoiIds.Add(region.Id);
+                    region.ObjectDefinitionId ?? string.Empty,
+                    region.Left.ToString("R", CultureInfo.InvariantCulture),
+                    region.Top.ToString("R", CultureInfo.InvariantCulture),
+                    region.Right.ToString("R", CultureInfo.InvariantCulture),
+                    region.Bottom.ToString("R", CultureInfo.InvariantCulture)
+                }), StringComparer.Ordinal);
+            foreach (IGrouping<string, ObjectDetectionInspectionRegionSettings> geometryGroup in
+                legacyRegionsByGeometry)
+            {
+                List<ObjectDetectionInspectionRegionSettings> duplicates = geometryGroup.ToList();
+                if (duplicates.Count < 2)
+                {
+                    continue;
+                }
+
+                ObjectDetectionInspectionRegionSettings canonical = duplicates[0];
+                var duplicateIds = new HashSet<string>(duplicates.Skip(1)
+                    .Select(region => region.Id), StringComparer.Ordinal);
+                foreach (ObjectDetectionRoiGroupSettings group in
+                    parameter.DefectInspectionRoiGroups ?? new List<ObjectDetectionRoiGroupSettings>())
+                {
+                    if (group == null)
+                    {
+                        continue;
+                    }
+                    group.RoiIds = (group.RoiIds ?? new List<string>())
+                        .Select(id => duplicateIds.Contains(id) ? canonical.Id : id)
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
+                }
+                foreach (ObjectDetectionInspectionRegionSettings duplicate in duplicates.Skip(1))
+                {
+                    regions.Remove(duplicate);
                 }
             }
 
-            foreach (ObjectDetectionRoiGroupSettings group in groups.Where(item => item != null))
+            var uniqueNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int index = 0; index < regions.Count; index++)
             {
-                group.RoiObjectNumbers = new List<int>();
+                ObjectDetectionInspectionRegionSettings region = regions[index];
+                if (region == null)
+                {
+                    continue;
+                }
+                string baseName = string.IsNullOrWhiteSpace(region.DisplayName)
+                    ? "ROI " + (index + 1).ToString(CultureInfo.InvariantCulture)
+                    : region.DisplayName.Trim();
+                string name = baseName;
+                int suffix = 2;
+                while (!uniqueNames.Add(name))
+                {
+                    name = baseName + " (" + suffix.ToString(CultureInfo.InvariantCulture) + ")";
+                    suffix++;
+                }
+                region.DisplayName = name;
+                region.ReferenceObjectNumber = Math.Max(0,
+                    region.ReferenceObjectNumber > 0
+                        ? region.ReferenceObjectNumber
+                        : region.ObjectNumber);
+                region.ObjectNumber = region.ReferenceObjectNumber;
+                region.SharedAcrossObjects = true;
             }
+            parameter.DefectInspectionRegions = regions;
         }
 
         private static double ClampUnit(double value)
