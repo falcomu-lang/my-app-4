@@ -4,6 +4,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntegratedImageProcessingApp", "IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj", "{1B4C9F2C-2D76-4D49-A465-81378E2263F9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CameraCaptureModule", "CameraCaptureModule\CameraCaptureModule.csproj", "{7C2B790A-294E-4B18-95F4-C1B8D8FD9A55}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -14,6 +16,10 @@ Global
 		{1B4C9F2C-2D76-4D49-A465-81378E2263F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1B4C9F2C-2D76-4D49-A465-81378E2263F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1B4C9F2C-2D76-4D49-A465-81378E2263F9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7C2B790A-294E-4B18-95F4-C1B8D8FD9A55}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7C2B790A-294E-4B18-95F4-C1B8D8FD9A55}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7C2B790A-294E-4B18-95F4-C1B8D8FD9A55}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7C2B790A-294E-4B18-95F4-C1B8D8FD9A55}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

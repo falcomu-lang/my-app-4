@@ -15,7 +15,7 @@
     <Deterministic>true</Deterministic>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
@@ -26,7 +26,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
@@ -35,6 +35,15 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <LsiNativeDirectory Condition=" '$(LsiNativeDirectory)' == '' ">$(MSBuildProjectDirectory)\..\..\..\攝影機影像擷取\LSI8181\LSI8181\bin\x64\Release</LsiNativeDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\CameraCaptureModule\CameraCaptureModule.csproj">
+      <Project>{7C2B790A-294E-4B18-95F4-C1B8D8FD9A55}</Project>
+      <Name>CameraCaptureModule</Name>
+    </ProjectReference>
+  </ItemGroup>
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -68,6 +77,9 @@
   <ItemGroup>
     <Compile Include="Controls\BufferedRenderPanel.cs">
       <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Controls\CameraCaptureHostControl.cs">
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="Controls\ImageDisplayControl.cs">
       <SubType>UserControl</SubType>
@@ -253,6 +265,10 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="config\device-settings.ini">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(LsiNativeDirectory)\LSI8181_64.dll" Condition="Exists('$(LsiNativeDirectory)\LSI8181_64.dll')">
+      <Link>LSI8181_64.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

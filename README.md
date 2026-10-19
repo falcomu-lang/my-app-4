@@ -5,6 +5,7 @@
 ## 專案狀態
 
 - 文件快照：2026-10-19。
+- 線掃描取像已整合為獨立 `CameraCaptureModule`，嵌入「全域設定 → 與線掃描取像結合」；相機原有設定／波形等彈出視窗保留。完整取像影像事件介面已建立，但目前沒有接入任何檢測流程。
 - 目前程式基準為 `6c97e89`（`Narrow global camera settings panel`）；新增「全域設定」與獨立攝影機精度檔，並將精度輸入區縮至頁面約三分之一寬。此版已 Debug 建置，GUI 與實際取像設備尚未驗收。
 - 缺陷檢測範圍組可由勾選框選成員、將已勾選 ROI 上下排序；物件序號下方另有「顯示檢測範圍的 ROI 框」開關。選到物件時可顯示目前條件所選群組的 ROI；未選群組仍須核對預覽與運算一致性。
 - Recipe 參數管理已加入：可將參數檔加入軟體根目錄 `recipe`、編輯名稱與說明、調整清單順序，以及選取一組套用；套用後會重新跑相關物件流程與已啟用的缺陷分析。已 Debug 建置，尚待 GUI／實際產線影像端到端驗收。
@@ -37,7 +38,9 @@
 
 ## 全域設定與取像
 
-- 左側「全域設定」開啟獨立頁面，分為「與線掃描取像結合」及「內部參數」。前者目前僅顯示尚未設定設備，並未接入攝影機；此頁不顯示影像與檢測參數編輯區。
+- 左側「全域設定」開啟獨立頁面，分為「與線掃描取像結合」及「內部參數」。取像頁嵌入原攝影機程式的完整主操作畫面，原有相機設定、波形及測速輪等彈出視窗仍獨立開啟；模組首次顯示時才初始化。此頁不顯示主檢測影像／參數編輯區。
+- 攝影機完整影像透過 `ICameraImageSource.ImageAcquired` 提供；事件帶有序號、時間、尺寸、像素格式與可複製的影像。此階段沒有訂閱者，也沒有連接缺陷／尺寸檢測，避免取像直接觸發檢測。
+- 相機設定使用執行檔目錄的 `captureSetting.ini`；首次找不到時會從同一目錄的舊 `settings.ini` 或 `setting.ini` 複製遷移。若舊設定仍在獨立相機程式的輸出資料夾，首次開啟整合程式前先把舊檔放到主程式執行檔旁，才會沿用原設定。預設影像儲存於 `CameraCapture/Captures`，相機記錄寫入 `logs/camera/app.log`。攝影機設定、資料與 `config/device-settings.ini` 保持分離。
 - 「內部參數」設定攝影機 X/Y 精度（mm/pixel）與是否啟用 mm 換算。程式啟動時讀取執行檔目錄的 `config/device-settings.ini`；缺檔時 X/Y 預設 1、mm 換算關閉，尺寸量測以 pixel 計算。單一精度值無效時該軸回退為 1，但若檔案仍設定啟用 mm 換算，開關不會自動關閉；現場需檢查完整設定。套用後寫入此檔，不隨 Recipe 切換。
 - 舊 Recipe／`SystemParameters.ini` 中的攝影機精度欄位不再讀寫，也不自動轉入全域設定檔。缺陷 X/Y 尺寸門檻仍以全域 X/Y 精度換算 pixel；即使尺寸量測的 mm 換算未啟用，也不可把預設 1 mm/pixel 誤當成已標定的實際精度。換機或使用舊參數前須校對全域設定。
 - 尺寸、缺陷與結果確認已接用全域精度；結果確認簽章包含 X/Y 精度與換算開關，設定變更後舊結果需重算。此路徑仍須以 GUI、舊 Recipe 和標定影像驗收。
@@ -103,10 +106,10 @@
 
 ## 建置
 
-以 Visual Studio 開啟根目錄的 `MyApp4.sln`，還原 NuGet 套件後選擇 `Debug` / `Any CPU` 建置。也可使用：
+以 Visual Studio 開啟根目錄的 `MyApp4.sln`，還原 NuGet 套件後選擇 `Debug` / `Any CPU` 建置（執行檔和相機模組實際以 x64 編譯）。Sapera managed SDK 與測速輪 x64 DLL 預設分別從相機專案的輸出資料夾取得；其他位置請指定 `CameraSdkDirectory` 和 `LsiNativeDirectory`：
 
 ```powershell
-msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU"
+msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:CameraSdkDirectory="C:\path\to\Sapera" /p:LsiNativeDirectory="C:\path\to\LSI\x64"
 ```
 
 主專案為 `IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`。此舊式 .NET Framework 專案使用明確的 `<Compile Include=...>` 清單；新增 C# 檔案時要一併更新專案檔。
@@ -114,6 +117,8 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU"
 ## 程式結構
 
 - `IntegratedImageProcessingApp\Controls`：影像顯示、縮放平移、大型影像來源與預覽／分塊繪製。
+- `CameraCaptureModule`：從攝影機取像專案複製到主方案的獨立 x64 WinForms 模組，含相機服務、主操作視窗及其原有彈出視窗；後續原相機專案更新不會自動同步到此模組。由 `CameraCaptureHostControl` 嵌入主程式全域設定頁。
+- `IntegratedImageProcessingApp\Controls\CameraCaptureHostControl.cs`：延遲建立／承載相機主視窗、轉送未接檢測的完整影像事件，並於主程式關閉時釋放相機。
 - `IntegratedImageProcessingApp\Forms`：WinForms 主視窗與各功能流程；`MainForm` 以 partial 檔分工，仍負責主要 UI 協調。
 - `IntegratedImageProcessingApp\Services`：OpenCV 運算、INI 參數、灰階解碼及 ROI／MASK 快取與建置。
 - `IntegratedImageProcessingApp\Forms\MainForm.GlobalSettings.cs`：全域設定頁、攝影機 X/Y 精度與套用 UI。
@@ -124,4 +129,4 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU"
 
 ## 驗收狀態
 
-2026-10-19 `6c97e89` 已以 Visual Studio 2019 MSBuild Debug 建置成功，輸出位於 `IntegratedImageProcessingApp/bin/Debug/`，並確認設備設定檔複製到輸出目錄。這只代表可編譯，尚待 GUI／代表性影像驗收：全域精度保存與重啟讀回、切換 Recipe 不改精度、舊 Recipe 精度欄位忽略、ROI 組排序／顯示、共用 ROI 映射與聯集、缺陷／頻域掃描及結果失效。線掃描硬體接入尚未實作；頻域判定品質、並行資源用量與大圖平移亦仍需實測。
+2026-10-19 `6c97e89` 基準加上相機模組整合已以 Visual Studio 2019 MSBuild Debug 建置成功，整合輸出位於系統暫存驗證目錄；未覆寫正被執行中的 `bin/Debug/IntegratedImageProcessingApp.exe`。取像模組已整合至方案；相機實機、彈出視窗、設定遷移及完整影像事件尚未端到端驗收。已找到並設置 x64 `LSI8181_64.dll` 的輸出複製，硬體 runtime／驅動仍須實機驗證。缺陷與頻域等既有流程仍需代表性影像驗收。

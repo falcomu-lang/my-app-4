@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Globalization;
 using System.Windows.Forms;
+using IntegratedImageProcessingApp.Controls;
 using IntegratedImageProcessingApp.Services;
 
 namespace IntegratedImageProcessingApp.Forms
@@ -11,6 +12,7 @@ namespace IntegratedImageProcessingApp.Forms
         private readonly CameraDeviceSettingsIniService cameraDeviceSettingsIniService;
         private CameraDeviceSettings cameraDeviceSettings;
         private TabControl globalSettingsTabControl;
+        private CameraCaptureHostControl cameraCaptureHostControl;
         private bool isGlobalSettingsActive;
         private SizeType[] globalSettingsPreviousColumnTypes;
         private float[] globalSettingsPreviousColumnWidths;
@@ -122,14 +124,12 @@ namespace IntegratedImageProcessingApp.Forms
                 Name = "globalSettingsTabControl"
             };
             var lineScanPage = new TabPage("與線掃描取像結合");
-            var lineScanStatus = new Label
+            cameraCaptureHostControl = new CameraCaptureHostControl
             {
                 Dock = DockStyle.Fill,
-                Text = "尚未設定線掃描取像設備",
-                TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.FromArgb(92, 101, 116)
+                Name = "cameraCaptureHostControl"
             };
-            lineScanPage.Controls.Add(lineScanStatus);
+            lineScanPage.Controls.Add(cameraCaptureHostControl);
 
             var internalParameterPage = new TabPage("內部參數")
             {
