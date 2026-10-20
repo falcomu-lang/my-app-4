@@ -215,13 +215,30 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (selectedFunction == DetectionParameterAddMenuText)
+            if (selectedFunction == DetectionParameterNewMenuText)
+            {
+                parameterPlaceholderLabel.Text = "建立空白檢測參數；保留已載入圖片、全域內部參數與 Recipe 清單。";
+            }
+            else if (selectedFunction == DetectionParameterAddMenuText)
             {
                 parameterPlaceholderLabel.Text = "讀取外部檢測參數檔，加入軟體根目錄 recipe 參數庫。";
             }
             else if (selectedFunction == DetectionParameterSelectMenuText)
             {
                 parameterPlaceholderLabel.Text = "從 recipe 參數庫選擇並載入一組檢測參數。";
+            }
+            else if (selectedFunction == DetectionParameterMenuText)
+            {
+                HideImageProcessingFlowTree();
+                parameterPlaceholderLabel.Text = "展開「檢測參數」後，可讀取、選擇或保存 Recipe。";
+            }
+            else if (selectedFunction == DetectionParameterUpdateRecipeMenuText)
+            {
+                parameterPlaceholderLabel.Text = "以目前作用中的檢測設定更新目前 Recipe。";
+            }
+            else if (selectedFunction == DetectionParameterSaveAsRecipeMenuText)
+            {
+                parameterPlaceholderLabel.Text = "將目前檢測設定另存為一份新的 Recipe。";
             }
             else if (selectedFunction == LoadImageMenuText)
             {
@@ -467,9 +484,13 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (selectedFunction == FindObjectFlowMenuText)
+            if (selectedFunction == DetectionParameterMenuText)
             {
-                ToggleFindObjectFlowMenu();
+                ToggleDetectionParameterMenu();
+            }
+            else if (selectedFunction == DetectionParameterNewMenuText)
+            {
+                CreateNewDetectionParameter();
             }
             else if (selectedFunction == DetectionParameterAddMenuText)
             {
@@ -478,6 +499,18 @@ namespace IntegratedImageProcessingApp.Forms
             else if (selectedFunction == DetectionParameterSelectMenuText)
             {
                 SelectDetectionParameterRecipe();
+            }
+            else if (selectedFunction == DetectionParameterUpdateRecipeMenuText)
+            {
+                UpdateCurrentDetectionParameterRecipe();
+            }
+            else if (selectedFunction == DetectionParameterSaveAsRecipeMenuText)
+            {
+                SaveAsNewDetectionParameterRecipe();
+            }
+            else if (selectedFunction == FindObjectFlowMenuText)
+            {
+                ToggleFindObjectFlowMenu();
             }
             else if (selectedFunction == LoadImageMenuText)
             {

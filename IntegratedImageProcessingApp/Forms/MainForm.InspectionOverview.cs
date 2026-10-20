@@ -40,7 +40,9 @@ namespace IntegratedImageProcessingApp.Forms
                 SetStyle(ControlStyles.AllPaintingInWmPaint |
                     ControlStyles.OptimizedDoubleBuffer |
                     ControlStyles.ResizeRedraw |
-                    ControlStyles.UserPaint, true);
+                    ControlStyles.UserPaint |
+                    ControlStyles.StandardClick |
+                    ControlStyles.StandardDoubleClick, true);
                 BackColor = Color.White;
                 Cursor = Cursors.Hand;
                 Margin = new Padding(2);
@@ -623,7 +625,9 @@ namespace IntegratedImageProcessingApp.Forms
             inspectionOverviewSendButton.Enabled = false;
             inspectionOverviewRecipeLabel.Text = "最近一次完成結果";
 
-            if (snapshot == null || snapshot.Parameter == null)
+            bool hasSnapshotImage = snapshot != null &&
+                (snapshot.OriginalLargeSource != null || snapshot.OriginalBitmap != null);
+            if (snapshot == null || (snapshot.Parameter == null && !hasSnapshotImage))
             {
                 inspectionOverviewCountLabel.Text = "尚無已完成的檢測結果";
                 inspectionOverviewNoImageLabel.Text = "尚無已完成的檢測結果\r\n請先到「參數結果確認」執行確認";
@@ -635,15 +639,23 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             SetInspectionOverviewImage(snapshot);
-            inspectionOverviewRecipeLabel.Text = "檢測參數：" +
-                (string.IsNullOrWhiteSpace(snapshot.Parameter.DisplayName)
-                    ? snapshot.Parameter.Id
-                    : snapshot.Parameter.DisplayName);
+            inspectionOverviewRecipeLabel.Text = snapshot.JudgementComplete && snapshot.Parameter != null
+                ? "檢測參數：" +
+                    (string.IsNullOrWhiteSpace(snapshot.Parameter.DisplayName)
+                        ? snapshot.Parameter.Id
+                        : snapshot.Parameter.DisplayName)
+                : string.Equals(
+                    snapshot.UndeterminedReason,
+                    "正在執行尺寸與缺陷判定",
+                    StringComparison.Ordinal)
+                    ? "新影像檢測中，結果暫列待確認"
+                    : "未判定影像（待確認）";
             Dictionary<int, ResultReviewGoodJudgementGrade> sizeGrades =
                 snapshot.SizeGrades ??
                     new Dictionary<int, ResultReviewGoodJudgementGrade>();
-            Dictionary<int, ResultReviewDefectGrade> defectGrades =
-                GetInspectionOverviewDefectGrades(snapshot);
+            Dictionary<int, ResultReviewDefectGrade> defectGrades = snapshot.Parameter == null
+                ? new Dictionary<int, ResultReviewDefectGrade>()
+                : GetInspectionOverviewDefectGrades(snapshot);
             Dictionary<int, Point> gridPositions = snapshot.ObjectGridPositions ??
                 CreateObjectDetectionResultReviewObjectGridPositions(snapshot.Objects);
 
@@ -679,6 +691,29 @@ namespace IntegratedImageProcessingApp.Forms
                 });
             }
 
+            if (!snapshot.JudgementComplete && inspectionOverviewItems.Count == 0 &&
+                snapshot.Parameter != null && snapshot.Parameter.ColumnCount > 0 &&
+                snapshot.Parameter.RowCount > 0)
+            {
+                long expectedCount = (long)snapshot.Parameter.ColumnCount * snapshot.Parameter.RowCount;
+                if (expectedCount <= 10000)
+                {
+                    for (int number = 1; number <= expectedCount; number++)
+                    {
+                        inspectionOverviewItems.Add(new InspectionOverviewItem
+                        {
+                            ObjectNumber = number,
+                            GridColumn = (number - 1) % snapshot.Parameter.ColumnCount,
+                            GridRow = (number - 1) / snapshot.Parameter.ColumnCount,
+                            Bounds = Rectangle.Empty,
+                            SizeGrade = ResultReviewGoodJudgementGrade.Pending,
+                            DefectGrade = ResultReviewDefectGrade.Pending,
+                            CombinedGrade = ResultReviewGoodJudgementGrade.Pending
+                        });
+                    }
+                }
+            }
+
             int aCount = inspectionOverviewItems.Count(item =>
                 item.CombinedGrade == ResultReviewGoodJudgementGrade.A);
             int bCount = inspectionOverviewItems.Count(item =>
@@ -693,7 +728,8 @@ namespace IntegratedImageProcessingApp.Forms
                 "　B規 " + bCount.ToString("N0", CultureInfo.CurrentCulture) +
                 "　NG " + ngCount.ToString("N0", CultureInfo.CurrentCulture) +
                 "　待確認 " + pendingCount.ToString("N0", CultureInfo.CurrentCulture);
-            inspectionOverviewSendButton.Enabled = inspectionOverviewItems.Count > 0;
+            inspectionOverviewSendButton.Enabled = snapshot.JudgementComplete &&
+                inspectionOverviewItems.Count > 0;
             if (inspectionOverviewSelectedObjectNumber.HasValue &&
                 !inspectionOverviewItems.Any(item =>
                     item.ObjectNumber == inspectionOverviewSelectedObjectNumber.Value))
@@ -708,31 +744,20 @@ namespace IntegratedImageProcessingApp.Forms
         private void SetInspectionOverviewImage(ObjectDetectionResultReviewSnapshot snapshot)
         {
             inspectionOverviewImageDisplay.ClearImage();
-            if (snapshot.CorrectedLargeSource != null)
+            if (snapshot.OriginalLargeSource != null)
             {
-                inspectionOverviewImageDisplay.TitleText = "平場校正後影像";
-                inspectionOverviewImageDisplay.SetSharedLargeImageSource(snapshot.CorrectedLargeSource);
-            }
-            else if (snapshot.CorrectedBitmap != null)
-            {
-                inspectionOverviewImageDisplay.TitleText = "平場校正後影像";
-                inspectionOverviewImageDisplay.SetDisplayImage(
-                    new Bitmap(snapshot.CorrectedBitmap), false);
-            }
-            else if (snapshot.OriginalLargeSource != null)
-            {
-                inspectionOverviewImageDisplay.TitleText = "處理影像（未套用平場校正）";
+                inspectionOverviewImageDisplay.TitleText = "原始影像";
                 inspectionOverviewImageDisplay.SetSharedLargeImageSource(snapshot.OriginalLargeSource);
             }
             else if (snapshot.OriginalBitmap != null)
             {
-                inspectionOverviewImageDisplay.TitleText = "處理影像（未套用平場校正）";
+                inspectionOverviewImageDisplay.TitleText = "原始影像";
                 inspectionOverviewImageDisplay.SetDisplayImage(
                     new Bitmap(snapshot.OriginalBitmap), false);
             }
             else
             {
-                inspectionOverviewImageDisplay.TitleText = "處理後影像";
+                inspectionOverviewImageDisplay.TitleText = "原始影像";
             }
 
             bool hasImage = inspectionOverviewImageDisplay.HasImage;
@@ -899,6 +924,7 @@ namespace IntegratedImageProcessingApp.Forms
                         MinimumSize = new Size(48, 58)
                     };
                     tile.Click += InspectionOverviewTile_Click;
+                    tile.DoubleClick += InspectionOverviewTile_DoubleClick;
                     inspectionOverviewMatrix.Controls.Add(
                         tile,
                         item.GridColumn + 1,
@@ -995,9 +1021,33 @@ namespace IntegratedImageProcessingApp.Forms
                 other.IsSelected = other.Item.ObjectNumber == tile.Item.ObjectNumber;
                 other.Invalidate();
             }
-            if (inspectionOverviewImageDisplay != null && inspectionOverviewImageDisplay.HasImage)
+            if (inspectionOverviewImageDisplay != null && inspectionOverviewImageDisplay.HasImage &&
+                tile.Item.Bounds.Width > 0 && tile.Item.Bounds.Height > 0)
             {
                 inspectionOverviewImageDisplay.FocusOnSourceRectangle(tile.Item.Bounds);
+            }
+        }
+
+        private void InspectionOverviewTile_DoubleClick(object sender, EventArgs e)
+        {
+            var tile = sender as InspectionOverviewTile;
+            if (tile == null || tile.Item == null ||
+                inspectionOverviewSelectedObjectNumber != tile.Item.ObjectNumber)
+            {
+                return;
+            }
+
+            inspectionOverviewSelectedObjectNumber = null;
+            UpdateInspectionOverviewSelectedItem();
+            foreach (InspectionOverviewTile other in inspectionOverviewMatrix.Controls
+                .OfType<InspectionOverviewTile>())
+            {
+                other.IsSelected = false;
+                other.Invalidate();
+            }
+            if (inspectionOverviewImageDisplay != null && inspectionOverviewImageDisplay.HasImage)
+            {
+                inspectionOverviewImageDisplay.ResetViewToFit(false);
             }
         }
 

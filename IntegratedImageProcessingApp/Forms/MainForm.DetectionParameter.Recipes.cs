@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -192,6 +193,273 @@ namespace IntegratedImageProcessingApp.Forms
 
                 await LoadDetectionParameterRecipeAsync(catalog, entry);
             }
+        }
+
+        private void UpdateCurrentDetectionParameterRecipe()
+        {
+            try
+            {
+                var catalog = new DetectionRecipeCatalogService(AppDomain.CurrentDomain.BaseDirectory);
+                IList<DetectionRecipeCatalogEntry> entries = catalog.LoadParameterList();
+                DetectionRecipeCatalogEntry entry = FindCurrentDetectionRecipe(catalog, entries);
+                if (entry == null)
+                {
+                    MessageBox.Show(
+                        this,
+                        "目前設定沒有對應到唯一一份已載入的 Recipe，無法安全覆寫。\r\n" +
+                        "請先載入 Recipe，或使用「另存為新的 Recipe」。",
+                        "目前沒有可更新的 Recipe",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                    return;
+                }
+                if (!catalog.ParameterFileExists(entry))
+                {
+                    MessageBox.Show(
+                        this,
+                        "找不到目前 Recipe 的參數檔，請重新載入或另存為新 Recipe。",
+                        "Recipe 檔案遺失",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                DialogResult confirm = MessageBox.Show(
+                    this,
+                    "將以目前畫面中的設定覆寫 Recipe「" + entry.DisplayName + "」。\r\n" +
+                    "此操作無法自動還原原本內容。\r\n\r\n確定更新嗎？",
+                    "更新目前 Recipe",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+                if (confirm != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                systemParameters.ActiveDetectionRecipeId = entry.Id;
+                SaveSystemParameters();
+                catalog.UpdateRecipeSettings(entry.Id, systemParameters);
+                statusLabel.Text = "已更新目前 Recipe：「" + entry.DisplayName + "」";
+                MessageBox.Show(
+                    this,
+                    "目前設定已更新至 Recipe「" + entry.DisplayName + "」。",
+                    "更新完成",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception exception)
+            {
+                statusLabel.Text = "更新目前 Recipe 失敗：" + exception.Message;
+                MessageBox.Show(
+                    this,
+                    "無法更新目前 Recipe：\r\n" + exception.Message,
+                    "更新失敗",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void CreateNewDetectionParameter()
+        {
+            DialogResult confirm = MessageBox.Show(
+                this,
+                "新建參數會清空目前的 ROI、找尋物件流程、量測與缺陷設定，並解除目前作用中的 Recipe。\r\n" +
+                "已載入圖片、Recipe 清單，以及全域設定中的內部參數（包含相機精度）會保留。\r\n" +
+                "此操作會立即保存，且無法自動還原；若要保留目前設定，請先另存為新的Recipe。\r\n\r\n" +
+                "確定要從空白參數開始嗎？",
+                "新建參數",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+            if (confirm != DialogResult.Yes)
+            {
+                return;
+            }
+
+            string settingsPath = Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory, "SystemParameters.ini");
+            string temporaryPath = settingsPath + ".new-" + Guid.NewGuid().ToString("N") + ".tmp";
+            var blankSettings = new SystemParameterSettings
+            {
+                LastImagePath = systemParameters == null
+                    ? string.Empty
+                    : systemParameters.LastImagePath
+            };
+            bool settingsSaved = false;
+            try
+            {
+                new SystemParameterIniService(temporaryPath).Save(blankSettings);
+                if (File.Exists(settingsPath))
+                {
+                    File.Replace(temporaryPath, settingsPath, null);
+                }
+                else
+                {
+                    File.Move(temporaryPath, settingsPath);
+                }
+                settingsSaved = true;
+
+                ApplyImportedDetectionParameterSettings(blankSettings, null);
+                statusLabel.Text = "已新建空白檢測參數；全域內部參數與目前圖片均保留。";
+                MessageBox.Show(
+                    this,
+                    "空白檢測參數已建立並保存。全域內部參數與已載入圖片未變更。",
+                    "新建完成",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception exception)
+            {
+                statusLabel.Text = "新建檢測參數失敗：" + exception.Message;
+                MessageBox.Show(
+                    this,
+                    (settingsSaved
+                        ? "空白參數已寫入，但介面更新未完成；請重新啟動軟體。\r\n"
+                        : "目前參數未變更。\r\n") + exception.Message,
+                    "新建失敗",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(temporaryPath))
+                    {
+                        File.Delete(temporaryPath);
+                    }
+                }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+
+        private void SaveAsNewDetectionParameterRecipe()
+        {
+            if (!IsSupportedDetectionParameterPackage(systemParameters))
+            {
+                MessageBox.Show(
+                    this,
+                    "目前沒有可保存的檢測參數，或多筆參數不屬於同一個群組。",
+                    "無法另存 Recipe",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            try
+            {
+                var catalog = new DetectionRecipeCatalogService(AppDomain.CurrentDomain.BaseDirectory);
+                IList<DetectionRecipeCatalogEntry> entries = catalog.LoadParameterList();
+                DetectionRecipeCatalogEntry currentEntry = FindCurrentDetectionRecipe(catalog, entries);
+                string suggestedName = GetDetectionRecipeCopyName(
+                    currentEntry,
+                    entries,
+                    systemParameters.ObjectDetectionParameters[0]);
+                using (var metadata = new DetectionRecipeMetadataDialog(
+                    "另存為新的 Recipe",
+                    suggestedName,
+                    currentEntry == null ? string.Empty : currentEntry.Description))
+                {
+                    if (metadata.ShowDialog(this) != DialogResult.OK)
+                    {
+                        return;
+                    }
+
+                    DetectionRecipeCatalogEntry newEntry = catalog.AddRecipe(
+                        systemParameters,
+                        metadata.DisplayName,
+                        metadata.Description);
+                    string previousRecipeId = systemParameters.ActiveDetectionRecipeId;
+                    systemParameters.ActiveDetectionRecipeId = newEntry.Id;
+                    try
+                    {
+                        SaveSystemParameters();
+                    }
+                    catch (Exception exception)
+                    {
+                        systemParameters.ActiveDetectionRecipeId = previousRecipeId;
+                        statusLabel.Text = "Recipe 已建立，但無法切換目前使用項目：" + exception.Message;
+                        MessageBox.Show(
+                            this,
+                            "Recipe「" + newEntry.DisplayName + "」已建立，但無法將它設定為目前使用項目。\r\n" +
+                            exception.Message,
+                            "部分完成",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    statusLabel.Text = "已另存並切換至新 Recipe：「" + newEntry.DisplayName + "」";
+                    MessageBox.Show(
+                        this,
+                        "目前設定已另存為新的 Recipe「" + newEntry.DisplayName + "」，並設為目前使用項目。",
+                        "另存完成",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception exception)
+            {
+                statusLabel.Text = "另存新 Recipe 失敗：" + exception.Message;
+                MessageBox.Show(
+                    this,
+                    "無法另存新的 Recipe：\r\n" + exception.Message,
+                    "另存失敗",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private DetectionRecipeCatalogEntry FindCurrentDetectionRecipe(
+            DetectionRecipeCatalogService catalog,
+            IList<DetectionRecipeCatalogEntry> entries)
+        {
+            DetectionRecipeCatalogEntry activeEntry = entries.FirstOrDefault(entry =>
+                string.Equals(
+                    entry.Id,
+                    systemParameters.ActiveDetectionRecipeId,
+                    StringComparison.Ordinal));
+            if (activeEntry != null)
+            {
+                return activeEntry;
+            }
+
+            IList<DetectionRecipeCatalogEntry> matches =
+                catalog.FindRecipesMatchingSettings(systemParameters);
+            return matches.Count == 1 ? matches[0] : null;
+        }
+
+        private static string GetDetectionRecipeCopyName(
+            DetectionRecipeCatalogEntry currentEntry,
+            IList<DetectionRecipeCatalogEntry> entries,
+            ObjectDetectionParameterSettings parameter)
+        {
+            string sourceName = currentEntry == null ? null : currentEntry.DisplayName;
+            if (string.IsNullOrWhiteSpace(sourceName) && parameter != null)
+            {
+                sourceName = string.IsNullOrWhiteSpace(parameter.GroupName)
+                    ? parameter.DisplayName
+                    : parameter.GroupName;
+            }
+            if (string.IsNullOrWhiteSpace(sourceName))
+            {
+                sourceName = "檢測參數";
+            }
+
+            string baseName = sourceName.Trim() + " - 副本";
+            string candidate = baseName;
+            int suffix = 2;
+            while (entries.Any(entry => string.Equals(
+                entry.DisplayName,
+                candidate,
+                StringComparison.OrdinalIgnoreCase)))
+            {
+                candidate = baseName + " " + suffix.ToString(CultureInfo.InvariantCulture);
+                suffix++;
+            }
+            return candidate;
         }
 
         private async Task LoadDetectionParameterRecipeAsync(

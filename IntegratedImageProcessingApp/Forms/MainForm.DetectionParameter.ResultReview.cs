@@ -81,6 +81,8 @@ namespace IntegratedImageProcessingApp.Forms
             public ObjectDetectionParameterSettings Parameter { get; set; }
             public ObjectDefinitionSettings Definition { get; set; }
             public List<ObjectDefinitionDetectedObject> Objects { get; set; }
+            public bool JudgementComplete { get; set; }
+            public string UndeterminedReason { get; set; }
             public Dictionary<int, ResultReviewGoodJudgementGrade> SizeGrades { get; set; }
             public Dictionary<int, Point> ObjectGridPositions { get; set; }
             public Dictionary<string, ObjectDetectionDefectCoreResult> CoreResults { get; set; }
@@ -999,7 +1001,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private async Task RunObjectDetectionResultReviewAsync()
+        private async Task RunObjectDetectionResultReviewAsync(bool preserveCurrentSnapshot = false)
         {
             if (isObjectDetectionResultReviewRunning)
             {
@@ -1080,7 +1082,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             isObjectDetectionResultReviewRunning = true;
             SetObjectDetectionResultReviewControlsEnabled(false);
-            ClearObjectDetectionResultReviewResults();
+            ClearObjectDetectionResultReviewResults(preserveCurrentSnapshot);
             ResetObjectDetectionResultReviewProcessingTimings();
             UpdateObjectDetectionResultReviewTimingMemo();
             LargeImageSource measurementLargeSource = null;
@@ -2869,6 +2871,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Definition = (ObjectDefinitionSettings)
                     CloneObjectDetectionResultReviewModel(definition),
                 Objects = CloneObjectDetectionResultReviewObjects(objects),
+                JudgementComplete = true,
                 SizeGrades = objectDetectionResultReviewGoodJudgementResults
                     .GroupBy(result => result.ObjectNumber)
                     .ToDictionary(group => group.Key, group => group.First().Grade),
@@ -2978,6 +2981,92 @@ namespace IntegratedImageProcessingApp.Forms
                 ClearObjectDetectionResultReviewSnapshot();
                 objectDetectionResultReviewSnapshot = snapshot;
                 objectDetectionDefectIntegrationCache.Remove(parameter.Id);
+            }
+            catch
+            {
+                snapshot.Dispose();
+                throw;
+            }
+        }
+
+        private async Task CaptureUndeterminedCameraInspectionSnapshotAsync(
+            string imagePath,
+            ObjectDetectionParameterSettings parameter,
+            ObjectDefinitionSettings definition,
+            IList<ObjectDefinitionDetectedObject> objects,
+            string reason)
+        {
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                return;
+            }
+
+            var snapshot = new ObjectDetectionResultReviewSnapshot
+            {
+                ImagePath = imagePath,
+                ParameterId = parameter == null ? null : parameter.Id,
+                Parameter = parameter == null
+                    ? null
+                    : (ObjectDetectionParameterSettings)CloneObjectDetectionResultReviewModel(parameter),
+                Definition = definition == null
+                    ? null
+                    : (ObjectDefinitionSettings)CloneObjectDetectionResultReviewModel(definition),
+                Objects = CloneObjectDetectionResultReviewObjects(objects),
+                SizeGrades = new Dictionary<int, ResultReviewGoodJudgementGrade>(),
+                ObjectGridPositions = CreateObjectDetectionResultReviewObjectGridPositions(objects),
+                JudgementComplete = false,
+                UndeterminedReason = reason,
+                ImageContentGeneration = imageContentGeneration,
+                ImageSourceGeneration = System.Threading.Interlocked.CompareExchange(
+                    ref imageSourceGeneration, 0, 0)
+            };
+
+            try
+            {
+                if (objectDetectionResultReviewImageGeneration.HasValue &&
+                    objectDetectionResultReviewImageGeneration.Value == imageContentGeneration &&
+                    string.Equals(objectDetectionResultReviewImagePath, imagePath,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(systemParameters.LastImagePath, imagePath,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    rightOriginalDisplayControl != null && rightOriginalDisplayControl.HasImage)
+                {
+                    if (rightOriginalDisplayControl.IsLargeImageMode)
+                    {
+                        snapshot.OriginalLargeSource =
+                            rightOriginalDisplayControl.GetSharedLargeImageSource();
+                    }
+                    else
+                    {
+                        snapshot.OriginalBitmap = rightOriginalDisplayControl.CloneImage();
+                    }
+                }
+
+                if (snapshot.OriginalLargeSource == null && snapshot.OriginalBitmap == null)
+                {
+                    snapshot.OriginalLargeSource = await Task.Run(
+                        () => new LargeImageSource(imagePath));
+                }
+
+                if (snapshot.OriginalLargeSource != null)
+                {
+                    snapshot.ImageWidth = snapshot.OriginalLargeSource.Width;
+                    snapshot.ImageHeight = snapshot.OriginalLargeSource.Height;
+                }
+                else if (snapshot.OriginalBitmap != null)
+                {
+                    snapshot.ImageWidth = snapshot.OriginalBitmap.Width;
+                    snapshot.ImageHeight = snapshot.OriginalBitmap.Height;
+                }
+
+                ClearObjectDetectionResultReviewSnapshot();
+                objectDetectionResultReviewSnapshot = snapshot;
+                inspectionOverviewSelectedObjectNumber = null;
+                inspectionOverviewFilter = InspectionOverviewFilter.All;
+                if (inspectionOverviewPanel != null && inspectionOverviewPanel.Visible)
+                {
+                    RefreshInspectionOverview();
+                }
             }
             catch
             {
@@ -3146,9 +3235,12 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private void ClearObjectDetectionResultReviewResults()
+        private void ClearObjectDetectionResultReviewResults(bool preserveSnapshot = false)
         {
-            ClearObjectDetectionResultReviewSnapshot();
+            if (!preserveSnapshot)
+            {
+                ClearObjectDetectionResultReviewSnapshot();
+            }
             if (!IsObjectDetectionResultReviewUiAvailable())
             {
                 return;

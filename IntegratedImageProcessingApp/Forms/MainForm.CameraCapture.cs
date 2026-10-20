@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using CameraCaptureApp.Services;
+using IntegratedImageProcessingApp.Services;
 
 namespace IntegratedImageProcessingApp.Forms
 {
@@ -50,6 +52,11 @@ namespace IntegratedImageProcessingApp.Forms
                     await ProcessCameraAcquiredImageAsync(image, sequenceNumber);
                 }));
             }
+            catch (ObjectDisposedException)
+            {
+                image.Dispose();
+                Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
+            }
             catch (InvalidOperationException)
             {
                 image.Dispose();
@@ -63,6 +70,7 @@ namespace IntegratedImageProcessingApp.Forms
             bool imageLoaded = false;
             bool returnToInspectionOverview = isInspectionOverviewActive;
             string previousCameraImagePath = latestCameraInspectionFramePath;
+            ResultReviewParameterChoice selectedChoice = null;
             if (string.IsNullOrWhiteSpace(previousCameraImagePath) &&
                 IsOwnedCameraInspectionImagePath(systemParameters.LastImagePath))
             {
@@ -78,14 +86,27 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
+                int overviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
+                returnToInspectionOverview = isInspectionOverviewActive &&
+                    overviewIndex >= 0 && functionListBox.SelectedIndex == overviewIndex;
                 int resultReviewIndex = functionListBox.Items.IndexOf(ObjectDetectionResultReviewMenuText);
-                if (resultReviewIndex >= 0 && functionListBox.SelectedIndex != resultReviewIndex)
+                if (!returnToInspectionOverview && resultReviewIndex >= 0 &&
+                    functionListBox.SelectedIndex != resultReviewIndex)
                 {
                     functionListBox.SelectedIndex = resultReviewIndex;
                 }
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
+                    bool restoreOverview = returnToInspectionOverview;
+                    if (restoreOverview)
+                    {
+                        ExitInspectionOverviewMode();
+                    }
                     ShowObjectDetectionResultReviewPanel();
+                    if (restoreOverview)
+                    {
+                        ShowInspectionOverviewPanel();
+                    }
                 }
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
@@ -93,29 +114,12 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
-                var selectedChoice = objectDetectionResultReviewParameterComboBox == null
+                selectedChoice = objectDetectionResultReviewParameterComboBox == null
                     ? null
                     : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
-                if (selectedChoice == null || selectedChoice.Parameter == null)
-                {
-                    SetObjectDetectionResultReviewStatus("相機影像已取得；目前沒有可執行的檢測參數。");
-                    SetCameraInspectionStatus("相機影像已取得，但目前沒有可執行的檢測參數。");
-                    return;
-                }
-
                 Size imageSize = new Size(image.Width, image.Height);
-                if (!objectDetectionResultReviewReferenceImageSize.IsEmpty &&
-                    objectDetectionResultReviewReferenceImageSize != imageSize)
-                {
-                    SetObjectDetectionResultReviewStatus("相機影像規格不符，未送入檢測。");
-                    SetCameraInspectionStatus(
-                        "相機影像規格不符：收到 " + imageSize.Width + " x " + imageSize.Height +
-                        "，參數參考規格為 " + objectDetectionResultReviewReferenceImageSize.Width + " x " +
-                        objectDetectionResultReviewReferenceImageSize.Height + "。該影像未送檢。");
-                    return;
-                }
-
                 imagePath = await Task.Run(() => SaveCameraInspectionImage(image, sequenceNumber));
+                latestCameraInspectionFramePath = imagePath;
                 var imageLoadStopwatch = System.Diagnostics.Stopwatch.StartNew();
                 objectDetectionResultReviewImageLoadMilliseconds = null;
                 objectDetectionResultReviewImageLoadSucceeded = null;
@@ -131,13 +135,12 @@ namespace IntegratedImageProcessingApp.Forms
                     ClearObjectDetectionResultReviewResults();
                     systemParameters.LastImagePath = imagePath;
                     objectDetectionResultReviewImagePath = imagePath;
+                    await LoadImageIntoOriginalDisplaysAsync(imagePath, CancellationToken.None);
+                    imageLoaded = true;
                     if (objectDetectionResultReviewReferenceImageSize.IsEmpty)
                     {
                         objectDetectionResultReviewReferenceImageSize = imageSize;
                     }
-
-                    await LoadImageIntoOriginalDisplaysAsync(imagePath, CancellationToken.None);
-                    imageLoaded = true;
                     imageLoadStopwatch.Stop();
                     objectDetectionResultReviewImageLoadMilliseconds = imageLoadStopwatch.ElapsedMilliseconds;
                     objectDetectionResultReviewImageLoadSucceeded = true;
@@ -162,33 +165,102 @@ namespace IntegratedImageProcessingApp.Forms
                     TryDeleteCameraInspectionImage(previousCameraImagePath);
                 }
 
-                await RunObjectDetectionResultReviewAsync();
-                if (returnToInspectionOverview &&
-                    objectDetectionResultReviewSnapshot != null &&
-                    string.Equals(
-                        objectDetectionResultReviewSnapshot.ImagePath,
-                        imagePath,
-                        StringComparison.OrdinalIgnoreCase))
+                bool showPendingOverviewSnapshot = returnToInspectionOverview &&
+                    isInspectionOverviewActive && overviewIndex >= 0 &&
+                    functionListBox.SelectedIndex == overviewIndex;
+                if (showPendingOverviewSnapshot)
                 {
-                    int overviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
-                    bool isStillOnCameraReviewPage =
-                        functionListBox.SelectedIndex == resultReviewIndex;
-                    bool isAlreadyOnOverviewPage = overviewIndex >= 0 &&
-                        functionListBox.SelectedIndex == overviewIndex;
-                    if (overviewIndex >= 0 && isStillOnCameraReviewPage)
-                    {
-                        functionListBox.SelectedIndex = overviewIndex;
-                    }
-                    else if (isAlreadyOnOverviewPage && isInspectionOverviewActive)
-                    {
-                        RefreshInspectionOverview();
-                    }
+                    await CaptureUndeterminedCameraInspectionSnapshotAsync(
+                        imagePath,
+                        selectedChoice == null ? null : selectedChoice.Parameter,
+                        null,
+                        null,
+                        "正在執行尺寸與缺陷判定");
                 }
+
+                if (selectedChoice == null || selectedChoice.Parameter == null)
+                {
+                    await CaptureUndeterminedCameraInspectionSnapshotAsync(
+                        imagePath, null, null, null, "目前沒有可執行的檢測參數");
+                    SetObjectDetectionResultReviewStatus("相機影像已取得；目前沒有可執行的檢測參數。");
+                    SetCameraInspectionStatus("相機影像已保留；目前沒有可執行的檢測參數，總覽標示為待確認。");
+                    ReturnCameraInspectionToOverview(returnToInspectionOverview);
+                    return;
+                }
+
+                if (!objectDetectionResultReviewReferenceImageSize.IsEmpty &&
+                    objectDetectionResultReviewReferenceImageSize != imageSize)
+                {
+                    await CaptureUndeterminedCameraInspectionSnapshotAsync(
+                        imagePath,
+                        selectedChoice.Parameter,
+                        null,
+                        null,
+                        "影像尺寸與參數參考規格不符");
+                    SetObjectDetectionResultReviewStatus("相機影像規格不符，未送入檢測。");
+                    SetCameraInspectionStatus(
+                        "相機影像規格不符：收到 " + imageSize.Width + " x " + imageSize.Height +
+                        "，參數參考規格為 " + objectDetectionResultReviewReferenceImageSize.Width + " x " +
+                        objectDetectionResultReviewReferenceImageSize.Height + "。影像保留於總覽並標示待確認。");
+                    ReturnCameraInspectionToOverview(returnToInspectionOverview);
+                    return;
+                }
+
+                await RunObjectDetectionResultReviewAsync(showPendingOverviewSnapshot);
+                bool judgementCompleted = objectDetectionResultReviewSnapshot != null &&
+                    objectDetectionResultReviewSnapshot.JudgementComplete &&
+                    string.Equals(objectDetectionResultReviewSnapshot.ImagePath,
+                        imagePath, StringComparison.OrdinalIgnoreCase);
+                if (!judgementCompleted)
+                {
+                    ObjectDetectionParameterSettings parameter = selectedChoice.Parameter;
+                    ObjectDefinitionSettings definition =
+                        FindObjectDefinition(parameter.ObjectDefinitionId);
+                    List<ObjectDefinitionDetectedObject> objects = definition == null
+                        ? new List<ObjectDefinitionDetectedObject>()
+                        : SnapshotCompletedObjectDefinitionObjects(
+                            definition,
+                            CreateObjectDefinitionProcessingSignature(definition));
+                    string reason = objectDetectionResultReviewStatusLabel == null
+                        ? "檢測流程未完成"
+                        : objectDetectionResultReviewStatusLabel.Text;
+                    await CaptureUndeterminedCameraInspectionSnapshotAsync(
+                        imagePath, parameter, definition, objects, reason);
+                    SetCameraInspectionStatus(
+                        "相機影像 #" + sequenceNumber + " 已保留，但判定未完成；總覽以灰色待確認顯示。");
+                    ReturnCameraInspectionToOverview(returnToInspectionOverview);
+                    return;
+                }
+
+                ReturnCameraInspectionToOverview(returnToInspectionOverview);
                 SetCameraInspectionStatus(
                     "相機影像 #" + sequenceNumber + " 已送入目前檢測參數完成判定。");
             }
             catch (Exception exception)
             {
+                if (!string.IsNullOrWhiteSpace(imagePath))
+                {
+                    try
+                    {
+                        ObjectDetectionParameterSettings parameter = selectedChoice == null
+                            ? null
+                            : selectedChoice.Parameter;
+                        ObjectDefinitionSettings definition = parameter == null
+                            ? null
+                            : FindObjectDefinition(parameter.ObjectDefinitionId);
+                        List<ObjectDefinitionDetectedObject> objects = definition == null
+                            ? new List<ObjectDefinitionDetectedObject>()
+                            : SnapshotCompletedObjectDefinitionObjects(
+                                definition,
+                                CreateObjectDefinitionProcessingSignature(definition));
+                        await CaptureUndeterminedCameraInspectionSnapshotAsync(
+                            imagePath, parameter, definition, objects, exception.Message);
+                    }
+                    catch
+                    {
+                    }
+                    ReturnCameraInspectionToOverview(returnToInspectionOverview);
+                }
                 SetCameraInspectionStatus("相機影像處理失敗：" + exception.Message);
                 SetObjectDetectionResultReviewStatus("相機影像處理失敗：" + exception.Message);
             }
@@ -210,9 +282,37 @@ namespace IntegratedImageProcessingApp.Forms
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
                 if (droppedCount > 0 && !IsDisposed)
                 {
+                    string completedStatus = statusLabel == null || statusLabel.IsDisposed
+                        ? string.Empty
+                        : statusLabel.Text;
                     SetCameraInspectionStatus(
-                        "相機影像檢測期間略過 " + droppedCount.ToString("N0") + " 張新影像；未排隊重複影像。");
+                        (string.IsNullOrWhiteSpace(completedStatus)
+                            ? "本次影像流程已結束"
+                            : completedStatus) + "；檢測期間略過 " +
+                        droppedCount.ToString("N0") + " 張新影像（未排隊）。");
                 }
+            }
+        }
+
+        private void ReturnCameraInspectionToOverview(bool returnToOverview)
+        {
+            if (!returnToOverview)
+            {
+                return;
+            }
+
+            int overviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
+            int resultReviewIndex = functionListBox.Items.IndexOf(ObjectDetectionResultReviewMenuText);
+            bool isStillOnCameraReviewPage = functionListBox.SelectedIndex == resultReviewIndex;
+            bool isAlreadyOnOverviewPage = overviewIndex >= 0 &&
+                functionListBox.SelectedIndex == overviewIndex;
+            if (overviewIndex >= 0 && isStillOnCameraReviewPage)
+            {
+                functionListBox.SelectedIndex = overviewIndex;
+            }
+            else if (isAlreadyOnOverviewPage && isInspectionOverviewActive)
+            {
+                RefreshInspectionOverview();
             }
         }
 
@@ -228,17 +328,39 @@ namespace IntegratedImageProcessingApp.Forms
                 reason = "尺寸與缺陷判定尚未完成";
                 return true;
             }
-            if (isDetectionRecipeAutoRunActive || objectDefinitionProcessingRequested ||
-                objectJudgementProcessingRequested || preprocessingExecutionRequested ||
-                imageProcessingExecutionRequested || objectDetectionDefectProcessingRequested ||
-                IsAnyObjectDetectionFrequencyAnalysisRunning)
+            if (isDetectionRecipeAutoRunActive)
             {
-                reason = "其他影像處理或檢測尚未完成";
+                reason = "檢測參數切換後的自動流程尚未完成";
+                return true;
+            }
+            if (parameterApplyInProgress || isPreparingPreprocessedImage ||
+                objectJudgementParameterApplyInProgress)
+            {
+                reason = "前處理、影像處理或區塊判定尚未完成";
+                return true;
+            }
+            if (objectDetectionDefectProcessingRequested || IsAnyObjectDetectionFrequencyAnalysisRunning)
+            {
+                reason = "缺陷或頻域檢測尚未完成";
+                return true;
+            }
+            if (IsObjectDefinitionProcessingInProgress())
+            {
+                reason = "物件搜尋尚未完成";
                 return true;
             }
 
             reason = null;
             return false;
+        }
+
+        private bool IsObjectDefinitionProcessingInProgress()
+        {
+            lock (objectDefinitionResultLock)
+            {
+                return !string.IsNullOrWhiteSpace(pendingObjectDefinitionProcessingSignature) ||
+                    objectDefinitionProcessingInProgress;
+            }
         }
 
         private static string SaveCameraInspectionImage(Bitmap image, long sequenceNumber)

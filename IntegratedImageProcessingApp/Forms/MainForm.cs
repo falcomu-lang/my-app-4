@@ -41,6 +41,7 @@ namespace IntegratedImageProcessingApp.Forms
         private string expandedRoiText;
         private int selectedRoiIndex = -1;
         private bool findObjectFlowExpanded;
+        private bool detectionParameterMenuExpanded;
         private bool imageProcessingMenuExpanded;
         private bool isUpdatingFunctionListText;
         // SelectionChanged handles a newly selected item.  Keep this marker so
@@ -276,8 +277,12 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private const string DetectionParameterAddMenuText = "檢測參數讀取加入";
-        private const string DetectionParameterSelectMenuText = "檢測參數選擇";
+        private const string DetectionParameterMenuText = "檢測參數";
+        private const string DetectionParameterNewMenuText = "新建參數";
+        private const string DetectionParameterAddMenuText = "參數讀取與加入";
+        private const string DetectionParameterSelectMenuText = "參數選擇";
+        private const string DetectionParameterUpdateRecipeMenuText = "更新目前recipe";
+        private const string DetectionParameterSaveAsRecipeMenuText = "另存為新的Recipe";
         private const string LoadImageMenuText = "讀取圖片";
         private const string RoiMenuText = "指定 ROI";
         private const string FindObjectFlowMenuText = "找尋物件流程";
@@ -355,15 +360,9 @@ namespace IntegratedImageProcessingApp.Forms
             functionListBox.SelectionMode = SelectionMode.MultiExtended;
             functionListBox.MouseUp += FunctionListBox_MouseUp;
             int loadImageIndex = functionListBox.Items.IndexOf(LoadImageMenuText);
-            int detectionParameterAddIndex = functionListBox.Items.IndexOf(DetectionParameterAddMenuText);
-            if (detectionParameterAddIndex < 0)
+            if (!functionListBox.Items.Contains(DetectionParameterMenuText))
             {
-                detectionParameterAddIndex = loadImageIndex < 0 ? 0 : loadImageIndex;
-                functionListBox.Items.Insert(detectionParameterAddIndex, DetectionParameterAddMenuText);
-            }
-            if (!functionListBox.Items.Contains(DetectionParameterSelectMenuText))
-            {
-                functionListBox.Items.Insert(detectionParameterAddIndex + 1, DetectionParameterSelectMenuText);
+                functionListBox.Items.Insert(loadImageIndex < 0 ? 0 : loadImageIndex, DetectionParameterMenuText);
             }
             if (!functionListBox.Items.Contains(ImageRelationMenuText))
             {
@@ -416,6 +415,7 @@ namespace IntegratedImageProcessingApp.Forms
             MoveFunctionListItemAfter(ImageRelationMenuText, ImageProcessingMenuText);
             MoveFunctionListItemAfter(ObjectJudgementMenuText, ImageRelationMenuText);
             MoveFunctionListItemAfter(ObjectDefinitionMenuText, ObjectJudgementMenuText);
+            SetDetectionParameterMenuExpanded(false);
             SetFindObjectFlowExpanded(false);
             RebuildVisibleImageRelations();
             RebuildVisibleObjectJudgements();
@@ -507,6 +507,52 @@ namespace IntegratedImageProcessingApp.Forms
             RebuildVisibleImageRelations();
             RebuildVisibleObjectJudgements();
             RebuildVisibleObjectDefinitions();
+        }
+
+        private void SetDetectionParameterMenuExpanded(bool expanded)
+        {
+            if (!expanded)
+            {
+                functionListBox.Items.Remove(DetectionParameterNewMenuText);
+                functionListBox.Items.Remove(DetectionParameterAddMenuText);
+                functionListBox.Items.Remove(DetectionParameterSelectMenuText);
+                functionListBox.Items.Remove(DetectionParameterUpdateRecipeMenuText);
+                functionListBox.Items.Remove(DetectionParameterSaveAsRecipeMenuText);
+                detectionParameterMenuExpanded = false;
+                return;
+            }
+
+            int insertIndex = functionListBox.Items.IndexOf(DetectionParameterMenuText) + 1;
+            if (insertIndex <= 0)
+            {
+                return;
+            }
+
+            string[] childMenuItems =
+            {
+                DetectionParameterNewMenuText,
+                DetectionParameterAddMenuText,
+                DetectionParameterSelectMenuText,
+                DetectionParameterUpdateRecipeMenuText,
+                DetectionParameterSaveAsRecipeMenuText
+            };
+            foreach (string childMenuItem in childMenuItems)
+            {
+                if (!functionListBox.Items.Contains(childMenuItem))
+                {
+                    functionListBox.Items.Insert(insertIndex++, childMenuItem);
+                }
+            }
+
+            detectionParameterMenuExpanded = true;
+        }
+
+        private void ToggleDetectionParameterMenu()
+        {
+            SetDetectionParameterMenuExpanded(!detectionParameterMenuExpanded);
+            statusLabel.Text = detectionParameterMenuExpanded
+                ? "已展開檢測參數"
+                : "已收合檢測參數";
         }
 
         private void ToggleFindObjectFlowMenu()
@@ -2560,10 +2606,12 @@ namespace IntegratedImageProcessingApp.Forms
             string menuText = functionListBox.Items[e.Index].ToString();
             FunctionMenuIcon icon = GetFunctionMenuIcon(menuText);
             bool isFindObjectFlowChild = IsFindObjectFlowMenuItem(menuText);
+            bool isDetectionParameterChild = IsDetectionParameterRecipeMenuItem(menuText);
+            bool isIndentedChild = isFindObjectFlowChild || isDetectionParameterChild;
             if (icon != FunctionMenuIcon.None)
             {
                 Rectangle iconBounds = new Rectangle(
-                    e.Bounds.Left + (isFindObjectFlowChild ? 26 : 10),
+                    e.Bounds.Left + (isIndentedChild ? 26 : 10),
                     e.Bounds.Top + 7,
                     16,
                     16);
@@ -2572,7 +2620,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             int textLeft = e.Bounds.Left + (icon == FunctionMenuIcon.None
                 ? GetFunctionMenuIndent(menuText)
-                : isFindObjectFlowChild ? 52 : 36);
+                : isIndentedChild ? 52 : 36);
             Rectangle textBounds = new Rectangle(
                 textLeft,
                 e.Bounds.Top,
@@ -2587,13 +2635,16 @@ namespace IntegratedImageProcessingApp.Forms
                 foreColor,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
 
-            if (menuText == FindObjectFlowMenuText)
+            if (menuText == FindObjectFlowMenuText || menuText == DetectionParameterMenuText)
             {
                 float centerX = e.Bounds.Right - 12;
                 float centerY = e.Bounds.Top + (e.Bounds.Height / 2f);
                 using (var pen = new Pen(Color.FromArgb(75, 103, 132), 1.6f))
                 {
-                    if (findObjectFlowExpanded)
+                    bool expanded = menuText == FindObjectFlowMenuText
+                        ? findObjectFlowExpanded
+                        : detectionParameterMenuExpanded;
+                    if (expanded)
                     {
                         e.Graphics.DrawLines(pen, new[]
                         {
@@ -2619,11 +2670,15 @@ namespace IntegratedImageProcessingApp.Forms
         {
             switch (menuText)
             {
-                case FindObjectFlowMenuText:
-                    return FunctionMenuIcon.Flow;
+                case DetectionParameterMenuText:
+                case DetectionParameterNewMenuText:
                 case DetectionParameterAddMenuText:
                 case DetectionParameterSelectMenuText:
+                case DetectionParameterUpdateRecipeMenuText:
+                case DetectionParameterSaveAsRecipeMenuText:
                     return FunctionMenuIcon.Measure;
+                case FindObjectFlowMenuText:
+                    return FunctionMenuIcon.Flow;
                 case LoadImageMenuText:
                     return FunctionMenuIcon.Folder;
                 case RoiMenuText:
@@ -2658,6 +2713,15 @@ namespace IntegratedImageProcessingApp.Forms
                 menuText == ImageRelationMenuText ||
                 menuText == ObjectJudgementMenuText ||
                 menuText == ObjectDefinitionMenuText;
+        }
+
+        private static bool IsDetectionParameterRecipeMenuItem(string menuText)
+        {
+            return menuText == DetectionParameterNewMenuText ||
+                menuText == DetectionParameterAddMenuText ||
+                menuText == DetectionParameterSelectMenuText ||
+                menuText == DetectionParameterUpdateRecipeMenuText ||
+                menuText == DetectionParameterSaveAsRecipeMenuText;
         }
 
         private static void DrawFunctionMenuIcon(Graphics graphics, FunctionMenuIcon icon, Rectangle bounds, bool selected)
@@ -2751,7 +2815,8 @@ namespace IntegratedImageProcessingApp.Forms
                 return 66;
             }
 
-            if (IsImageProcessingStepMenuItem(menuText) || IsRoiMenuItem(menuText))
+            if (IsImageProcessingStepMenuItem(menuText) || IsRoiMenuItem(menuText) ||
+                IsDetectionParameterRecipeMenuItem(menuText))
             {
                 return 48;
             }

@@ -2458,6 +2458,21 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                 }
             }
+            else if (isObjectDetectionResultReviewMode)
+            {
+                if (hasSelectedObject && selectedObjectDetectionNumber > 0)
+                {
+                    inspectionObjects = new List<ObjectDefinitionDetectedObject>
+                    {
+                        selectedObject
+                    };
+                }
+                else
+                {
+                    regionsToDraw = Enumerable.Empty<ObjectDetectionInspectionRegionSettings>();
+                    inspectionObjects = new List<ObjectDefinitionDetectedObject>();
+                }
+            }
 
             if (showInspectionRegionFrames)
             {

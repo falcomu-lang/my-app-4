@@ -158,6 +158,73 @@ namespace IntegratedImageProcessingApp.Services
             return entry;
         }
 
+        public DetectionRecipeCatalogEntry AddRecipe(
+            SystemParameterSettings settings,
+            string displayName,
+            string description)
+        {
+            if (settings == null)
+            {
+                throw new ArgumentNullException("settings");
+            }
+
+            string temporaryPath = Path.Combine(
+                Path.GetTempPath(), "detection-recipe-" + Guid.NewGuid().ToString("N") + ".ini");
+            try
+            {
+                SaveRecipeSnapshot(temporaryPath, settings);
+                return AddRecipe(temporaryPath, displayName, description);
+            }
+            finally
+            {
+                TryDeleteTemporaryFile(temporaryPath);
+            }
+        }
+
+        public void UpdateRecipeSettings(string id, SystemParameterSettings settings)
+        {
+            if (!IsValidId(id))
+            {
+                throw new InvalidDataException("要更新的 Recipe 識別碼無效。");
+            }
+            if (settings == null)
+            {
+                throw new ArgumentNullException("settings");
+            }
+
+            IList<DetectionRecipeCatalogEntry> entries = LoadParameterList();
+            DetectionRecipeCatalogEntry entry = entries.FirstOrDefault(
+                item => string.Equals(item.Id, id, StringComparison.Ordinal));
+            if (entry == null)
+            {
+                throw new InvalidOperationException("找不到要更新的 Recipe。");
+            }
+
+            string parameterPath = GetParameterFilePath(entry);
+            string temporaryPath = parameterPath + ".update-" + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                SaveRecipeSnapshot(temporaryPath, settings);
+                ValidateParameterFile(temporaryPath);
+                if (File.Exists(parameterPath))
+                {
+                    File.Replace(temporaryPath, parameterPath, null);
+                }
+                else
+                {
+                    File.Move(temporaryPath, parameterPath);
+                }
+
+                entry.UpdatedUtc = DateTime.UtcNow.ToString(
+                    "o", System.Globalization.CultureInfo.InvariantCulture);
+                SaveParameterList(entries);
+            }
+            finally
+            {
+                TryDeleteTemporaryFile(temporaryPath);
+            }
+        }
+
         public void UpdateMetadata(string id, string displayName, string description)
         {
             if (string.IsNullOrWhiteSpace(displayName))
@@ -404,6 +471,24 @@ namespace IntegratedImageProcessingApp.Services
                     throw new InvalidDataException(
                         "包含多個檢測參數的參數檔，必須是同一個已分組的群組。");
                 }
+            }
+        }
+
+        private static void SaveRecipeSnapshot(string filePath, SystemParameterSettings settings)
+        {
+            string clonePath = Path.Combine(
+                Path.GetTempPath(), "detection-recipe-clone-" + Guid.NewGuid().ToString("N") + ".ini");
+            try
+            {
+                new SystemParameterIniService(clonePath).Save(settings);
+                SystemParameterSettings snapshot = new SystemParameterIniService(clonePath).Load();
+                snapshot.LastImagePath = string.Empty;
+                snapshot.ActiveDetectionRecipeId = string.Empty;
+                new SystemParameterIniService(filePath).Save(snapshot);
+            }
+            finally
+            {
+                TryDeleteTemporaryFile(clonePath);
             }
         }
 

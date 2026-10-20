@@ -42,6 +42,7 @@ namespace IntegratedImageProcessingApp.Forms
         private string activeObjectDefinitionProcessingSignature;
         private string completedObjectDefinitionProcessingSignature;
         private string pendingObjectDefinitionProcessingSignature;
+        private bool objectDefinitionProcessingInProgress;
 
         private sealed class ObjectDefinitionDetectedObject
         {
@@ -293,6 +294,7 @@ namespace IntegratedImageProcessingApp.Forms
                 activeObjectDefinitionProcessingSignature = processingSignature;
                 completedObjectDefinitionProcessingSignature = null;
                 objectDefinitionProcessingRequested = true;
+                objectDefinitionProcessingInProgress = true;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceRelationElapsedMilliseconds = 0;
@@ -520,6 +522,10 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     finally
                     {
+                        lock (objectDefinitionResultLock)
+                        {
+                            objectDefinitionProcessingInProgress = false;
+                        }
                         DisposeObjectDefinitionSourceMasks(completedSourceMasks);
                         if (!displaySourceMasksTransferred)
                         {
@@ -555,6 +561,7 @@ namespace IntegratedImageProcessingApp.Forms
                 activeObjectDefinitionProcessingSignature = processingSignature;
                 completedObjectDefinitionProcessingSignature = null;
                 objectDefinitionProcessingRequested = true;
+                objectDefinitionProcessingInProgress = true;
                 objectDefinitionProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceProcessingElapsedMilliseconds = 0;
                 objectDefinitionSourceRelationElapsedMilliseconds = 0;
@@ -805,6 +812,10 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     finally
                     {
+                        lock (objectDefinitionResultLock)
+                        {
+                            objectDefinitionProcessingInProgress = false;
+                        }
                         if (leftResult != null)
                         {
                             leftResult.Dispose();

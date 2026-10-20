@@ -588,6 +588,7 @@ namespace IntegratedImageProcessingApp.Forms
             string importedParameterId)
         {
             CancelDetectionRecipeBoundOperations();
+            ClearObjectDetectionResultReviewResults();
             isImportingDetectionParameterSettings = true;
             try
             {
@@ -712,7 +713,7 @@ namespace IntegratedImageProcessingApp.Forms
                 imageRelationMenuExpanded = false;
                 objectJudgementMenuExpanded = false;
                 objectDefinitionMenuExpanded = false;
-                objectDetectionParameterMenuExpanded = true;
+                objectDetectionParameterMenuExpanded = !string.IsNullOrWhiteSpace(importedParameterId);
 
                 RebuildVisibleRoiItems();
                 RebuildVisibleImageProcessingSteps();
@@ -721,21 +722,35 @@ namespace IntegratedImageProcessingApp.Forms
                 RebuildVisibleObjectJudgements();
                 RebuildVisibleObjectDefinitions();
                 RebuildVisibleObjectDetectionParameters();
-                SelectObjectDetectionParameter(importedParameterId);
+                if (!string.IsNullOrWhiteSpace(importedParameterId))
+                {
+                    SelectObjectDetectionParameter(importedParameterId);
+                }
             }
             finally
             {
                 isImportingDetectionParameterSettings = false;
             }
 
-            suppressObjectDetectionParameterSourceAutoProcessing = true;
-            try
+            if (string.IsNullOrWhiteSpace(importedParameterId))
             {
-                ShowObjectDetectionParameterPanel(importedParameterId);
+                ResetRightFunctionPanel();
+                rightPanelTitleLabel.Text = "新建參數";
+                parameterPlaceholderLabel.Text = "空白檢測參數已建立；請從 ROI 與找尋物件流程開始設定。";
+                parameterPlaceholderLabel.Visible = true;
+                parameterPlaceholderLabel.BringToFront();
             }
-            finally
+            else
             {
-                suppressObjectDetectionParameterSourceAutoProcessing = false;
+                suppressObjectDetectionParameterSourceAutoProcessing = true;
+                try
+                {
+                    ShowObjectDetectionParameterPanel(importedParameterId);
+                }
+                finally
+                {
+                    suppressObjectDetectionParameterSourceAutoProcessing = false;
+                }
             }
         }
 
