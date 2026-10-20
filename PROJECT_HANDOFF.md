@@ -1,6 +1,6 @@
 # Project Handoff：整合式影像處理軟體
 
-文件快照：2026-10-20。此次檢測總覽與相機結果更新工作由已推送的 `0e9ace6` 延伸。檢測範圍採「全物件共用 ROI 定義＋ROI 群組」；各一般缺陷分支與頻域一／二分別選組，同組重疊 ROI 以聯集遮罩處理。檢測總覽逐物件顯示尺寸、缺陷及綜合判定，底圖使用原始影像；物件格單擊聚焦、雙擊清除選取並回到全圖。相機實機與 GUI 端到端仍待驗收。
+文件快照：2026-10-20。最新推送為 `d515771`（`Keep camera inspections visible in overview`）。檢測範圍採「全物件共用 ROI 定義＋ROI 群組」；各一般缺陷分支與頻域一／二分別選組，同組重疊 ROI 以聯集遮罩處理。檢測總覽逐物件顯示尺寸、缺陷及綜合判定，底圖使用原始影像；物件格單擊聚焦、雙擊清除選取並回到全圖。新相機影像在總覽開啟時會留在總覽，先顯示待確認影像，判定完成後更新物件結果。相機實機與 GUI 端到端仍待驗收。
 
 ## 1. 專案與 Git 狀態
 
@@ -8,11 +8,11 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C#、Windows Forms、.NET Framework 4.7.2、OpenCvSharp。
-- 分支：`main`；目前已推送基準為 `0e9ace6`（`Add inspection overview and camera result routing`），本次未提交修改將總覽底圖改為原始影像並加入格子雙擊返回全圖。使用者既有的 `MainForm.DetectionParameter.DefectRegion.cs` 工作目錄變更獨立保留，不屬於本次修改。
+- 分支：`main`；目前已推送基準為 `d515771`（`Keep camera inspections visible in overview`），工作目錄乾淨。此次修改讓相機影像在總覽畫面開啟時不切換到結果確認頁；影像載入後先顯示為待確認，判定完成後更新總覽結果。
 - 2026-10-19 `6c97e89` 已以 Visual Studio 2019 MSBuild Debug 建置成功，確認 `config/device-settings.ini` 複製到輸出目錄；全域設定 UI、重啟讀回、舊 Recipe 與實機標定仍待手動驗收。
 - 2026-10-19 相機模組整合版由 Visual Studio 2019 x64 MSBuild Debug 成功建置至 `%TEMP%\camera-integration-build-final\`；原 `bin\Debug\IntegratedImageProcessingApp.exe` 被執行中的程式鎖住，因此未覆寫。Sapera managed DLL 與 x64 `LSI8181_64.dll` 均已複製到整合輸出；相機 UI／驅動及實機功能仍待驗收。
 - 2026-10-19 後續修正相機「顯示攝影機影像」為控制原有相機預覽區，並讓「將取得的影像送入影像處理」獨立控制送檢。接收影格後會送入目前選取的結果確認參數，忙碌時略過而不排隊。最新 `CameraCaptureModule` Build 與主程式 Compile 均成功；完整 Solution Build 受執行中輸出檔鎖定影響未完成，未關閉使用者程式。相機實機及 GUI 端到端尚未驗收；此整合仍為未提交工作目錄內容。
-- 2026-10-20 新增「檢測總覽」：最近成功原始影像與物件格矩陣，分開顯示尺寸、缺陷及綜合 A/B/NG／待確認；任一尺寸或缺陷 NG 時綜合 NG。物件格單擊聚焦影像，雙擊清除選取並恢復全圖視野。相機送檢若從總覽頁啟動，既有結果確認運算成功後會回到總覽，更新該次原始影像與物件判定；若使用者在運算期間自行切頁，不會強制拉回。運算仍透過暫存 TIFF 與結果確認 UI，完整 Solution Build、本機 GUI 與相機實機尚未驗證。
+- 2026-10-20 新增「檢測總覽」：最近成功原始影像與物件格矩陣，分開顯示尺寸、缺陷及綜合 A/B/NG／待確認；任一尺寸或缺陷 NG 時綜合 NG。物件格單擊聚焦影像，雙擊清除選取並恢復全圖視野。相機送檢時若使用者停留在總覽，畫面不切換至結果確認；新影像先顯示為待確認，檢測完成後更新各物件判定。若使用者在運算期間自行切頁，不會強制拉回。運算仍透過暫存 TIFF 與結果確認 UI，完整 Solution Build、本機 GUI 與相機實機尚未驗證。
 - 2026-10-20 左側「檢測參數」改為預設收合的可展開主項目，含「新建參數」、「參數讀取與加入」、「參數選擇」、「更新目前recipe」、「另存為新的Recipe」。新建會清除目前檢測設定與 Recipe 關聯、保留目前圖片和獨立的 `config/device-settings.ini`；更新會確認後覆寫作用中 Recipe；另存會建立新 ID 並切換作用中項目。MSBuild 僅回報啟動訊息、未進入編譯且無法取得結果；尚待 GUI 驗收。
 - 2026-09-28 曾以獨立輸出 `IntegratedImageProcessingApp\bin\Debug-Codex-Sharp\` 建置成功。一般 `bin\Debug` 輸出曾因程式執行中鎖住 EXE 而無法覆寫；未關閉使用者程式。
 - 2026-10-05 頻域直接記憶體運算版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyEnergyPointerValidation\`；尚未啟動 GUI 或用使用者實際大圖量測加速幅度及完成端到端驗收。
