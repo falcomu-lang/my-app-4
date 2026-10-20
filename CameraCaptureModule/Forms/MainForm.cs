@@ -52,6 +52,15 @@ namespace CameraCaptureApp.Forms
             get { return _settings != null && _settings.ForwardAcquiredImageToInspection; }
         }
 
+        public bool IsCameraConnected
+        {
+            get
+            {
+                CameraStatus status = _cameraService == null ? null : _cameraService.Status;
+                return status != null && status.IsConnected;
+            }
+        }
+
         public event EventHandler<CameraImageAcquiredEventArgs> ImageAcquired
         {
             add

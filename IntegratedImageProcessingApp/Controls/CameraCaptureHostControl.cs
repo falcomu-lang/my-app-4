@@ -13,6 +13,15 @@ namespace IntegratedImageProcessingApp.Controls
         private bool disposing;
         private bool cameraImageAcquiredSubscribed;
 
+        public bool IsCameraConnected
+        {
+            get
+            {
+                return cameraForm != null && !cameraForm.IsDisposed &&
+                    cameraForm.IsCameraConnected;
+            }
+        }
+
         public event EventHandler<CameraImageAcquiredEventArgs> ImageAcquired
         {
             add

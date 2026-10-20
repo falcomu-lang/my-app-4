@@ -61,6 +61,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             string imagePath = null;
             bool imageLoaded = false;
+            bool returnToInspectionOverview = isInspectionOverviewActive;
             string previousCameraImagePath = latestCameraInspectionFramePath;
             if (string.IsNullOrWhiteSpace(previousCameraImagePath) &&
                 IsOwnedCameraInspectionImagePath(systemParameters.LastImagePath))
@@ -162,6 +163,27 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 await RunObjectDetectionResultReviewAsync();
+                if (returnToInspectionOverview &&
+                    objectDetectionResultReviewSnapshot != null &&
+                    string.Equals(
+                        objectDetectionResultReviewSnapshot.ImagePath,
+                        imagePath,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    int overviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
+                    bool isStillOnCameraReviewPage =
+                        functionListBox.SelectedIndex == resultReviewIndex;
+                    bool isAlreadyOnOverviewPage = overviewIndex >= 0 &&
+                        functionListBox.SelectedIndex == overviewIndex;
+                    if (overviewIndex >= 0 && isStillOnCameraReviewPage)
+                    {
+                        functionListBox.SelectedIndex = overviewIndex;
+                    }
+                    else if (isAlreadyOnOverviewPage && isInspectionOverviewActive)
+                    {
+                        RefreshInspectionOverview();
+                    }
+                }
                 SetCameraInspectionStatus(
                     "相機影像 #" + sequenceNumber + " 已送入目前檢測參數完成判定。");
             }

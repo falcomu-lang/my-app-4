@@ -269,6 +269,13 @@ namespace IntegratedImageProcessingApp.Forms
                 ShowObjectDetectionResultReviewPanel();
                 return;
             }
+            else if (selectedFunction == InspectionOverviewMenuText)
+            {
+                HideImageProcessingFlowTree();
+                ShowInspectionOverviewPanel();
+                statusLabel.Text = "目前選擇：檢測總覽";
+                return;
+            }
             else if (GetObjectJudgementGroupId(selectedFunction) != null)
             {
                 parameterPlaceholderLabel.Text = "目前選擇物件群組，可展開或收合其中的區塊。";
@@ -418,6 +425,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void ResetRightFunctionPanel()
         {
             bool wasObjectDetectionResultReviewMode = isObjectDetectionResultReviewMode;
+            ExitInspectionOverviewMode();
             ExitObjectDetectionResultReviewMode();
             HideImageRelationParameterPanel();
             HideObjectJudgementParameterPanel();

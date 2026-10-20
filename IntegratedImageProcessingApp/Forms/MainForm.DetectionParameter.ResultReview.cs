@@ -81,6 +81,8 @@ namespace IntegratedImageProcessingApp.Forms
             public ObjectDetectionParameterSettings Parameter { get; set; }
             public ObjectDefinitionSettings Definition { get; set; }
             public List<ObjectDefinitionDetectedObject> Objects { get; set; }
+            public Dictionary<int, ResultReviewGoodJudgementGrade> SizeGrades { get; set; }
+            public Dictionary<int, Point> ObjectGridPositions { get; set; }
             public Dictionary<string, ObjectDetectionDefectCoreResult> CoreResults { get; set; }
             public Dictionary<string, Cv.Mat> MeasurementMasks { get; set; }
             public ObjectDetectionFrequencyResult FrequencyResult { get; set; }
@@ -2867,6 +2869,14 @@ namespace IntegratedImageProcessingApp.Forms
                 Definition = (ObjectDefinitionSettings)
                     CloneObjectDetectionResultReviewModel(definition),
                 Objects = CloneObjectDetectionResultReviewObjects(objects),
+                SizeGrades = objectDetectionResultReviewGoodJudgementResults
+                    .GroupBy(result => result.ObjectNumber)
+                    .ToDictionary(group => group.Key, group => group.First().Grade),
+                ObjectGridPositions = objectDetectionResultReviewGoodJudgementResults
+                    .GroupBy(result => result.ObjectNumber)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => new Point(group.First().GridColumn, group.First().GridRow)),
                 DefectViewStates = GetAllObjectDetectionDefectDisplayControls()
                     .Select(display => display == null ? default(ImageViewState) : display.ViewState)
                     .ToArray()

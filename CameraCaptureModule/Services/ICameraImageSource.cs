@@ -3,8 +3,8 @@ using System;
 namespace CameraCaptureApp.Services
 {
     /// <summary>
-    /// Provides completed full-resolution camera frames. Subscribers should copy or enqueue
-    /// the image quickly; inspection processing is intentionally not connected here yet.
+    /// Provides completed full-resolution camera frames to subscribers. Subscribers should
+    /// copy or enqueue the image quickly and must not retain the event-owned bitmap.
     /// </summary>
     public interface ICameraImageSource
     {

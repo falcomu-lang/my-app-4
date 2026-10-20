@@ -286,6 +286,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string ObjectDefinitionMenuText = "物件定義";
         private const string ObjectDetectionParameterMenuText = "檢測參數設定";
         private const string ObjectDetectionResultReviewMenuText = "參數結果確認";
+        private const string InspectionOverviewMenuText = "檢測總覽";
         private const string GlobalSettingsMenuText = "全域設定";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
@@ -314,7 +315,8 @@ namespace IntegratedImageProcessingApp.Forms
             Object,
             Filter,
             Measure,
-            Settings
+            Settings,
+            Overview
         }
 
         public MainForm()
@@ -394,9 +396,16 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionParameterIndex < 0 ? functionListBox.Items.Count : objectDetectionParameterIndex + 1,
                     ObjectDetectionResultReviewMenuText);
             }
-            if (!functionListBox.Items.Contains(GlobalSettingsMenuText))
+            if (!functionListBox.Items.Contains(InspectionOverviewMenuText))
             {
                 int resultReviewIndex = functionListBox.Items.IndexOf(ObjectDetectionResultReviewMenuText);
+                functionListBox.Items.Insert(
+                    resultReviewIndex < 0 ? functionListBox.Items.Count : resultReviewIndex + 1,
+                    InspectionOverviewMenuText);
+            }
+            if (!functionListBox.Items.Contains(GlobalSettingsMenuText))
+            {
+                int resultReviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
                 functionListBox.Items.Insert(
                     resultReviewIndex < 0 ? functionListBox.Items.Count : resultReviewIndex + 1,
                     GlobalSettingsMenuText);
@@ -2633,6 +2642,8 @@ namespace IntegratedImageProcessingApp.Forms
                     return FunctionMenuIcon.Measure;
                 case ObjectDetectionResultReviewMenuText:
                     return FunctionMenuIcon.Measure;
+                case InspectionOverviewMenuText:
+                    return FunctionMenuIcon.Overview;
                 case GlobalSettingsMenuText:
                     return FunctionMenuIcon.Settings;
                 default:
@@ -2713,6 +2724,12 @@ namespace IntegratedImageProcessingApp.Forms
                         graphics.DrawLine(pen, bounds.Left + 8, bounds.Top + 12, bounds.Left + 8, bounds.Top + 15);
                         graphics.DrawLine(pen, bounds.Left + 1, bounds.Top + 8, bounds.Left + 4, bounds.Top + 8);
                         graphics.DrawLine(pen, bounds.Left + 12, bounds.Top + 8, bounds.Left + 15, bounds.Top + 8);
+                        break;
+                    case FunctionMenuIcon.Overview:
+                        graphics.DrawRectangle(pen, bounds.Left + 1, bounds.Top + 2, 14, 12);
+                        graphics.DrawLine(pen, bounds.Left + 1, bounds.Top + 6, bounds.Left + 15, bounds.Top + 6);
+                        graphics.DrawLine(pen, bounds.Left + 6, bounds.Top + 6, bounds.Left + 6, bounds.Top + 14);
+                        graphics.DrawLine(pen, bounds.Left + 11, bounds.Top + 6, bounds.Left + 11, bounds.Top + 14);
                         break;
                 }
             }

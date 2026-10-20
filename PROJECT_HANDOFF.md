@@ -1,6 +1,6 @@
 # Project Handoff：整合式影像處理軟體
 
-文件快照：2026-10-19，程式基準 `6c97e89` 加上目前工作目錄的未提交修改。檢測範圍採「全物件共用 ROI 定義＋ROI 群組」；各一般缺陷分支與頻域一／二分別選組，同組重疊 ROI 以聯集遮罩處理。最近加入 ROI 組排序／顯示開關，以及獨立的「全域設定」與攝影機精度檔。紋理異常判定已移除；線掃描相機主介面已嵌入全域設定，並已有可選擇送入「參數結果確認」的初步流程。相機實機與 GUI 端到端仍待驗收。
+文件快照：2026-10-20。此次檢測總覽與相機結果更新工作由 Git 基準 `520443a` 延伸。檢測範圍採「全物件共用 ROI 定義＋ROI 群組」；各一般缺陷分支與頻域一／二分別選組，同組重疊 ROI 以聯集遮罩處理。檢測總覽逐物件顯示尺寸、缺陷及綜合判定；相機送檢成功後可更新總覽影像與格子。相機實機與 GUI 端到端仍待驗收。
 
 ## 1. 專案與 Git 狀態
 
@@ -8,10 +8,11 @@
 - Solution：`MyApp4.sln`
 - 主專案：`IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj`
 - 技術：C#、Windows Forms、.NET Framework 4.7.2、OpenCvSharp。
-- 分支：`main`；目前 `HEAD`／`origin/main` 為 `6c97e89`（`Narrow global camera settings panel`）。前一筆 `92a3d16` 加入全域設備設定；`62aef76` 加入檢測 ROI 顯示開關；`5ea5ed8` 加入 ROI 組排序控制。文件更新本身尚未提交或推送。
+- 分支：`main`；此次修改以 `520443a`（`Connect camera capture to inspection flow`）為基準，增加檢測總覽與相機判定後的總覽更新。使用者既有的 `MainForm.DetectionParameter.DefectRegion.cs` 工作目錄變更獨立保留，不屬於本次更新。
 - 2026-10-19 `6c97e89` 已以 Visual Studio 2019 MSBuild Debug 建置成功，確認 `config/device-settings.ini` 複製到輸出目錄；全域設定 UI、重啟讀回、舊 Recipe 與實機標定仍待手動驗收。
 - 2026-10-19 相機模組整合版由 Visual Studio 2019 x64 MSBuild Debug 成功建置至 `%TEMP%\camera-integration-build-final\`；原 `bin\Debug\IntegratedImageProcessingApp.exe` 被執行中的程式鎖住，因此未覆寫。Sapera managed DLL 與 x64 `LSI8181_64.dll` 均已複製到整合輸出；相機 UI／驅動及實機功能仍待驗收。
 - 2026-10-19 後續修正相機「顯示攝影機影像」為控制原有相機預覽區，並讓「將取得的影像送入影像處理」獨立控制送檢。接收影格後會送入目前選取的結果確認參數，忙碌時略過而不排隊。最新 `CameraCaptureModule` Build 與主程式 Compile 均成功；完整 Solution Build 受執行中輸出檔鎖定影響未完成，未關閉使用者程式。相機實機及 GUI 端到端尚未驗收；此整合仍為未提交工作目錄內容。
+- 2026-10-20 新增「檢測總覽」：最近成功結果影像與物件格矩陣，分開顯示尺寸、缺陷及綜合 A/B/NG／待確認；任一尺寸或缺陷 NG 時綜合 NG。相機送檢若從總覽頁啟動，既有結果確認運算成功後會回到總覽，更新該次影像與物件判定；若使用者在運算期間自行切頁，不會強制拉回。運算仍透過暫存 TIFF 與結果確認 UI，完整 Solution Build、本機 GUI 與相機實機尚未驗證。
 - 2026-09-28 曾以獨立輸出 `IntegratedImageProcessingApp\bin\Debug-Codex-Sharp\` 建置成功。一般 `bin\Debug` 輸出曾因程式執行中鎖住 EXE 而無法覆寫；未關閉使用者程式。
 - 2026-10-05 頻域直接記憶體運算版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyEnergyPointerValidation\`；尚未啟動 GUI 或用使用者實際大圖量測加速幅度及完成端到端驗收。
 - 2026-10-05 頻域結果整合版已成功 Debug 建置，輸出至 `IntegratedImageProcessingApp\bin\FrequencyIntegrationValidation\`；尚未啟動 GUI 或用實際影像驗收群組位置及最終判定。
@@ -37,6 +38,7 @@
        ├─ 缺陷量測設定（平場＋條件一至六）與檢測範圍組
        ├─ 頻域異常一／二
   -> 參數結果確認（選參數／載入同規格影像／執行／檢視判定）
+  -> 檢測總覽（處理影像＋每物件尺寸／缺陷／綜合判定矩陣）
 
 全域設定 > 與線掃描取像結合
   -> CameraCaptureModule（單程式、單攝影機）
@@ -44,14 +46,15 @@
   -> MainForm.CameraCapture（單一影格處理中；忙碌時略過新影格）
   -> 暫存 TIFF -> 目前選取參數的結果確認流程
        -> 物件搜尋、尺寸量測、平場與已啟用缺陷／頻域分析
+       -> 成功結果快照 -> 檢測總覽影像及逐物件判定矩陣
 
 全域設定（獨立於 Recipe）
-  ├─ 與線掃描取像結合：嵌入 CameraCaptureModule；事件可送入結果確認
+  ├─ 與線掃描取像結合：嵌入 CameraCaptureModule；事件送檢後更新檢測總覽
   └─ 內部參數：攝影機 X/Y mm/pixel 與 mm 換算開關
        -> config/device-settings.ini（執行檔目錄）
 ```
 
-相機設定中的「顯示攝影機影像」只控制 `CameraCaptureModule` 原有的即時預覽區；「將取得的影像送入影像處理」則獨立控制是否把取像影格送入主程式檢測。關閉預覽不會關閉取像、記錄／自動保存或送檢。
+相機設定中的「顯示攝影機影像」只控制 `CameraCaptureModule` 原有的即時預覽區；「將取得的影像送入影像處理」則獨立控制是否把取像影格送入主程式檢測。關閉預覽不會關閉取像、記錄／自動保存或送檢。總覽以每個找到的物件為單位顯示尺寸、缺陷、綜合判定；尺寸或缺陷任一為 NG 時該物件綜合為 NG，不會因同一影像裡其他物件 NG 就把所有物件一律標成 NG。
 
 WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial MainForm` 將功能拆在多個檔案，不代表已完全轉成 MVVM 或服務導向架構。大型影像顯示、灰階解碼、ROI 快取和部分 OpenCV 運算已有獨立服務／控制項。
 
@@ -181,17 +184,25 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 - `CameraCaptureHostControl` 延遲到取像分頁實際顯示時才建立相機主視窗；嵌入式主視窗關閉時會走原本停止計時器、取消工作、斷開相機與釋放測速輪的生命週期。單一程式只建立一個相機服務／連線。
 - 設定視窗「取得影像後事件」有兩個互相獨立的開關。「顯示攝影機影像」控制相機程式原有的預覽區：關閉會清掉目前即時預覽、清除排隊中的預覽影格並略過後續預覽轉換／繪製；取像、最新／滾動影格記錄、自動保存及送檢不因此關閉。沒有另加一個設定頁影像框。舊設定鍵 `ShowAcquiredImageInSettings` 仍可讀取，保存時使用 `ShowCameraImage`。
 - 「將取得的影像送入影像處理」預設關閉；開啟後 `CameraCaptureHostControl` 才訂閱相機完整影格事件，關閉則取消訂閱。事件資料含單調遞增影像序號、UTC 時間、寬高及像素格式；主程式在回呼中透過 `CreateImageCopy()` 取得自有 Bitmap，再把耗時工作移至 UI 流程之外。
-- 目前接收流程位於 `Forms/MainForm.CameraCapture.cs`：每次只允許一張影格處理；處理中到達的新影格不排隊，累計後顯示略過數。通過忙碌狀態與影像尺寸檢查後，影格會先存為 `%LocalAppData%\IntegratedImageProcessingApp\CameraFrames\` 下的暫存 TIFF，切換到「參數結果確認」，以目前選取的 Recipe 載入影像並呼叫既有結果確認流程。該流程會依參數重新搜尋物件並執行尺寸、平場及啟用中的缺陷／頻域判定；上一張由相機產生的暫存影像在新影像成功載入後刪除。這是已接通的 UI 流程，不是記憶體直送的純檢測服務。
+- 目前接收流程位於 `Forms/MainForm.CameraCapture.cs`：每次只允許一張影格處理；處理中到達的新影格不排隊，累計後顯示略過數。通過忙碌狀態與影像尺寸檢查後，影格會先存為 `%LocalAppData%\IntegratedImageProcessingApp\CameraFrames\` 下的暫存 TIFF，以目前選取的 Recipe 載入影像並呼叫既有結果確認流程。該流程會依參數重新搜尋物件並執行尺寸、平場及啟用中的缺陷／頻域判定；上一張由相機產生的暫存影像在新影像成功載入後刪除。若取像前正在「檢測總覽」，成功產生相同影像的結果快照後返回總覽；運算期間仍會暫時切換到結果確認 UI。這是已接通的 UI 流程，不是記憶體直送的純檢測服務。
 - 相機原本的 `FrameReady` 負責相機視窗預覽；`ImageAcquired` 是每個成功完成的 Sapera buffer transfer 產生的完整影格事件，兩者分開。顯示預覽關閉時不額外做預覽影像轉換，但若送檢開啟，完整影格仍會被複製交給檢測端。
 - 已保留連續／外部／軟體觸發、預覽、停止、單次擷取、連續擷取、影像載入／保存及波形分析等原有主視窗功能。
 - 相機設定檔改為執行檔目錄 `captureSetting.ini`。檔案不存在時，會將同一目錄既有 `settings.ini` 或 `setting.ini` 複製為新檔，不刪除舊檔；若舊設定仍在獨立相機程式輸出目錄，首次開啟整合程式前須先複製到主程式執行檔旁。相機設定與 `config/device-settings.ini` 設備精度設定分開。
 - 預設取像保存位置為 `CameraCapture/Captures`，相機記錄位於 `logs/camera/app.log`；使用者已指定的 `SaveFolder` 仍優先使用。
 - 方案以 x64 編譯，Sapera managed DLL 以 `CameraSdkDirectory` MSBuild property 指定；目前預設指向相機來源專案的輸出資料夾，不應把該路徑視為可攜部署。測速輪 x64 原生 DLL 從 `LsiNativeDirectory` 複製到主程式輸出；目前預設指向相機旁邊的 `LSI8181/LSI8181/bin/x64/Release`。部署電腦仍須安裝相符的 Sapera／測速輪 runtime 和硬體驅動，實機功能尚未驗收。
-- 目前送檢會改用結果確認頁的圖片與結果狀態，並要求相機影像符合該頁的參考尺寸；使用者正在操作其他檢測／Recipe 流程時會略過影格。此方式適合驗證接線與單機流程，不宜直接視為連續產線架構：影格經暫存 TIFF 和 UI 載入，未提供純記憶體 pipeline、獨立結果記錄、重試／逾時、完整 frame ID 到結果的持久追蹤或有界佇列。
+- 目前送檢沿用結果確認頁的檢測流程，並要求相機影像符合該頁的參考尺寸；相機處理忙碌或其他檢測流程忙碌時會略過影格。從總覽啟動時，成功完成後更新該影像／物件判定並回到總覽；失敗時保留結果確認頁的錯誤狀態供診斷。此方式適合驗證接線與單機流程，不宜直接視為連續產線架構：影格經暫存 TIFF 和 UI 載入，未提供純記憶體 pipeline、獨立結果記錄、重試／逾時、完整 frame ID 到結果的持久追蹤或有界佇列。
 - 內部參數頁的「攝影機精度」區位於左上，寬度約為可用區域三分之一，並設 410 px 最小寬度。可設定 X/Y `mm/pixel`、mm 換算開關，再按「套用內部參數」保存。
 - `CameraDeviceSettingsIniService` 在啟動時讀取執行檔目錄 `config/device-settings.ini`。缺檔時 X/Y=1、換算關閉；個別精度值無效時僅該軸回退為 1，若檔案仍設定啟用 mm 換算，開關不會自動關閉。來源 `IntegratedImageProcessingApp/config/device-settings.ini` 由專案檔以 `PreserveNewest` 複製到輸出目錄；運行時讀寫的是輸出目錄中的檔案。此設定屬設備，不是 Recipe，切換參數不應改動。
 - 尺寸量測依全域開關選用 px 或 mm；斜向長度分別使用 X/Y 精度。缺陷 X/Y mm 門檻依全域 X/Y 精度轉為 pixel，並未受尺寸量測的開關控制。結果確認簽章包含精度與開關，精度變動後需重新計算；缺陷核心亦有設定變動與過期結果防護。
 - 舊 Recipe／`SystemParameters.ini` 中的攝影機精度欄位不再讀寫，也沒有自動遷移到設備檔。若從舊版升級或換機，必須重新檢查／標定全域 X/Y；預設 1 不可視為實際相機精度。GUI 套用、重啟讀回、不同 Recipe 切換、檢測結果失效及實際 mm 計算仍待手動驗收。
+
+### 3.11 檢測總覽
+
+- 左側顯示最近成功檢測的平場校正影像；若校正影像不存在則退回原圖，不疊加缺陷框。右側依物件定義的序號與格位顯示找到的每一個物件。
+- 每格分開顯示尺寸、缺陷、綜合判定。尺寸支援 A/B/NG/待確認；缺陷支援 A/NG/待確認；尺寸或缺陷任一 NG 時該物件綜合 NG，未完成項目會使綜合待確認。
+- 總覽從 `ObjectDetectionResultReviewSnapshot` 取得影像、物件格位置、尺寸等級、缺陷整合群組及參數快照。總覽不是另一套檢測算法；相機送檢與人工結果確認共用同一運算路徑。
+- 相機送檢若在總覽頁開始，成功結果會使頁面返回總覽並重新讀取快照；若運算中使用者手動切頁，不會搶回導覽。檢測仍暫時切換／借用「參數結果確認」UI；需後續評估把運算與頁面導覽分離。
+- 實際設備上仍須驗證：影像格式與尺寸、物件搜尋數量／格位、尺寸 A/B 規則、缺陷 NG 群組、任一 NG 的綜合判定、平場底圖、待確認條件、忙碌時略過及不同頁面下的導覽行為。
 
 ## 4. 重要設定與資料
 
@@ -203,7 +214,7 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 
 ## 5. 檔案職責與行數快照
 
-下表行數依 2026-10-19 工作目錄逐檔計數；只列專案中的 C# 原始檔，不含 `bin`／`obj` 產生檔。行數包含空白行；Designer 檔雖主要由設計器維護，仍列出供定位。行數只反映檔案大小，不代表功能已獨立或已驗收。
+下表行數主要依 2026-10-19 工作目錄逐檔計數；2026-10-20 新增／變動的相機總覽相關檔案已更新行數。只列專案中的 C# 原始檔，不含 `bin`／`obj` 產生檔。行數包含空白行；Designer 檔雖主要由設計器維護，仍列出供定位。行數只反映檔案大小，不代表功能已獨立或已驗收。
 
 ### 專案入口
 
@@ -228,20 +239,21 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 
 | 檔案 | 行數 | 職責 |
 |---|---:|---|
-| `Forms/MainForm.cs` | 2,768 | 主視窗主要狀態、UI 佈局協調及跨功能流程協調；啟動時載入全域攝影機設定。 |
-| `Forms/MainForm.Navigation.cs` | 989 | 主視窗鍵盤、功能清單選取與導覽事件；切入／離開參數結果確認及全域設定模式。 |
-| `Forms/MainForm.GlobalSettings.cs` | 259 | 全域設定分頁、線掃描取像模組承載及攝影機精度編輯／保存。 |
-| `Forms/MainForm.CameraCapture.cs` | 279 | 相機影格接收、忙碌略過、影格尺寸檢查、暫存 TIFF 管理，以及載入目前選取參數並啟動結果確認。 |
-| `Controls/CameraCaptureHostControl.cs` | 130 | 延遲建立並承載相機模組主視窗；依送檢開關訂閱／轉送完整影像事件，主程式關閉時釋放模組。 |
+| `Forms/MainForm.cs` | 2,785 | 主視窗主要狀態、UI 佈局協調及跨功能流程協調；啟動時載入全域攝影機設定並註冊檢測總覽。 |
+| `Forms/MainForm.Navigation.cs` | 997 | 主視窗鍵盤、功能清單選取與導覽事件；切入／離開結果確認、檢測總覽及全域設定模式。 |
+| `Forms/MainForm.GlobalSettings.cs` | 279 | 全域設定分頁、線掃描取像模組承載及攝影機精度編輯／保存。 |
+| `Forms/MainForm.CameraCapture.cs` | 328 | 相機影格接收、忙碌略過、尺寸檢查、暫存 TIFF、呼叫目前選取參數執行結果確認，並於總覽啟動時更新總覽。 |
+| `Forms/MainForm.InspectionOverview.cs` | 1,196 | 檢測總覽影像、逐物件矩陣、尺寸／缺陷／綜合判定、篩選、物件選取與送往結果確認。 |
+| `Controls/CameraCaptureHostControl.cs` | 153 | 延遲建立並承載相機模組主視窗；依送檢開關訂閱／轉送完整影像事件、提供連線狀態，主程式關閉時釋放模組。 |
 | `CameraCaptureModule/CameraCaptureModule.csproj` | — | 相機功能的獨立 x64 .NET Framework 4.7.2 類別庫專案，引用 Sapera managed SDK。 |
-| `CameraCaptureModule/Forms/MainForm.cs` | 1,378 | 原相機主操作視窗、預覽／取像工作協調及彈出視窗管理；以子視窗方式嵌入主程式，預覽開關只停用原預覽更新。 |
+| `CameraCaptureModule/Forms/MainForm.cs` | 1,573 | 原相機主操作視窗、預覽／取像工作協調及彈出視窗管理；以子視窗方式嵌入主程式，預覽開關只停用原預覽更新，並提供相機連線與完整影格事件。 |
 | `CameraCaptureModule/Forms/CameraSettingsForm.cs` | 485 | 相機設定視窗；「取得影像後事件」提供獨立的預覽顯示與送檢開關。 |
 | `CameraCaptureModule/Models/CameraSettings.cs` | 102 | 相機設定資料模型，包含原預覽顯示與送入影像處理兩個設定。 |
 | `CameraCaptureModule/Controls/CameraDisplayControl.cs` | 1,217 | 原相機影像預覽控制項；可清除即時預覽並顯示停用提示，不建立第二個預覽框。 |
 | `CameraCaptureModule/Services/CameraService.cs` | 3,337 | Sapera 連線、取像、預覽與完整取像事件來源。 |
 | `CameraCaptureModule/Services/SettingsService.cs` | 217 | 相機 `captureSetting.ini` 讀寫，遷移舊 `settings.ini`／`setting.ini`，並相容讀取舊預覽開關鍵。 |
 | `CameraCaptureModule/Services/CameraImageAcquiredEventArgs.cs` | 26 | 取像事件資料與影像複製 API，供事件回呼接收端取得自有影格副本。 |
-| `CameraCaptureModule/Services/ICameraImageSource.cs` | — | 取像影像事件介面；主程式目前已有結果確認接收端。 |
+| `CameraCaptureModule/Services/ICameraImageSource.cs` | 17 | 完成取像影格事件介面，事件持有影像僅供回呼期間複製；主程式送檢訂閱端接收影格。 |
 | `Forms/MainForm.ImageRelations.cs` | 487 | 左側影像關聯清單的新增、編輯、刪除及選單 UI。 |
 | `Forms/MainForm.FunctionTree.cs` | 1,086 | ROI、影像處理群組／步驟的清單操作與右鍵選單。 |
 | `Forms/MainForm.Designer.cs` | 1,534 | 主視窗設計器控制項宣告／初始化。 |
@@ -282,7 +294,7 @@ WinForms 的 `MainForm` 仍承擔主要 UI 與工作流程協調；以 `partial 
 | `Forms/MainForm.DetectionParameter.DefectIntegration.cs` | 887 | 暗／亮／頻域異常候選依物件與距離合併、群組表格及整合框繪製；頻域框依多個 ROI 多邊形裁切。 |
 | `Forms/MainForm.DetectionParameter.DefectProcessing.cs` | 2,076 | 缺陷核心依所選 ROI 群組對每枚物件處理 ROI 聯集、尺寸篩選、巢狀平行工作與結果套用；元件識別納入群組／物件。 |
 | `Forms/MainForm.DetectionParameter.DefectFrequency.cs` | 3,111 | 頻域一／二設定 UI、平場來源、每群組／物件 ROI 聯集掃描、直接記憶體能量計算、鄰格比較、結果快取與分析協調。 |
-| `Forms/MainForm.DetectionParameter.ResultReview.cs` | 3,415 | 唯讀參數結果確認；物件／平場／尺寸量測、一般缺陷／頻域分析協調、平行執行，以及結果與各影像視圖快照的保存／還原／失效判定。 |
+| `Forms/MainForm.DetectionParameter.ResultReview.cs` | 3,425 | 唯讀參數結果確認；物件／平場／尺寸量測、一般缺陷／頻域分析協調、平行執行，以及結果與各影像視圖快照的保存／還原／失效判定。 |
 | `Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs` | 853 | 結果確認頁的逐物件尺寸良品判定、A／B 規則計算及判定結果呈現。 |
 | `Forms/DetectionRecipeDialogs.cs` | 516 | Recipe 中繼資料編輯與參數選擇視窗；提供清單操作、排序、保存順序、編輯、刪除確認及套用。 |
 
@@ -317,7 +329,7 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 
 Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLayout` 是先前使用的輸出資料夾，不代表目前最新測試版。
 
-2026-10-19 相機模組整合版曾成功輸出至 `%TEMP%\camera-integration-build-final\`。最新預覽開關及送檢接線變更後，`CameraCaptureModule` Debug Build 與主程式 Compile 均成功；完整 Solution Build 因執行中的輸出檔鎖定未完成，未關閉使用者程式。相機 UI 與 Sapera／測速輪實機、設定讀回及影格送入結果確認流程尚未端到端驗收。
+2026-10-19 相機模組整合版曾成功輸出至 `%TEMP%\camera-integration-build-final\`。2026-10-20 檢測總覽與相機返回總覽修改後，`git diff --check` 通過；本次 Visual Studio 2019 MSBuild 停在建置啟動階段，未取得成功或錯誤結果，故不可宣稱最新程式已完整編譯。相機 UI 與 Sapera／測速輪實機、設定讀回及影格送入總覽流程尚未端到端驗收。
 
 ## 7. 驗證與注意事項
 
@@ -367,7 +379,7 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 - 用水平、垂直與斜向已知尺寸驗證 pixel/mm 量測及缺陷寬高門檻；再改 X/Y 精度，確認缺陷結果及結果確認快照／簽章失效並重算。舊 Recipe 中的精度欄位不應覆蓋全域設定；部署更新時不可覆蓋現場標定檔。
 - 先用實機驗收「全域設定 > 與線掃描取像結合」：Sapera 連線、各觸發模式、相機設定／波形／測速輪彈出視窗、原預覽縮放平移、連續／單次擷取、保存格式、設定遷移及關閉主程式時斷線；另確認嵌入視窗尺寸變更時控制項沒有裁切。建置輸出需同時包含 `DALSA.SaperaLT.SapClassBasic.dll` 與 `LSI8181_64.dll`。
 - 分別測試兩個事件開關：只關閉「顯示攝影機影像」時，原預覽區應清空且不再更新，但記錄／自動保存及送檢開關仍各自有效；只關閉「將取得的影像送入影像處理」時，預覽仍可正常更新且不觸發主程式檢測。確認設定保存、重啟讀回及舊鍵 `ShowAcquiredImageInSettings` 相容。
-- 實機開啟送檢後確認影格序號、時間、尺寸及像素格式；符合參考尺寸時，結果確認使用目前選取參數完成物件搜尋、尺寸／平場／缺陷判定。測試尺寸不符、沒有有效參數、其他流程忙碌及連續影格到達時的略過訊息、暫存 TIFF 產生／替換／清理與影像生命週期。送檢會導覽至結果確認並替換該頁影像，需確認這符合操作者預期。
+- 實機開啟送檢後確認影格序號、時間、尺寸及像素格式；符合參考尺寸時，結果確認使用目前選取參數完成物件搜尋、尺寸／平場／缺陷判定，並驗證總覽顯示本次校正影像與逐物件判定。測試尺寸不符、沒有有效參數、其他流程忙碌及連續影格到達時的略過訊息、暫存 TIFF 產生／替換／清理與影像生命週期。從總覽取像時應在成功後回到總覽；若使用者運算中手動切頁，不應搶回導覽。
 - 目前一張處理中、其他影格略過的策略已在 UI 接收端實作，尚無相機實機壓力驗收；沒有建立生產用有界佇列／排程器、重試／逾時與獨立結果持久化。下一階段應先把檢測協調抽成可接收記憶體影格及 Recipe 快照的 `InspectionPipeline`，讓相機事件與 UI 共用同一服務，再決定設備要求的丟棄／等待策略。
 - 驗收 Recipe：加入一份合法 INI、名稱／說明編輯、排序並保存、右鍵刪除及使用中禁止刪除；關閉重開後確認清單與作用中 Recipe ID 正確。
 - 切換至少兩個 Recipe，確認套用只在明確確認後發生、提示與實際流程一致，且 ROI、MASK、物件定義、平場及缺陷結果都來自新 Recipe；確認啟用的一般缺陷分支與頻域結果完成後才顯示整合頁，必要條件不足時明確顯示失敗原因。
@@ -402,7 +414,7 @@ Visual Studio 或一般 MSBuild 的輸出路徑可能依組態而異；`DebugLay
 6. 以代表性物件數與大圖比較序列／平行結果，量測牆鐘時間、CPU、峰值記憶體及取消響應；設定跨尺寸、缺陷、頻域工作的全域併發上限。
 7. 驗收結果確認快照的換圖／改參數失效、重跑行為、視圖還原及影像資源生命週期，核對逐物件判定、待確認政策和影像 overlay。
 8. 為 INI 格式加入明確版本與遷移策略，做舊／新 Recipe 往返與相同內部 ID 的隔離測試。
-9. 驗收目前相機到結果確認的接線、兩個事件開關及忙碌時略過影格；接著將檢測流程抽成接收記憶體影格與不可變 Recipe 快照的 `InspectionPipeline`，移除暫存 TIFF／強制導覽的耦合，定義 frame ID、尺寸／錯誤、結果保存與設備端丟棄策略。全域 X/Y 精度仍須確認保存、重啟讀回、切換 Recipe 不變及舊參數升級。
+9. 驗收目前相機到總覽的接線、尺寸與缺陷判定、兩個事件開關、總覽矩陣更新及忙碌時略過影格；接著將檢測流程抽成接收記憶體影格與不可變 Recipe 快照的 `InspectionPipeline`，移除暫存 TIFF／UI 導覽耦合，定義 frame ID、尺寸／錯誤、結果保存與設備端丟棄策略。全域 X/Y 精度仍須確認保存、重啟讀回、切換 Recipe 不變及舊參數升級。
 
 ## 9. 維護注意事項
 
