@@ -1385,6 +1385,7 @@ namespace IntegratedImageProcessingApp.Forms
                 SetCameraInspectionStatus("相機影像 #" +
                     sequenceNumber.ToString(CultureInfo.CurrentCulture) +
                     " 已取得，尚未執行檢測；按下「檢測」才會進入尺寸與缺陷判定。");
+                QueueStationStatusPublish(false);
             }
             catch (Exception exception)
             {
@@ -1498,6 +1499,7 @@ namespace IntegratedImageProcessingApp.Forms
                     Color.FromArgb(190, 201, 214);
             }
             UpdateInspectionOverviewCameraButtons();
+            QueueStationStatusPublish(false);
         }
 
         private async void InspectionOverviewRunInspectionButton_Click(object sender, EventArgs e)

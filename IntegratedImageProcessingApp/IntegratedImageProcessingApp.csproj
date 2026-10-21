@@ -92,6 +92,7 @@
     <Compile Include="Services\SystemParameterIniService.cs" />
     <Compile Include="Services\CameraDeviceSettingsIniService.cs" />
     <Compile Include="Services\ConnectionControllerSettingsService.cs" />
+    <Compile Include="Services\InspectionTcpTransport.cs" />
     <Compile Include="Services\SystemParameterSettings.cs" />
     <Compile Include="Services\DetectionRecipeCatalogService.cs" />
     <Compile Include="Services\OpenCvThresholdService.cs" />
@@ -110,6 +111,10 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\MainForm.GlobalSettings.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\MainForm.ConnectionController.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
       <SubType>Form</SubType>
     </Compile>

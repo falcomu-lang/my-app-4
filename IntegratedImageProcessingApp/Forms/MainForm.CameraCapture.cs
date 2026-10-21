@@ -90,7 +90,8 @@ namespace IntegratedImageProcessingApp.Forms
                 returnToInspectionOverview = isInspectionOverviewActive &&
                     overviewIndex >= 0 && functionListBox.SelectedIndex == overviewIndex;
                 int resultReviewIndex = functionListBox.Items.IndexOf(ObjectDetectionResultReviewMenuText);
-                if (!returnToInspectionOverview && resultReviewIndex >= 0 &&
+                if (!returnToInspectionOverview && !isRemoteControllerInspectionActive &&
+                    resultReviewIndex >= 0 &&
                     functionListBox.SelectedIndex != resultReviewIndex)
                 {
                     functionListBox.SelectedIndex = resultReviewIndex;
@@ -280,6 +281,14 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 int droppedCount = Interlocked.Exchange(ref cameraInspectionFramesDropped, 0);
+                ObjectDetectionResultReviewSnapshot latestSnapshot = objectDetectionResultReviewSnapshot;
+                if (latestSnapshot != null && latestSnapshot.JudgementComplete &&
+                    string.Equals(latestSnapshot.ImagePath, latestCameraInspectionFramePath,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    lastCameraInspectionCompletedUtc = DateTime.UtcNow;
+                }
+                QueueStationStatusPublish(true);
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
                 if (droppedCount > 0 && !IsDisposed)
                 {

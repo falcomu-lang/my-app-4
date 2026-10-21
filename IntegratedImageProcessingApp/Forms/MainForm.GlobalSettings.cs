@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
-using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -137,6 +137,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Name = "cameraCaptureHostControl"
             };
             cameraCaptureHostControl.ImageAcquired += CameraCaptureHostControl_ImageAcquired;
+            cameraCaptureHostControl.ImageCaptured += CameraCaptureHostControl_RemoteImageCaptured;
             lineScanPage.Controls.Add(cameraCaptureHostControl);
 
             var internalParameterPage = new TabPage("內部參數")
@@ -150,22 +151,7 @@ namespace IntegratedImageProcessingApp.Forms
                 AutoScroll = true,
                 Padding = new Padding(12)
             };
-            connectionControllerSettingsService = new ConnectionControllerSettingsService(
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config", "connection-controller-settings.xml"));
-            try
-            {
-                connectionControllerSettings = connectionControllerSettingsService.Load();
-            }
-            catch (Exception exception)
-            {
-                connectionControllerSettings = new ConnectionControllerSettings();
-                MessageBox.Show(
-                    this,
-                    "無法讀取連線總控設定，將以預設值顯示；原設定檔不會被自動覆寫。\r\n" + exception.Message,
-                    "全域設定",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-            }
+            EnsureConnectionControllerSettingsLoaded();
             connectionControllerPage.Controls.Add(CreateConnectionControllerSettingsPanel());
             tabs.TabPages.Add(lineScanPage);
             tabs.TabPages.Add(internalParameterPage);
@@ -270,7 +256,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Left = 0,
                 Top = 352,
                 Width = 480,
-                Height = 168,
+                Height = 196,
                 Text = "連線設定",
                 Padding = new Padding(10)
             };
@@ -278,7 +264,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 4,
+                RowCount = 5,
                 Padding = new Padding(4)
             };
             localConnectionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35F));
@@ -286,6 +272,7 @@ namespace IntegratedImageProcessingApp.Forms
             localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
             localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
             localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+            localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             var listenIpComboBox = new ComboBox
             {
@@ -322,6 +309,13 @@ namespace IntegratedImageProcessingApp.Forms
                 ForeColor = Color.FromArgb(92, 101, 116),
                 Anchor = AnchorStyles.Left
             };
+            var allowConnectionsCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "允許總控端連線",
+                Checked = cameraDeviceSettings != null && cameraDeviceSettings.AllowConnections,
+                Anchor = AnchorStyles.Left
+            };
             localConnectionLayout.Controls.Add(CreateCameraPrecisionLabel("本機監聽 IP"), 0, 0);
             localConnectionLayout.Controls.Add(listenIpComboBox, 1, 0);
             localConnectionLayout.Controls.Add(CreateCameraPrecisionLabel("監聽埠"), 0, 1);
@@ -329,12 +323,14 @@ namespace IntegratedImageProcessingApp.Forms
             localConnectionLayout.Controls.Add(localConnectionApplyButton, 1, 2);
             localConnectionLayout.Controls.Add(localConnectionNote, 0, 3);
             localConnectionLayout.SetColumnSpan(localConnectionNote, 2);
+            localConnectionLayout.Controls.Add(allowConnectionsCheckBox, 0, 4);
+            localConnectionLayout.SetColumnSpan(allowConnectionsCheckBox, 2);
             connectionSettingsGroup.Controls.Add(localConnectionLayout);
             var stationIdentityGroup = new GroupBox
             {
                 Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 Left = 0,
-                Top = 528,
+                Top = 556,
                 Width = 480,
                 Height = 94,
                 Text = "站點識別",
@@ -384,7 +380,7 @@ namespace IntegratedImageProcessingApp.Forms
                 ForeColor = Color.FromArgb(92, 101, 116),
                 Padding = new Padding(0, 4, 0, 0)
             };
-            var container = new Panel { Dock = DockStyle.Top, Height = 648 };
+            var container = new Panel { Dock = DockStyle.Top, Height = 676 };
             container.Controls.Add(cameraPrecisionGroup);
             container.Controls.Add(programNameGroup);
             container.Controls.Add(connectionSettingsGroup);
@@ -451,12 +447,13 @@ namespace IntegratedImageProcessingApp.Forms
                 CameraDeviceSettings updated = CreateCameraDeviceSettingsCopy();
                 updated.ListenIpAddress = parsedAddress.ToString();
                 updated.ListenPort = Decimal.ToInt32(listenPortBox.Value);
+                updated.AllowConnections = allowConnectionsCheckBox.Checked;
                 try
                 {
                     SaveCameraDeviceSettings(updated);
                     statusLabel.Text = "已保存本機監聽端點：" + updated.ListenIpAddress + ":" +
                         updated.ListenPort.ToString(CultureInfo.InvariantCulture) +
-                        "（目前尚未啟用網路服務）";
+                        (updated.AllowConnections ? "（已允許總控端連線）" : "（總控端連線已停用）");
                 }
                 catch (Exception exception)
                 {
@@ -528,7 +525,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Location = new Point(4, 2),
                 Height = 38,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Text = "總控端主動連線至被控站；此頁目前只保存參數，尚未啟動 TCP/IP 通訊。"
+                Text = "總控端會依站點 IP 與埠號主動連線；被控端需在全域設定中允許總控端連線。"
             };
             var behaviorGroup = new GroupBox
             {
@@ -792,9 +789,9 @@ namespace IntegratedImageProcessingApp.Forms
                         IPAddress ipAddress;
                         if (!IPAddress.TryParse(ipText, out ipAddress) ||
                             ipAddress.AddressFamily != AddressFamily.InterNetwork ||
-                            IPAddress.IsLoopback(ipAddress) || ipAddress.Equals(IPAddress.Any))
+                            ipAddress.Equals(IPAddress.Any))
                         {
-                            ShowControllerSettingsValidationError("啟用中的站點「" + id + "」需填入可連線的 IPv4 位址。");
+                            ShowControllerSettingsValidationError("啟用中的站點「" + id + "」需填入有效的目標 IPv4 位址；127.0.0.1 可用於本機測試，0.0.0.0 不可作為目標位址。");
                             return;
                         }
                         string endpoint = ipAddress + ":" + port.ToString(CultureInfo.InvariantCulture);
@@ -820,8 +817,36 @@ namespace IntegratedImageProcessingApp.Forms
 
                 try
                 {
+                    ConnectionControllerSettings previousSettings = connectionControllerSettings;
                     connectionControllerSettingsService.Save(updated);
                     connectionControllerSettings = updated;
+                    if (inspectionTcpTransport != null)
+                    {
+                        foreach (ConnectionControllerStation previousStation in
+                            previousSettings.Stations ?? new List<ConnectionControllerStation>())
+                        {
+                            if (previousStation == null)
+                            {
+                                continue;
+                            }
+                            ConnectionControllerStation nextStation = updated.Stations.FirstOrDefault(
+                                station => station.SoftwareId == previousStation.SoftwareId);
+                            if (nextStation == null || !nextStation.Enabled ||
+                                !string.Equals(nextStation.IpAddress, previousStation.IpAddress,
+                                    StringComparison.OrdinalIgnoreCase) ||
+                                nextStation.Port != previousStation.Port)
+                            {
+                                inspectionTcpTransport.DisconnectStation(previousStation.SoftwareId);
+                            }
+                        }
+                        inspectionTcpTransport.SetHeartbeatTimeout(updated.HeartbeatTimeoutSeconds);
+                    }
+                    if (connectionControllerReconnectTimer != null)
+                    {
+                        connectionControllerReconnectTimer.Interval =
+                            Math.Max(1000, updated.ReconnectIntervalSeconds * 1000);
+                    }
+                    RefreshConnectionControllerCards();
                     settingsStatusLabel.Text = "參數已保存；目前尚未建立任何網路連線。";
                     statusLabel.Text = "已保存連線總控參數。";
                 }
@@ -940,7 +965,8 @@ namespace IntegratedImageProcessingApp.Forms
                     : cameraDeviceSettings.ListenIpAddress,
                 ListenPort = cameraDeviceSettings == null
                     ? 5000
-                    : cameraDeviceSettings.ListenPort
+                    : cameraDeviceSettings.ListenPort,
+                AllowConnections = cameraDeviceSettings != null && cameraDeviceSettings.AllowConnections
             };
         }
 
@@ -948,6 +974,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             cameraDeviceSettingsIniService.Save(settings);
             cameraDeviceSettings = settings;
+            ConfigureInspectionTcpListener(settings);
             UpdateProgramNameHeader();
         }
 

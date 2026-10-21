@@ -436,6 +436,7 @@ namespace IntegratedImageProcessingApp.Forms
             if (!IsRunningInDesigner())
             {
                 InitializeImageDisplayControls();
+                InitializeInspectionTcpTransport();
             }
         }
 

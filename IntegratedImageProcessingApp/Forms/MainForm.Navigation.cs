@@ -184,6 +184,10 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string selectedFunction = functionListBox.SelectedItem as string;
+            if (selectedFunction != ConnectionControllerMenuText)
+            {
+                ExitConnectionControllerPanel();
+            }
             if (selectedFunction != GlobalSettingsMenuText)
             {
                 HideGlobalSettingsPanel();
@@ -297,8 +301,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 HideImageProcessingFlowTree();
                 rightPanelTitleLabel.Text = ConnectionControllerMenuText;
-                parameterPlaceholderLabel.Text =
-                    "連線總控角色入口已預留；目前尚未啟用多站點網路連線。";
+                ShowConnectionControllerPanel();
                 statusLabel.Text = "目前選擇：" + ConnectionControllerMenuText;
                 return;
             }

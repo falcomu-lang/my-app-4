@@ -16,6 +16,7 @@ namespace IntegratedImageProcessingApp.Services
             SoftwareId = 1;
             ListenIpAddress = "0.0.0.0";
             ListenPort = 5000;
+            AllowConnections = false;
         }
 
         public double XMillimetersPerPixel { get; set; }
@@ -31,6 +32,8 @@ namespace IntegratedImageProcessingApp.Services
         public string ListenIpAddress { get; set; }
 
         public int ListenPort { get; set; }
+
+        public bool AllowConnections { get; set; }
     }
 
     public sealed class CameraDeviceSettingsIniService
@@ -118,6 +121,11 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     settings.ListenPort = ParseIntegerInRange(value, 5000, 1024, 65535);
                 }
+                else if (inNetworkSection && string.Equals(
+                    key, "AllowConnections", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.AllowConnections = ParseBoolean(value, false);
+                }
             }
 
             return settings;
@@ -152,6 +160,7 @@ namespace IntegratedImageProcessingApp.Services
                 ? "0.0.0.0"
                 : settings.ListenIpAddress.Trim());
             content.Append("ListenPort=").AppendLine(Math.Max(1024, Math.Min(65535, settings.ListenPort)).ToString(CultureInfo.InvariantCulture));
+            content.Append("AllowConnections=").AppendLine(settings.AllowConnections ? "true" : "false");
             File.WriteAllText(filePath, content.ToString(), new UTF8Encoding(false));
         }
 
