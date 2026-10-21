@@ -4,7 +4,10 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using Timer = System.Windows.Forms.Timer;
 using IntegratedImageProcessingApp.Controls;
 using IntegratedImageProcessingApp.Services;
 
@@ -128,12 +131,20 @@ namespace IntegratedImageProcessingApp.Forms
         private Button inspectionOverviewNgFilterButton;
         private Button inspectionOverviewPendingFilterButton;
         private Button inspectionOverviewSendButton;
+        private Button inspectionOverviewConnectCameraButton;
+        private Button inspectionOverviewContinuousCaptureButton;
+        private Button inspectionOverviewRunInspectionButton;
         private Timer inspectionOverviewCameraTimer;
         private List<InspectionOverviewItem> inspectionOverviewItems =
             new List<InspectionOverviewItem>();
         private int? inspectionOverviewSelectedObjectNumber;
         private InspectionOverviewFilter inspectionOverviewFilter;
-        private bool isInspectionOverviewActive;
+        private volatile bool isInspectionOverviewActive;
+        private volatile bool isInspectionOverviewContinuousCaptureActive;
+        private bool inspectionOverviewHasUninspectedCameraImage;
+        private bool inspectionOverviewCameraImageCapturedSubscribed;
+        private long inspectionOverviewCameraImageSequence;
+        private int inspectionOverviewCameraImageUpdateInFlight;
         private SizeType[] inspectionOverviewPreviousColumnTypes;
         private float[] inspectionOverviewPreviousColumnWidths;
 
@@ -152,6 +163,16 @@ namespace IntegratedImageProcessingApp.Forms
                 inspectionOverviewPreviousColumnWidths = mainLayoutPanel.ColumnStyles
                     .Cast<ColumnStyle>().Select(style => style.Width).ToArray();
                 isInspectionOverviewActive = true;
+            }
+            if (cameraCaptureHostControl != null)
+            {
+                cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = true;
+                if (!inspectionOverviewCameraImageCapturedSubscribed)
+                {
+                    cameraCaptureHostControl.ImageCaptured +=
+                        CameraCaptureHostControl_OverviewImageCaptured;
+                    inspectionOverviewCameraImageCapturedSubscribed = true;
+                }
             }
 
             mainLayoutPanel.SuspendLayout();
@@ -199,6 +220,20 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             isInspectionOverviewActive = false;
+            if (isInspectionOverviewContinuousCaptureActive)
+            {
+                StopInspectionOverviewContinuousCapture(true);
+            }
+            if (cameraCaptureHostControl != null)
+            {
+                cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = false;
+                if (inspectionOverviewCameraImageCapturedSubscribed)
+                {
+                    cameraCaptureHostControl.ImageCaptured -=
+                        CameraCaptureHostControl_OverviewImageCaptured;
+                    inspectionOverviewCameraImageCapturedSubscribed = false;
+                }
+            }
             if (inspectionOverviewCameraTimer != null)
             {
                 inspectionOverviewCameraTimer.Stop();
@@ -207,7 +242,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 inspectionOverviewPanel.Visible = false;
             }
-            if (inspectionOverviewImageDisplay != null &&
+            if (!inspectionOverviewHasUninspectedCameraImage &&
+                inspectionOverviewImageDisplay != null &&
                 !inspectionOverviewImageDisplay.IsDisposed)
             {
                 inspectionOverviewImageDisplay.ClearImage();
@@ -339,7 +375,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 3,
+                RowCount = 4,
                 Margin = new Padding(0, 0, 8, 0),
                 BackColor = Color.White,
                 Padding = new Padding(8)
@@ -348,6 +384,7 @@ namespace IntegratedImageProcessingApp.Forms
             left.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             left.RowStyles.Add(new RowStyle(SizeType.Absolute, 112F));
             left.RowStyles.Add(new RowStyle(SizeType.Absolute, 44F));
+            left.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
 
             var imageHost = new Panel
             {
@@ -458,6 +495,29 @@ namespace IntegratedImageProcessingApp.Forms
             inspectionOverviewSendButton.FlatAppearance.BorderSize = 0;
             inspectionOverviewSendButton.Click += InspectionOverviewSendButton_Click;
             left.Controls.Add(inspectionOverviewSendButton, 0, 2);
+
+            var cameraActions = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 3,
+                RowCount = 1,
+                Margin = new Padding(0, 4, 0, 0)
+            };
+            for (int column = 0; column < 3; column++)
+            {
+                cameraActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 3F));
+            }
+            inspectionOverviewConnectCameraButton = CreateInspectionOverviewActionButton("連結攝影機");
+            inspectionOverviewConnectCameraButton.Click += InspectionOverviewConnectCameraButton_Click;
+            inspectionOverviewContinuousCaptureButton = CreateInspectionOverviewActionButton("連續取像");
+            inspectionOverviewContinuousCaptureButton.Click +=
+                InspectionOverviewContinuousCaptureButton_Click;
+            inspectionOverviewRunInspectionButton = CreateInspectionOverviewActionButton("檢測");
+            inspectionOverviewRunInspectionButton.Click += InspectionOverviewRunInspectionButton_Click;
+            cameraActions.Controls.Add(inspectionOverviewConnectCameraButton, 0, 0);
+            cameraActions.Controls.Add(inspectionOverviewContinuousCaptureButton, 1, 0);
+            cameraActions.Controls.Add(inspectionOverviewRunInspectionButton, 2, 0);
+            left.Controls.Add(cameraActions, 0, 3);
 
             var right = new TableLayoutPanel
             {
@@ -614,6 +674,23 @@ namespace IntegratedImageProcessingApp.Forms
             return button;
         }
 
+        private static Button CreateInspectionOverviewActionButton(string text)
+        {
+            var button = new Button
+            {
+                Dock = DockStyle.Fill,
+                Text = text,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(239, 243, 248),
+                ForeColor = Color.FromArgb(35, 45, 58),
+                Font = new Font("Microsoft JhengHei UI", 8.5F, FontStyle.Bold),
+                Margin = new Padding(2, 0, 2, 0),
+                UseVisualStyleBackColor = false
+            };
+            button.FlatAppearance.BorderColor = Color.FromArgb(190, 201, 214);
+            return button;
+        }
+
         private void RefreshInspectionOverview()
         {
             ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
@@ -627,7 +704,8 @@ namespace IntegratedImageProcessingApp.Forms
 
             bool hasSnapshotImage = snapshot != null &&
                 (snapshot.OriginalLargeSource != null || snapshot.OriginalBitmap != null);
-            if (snapshot == null || (snapshot.Parameter == null && !hasSnapshotImage))
+            if (snapshot == null || (!inspectionOverviewHasUninspectedCameraImage &&
+                snapshot.Parameter == null && !hasSnapshotImage))
             {
                 inspectionOverviewCountLabel.Text = "尚無已完成的檢測結果";
                 inspectionOverviewNoImageLabel.Text = "尚無已完成的檢測結果\r\n請先到「參數結果確認」執行確認";
@@ -644,6 +722,9 @@ namespace IntegratedImageProcessingApp.Forms
                     (string.IsNullOrWhiteSpace(snapshot.Parameter.DisplayName)
                         ? snapshot.Parameter.Id
                         : snapshot.Parameter.DisplayName)
+                : inspectionOverviewHasUninspectedCameraImage
+                    ? "相機影像 #" + inspectionOverviewCameraImageSequence.ToString(CultureInfo.CurrentCulture) +
+                        "，尚未執行檢測"
                 : string.Equals(
                     snapshot.UndeterminedReason,
                     "正在執行尺寸與缺陷判定",
@@ -739,10 +820,20 @@ namespace IntegratedImageProcessingApp.Forms
             UpdateInspectionOverviewSelectedItem();
             RenderInspectionOverviewMatrix();
             UpdateInspectionOverviewFilterButtons();
+            UpdateInspectionOverviewCameraButtons();
         }
 
         private void SetInspectionOverviewImage(ObjectDetectionResultReviewSnapshot snapshot)
         {
+            if (inspectionOverviewHasUninspectedCameraImage &&
+                inspectionOverviewImageDisplay != null &&
+                inspectionOverviewImageDisplay.HasImage)
+            {
+                inspectionOverviewImageDisplay.TitleText = "原始影像";
+                inspectionOverviewNoImageLabel.Visible = false;
+                return;
+            }
+
             inspectionOverviewImageDisplay.ClearImage();
             if (snapshot.OriginalLargeSource != null)
             {
@@ -1183,6 +1274,322 @@ namespace IntegratedImageProcessingApp.Forms
                 : Color.FromArgb(199, 207, 217);
         }
 
+        private void CameraCaptureHostControl_OverviewImageCaptured(
+            object sender,
+            CameraCaptureApp.Services.CameraImageAcquiredEventArgs e)
+        {
+            if (e == null || !isInspectionOverviewActive ||
+                !isInspectionOverviewContinuousCaptureActive || IsDisposed || !IsHandleCreated ||
+                Interlocked.CompareExchange(ref inspectionOverviewCameraImageUpdateInFlight, 1, 0) != 0)
+            {
+                return;
+            }
+
+            Bitmap image = null;
+            Bitmap pendingImage = null;
+            try
+            {
+                image = e.CreateImageCopy();
+                long sequenceNumber = e.SequenceNumber;
+                pendingImage = image;
+                image = null;
+                Bitmap capturedImage = pendingImage;
+                BeginInvoke(new Action(delegate
+                {
+                    bool transferred = false;
+                    try
+                    {
+                        if (isInspectionOverviewActive &&
+                            isInspectionOverviewContinuousCaptureActive &&
+                            inspectionOverviewImageDisplay != null &&
+                            !inspectionOverviewImageDisplay.IsDisposed)
+                        {
+                            transferred = ApplyInspectionOverviewCameraImage(
+                                capturedImage,
+                                sequenceNumber);
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        SetCameraInspectionStatus("相機影像顯示失敗：" + exception.Message);
+                    }
+                    finally
+                    {
+                        if (!transferred && capturedImage != null)
+                        {
+                            capturedImage.Dispose();
+                        }
+                        Interlocked.Exchange(ref inspectionOverviewCameraImageUpdateInFlight, 0);
+                        UpdateInspectionOverviewCameraButtons();
+                    }
+                }));
+                pendingImage = null;
+            }
+            catch (Exception exception)
+            {
+                if (image != null)
+                {
+                    image.Dispose();
+                }
+                if (pendingImage != null)
+                {
+                    pendingImage.Dispose();
+                }
+                Interlocked.Exchange(ref inspectionOverviewCameraImageUpdateInFlight, 0);
+                SetCameraInspectionStatus("相機影像擷取失敗：" + exception.Message);
+            }
+        }
+
+        private bool ApplyInspectionOverviewCameraImage(Bitmap image, long sequenceNumber)
+        {
+            if (image == null)
+            {
+                return false;
+            }
+
+            bool imageTransferred = false;
+            try
+            {
+                int width = image.Width;
+                int height = image.Height;
+                EnsureInspectionOverviewResultReviewParametersInitialized();
+                ResultReviewParameterChoice choice = objectDetectionResultReviewParameterComboBox == null
+                    ? null
+                    : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+                ObjectDetectionParameterSettings parameter = choice == null || choice.Parameter == null
+                    ? null
+                    : (ObjectDetectionParameterSettings)CloneObjectDetectionResultReviewModel(choice.Parameter);
+                var snapshot = new ObjectDetectionResultReviewSnapshot
+                {
+                    ParameterId = parameter == null ? null : parameter.Id,
+                    Parameter = parameter,
+                    Objects = new List<ObjectDefinitionDetectedObject>(),
+                    SizeGrades = new Dictionary<int, ResultReviewGoodJudgementGrade>(),
+                    ObjectGridPositions = new Dictionary<int, Point>(),
+                    JudgementComplete = false,
+                    UndeterminedReason = "相機影像尚未執行檢測",
+                    ImageWidth = width,
+                    ImageHeight = height
+                };
+                inspectionOverviewImageDisplay.TitleText = "原始影像 - 相機 #" +
+                    sequenceNumber.ToString(CultureInfo.CurrentCulture);
+                inspectionOverviewImageDisplay.SetDisplayImage(image, true);
+                imageTransferred = true;
+                ClearObjectDetectionResultReviewSnapshot();
+                objectDetectionResultReviewSnapshot = snapshot;
+                inspectionOverviewSelectedObjectNumber = null;
+                inspectionOverviewFilter = InspectionOverviewFilter.All;
+                inspectionOverviewHasUninspectedCameraImage = true;
+                inspectionOverviewCameraImageSequence = sequenceNumber;
+                RefreshInspectionOverview();
+                SetCameraInspectionStatus("相機影像 #" +
+                    sequenceNumber.ToString(CultureInfo.CurrentCulture) +
+                    " 已取得，尚未執行檢測；按下「檢測」才會進入尺寸與缺陷判定。");
+            }
+            catch (Exception exception)
+            {
+                SetCameraInspectionStatus("相機影像更新失敗：" + exception.Message);
+            }
+            return imageTransferred;
+        }
+
+        private void InspectionOverviewConnectCameraButton_Click(object sender, EventArgs e)
+        {
+            if (cameraCaptureHostControl == null)
+            {
+                SetCameraInspectionStatus("攝影機控制尚未就緒。");
+                return;
+            }
+
+            string message;
+            bool started = cameraCaptureHostControl.ConnectCameraAndStartPreview(out message);
+            UpdateInspectionOverviewCameraStatus();
+            SetCameraInspectionStatus(started
+                ? "攝影機已連線並啟動 Start Preview。"
+                : "攝影機連線或預覽啟動失敗：" + message);
+        }
+
+        private void InspectionOverviewContinuousCaptureButton_Click(object sender, EventArgs e)
+        {
+            if (isInspectionOverviewContinuousCaptureActive)
+            {
+                StopInspectionOverviewContinuousCapture(true);
+                SetCameraInspectionStatus("已停止連續取像；最後一張影像仍保留，尚未檢測的影像可按「檢測」。");
+                return;
+            }
+
+            if (cameraCaptureHostControl == null || !cameraCaptureHostControl.IsCameraConnected)
+            {
+                SetCameraInspectionStatus("請先連結攝影機。");
+                return;
+            }
+
+            string message;
+            if (!cameraCaptureHostControl.IsCameraPreviewing &&
+                !cameraCaptureHostControl.StartPreview(out message))
+            {
+                SetCameraInspectionStatus("無法開始連續取像：" + message);
+                UpdateInspectionOverviewCameraStatus();
+                return;
+            }
+
+            isInspectionOverviewContinuousCaptureActive = true;
+            cameraCaptureHostControl.CaptureForwardingEnabled = true;
+            inspectionOverviewContinuousCaptureButton.Text = "停止取像";
+            inspectionOverviewContinuousCaptureButton.BackColor = Color.FromArgb(190, 65, 59);
+            inspectionOverviewContinuousCaptureButton.ForeColor = Color.White;
+            inspectionOverviewContinuousCaptureButton.FlatAppearance.BorderColor =
+                Color.FromArgb(165, 51, 46);
+            UpdateInspectionOverviewCameraButtons();
+            SetCameraInspectionStatus("連續取像中；只更新原始影像，不會執行檢測。");
+        }
+
+        private void StopInspectionOverviewContinuousCapture(bool stopCameraPreview)
+        {
+            isInspectionOverviewContinuousCaptureActive = false;
+            if (cameraCaptureHostControl != null)
+            {
+                cameraCaptureHostControl.CaptureForwardingEnabled = false;
+                if (stopCameraPreview)
+                {
+                    cameraCaptureHostControl.StopPreview();
+                }
+            }
+            if (inspectionOverviewContinuousCaptureButton != null &&
+                !inspectionOverviewContinuousCaptureButton.IsDisposed)
+            {
+                inspectionOverviewContinuousCaptureButton.Text = "連續取像";
+                inspectionOverviewContinuousCaptureButton.BackColor = Color.FromArgb(239, 243, 248);
+                inspectionOverviewContinuousCaptureButton.ForeColor = Color.FromArgb(35, 45, 58);
+                inspectionOverviewContinuousCaptureButton.FlatAppearance.BorderColor =
+                    Color.FromArgb(190, 201, 214);
+            }
+            UpdateInspectionOverviewCameraButtons();
+        }
+
+        private async void InspectionOverviewRunInspectionButton_Click(object sender, EventArgs e)
+        {
+            EnsureInspectionOverviewResultReviewParametersInitialized();
+            if (!inspectionOverviewHasUninspectedCameraImage ||
+                inspectionOverviewImageDisplay == null || !inspectionOverviewImageDisplay.HasImage)
+            {
+                SetCameraInspectionStatus("目前沒有尚未檢測的相機影像。");
+                return;
+            }
+
+            ResultReviewParameterChoice choice = objectDetectionResultReviewParameterComboBox == null
+                ? null
+                : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+            if (choice == null || choice.Parameter == null)
+            {
+                SetCameraInspectionStatus("目前沒有可執行的檢測參數，請先選擇或套用參數。");
+                return;
+            }
+
+            string busyReason;
+            if (TryGetCameraInspectionBusyReason(out busyReason) ||
+                Interlocked.CompareExchange(ref cameraInspectionFrameInFlight, 1, 0) != 0)
+            {
+                SetCameraInspectionStatus("目前無法開始檢測：" +
+                    (string.IsNullOrWhiteSpace(busyReason) ? "其他影像流程尚未完成" : busyReason));
+                return;
+            }
+
+            Bitmap image = null;
+            try
+            {
+                image = inspectionOverviewImageDisplay.CloneImage();
+                if (image == null)
+                {
+                    Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
+                    SetCameraInspectionStatus("無法複製目前相機影像，請重新取像。");
+                    return;
+                }
+
+                long sequenceNumber = inspectionOverviewCameraImageSequence;
+                if (isInspectionOverviewContinuousCaptureActive)
+                {
+                    StopInspectionOverviewContinuousCapture(true);
+                }
+                else if (cameraCaptureHostControl != null && cameraCaptureHostControl.IsCameraPreviewing)
+                {
+                    cameraCaptureHostControl.StopPreview();
+                }
+
+                inspectionOverviewRunInspectionButton.Enabled = false;
+                SetCameraInspectionStatus("開始使用目前檢測參數判定相機影像 #" +
+                    sequenceNumber.ToString(CultureInfo.CurrentCulture) + "...");
+                string previousImagePath = latestCameraInspectionFramePath;
+                await ProcessCameraAcquiredImageAsync(image, sequenceNumber);
+                image = null;
+                if (!string.Equals(previousImagePath, latestCameraInspectionFramePath,
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    inspectionOverviewHasUninspectedCameraImage = false;
+                    if (isInspectionOverviewActive)
+                    {
+                        RefreshInspectionOverview();
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                if (image != null)
+                {
+                    image.Dispose();
+                }
+                Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
+                SetCameraInspectionStatus("檢測啟動失敗：" + exception.Message);
+            }
+            finally
+            {
+                UpdateInspectionOverviewCameraButtons();
+            }
+        }
+
+        private void UpdateInspectionOverviewCameraButtons()
+        {
+            bool connected = cameraCaptureHostControl != null &&
+                cameraCaptureHostControl.IsCameraConnected;
+            bool isBusy = isLoadingImage || isObjectDetectionResultReviewRunning ||
+                Interlocked.CompareExchange(ref cameraInspectionFrameInFlight, 0, 0) != 0;
+            if (inspectionOverviewConnectCameraButton != null &&
+                !inspectionOverviewConnectCameraButton.IsDisposed)
+            {
+                inspectionOverviewConnectCameraButton.Enabled = !isBusy;
+            }
+            if (inspectionOverviewContinuousCaptureButton != null &&
+                !inspectionOverviewContinuousCaptureButton.IsDisposed)
+            {
+                inspectionOverviewContinuousCaptureButton.Enabled = connected && !isBusy;
+            }
+            if (inspectionOverviewRunInspectionButton != null &&
+                !inspectionOverviewRunInspectionButton.IsDisposed)
+            {
+                inspectionOverviewRunInspectionButton.Enabled =
+                    inspectionOverviewHasUninspectedCameraImage && !isBusy;
+            }
+        }
+
+        private void EnsureInspectionOverviewResultReviewParametersInitialized()
+        {
+            if (objectDetectionResultReviewParameterComboBox == null ||
+                objectDetectionResultReviewParameterComboBox.IsDisposed)
+            {
+                if (objectDetectionResultReviewPanel != null &&
+                    !objectDetectionResultReviewPanel.IsDisposed)
+                {
+                    objectDetectionResultReviewPanel.Dispose();
+                }
+                objectDetectionResultReviewPanel = CreateObjectDetectionResultReviewPanel();
+            }
+
+            if (objectDetectionResultReviewParameterComboBox.Items.Count == 0)
+            {
+                PopulateObjectDetectionResultReviewParameters();
+            }
+        }
+
         private void UpdateInspectionOverviewCameraStatus()
         {
             if (inspectionOverviewCameraLabel == null || inspectionOverviewCameraDot == null)
@@ -1203,6 +1610,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 inspectionOverviewTcpDot.BackColor = Color.FromArgb(145, 153, 163);
             }
+            UpdateInspectionOverviewCameraButtons();
         }
 
         private void InspectionOverviewSendButton_Click(object sender, EventArgs e)

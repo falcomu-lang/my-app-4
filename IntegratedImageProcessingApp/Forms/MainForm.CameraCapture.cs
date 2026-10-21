@@ -114,6 +114,7 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
+                EnsureInspectionOverviewResultReviewParametersInitialized();
                 selectedChoice = objectDetectionResultReviewParameterComboBox == null
                     ? null
                     : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;

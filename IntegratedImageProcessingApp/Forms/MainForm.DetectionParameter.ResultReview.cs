@@ -2980,6 +2980,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 ClearObjectDetectionResultReviewSnapshot();
                 objectDetectionResultReviewSnapshot = snapshot;
+                inspectionOverviewHasUninspectedCameraImage = false;
                 objectDetectionDefectIntegrationCache.Remove(parameter.Id);
             }
             catch

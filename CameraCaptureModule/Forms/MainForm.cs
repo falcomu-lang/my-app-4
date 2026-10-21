@@ -61,6 +61,57 @@ namespace CameraCaptureApp.Forms
             }
         }
 
+        public bool IsCameraPreviewing
+        {
+            get
+            {
+                CameraStatus status = _cameraService == null ? null : _cameraService.Status;
+                return status != null && status.IsPreviewing;
+            }
+        }
+
+        public bool ConnectCameraFromHost(out string message)
+        {
+            if (IsCameraConnected)
+            {
+                message = _cameraService.Status.LastMessage;
+                return true;
+            }
+
+            bool connected = ConnectCameraCore();
+            UpdateStatus();
+            message = _cameraService.Status == null
+                ? "Camera status is unavailable."
+                : _cameraService.Status.LastMessage;
+            return connected;
+        }
+
+        public bool StartPreviewFromHost(out string message)
+        {
+            if (!IsCameraConnected)
+            {
+                message = "Connect the camera before starting preview.";
+                return false;
+            }
+
+            if (IsCameraPreviewing)
+            {
+                message = _cameraService.Status.LastMessage;
+                return true;
+            }
+
+            bool started = StartPreviewCore();
+            message = _cameraService.Status == null
+                ? "Camera status is unavailable."
+                : _cameraService.Status.LastMessage;
+            return started;
+        }
+
+        public void StopPreviewFromHost()
+        {
+            StopPreviewCore();
+        }
+
         public event EventHandler<CameraImageAcquiredEventArgs> ImageAcquired
         {
             add
@@ -274,35 +325,50 @@ namespace CameraCaptureApp.Forms
 
         private void buttonConnect_Click(object sender, EventArgs e)
         {
-            _cameraService.ApplySettings(_settings);
-            if (_cameraService.Connect())
-            {
-                _settings = _cameraService.CurrentSettings;
-                _settingsService.Save(_settings);
-                if (_meterWheelControlForm != null && !_meterWheelControlForm.IsDisposed)
-                {
-                    _meterWheelControlForm.UpdateSettings(_settings);
-                }
-                ApplySettingsToUi();
-            }
+            ConnectCameraCore();
             UpdateStatus();
         }
 
+        private bool ConnectCameraCore()
+        {
+            _cameraService.ApplySettings(_settings);
+            if (!_cameraService.Connect())
+            {
+                return false;
+            }
+
+            _settings = _cameraService.CurrentSettings;
+            _settingsService.Save(_settings);
+            if (_meterWheelControlForm != null && !_meterWheelControlForm.IsDisposed)
+            {
+                _meterWheelControlForm.UpdateSettings(_settings);
+            }
+            ApplySettingsToUi();
+            return true;
+        }
+
         private void buttonStartPreview_Click(object sender, EventArgs e)
+        {
+            StartPreviewCore();
+        }
+
+        private bool StartPreviewCore()
         {
             _frameRecorder.ClearRolling();
             if (_settings != null && _settings.TriggerMode == TriggerMode.SoftwareTrigger)
             {
                 StartSoftwareTriggerMeterWheelMonitorIfNeeded();
                 UpdateStatus();
-                return;
+                return true;
             }
 
-            if (_cameraService.StartPreview())
+            bool started = _cameraService.StartPreview();
+            if (started)
             {
                 StartSoftwareTriggerMeterWheelMonitorIfNeeded();
             }
             UpdateStatus();
+            return started;
         }
 
         private void buttonDisconnect_Click(object sender, EventArgs e)
@@ -312,7 +378,7 @@ namespace CameraCaptureApp.Forms
             UpdateStatus();
         }
 
-        private async void buttonStop_Click(object sender, EventArgs e)
+        private void StopPreviewCore()
         {
             StopSoftwareTriggerMeterWheelMonitor();
             if (_cameraService.Status != null &&
@@ -321,6 +387,11 @@ namespace CameraCaptureApp.Forms
                 _cameraService.StopPreview();
             }
             UpdateStatus();
+        }
+
+        private async void buttonStop_Click(object sender, EventArgs e)
+        {
+            StopPreviewCore();
             if (_settings.RollingCaptureEnabled)
             {
                 await ShowRollingSnapshotForReviewAsync();
