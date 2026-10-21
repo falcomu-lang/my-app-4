@@ -12,6 +12,7 @@ namespace IntegratedImageProcessingApp.Services
             XMillimetersPerPixel = 1.0;
             YMillimetersPerPixel = 1.0;
             MillimeterConversionEnabled = false;
+            ProgramName = string.Empty;
         }
 
         public double XMillimetersPerPixel { get; set; }
@@ -19,6 +20,8 @@ namespace IntegratedImageProcessingApp.Services
         public double YMillimetersPerPixel { get; set; }
 
         public bool MillimeterConversionEnabled { get; set; }
+
+        public string ProgramName { get; set; }
     }
 
     public sealed class CameraDeviceSettingsIniService
@@ -39,6 +42,7 @@ namespace IntegratedImageProcessingApp.Services
             }
 
             bool inCameraSection = false;
+            bool inApplicationSection = false;
             foreach (string rawLine in File.ReadAllLines(filePath))
             {
                 string line = rawLine.Trim();
@@ -51,15 +55,11 @@ namespace IntegratedImageProcessingApp.Services
                 if (line.StartsWith("[", StringComparison.Ordinal) &&
                     line.EndsWith("]", StringComparison.Ordinal))
                 {
+                    string sectionName = line.Substring(1, line.Length - 2).Trim();
                     inCameraSection = string.Equals(
-                        line.Substring(1, line.Length - 2).Trim(),
-                        "Camera",
-                        StringComparison.OrdinalIgnoreCase);
-                    continue;
-                }
-
-                if (!inCameraSection)
-                {
+                        sectionName, "Camera", StringComparison.OrdinalIgnoreCase);
+                    inApplicationSection = string.Equals(
+                        sectionName, "Application", StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
@@ -71,15 +71,23 @@ namespace IntegratedImageProcessingApp.Services
 
                 string key = line.Substring(0, separator).Trim();
                 string value = line.Substring(separator + 1).Trim();
-                if (string.Equals(key, "XMillimetersPerPixel", StringComparison.OrdinalIgnoreCase))
+                if (inApplicationSection && string.Equals(
+                    key, "ProgramName", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.ProgramName = value;
+                }
+                else if (inCameraSection && string.Equals(
+                    key, "XMillimetersPerPixel", StringComparison.OrdinalIgnoreCase))
                 {
                     settings.XMillimetersPerPixel = ParsePositiveScale(value, settings.XMillimetersPerPixel);
                 }
-                else if (string.Equals(key, "YMillimetersPerPixel", StringComparison.OrdinalIgnoreCase))
+                else if (inCameraSection && string.Equals(
+                    key, "YMillimetersPerPixel", StringComparison.OrdinalIgnoreCase))
                 {
                     settings.YMillimetersPerPixel = ParsePositiveScale(value, settings.YMillimetersPerPixel);
                 }
-                else if (string.Equals(key, "MillimeterConversionEnabled", StringComparison.OrdinalIgnoreCase))
+                else if (inCameraSection && string.Equals(
+                    key, "MillimeterConversionEnabled", StringComparison.OrdinalIgnoreCase))
                 {
                     settings.MillimeterConversionEnabled = ParseBoolean(value, false);
                 }
@@ -102,6 +110,8 @@ namespace IntegratedImageProcessingApp.Services
             }
 
             var content = new StringBuilder();
+            content.AppendLine("[Application]");
+            content.Append("ProgramName=").AppendLine((settings.ProgramName ?? string.Empty).Trim());
             content.AppendLine("[Camera]");
             content.Append("XMillimetersPerPixel=")
                 .AppendLine(settings.XMillimetersPerPixel.ToString("R", CultureInfo.InvariantCulture));

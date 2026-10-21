@@ -335,6 +335,7 @@ namespace IntegratedImageProcessingApp.Forms
             LoadSavedObjectDetectionFlatFieldProfiles();
 
             InitializeComponent();
+            UpdateProgramNameHeader();
             KeyPreview = true;
             KeyDown += MainForm_KeyDown;
             KeyUp += MainForm_KeyUp;
