@@ -75,6 +75,28 @@ namespace CameraCaptureApp.Forms
             get { return _settings != null && _settings.TriggerMode == TriggerMode.SoftwareTrigger; }
         }
 
+        public bool ClearMeterWheelEncoderFromHost(out string message)
+        {
+            if (_meterWheelService == null || !_meterWheelService.IsInitialized)
+            {
+                message = "Meter wheel is not connected; encoder zero was not applied.";
+                return false;
+            }
+
+            try
+            {
+                _meterWheelService.SetEncoder(0);
+                message = "Meter wheel encoder cleared to 0.";
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                AppLogger.Log("Meter wheel encoder clear from host failed.", ex);
+                message = ex.Message;
+                return false;
+            }
+        }
+
         public bool ConnectCameraFromHost(out string message)
         {
             if (IsCameraConnected)

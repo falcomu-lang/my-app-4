@@ -1431,6 +1431,21 @@ namespace IntegratedImageProcessingApp.Forms
                     SetCameraInspectionStatus("已取消攝影機連線；請確認機台已回到原點後再試。");
                     return;
                 }
+
+                string encoderMessage;
+                if (!cameraCaptureHostControl.ClearMeterWheelEncoder(out encoderMessage))
+                {
+                    string failureMessage = "米輪 Encoder Clear 失敗，已取消攝影機連線。\r\n\r\n" +
+                        encoderMessage;
+                    SetCameraInspectionStatus(failureMessage.Replace("\r\n\r\n", " "));
+                    MessageBox.Show(
+                        this,
+                        failureMessage,
+                        "米輪歸零失敗",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
             }
 
             string message;

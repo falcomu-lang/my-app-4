@@ -57,6 +57,8 @@ namespace IntegratedImageProcessingApp.Forms
         private long lastStationStatusPublishUtcTicks;
         private long lastRemoteCameraSequence;
         private DateTime? lastCameraInspectionCompletedUtc;
+        private bool isParameterResultReviewSnapshotForTcp;
+        private DateTime? parameterResultReviewTcpResultAtUtc;
         private IPAddress inspectionTcpListenerAddress;
         private int inspectionTcpListenerPort;
         private bool inspectionTcpListenerActive;
@@ -1309,6 +1311,19 @@ namespace IntegratedImageProcessingApp.Forms
             _ = inspectionTcpTransport.BroadcastAsync(message);
         }
 
+        private void PublishParameterResultReviewSnapshotToTcp()
+        {
+            ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
+            if (snapshot == null || !snapshot.JudgementComplete)
+            {
+                return;
+            }
+
+            isParameterResultReviewSnapshotForTcp = true;
+            parameterResultReviewTcpResultAtUtc = DateTime.UtcNow;
+            QueueStationStatusPublish(true);
+        }
+
         private void SendLocalStationStatusToPeer(string peerKey, string status)
         {
             if (inspectionTcpTransport == null)
@@ -1325,10 +1340,11 @@ namespace IntegratedImageProcessingApp.Forms
         {
             ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
             bool currentSnapshot = snapshot != null &&
-                (string.IsNullOrWhiteSpace(snapshot.ImagePath)
+                (isParameterResultReviewSnapshotForTcp ||
+                    (string.IsNullOrWhiteSpace(snapshot.ImagePath)
                     ? snapshot.Parameter != null
                     : string.Equals(snapshot.ImagePath, latestCameraInspectionFramePath,
-                        StringComparison.OrdinalIgnoreCase));
+                        StringComparison.OrdinalIgnoreCase)));
             var message = new InspectionTcpMessage
             {
                 MessageType = messageType,
@@ -1352,7 +1368,10 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 if (snapshot.JudgementComplete)
                 {
-                    DateTime resultAt = lastCameraInspectionCompletedUtc ?? DateTime.UtcNow;
+                    DateTime resultAt = isParameterResultReviewSnapshotForTcp &&
+                        parameterResultReviewTcpResultAtUtc.HasValue
+                        ? parameterResultReviewTcpResultAtUtc.Value
+                        : lastCameraInspectionCompletedUtc ?? DateTime.UtcNow;
                     message.ResultAtUtc = resultAt.ToString("o");
                 }
                 Dictionary<int, ResultReviewDefectGrade> defectGrades = snapshot.JudgementComplete

@@ -1537,6 +1537,7 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionResultReviewLastSuccessfulParameterId = parameter.Id;
                 objectDetectionResultReviewLastSuccessfulImageGeneration = imageContentGeneration;
                 statusLabel.Text = parameter.DisplayName + " 結果確認完成";
+                PublishParameterResultReviewSnapshotToTcp();
             }
             catch (Exception exception)
             {
@@ -3230,6 +3231,8 @@ namespace IntegratedImageProcessingApp.Forms
         {
             ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
             objectDetectionResultReviewSnapshot = null;
+            isParameterResultReviewSnapshotForTcp = false;
+            parameterResultReviewTcpResultAtUtc = null;
             if (snapshot != null)
             {
                 snapshot.Dispose();

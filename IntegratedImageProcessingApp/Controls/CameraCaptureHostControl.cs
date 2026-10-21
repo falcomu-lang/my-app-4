@@ -44,6 +44,17 @@ namespace IntegratedImageProcessingApp.Controls
             }
         }
 
+        public bool ClearMeterWheelEncoder(out string message)
+        {
+            if (!hasCameraProgramBeenOpened || cameraForm == null || cameraForm.IsDisposed)
+            {
+                message = "請先開啟全域設定中的線掃描攝影機程式。";
+                return false;
+            }
+
+            return cameraForm.ClearMeterWheelEncoderFromHost(out message);
+        }
+
         public bool HasCameraProgramBeenOpened
         {
             get { return hasCameraProgramBeenOpened; }
