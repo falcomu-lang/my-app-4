@@ -12,6 +12,7 @@ namespace IntegratedImageProcessingApp.Controls
         private EventHandler<CameraImageAcquiredEventArgs> imageAcquiredHandlers;
         private EventHandler<CameraImageAcquiredEventArgs> imageCapturedHandlers;
         private bool disposing;
+        private bool hasCameraProgramBeenOpened;
         private bool cameraImageAcquiredSubscribed;
         private volatile bool suppressAutomaticInspectionForwarding;
         private volatile bool captureForwardingEnabled;
@@ -32,6 +33,20 @@ namespace IntegratedImageProcessingApp.Controls
                 return cameraForm != null && !cameraForm.IsDisposed &&
                     cameraForm.IsCameraPreviewing;
             }
+        }
+
+        public bool IsSoftwareTriggerMode
+        {
+            get
+            {
+                return cameraForm != null && !cameraForm.IsDisposed &&
+                    cameraForm.IsSoftwareTriggerMode;
+            }
+        }
+
+        public bool HasCameraProgramBeenOpened
+        {
+            get { return hasCameraProgramBeenOpened; }
         }
 
         public bool SuppressAutomaticInspectionForwarding
@@ -119,7 +134,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         public bool ConnectCameraAndStartPreview(out string message)
         {
-            EnsureCameraForm();
+            if (!hasCameraProgramBeenOpened)
+            {
+                message = "請先開啟全域設定中的線掃描攝影機程式。";
+                return false;
+            }
             if (cameraForm == null || cameraForm.IsDisposed)
             {
                 message = "Camera control is not available.";
@@ -135,7 +154,11 @@ namespace IntegratedImageProcessingApp.Controls
 
         public bool StartPreview(out string message)
         {
-            EnsureCameraForm();
+            if (!hasCameraProgramBeenOpened)
+            {
+                message = "請先開啟全域設定中的線掃描攝影機程式。";
+                return false;
+            }
             if (cameraForm == null || cameraForm.IsDisposed)
             {
                 message = "Camera control is not available.";
@@ -152,11 +175,20 @@ namespace IntegratedImageProcessingApp.Controls
             }
         }
 
+        public void DisconnectCamera()
+        {
+            if (cameraForm != null && !cameraForm.IsDisposed)
+            {
+                cameraForm.DisconnectCameraFromHost();
+            }
+        }
+
         protected override void OnVisibleChanged(EventArgs e)
         {
             base.OnVisibleChanged(e);
             if (Visible && !disposing)
             {
+                hasCameraProgramBeenOpened = true;
                 EnsureCameraForm();
             }
         }

@@ -70,6 +70,11 @@ namespace CameraCaptureApp.Forms
             }
         }
 
+        public bool IsSoftwareTriggerMode
+        {
+            get { return _settings != null && _settings.TriggerMode == TriggerMode.SoftwareTrigger; }
+        }
+
         public bool ConnectCameraFromHost(out string message)
         {
             if (IsCameraConnected)
@@ -110,6 +115,11 @@ namespace CameraCaptureApp.Forms
         public void StopPreviewFromHost()
         {
             StopPreviewCore();
+        }
+
+        public void DisconnectCameraFromHost()
+        {
+            DisconnectCameraCore();
         }
 
         public event EventHandler<CameraImageAcquiredEventArgs> ImageAcquired
@@ -372,6 +382,11 @@ namespace CameraCaptureApp.Forms
         }
 
         private void buttonDisconnect_Click(object sender, EventArgs e)
+        {
+            DisconnectCameraCore();
+        }
+
+        private void DisconnectCameraCore()
         {
             StopSoftwareTriggerMeterWheelMonitor();
             _cameraService.Disconnect();

@@ -1395,10 +1395,41 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void InspectionOverviewConnectCameraButton_Click(object sender, EventArgs e)
         {
-            if (cameraCaptureHostControl == null)
+            if (cameraCaptureHostControl == null ||
+                !cameraCaptureHostControl.HasCameraProgramBeenOpened)
             {
-                SetCameraInspectionStatus("攝影機控制尚未就緒。");
+                SetCameraInspectionStatus(
+                    "請先開啟「全域設定」>「與線掃描取像結合」攝影機程式，再返回檢測總覽連線。");
                 return;
+            }
+
+            if (cameraCaptureHostControl.IsCameraConnected)
+            {
+                if (isInspectionOverviewContinuousCaptureActive)
+                {
+                    StopInspectionOverviewContinuousCapture(false);
+                }
+                cameraCaptureHostControl.DisconnectCamera();
+                UpdateInspectionOverviewCameraStatus();
+                SetCameraInspectionStatus("攝影機已斷開連線。");
+                return;
+            }
+
+            if (cameraCaptureHostControl.IsSoftwareTriggerMode)
+            {
+                DialogResult originConfirmation = MessageBox.Show(
+                    this,
+                    "目前 Trigger Mode 為 Software Trigger。\r\n\r\n" +
+                        "請確認機台位置已回到原點。選擇「是」才會繼續連線。",
+                    "確認機台原點",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+                if (originConfirmation != DialogResult.Yes)
+                {
+                    SetCameraInspectionStatus("已取消攝影機連線；請確認機台已回到原點後再試。");
+                    return;
+                }
             }
 
             string message;
@@ -1406,7 +1437,9 @@ namespace IntegratedImageProcessingApp.Forms
             UpdateInspectionOverviewCameraStatus();
             SetCameraInspectionStatus(started
                 ? "攝影機已連線並啟動 Start Preview。"
-                : "攝影機連線或預覽啟動失敗：" + message);
+                : cameraCaptureHostControl.IsCameraConnected
+                    ? "攝影機已連線，但預覽啟動失敗：" + message
+                    : "攝影機連線失敗：" + message);
         }
 
         private void InspectionOverviewContinuousCaptureButton_Click(object sender, EventArgs e)
@@ -1557,6 +1590,16 @@ namespace IntegratedImageProcessingApp.Forms
                 !inspectionOverviewConnectCameraButton.IsDisposed)
             {
                 inspectionOverviewConnectCameraButton.Enabled = !isBusy;
+                inspectionOverviewConnectCameraButton.Text = connected ? "斷開連線" : "連結攝影機";
+                inspectionOverviewConnectCameraButton.BackColor = connected
+                    ? Color.FromArgb(190, 65, 59)
+                    : Color.FromArgb(239, 243, 248);
+                inspectionOverviewConnectCameraButton.ForeColor = connected
+                    ? Color.White
+                    : Color.FromArgb(35, 45, 58);
+                inspectionOverviewConnectCameraButton.FlatAppearance.BorderColor = connected
+                    ? Color.FromArgb(165, 51, 46)
+                    : Color.FromArgb(190, 201, 214);
             }
             if (inspectionOverviewContinuousCaptureButton != null &&
                 !inspectionOverviewContinuousCaptureButton.IsDisposed)
