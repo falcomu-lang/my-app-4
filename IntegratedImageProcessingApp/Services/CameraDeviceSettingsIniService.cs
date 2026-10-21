@@ -13,6 +13,9 @@ namespace IntegratedImageProcessingApp.Services
             YMillimetersPerPixel = 1.0;
             MillimeterConversionEnabled = false;
             ProgramName = string.Empty;
+            SoftwareId = 1;
+            ListenIpAddress = "0.0.0.0";
+            ListenPort = 5000;
         }
 
         public double XMillimetersPerPixel { get; set; }
@@ -22,6 +25,12 @@ namespace IntegratedImageProcessingApp.Services
         public bool MillimeterConversionEnabled { get; set; }
 
         public string ProgramName { get; set; }
+
+        public int SoftwareId { get; set; }
+
+        public string ListenIpAddress { get; set; }
+
+        public int ListenPort { get; set; }
     }
 
     public sealed class CameraDeviceSettingsIniService
@@ -43,6 +52,7 @@ namespace IntegratedImageProcessingApp.Services
 
             bool inCameraSection = false;
             bool inApplicationSection = false;
+            bool inNetworkSection = false;
             foreach (string rawLine in File.ReadAllLines(filePath))
             {
                 string line = rawLine.Trim();
@@ -60,6 +70,8 @@ namespace IntegratedImageProcessingApp.Services
                         sectionName, "Camera", StringComparison.OrdinalIgnoreCase);
                     inApplicationSection = string.Equals(
                         sectionName, "Application", StringComparison.OrdinalIgnoreCase);
+                    inNetworkSection = string.Equals(
+                        sectionName, "Network", StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
@@ -76,6 +88,11 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     settings.ProgramName = value;
                 }
+                else if (inApplicationSection && string.Equals(
+                    key, "SoftwareId", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.SoftwareId = ParseSoftwareId(value, settings.SoftwareId);
+                }
                 else if (inCameraSection && string.Equals(
                     key, "XMillimetersPerPixel", StringComparison.OrdinalIgnoreCase))
                 {
@@ -90,6 +107,16 @@ namespace IntegratedImageProcessingApp.Services
                     key, "MillimeterConversionEnabled", StringComparison.OrdinalIgnoreCase))
                 {
                     settings.MillimeterConversionEnabled = ParseBoolean(value, false);
+                }
+                else if (inNetworkSection && string.Equals(
+                    key, "ListenIpAddress", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.ListenIpAddress = value;
+                }
+                else if (inNetworkSection && string.Equals(
+                    key, "ListenPort", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.ListenPort = ParseIntegerInRange(value, 5000, 1024, 65535);
                 }
             }
 
@@ -112,6 +139,7 @@ namespace IntegratedImageProcessingApp.Services
             var content = new StringBuilder();
             content.AppendLine("[Application]");
             content.Append("ProgramName=").AppendLine((settings.ProgramName ?? string.Empty).Trim());
+            content.Append("SoftwareId=").AppendLine(ClampSoftwareId(settings.SoftwareId).ToString(CultureInfo.InvariantCulture));
             content.AppendLine("[Camera]");
             content.Append("XMillimetersPerPixel=")
                 .AppendLine(settings.XMillimetersPerPixel.ToString("R", CultureInfo.InvariantCulture));
@@ -119,6 +147,11 @@ namespace IntegratedImageProcessingApp.Services
                 .AppendLine(settings.YMillimetersPerPixel.ToString("R", CultureInfo.InvariantCulture));
             content.Append("MillimeterConversionEnabled=")
                 .AppendLine(settings.MillimeterConversionEnabled ? "true" : "false");
+            content.AppendLine("[Network]");
+            content.Append("ListenIpAddress=").AppendLine(string.IsNullOrWhiteSpace(settings.ListenIpAddress)
+                ? "0.0.0.0"
+                : settings.ListenIpAddress.Trim());
+            content.Append("ListenPort=").AppendLine(Math.Max(1024, Math.Min(65535, settings.ListenPort)).ToString(CultureInfo.InvariantCulture));
             File.WriteAllText(filePath, content.ToString(), new UTF8Encoding(false));
         }
 
@@ -127,6 +160,29 @@ namespace IntegratedImageProcessingApp.Services
             double parsed;
             return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out parsed) &&
                 parsed > 0.0 && !double.IsNaN(parsed) && !double.IsInfinity(parsed)
+                ? parsed
+                : fallback;
+        }
+
+        private static int ParseSoftwareId(string value, int fallback)
+        {
+            int parsed;
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) &&
+                parsed >= 1 && parsed <= 10
+                ? parsed
+                : fallback;
+        }
+
+        private static int ClampSoftwareId(int value)
+        {
+            return Math.Max(1, Math.Min(10, value));
+        }
+
+        private static int ParseIntegerInRange(string value, int fallback, int minimum, int maximum)
+        {
+            int parsed;
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed) &&
+                parsed >= minimum && parsed <= maximum
                 ? parsed
                 : fallback;
         }

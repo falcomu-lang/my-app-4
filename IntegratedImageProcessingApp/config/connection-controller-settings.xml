@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ConnectionControllerSettings>
+  <ConnectWhenOpened>false</ConnectWhenOpened>
+  <AutoReconnect>true</AutoReconnect>
+  <ConnectTimeoutSeconds>5</ConnectTimeoutSeconds>
+  <ReconnectIntervalSeconds>3</ReconnectIntervalSeconds>
+  <HeartbeatTimeoutSeconds>10</HeartbeatTimeoutSeconds>
+  <Stations />
+</ConnectionControllerSettings>

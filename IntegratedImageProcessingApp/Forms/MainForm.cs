@@ -292,6 +292,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string ObjectDetectionParameterMenuText = "檢測參數設定";
         private const string ObjectDetectionResultReviewMenuText = "參數結果確認";
         private const string InspectionOverviewMenuText = "檢測總覽";
+        private const string ConnectionControllerMenuText = "連線總控角色";
         private const string GlobalSettingsMenuText = "全域設定";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
         private const string MoveUpImageProcessingStepMenuText = "      上移";
@@ -321,7 +322,8 @@ namespace IntegratedImageProcessingApp.Forms
             Filter,
             Measure,
             Settings,
-            Overview
+            Overview,
+            Network
         }
 
         public MainForm()
@@ -410,6 +412,14 @@ namespace IntegratedImageProcessingApp.Forms
                     resultReviewIndex < 0 ? functionListBox.Items.Count : resultReviewIndex + 1,
                     GlobalSettingsMenuText);
             }
+            if (!functionListBox.Items.Contains(ConnectionControllerMenuText))
+            {
+                int overviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
+                functionListBox.Items.Insert(
+                    overviewIndex < 0 ? functionListBox.Items.Count : overviewIndex + 1,
+                    ConnectionControllerMenuText);
+            }
+            MoveFunctionListItemAfter(ConnectionControllerMenuText, InspectionOverviewMenuText);
             MoveFunctionListItemAfter(FindObjectFlowMenuText, RoiMenuText);
             MoveFunctionListItemAfter(ImagePreprocessingMenuText, FindObjectFlowMenuText);
             MoveFunctionListItemAfter(ImageProcessingMenuText, ImagePreprocessingMenuText);
@@ -2700,6 +2710,8 @@ namespace IntegratedImageProcessingApp.Forms
                     return FunctionMenuIcon.Measure;
                 case InspectionOverviewMenuText:
                     return FunctionMenuIcon.Overview;
+                case ConnectionControllerMenuText:
+                    return FunctionMenuIcon.Network;
                 case GlobalSettingsMenuText:
                     return FunctionMenuIcon.Settings;
                 default:
@@ -2795,6 +2807,13 @@ namespace IntegratedImageProcessingApp.Forms
                         graphics.DrawLine(pen, bounds.Left + 1, bounds.Top + 6, bounds.Left + 15, bounds.Top + 6);
                         graphics.DrawLine(pen, bounds.Left + 6, bounds.Top + 6, bounds.Left + 6, bounds.Top + 14);
                         graphics.DrawLine(pen, bounds.Left + 11, bounds.Top + 6, bounds.Left + 11, bounds.Top + 14);
+                        break;
+                    case FunctionMenuIcon.Network:
+                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Top + 5, bounds.Left + 4, bounds.Top + 10);
+                        graphics.DrawLine(pen, bounds.Left + 8, bounds.Top + 5, bounds.Left + 12, bounds.Top + 10);
+                        graphics.DrawEllipse(pen, bounds.Left + 6, bounds.Top + 1, 5, 5);
+                        graphics.DrawEllipse(pen, bounds.Left + 1, bounds.Top + 9, 6, 6);
+                        graphics.DrawEllipse(pen, bounds.Left + 9, bounds.Top + 9, 6, 6);
                         break;
                 }
             }

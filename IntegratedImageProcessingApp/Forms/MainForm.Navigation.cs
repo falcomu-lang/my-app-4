@@ -293,6 +293,15 @@ namespace IntegratedImageProcessingApp.Forms
                 statusLabel.Text = "目前選擇：檢測總覽";
                 return;
             }
+            else if (selectedFunction == ConnectionControllerMenuText)
+            {
+                HideImageProcessingFlowTree();
+                rightPanelTitleLabel.Text = ConnectionControllerMenuText;
+                parameterPlaceholderLabel.Text =
+                    "連線總控角色入口已預留；目前尚未啟用多站點網路連線。";
+                statusLabel.Text = "目前選擇：" + ConnectionControllerMenuText;
+                return;
+            }
             else if (GetObjectJudgementGroupId(selectedFunction) != null)
             {
                 parameterPlaceholderLabel.Text = "目前選擇物件群組，可展開或收合其中的區塊。";
