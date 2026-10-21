@@ -1662,15 +1662,24 @@ namespace IntegratedImageProcessingApp.Forms
             inspectionOverviewCameraDot.BackColor = connected
                 ? Color.FromArgb(77, 190, 105)
                 : Color.FromArgb(145, 153, 163);
+            UpdateInspectionOverviewTcpStatus();
+            UpdateInspectionOverviewCameraButtons();
+        }
+
+        private void UpdateInspectionOverviewTcpStatus()
+        {
             if (inspectionOverviewTcpLabel != null)
             {
-                inspectionOverviewTcpLabel.Text = "尚未啟用";
+                bool connected = inspectionTcpTransport != null &&
+                    inspectionTcpTransport.ConnectedPeerCount > 0;
+                inspectionOverviewTcpLabel.Text = connected ? "已連線" : "未連線";
+                if (inspectionOverviewTcpDot != null)
+                {
+                    inspectionOverviewTcpDot.BackColor = connected
+                        ? Color.FromArgb(77, 190, 105)
+                        : Color.FromArgb(145, 153, 163);
+                }
             }
-            if (inspectionOverviewTcpDot != null)
-            {
-                inspectionOverviewTcpDot.BackColor = Color.FromArgb(145, 153, 163);
-            }
-            UpdateInspectionOverviewCameraButtons();
         }
 
         private void InspectionOverviewSendButton_Click(object sender, EventArgs e)

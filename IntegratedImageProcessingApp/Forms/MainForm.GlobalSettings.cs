@@ -525,13 +525,13 @@ namespace IntegratedImageProcessingApp.Forms
                 Location = new Point(4, 2),
                 Height = 38,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Text = "總控端會依站點 IP 與埠號主動連線；被控端需在全域設定中允許總控端連線。"
+                Text = "總控端會依站點 IP 與埠號主動連線；「是否監控攝影機」是站點連線與狀態監控的總開關。"
             };
             var behaviorGroup = new GroupBox
             {
                 Text = "連線行為",
                 Location = new Point(0, 42),
-                Size = new Size(900, 154),
+                Size = new Size(900, 190),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Padding = new Padding(10)
             };
@@ -539,17 +539,25 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 4,
-                RowCount = 3,
+                RowCount = 4,
                 Padding = new Padding(4)
             };
             behaviorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28F));
             behaviorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
             behaviorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28F));
             behaviorLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
+            behaviorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
             behaviorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
             behaviorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
             behaviorLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
 
+            var monitorCameraCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "是否監控攝影機",
+                Checked = connectionControllerSettings.MonitorCamera,
+                Anchor = AnchorStyles.Left
+            };
             var connectWhenOpenedCheckBox = new CheckBox
             {
                 AutoSize = true,
@@ -564,29 +572,41 @@ namespace IntegratedImageProcessingApp.Forms
                 Checked = connectionControllerSettings.AutoReconnect,
                 Anchor = AnchorStyles.Left
             };
+            Action updateMonitorDependentControls = delegate
+            {
+                connectWhenOpenedCheckBox.Enabled = monitorCameraCheckBox.Checked;
+                autoReconnectCheckBox.Enabled = monitorCameraCheckBox.Checked;
+            };
+            monitorCameraCheckBox.CheckedChanged += delegate
+            {
+                updateMonitorDependentControls();
+            };
+            updateMonitorDependentControls();
             NumericUpDown connectTimeoutBox = CreateControllerIntegerInput(
                 connectionControllerSettings.ConnectTimeoutSeconds, 1, 60);
             NumericUpDown reconnectIntervalBox = CreateControllerIntegerInput(
                 connectionControllerSettings.ReconnectIntervalSeconds, 1, 300);
             NumericUpDown heartbeatTimeoutBox = CreateControllerIntegerInput(
                 connectionControllerSettings.HeartbeatTimeoutSeconds, 3, 300);
-            behaviorLayout.Controls.Add(connectWhenOpenedCheckBox, 0, 0);
+            behaviorLayout.Controls.Add(monitorCameraCheckBox, 0, 0);
+            behaviorLayout.SetColumnSpan(monitorCameraCheckBox, 4);
+            behaviorLayout.Controls.Add(connectWhenOpenedCheckBox, 0, 1);
             behaviorLayout.SetColumnSpan(connectWhenOpenedCheckBox, 2);
-            behaviorLayout.Controls.Add(autoReconnectCheckBox, 2, 0);
+            behaviorLayout.Controls.Add(autoReconnectCheckBox, 2, 1);
             behaviorLayout.SetColumnSpan(autoReconnectCheckBox, 2);
-            behaviorLayout.Controls.Add(CreateCameraPrecisionLabel("連線逾時 (秒)"), 0, 1);
-            behaviorLayout.Controls.Add(connectTimeoutBox, 1, 1);
-            behaviorLayout.Controls.Add(CreateCameraPrecisionLabel("重連間隔 (秒)"), 2, 1);
-            behaviorLayout.Controls.Add(reconnectIntervalBox, 3, 1);
-            behaviorLayout.Controls.Add(CreateCameraPrecisionLabel("心跳逾時 (秒)"), 0, 2);
-            behaviorLayout.Controls.Add(heartbeatTimeoutBox, 1, 2);
+            behaviorLayout.Controls.Add(CreateCameraPrecisionLabel("連線逾時 (秒)"), 0, 2);
+            behaviorLayout.Controls.Add(connectTimeoutBox, 1, 2);
+            behaviorLayout.Controls.Add(CreateCameraPrecisionLabel("重連間隔 (秒)"), 2, 2);
+            behaviorLayout.Controls.Add(reconnectIntervalBox, 3, 2);
+            behaviorLayout.Controls.Add(CreateCameraPrecisionLabel("心跳逾時 (秒)"), 0, 3);
+            behaviorLayout.Controls.Add(heartbeatTimeoutBox, 1, 3);
             behaviorGroup.Controls.Add(behaviorLayout);
 
             var stationsGroup = new GroupBox
             {
                 Text = "被控站點 (最多 10 個；ID 不可重複)",
-                Location = new Point(0, 204),
-                Size = new Size(900, 350),
+                Location = new Point(0, 240),
+                Size = new Size(900, 314),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Padding = new Padding(8)
             };
@@ -745,6 +765,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                 var updated = new ConnectionControllerSettings
                 {
+                    MonitorCamera = monitorCameraCheckBox.Checked,
                     ConnectWhenOpened = connectWhenOpenedCheckBox.Checked,
                     AutoReconnect = autoReconnectCheckBox.Checked,
                     ConnectTimeoutSeconds = Decimal.ToInt32(connectTimeoutBox.Value),
@@ -846,8 +867,42 @@ namespace IntegratedImageProcessingApp.Forms
                         connectionControllerReconnectTimer.Interval =
                             Math.Max(1000, updated.ReconnectIntervalSeconds * 1000);
                     }
+                    if (!updated.MonitorCamera)
+                    {
+                        connectionControllerConnectRequested = false;
+                        if (connectionControllerReconnectTimer != null)
+                        {
+                            connectionControllerReconnectTimer.Stop();
+                        }
+                        foreach (ConnectionControllerStation station in
+                            previousSettings.Stations ?? new List<ConnectionControllerStation>())
+                        {
+                            if (inspectionTcpTransport != null && station != null)
+                            {
+                                inspectionTcpTransport.DisconnectStation(station.SoftwareId);
+                            }
+                        }
+                    }
+                    else if (isConnectionControllerPanelActive)
+                    {
+                        if (updated.ConnectWhenOpened)
+                        {
+                            connectionControllerConnectRequested = true;
+                        }
+                        if (connectionControllerReconnectTimer != null)
+                        {
+                            connectionControllerReconnectTimer.Start();
+                            if (updated.ConnectWhenOpened)
+                            {
+                                ConnectionControllerReconnectTimer_Tick(this, EventArgs.Empty);
+                            }
+                        }
+                    }
+                    UpdateConnectionControllerMonitoringControls();
                     RefreshConnectionControllerCards();
-                    settingsStatusLabel.Text = "參數已保存；目前尚未建立任何網路連線。";
+                    settingsStatusLabel.Text = updated.MonitorCamera
+                        ? "參數已保存。"
+                        : "參數已保存；攝影機監控已停用，站點連線已中斷。";
                     statusLabel.Text = "已保存連線總控參數。";
                 }
                 catch (Exception exception)

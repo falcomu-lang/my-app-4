@@ -52,6 +52,9 @@ namespace IntegratedImageProcessingApp.Forms
         private bool remoteContinuousCaptureActive;
         private bool remoteInspectionStartedPreview;
         private bool isRemoteControllerInspectionActive;
+        private bool connectionControllerRecipeMetadataResolved;
+        private string connectionControllerRecipeMetadataId;
+        private string connectionControllerRecipeMetadataName;
         private int remoteInspectionRequested;
         private int connectionControllerConnectInFlight;
         private long lastStationStatusPublishUtcTicks;
@@ -241,6 +244,17 @@ namespace IntegratedImageProcessingApp.Forms
 
             RefreshConnectionControllerCards();
             UpdateConnectionControllerNetworkStatus();
+            UpdateConnectionControllerMonitoringControls();
+            if (!connectionControllerSettings.MonitorCamera)
+            {
+                connectionControllerConnectRequested = false;
+                if (connectionControllerReconnectTimer != null)
+                {
+                    connectionControllerReconnectTimer.Stop();
+                }
+                SetConnectionControllerStatus("攝影機監控未啟用；不會連線或監控被控站點。");
+                return;
+            }
             if (connectionControllerSettings.ConnectWhenOpened)
             {
                 connectionControllerConnectRequested = true;
@@ -798,6 +812,11 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async void ConnectionControllerConnectButton_Click(object sender, EventArgs e)
         {
+            if (connectionControllerSettings == null || !connectionControllerSettings.MonitorCamera)
+            {
+                SetConnectionControllerStatus("攝影機監控未啟用；請先到全域設定開啟監控。");
+                return;
+            }
             if (connectionControllerStationViews.Values.Any(state => state.TcpConnected))
             {
                 connectionControllerConnectRequested = false;
@@ -839,7 +858,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task<int> SendControllerCommandToConnectedStationsAsync(string command)
         {
-            if (inspectionTcpTransport == null)
+            if (inspectionTcpTransport == null || connectionControllerSettings == null ||
+                !connectionControllerSettings.MonitorCamera)
             {
                 return 0;
             }
@@ -873,7 +893,8 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async Task ConnectConfiguredStationsAsync()
         {
-            if (inspectionTcpTransport == null ||
+            if (inspectionTcpTransport == null || connectionControllerSettings == null ||
+                !connectionControllerSettings.MonitorCamera ||
                 Interlocked.CompareExchange(ref connectionControllerConnectInFlight, 1, 0) != 0)
             {
                 return;
@@ -923,6 +944,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void ConnectionControllerReconnectTimer_Tick(object sender, EventArgs e)
         {
             if (!connectionControllerConnectRequested || connectionControllerSettings == null ||
+                !connectionControllerSettings.MonitorCamera ||
                 !connectionControllerSettings.AutoReconnect ||
                 Interlocked.CompareExchange(ref connectionControllerConnectInFlight, 0, 0) != 0)
             {
@@ -964,6 +986,7 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     UpdateConnectionControllerSummary();
                     UpdateConnectionControllerNetworkStatus();
+                    UpdateInspectionOverviewTcpStatus();
                     QueueStationStatusPublish(true);
                 }));
             }
@@ -1311,6 +1334,64 @@ namespace IntegratedImageProcessingApp.Forms
             _ = inspectionTcpTransport.BroadcastAsync(message);
         }
 
+        private void UpdateConnectionControllerMonitoringControls()
+        {
+            bool enabled = connectionControllerSettings != null &&
+                connectionControllerSettings.MonitorCamera;
+            if (connectionControllerConnectButton != null)
+            {
+                connectionControllerConnectButton.Enabled = enabled;
+            }
+            if (connectionControllerContinuousCaptureButton != null)
+            {
+                connectionControllerContinuousCaptureButton.Enabled = enabled;
+            }
+            if (connectionControllerInspectButton != null)
+            {
+                connectionControllerInspectButton.Enabled = enabled;
+            }
+        }
+
+        private void InvalidateConnectionControllerRecipeMetadata()
+        {
+            connectionControllerRecipeMetadataResolved = false;
+        }
+
+        private void ResolveConnectionControllerRecipeMetadata()
+        {
+            string recipeId = systemParameters == null
+                ? null
+                : systemParameters.ActiveDetectionRecipeId;
+            if (connectionControllerRecipeMetadataResolved &&
+                string.Equals(connectionControllerRecipeMetadataId, recipeId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            connectionControllerRecipeMetadataResolved = true;
+            connectionControllerRecipeMetadataId = recipeId;
+            connectionControllerRecipeMetadataName = null;
+            if (string.IsNullOrWhiteSpace(recipeId))
+            {
+                return;
+            }
+
+            try
+            {
+                var catalog = new DetectionRecipeCatalogService(AppDomain.CurrentDomain.BaseDirectory);
+                DetectionRecipeCatalogEntry entry = catalog.LoadParameterList().FirstOrDefault(item =>
+                    string.Equals(item.Id, recipeId, StringComparison.Ordinal));
+                connectionControllerRecipeMetadataName = entry == null
+                    ? null
+                    : entry.DisplayName;
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "Unable to resolve active detection recipe metadata: " + exception.Message);
+            }
+        }
+
         private void PublishParameterResultReviewSnapshotToTcp()
         {
             ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
@@ -1339,6 +1420,7 @@ namespace IntegratedImageProcessingApp.Forms
             string statusOverride = null)
         {
             ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
+            ResolveConnectionControllerRecipeMetadata();
             bool currentSnapshot = snapshot != null &&
                 (isParameterResultReviewSnapshotForTcp ||
                     (string.IsNullOrWhiteSpace(snapshot.ImagePath)
@@ -1355,12 +1437,12 @@ namespace IntegratedImageProcessingApp.Forms
                 CameraConnected = cameraCaptureHostControl != null && cameraCaptureHostControl.IsCameraConnected,
                 IsCapturing = remoteContinuousCaptureActive || isInspectionOverviewContinuousCaptureActive,
                 JudgementComplete = currentSnapshot && snapshot.JudgementComplete,
-                RecipeId = currentSnapshot ? snapshot.ParameterId : null,
-                RecipeName = currentSnapshot && snapshot.Parameter != null
-                    ? (string.IsNullOrWhiteSpace(snapshot.Parameter.DisplayName)
-                        ? snapshot.Parameter.Id
-                        : snapshot.Parameter.DisplayName)
-                    : null,
+                RecipeId = string.IsNullOrWhiteSpace(connectionControllerRecipeMetadataId)
+                    ? null
+                    : connectionControllerRecipeMetadataId,
+                RecipeName = string.IsNullOrWhiteSpace(connectionControllerRecipeMetadataName)
+                    ? null
+                    : connectionControllerRecipeMetadataName,
                 Objects = new List<InspectionTcpObjectResult>()
             };
 

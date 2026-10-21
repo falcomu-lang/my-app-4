@@ -234,7 +234,7 @@ namespace IntegratedImageProcessingApp.Forms
             else if (selectedFunction == DetectionParameterMenuText)
             {
                 HideImageProcessingFlowTree();
-                parameterPlaceholderLabel.Text = "展開「檢測參數」後，可讀取、選擇或保存 Recipe。";
+                parameterPlaceholderLabel.Text = "展開「檢測參數」後，可新建、讀取或保存 Recipe；選擇請使用上方「參數選擇」。";
             }
             else if (selectedFunction == DetectionParameterUpdateRecipeMenuText)
             {

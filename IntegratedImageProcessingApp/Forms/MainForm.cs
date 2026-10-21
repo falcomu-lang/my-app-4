@@ -367,6 +367,13 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 functionListBox.Items.Insert(loadImageIndex < 0 ? 0 : loadImageIndex, DetectionParameterMenuText);
             }
+            if (!functionListBox.Items.Contains(DetectionParameterSelectMenuText))
+            {
+                int detectionParameterIndex = functionListBox.Items.IndexOf(DetectionParameterMenuText);
+                functionListBox.Items.Insert(
+                    detectionParameterIndex < 0 ? 0 : detectionParameterIndex,
+                    DetectionParameterSelectMenuText);
+            }
             if (!functionListBox.Items.Contains(ImageRelationMenuText))
             {
                 int processingIndex = functionListBox.Items.IndexOf(ImageProcessingMenuText);
@@ -527,7 +534,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 functionListBox.Items.Remove(DetectionParameterNewMenuText);
                 functionListBox.Items.Remove(DetectionParameterAddMenuText);
-                functionListBox.Items.Remove(DetectionParameterSelectMenuText);
                 functionListBox.Items.Remove(DetectionParameterUpdateRecipeMenuText);
                 functionListBox.Items.Remove(DetectionParameterSaveAsRecipeMenuText);
                 detectionParameterMenuExpanded = false;
@@ -544,7 +550,6 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 DetectionParameterNewMenuText,
                 DetectionParameterAddMenuText,
-                DetectionParameterSelectMenuText,
                 DetectionParameterUpdateRecipeMenuText,
                 DetectionParameterSaveAsRecipeMenuText
             };
@@ -2733,7 +2738,6 @@ namespace IntegratedImageProcessingApp.Forms
         {
             return menuText == DetectionParameterNewMenuText ||
                 menuText == DetectionParameterAddMenuText ||
-                menuText == DetectionParameterSelectMenuText ||
                 menuText == DetectionParameterUpdateRecipeMenuText ||
                 menuText == DetectionParameterSaveAsRecipeMenuText;
         }

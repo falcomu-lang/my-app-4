@@ -162,7 +162,13 @@ namespace IntegratedImageProcessingApp.Forms
             }
             using (var dialog = new DetectionRecipeSelectionDialog(catalog, entries, inUseRecipeIds))
             {
-                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                DialogResult result = dialog.ShowDialog(this);
+                InvalidateConnectionControllerRecipeMetadata();
+                if (result != DialogResult.OK)
+                {
+                    QueueStationStatusPublish(true);
+                    return;
+                }
 
                 try
                 {
@@ -240,6 +246,8 @@ namespace IntegratedImageProcessingApp.Forms
                 systemParameters.ActiveDetectionRecipeId = entry.Id;
                 SaveSystemParameters();
                 catalog.UpdateRecipeSettings(entry.Id, systemParameters);
+                InvalidateConnectionControllerRecipeMetadata();
+                QueueStationStatusPublish(true);
                 statusLabel.Text = "已更新目前 Recipe：「" + entry.DisplayName + "」";
                 MessageBox.Show(
                     this,
@@ -391,6 +399,8 @@ namespace IntegratedImageProcessingApp.Forms
                         return;
                     }
 
+                    InvalidateConnectionControllerRecipeMetadata();
+                    QueueStationStatusPublish(true);
                     statusLabel.Text = "已另存並切換至新 Recipe：「" + newEntry.DisplayName + "」";
                     MessageBox.Show(
                         this,

@@ -752,6 +752,8 @@ namespace IntegratedImageProcessingApp.Forms
                     suppressObjectDetectionParameterSourceAutoProcessing = false;
                 }
             }
+            InvalidateConnectionControllerRecipeMetadata();
+            QueueStationStatusPublish(true);
         }
 
         private void CancelDetectionRecipeBoundOperations()

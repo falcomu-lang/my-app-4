@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ConnectionControllerSettings>
+  <MonitorCamera>true</MonitorCamera>
   <ConnectWhenOpened>false</ConnectWhenOpened>
   <AutoReconnect>true</AutoReconnect>
   <ConnectTimeoutSeconds>5</ConnectTimeoutSeconds>

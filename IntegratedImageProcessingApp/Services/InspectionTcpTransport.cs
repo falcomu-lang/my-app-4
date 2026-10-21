@@ -135,6 +135,17 @@ namespace IntegratedImageProcessingApp.Services
         public event EventHandler<InspectionTcpMessageEventArgs> MessageReceived;
         public event EventHandler<InspectionTcpPeerEventArgs> PeerStateChanged;
 
+        public int ConnectedPeerCount
+        {
+            get
+            {
+                lock (peersLock)
+                {
+                    return peers.Values.Count(peer => Volatile.Read(ref peer.Closed) == 0);
+                }
+            }
+        }
+
         public void SetHeartbeatTimeout(int seconds)
         {
             Interlocked.Exchange(ref heartbeatTimeoutSeconds, Math.Max(3, Math.Min(300, seconds)));

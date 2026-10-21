@@ -4,11 +4,11 @@
 
 ## 專案狀態
 
-- 文件快照：2026-10-20。
+- 文件快照：2026-10-21。
 - 線掃描取像已整合為獨立 `CameraCaptureModule`，嵌入「全域設定 → 與線掃描取像結合」；相機原有設定／波形等彈出視窗保留。「顯示攝影機影像」控制原本的相機預覽區；送檢開關會以目前選取參數執行物件搜尋、尺寸量測及缺陷判定。若新影像進來時使用者正在「檢測總覽」，畫面保持在總覽：新圖先以待確認狀態顯示，判定完成後更新各物件尺寸、缺陷與綜合結果。尚未完成相機實機端到端驗收，流程仍透過暫存 TIFF 與結果確認 UI 運算，不是生產用純記憶體檢測服務。
-- 最新推送為 `d515771`（`Keep camera inspections visible in overview`），包含上述相機總覽停留行為。完整 Solution 建置尚未取得結果；GUI 與實際取像設備也尚未驗收。
+- 最新已推送提交為 `ad7db14`（`Publish result review over TCP and clear encoder on connect`）。2026-10-21 工作目錄另有未提交修改：參數選擇移至檢測參數主項目上方、總控 Recipe 狀態同步、攝影機監控總開關，以及依存活 TCP peer 更新檢測總覽燈號。最近變更的 TCP 傳輸檔 Roslyn 單檔編譯及 `git diff --check` 通過；完整主程式 MSBuild 本次停滯後中止，GUI 與實際取像設備仍未驗收。
 - 缺陷檢測範圍組可由勾選框選成員、將已勾選 ROI 上下排序；物件序號下方另有「顯示檢測範圍的 ROI 框」開關。選到物件時可顯示目前條件所選群組的 ROI；未選群組仍須核對預覽與運算一致性。
-- 左側「檢測參數」主項目可收合／展開，預設收合；展開後提供「新建參數」、「參數讀取與加入」、「參數選擇」、「更新目前recipe」、「另存為新的Recipe」。新建會清空檢測設定並解除作用中 Recipe，但保留圖片、Recipe 清單及全域內部參數；更新會確認後覆寫作用中 Recipe；另存會建立新 Recipe 並切換為作用中項目。尚待 GUI 驗收。
+- 左側「參數選擇」是獨立主項目，位於可收合的「檢測參數」上方；「檢測參數」展開後只包含新建、讀取與加入、更新目前 Recipe、另存新 Recipe 四個操作。新建會清空檢測設定並解除作用中 Recipe，但保留圖片、Recipe 清單及全域內部參數；更新會確認後覆寫作用中 Recipe；另存會建立新 Recipe 並切換為作用中項目。尚待 GUI 驗收。
 - Recipe 參數管理可將參數檔加入軟體根目錄 `recipe`、編輯名稱與說明、調整清單順序，以及選取一組套用；套用後會重新跑相關物件流程與已啟用的缺陷分析。
 - 平場校正設定或 MASK 變更造成的過期工作取消，已改為預期取消而非未處理錯誤；需在快速切換設定的 GUI 情境確認取消與新工作結果。
 - 紋理異常判定已從設定介面、運算流程、結果整合、結果確認及參數保存中移除；平場分支、條件一至六與頻域異常一／二保留。Debug 建置成功，尚待 GUI 頁籤與舊 Recipe 載入行為確認。
@@ -42,6 +42,7 @@
 - 左側「全域設定」開啟獨立頁面，分為「與線掃描取像結合」及「內部參數」。取像頁嵌入原攝影機程式的完整主操作畫面，原有相機設定、波形及測速輪等彈出視窗仍獨立開啟；模組首次顯示時才初始化。此頁不顯示主檢測影像／參數編輯區。
 - 「取得影像後事件」有兩個獨立勾選：「顯示攝影機影像」控制相機原有預覽區；取消後清除目前即時影像並停止預覽影格轉換／繪製，但不停止取像、記錄、自動保存或送檢。設定頁沒有新增第二個影像顯示框。
 - 「將取得的影像送入影像處理」預設關閉。啟用時，`ICameraImageSource.ImageAcquired` 事件會把完成影格傳給主程式；主程式複製影格、檢查尺寸，保存至 `%LocalAppData%\IntegratedImageProcessingApp\CameraFrames\` 暫存 TIFF，再以目前選取的 Recipe 執行物件搜尋、尺寸量測、平場及啟用中的缺陷／頻域分析。每次只處理一張，忙碌時新影格略過、不排隊。
+- 「連線總控參數 > 連線行為」新增「是否監控攝影機」主開關。取消勾選並保存後，不會自動連線或重連，既有被控站點連線會中斷，總控頁面的連線／取像／檢測操作停用；舊 XML 缺少此欄位時預設啟用以維持相容。總控狀態所傳 Recipe ID／名稱來自目前作用中的 Recipe，而非舊檢測結果快照；載入、更新、另存或改名後會刷新狀態。
 - 若取像前正在「檢測總覽」，成功完成判定後會返回總覽，以本次結果快照更新原始影像與物件矩陣；矩陣逐物件呈現尺寸、缺陷及綜合判定，任一項 NG 時綜合為 NG。運算仍借用「參數結果確認」流程，處理期間會切換到該頁；若從其他頁面取像，結果會保存在快照，之後進入總覽時刷新。總覽固定使用原始輸入影像，不疊加缺陷標記。
 - 這是目前已接通的 UI 驗證路徑，不是純記憶體的獨立 pipeline；尚未實機驗證，也尚無生產級錯誤重試、逾時、結果持久化或整體併發管理。未來應抽出接收 Bitmap／Recipe 快照的檢測服務，讓相機與人工載圖共用，避免檢測核心依賴 UI 導覽與暫存檔。
 
@@ -50,6 +51,7 @@
 - 左側固定顯示最近一次完成檢測的原始影像，不在底圖疊加缺陷框；右側以物件定義的序號與排列位置建立格子。
 - 每個物件格呈現尺寸、缺陷、綜合三項判定；尺寸 A/B/NG、缺陷 A/NG/待確認分開顯示，尺寸或缺陷任一 NG 則綜合 NG，若結果未完成則綜合待確認。
 - 單擊物件格會聚焦影像到該物件並在左下區域查看三項結果；再次雙擊同一格會清除選取框並恢復全圖視野。頁面可依全部、NG、待確認篩選，並可將選取物件送到「參數結果確認」檢視。
+- 頁首 TCP/IP 燈號依本機 TCP 傳輸中存活的連線 peer 顯示；任一總控端或被控端連線建立時轉為綠燈「已連線」，全部斷開時回到灰燈「未連線」，並在連線狀態事件後刷新。
 - 相機送檢成功後會更新最近結果快照；若總覽原本正在顯示，流程完成後返回並刷新總覽原始影像。暫存 TIFF／Result Review UI 的耦合、忙碌時丟棄影格及相機實機驗收是目前限制。
 - 相機設定使用執行檔目錄的 `captureSetting.ini`；首次找不到時會從同一目錄的舊 `settings.ini` 或 `setting.ini` 複製遷移。若舊設定仍在獨立相機程式的輸出資料夾，首次開啟整合程式前先把舊檔放到主程式執行檔旁，才會沿用原設定。預設影像儲存於 `CameraCapture/Captures`，相機記錄寫入 `logs/camera/app.log`。攝影機設定、資料與 `config/device-settings.ini` 保持分離。
 - 「內部參數」設定攝影機 X/Y 精度（mm/pixel）與是否啟用 mm 換算。程式啟動時讀取執行檔目錄的 `config/device-settings.ini`；缺檔時 X/Y 預設 1、mm 換算關閉，尺寸量測以 pixel 計算。單一精度值無效時該軸回退為 1，但若檔案仍設定啟用 mm 換算，開關不會自動關閉；現場需檢查完整設定。套用後寫入此檔，不隨 Recipe 切換。
@@ -105,10 +107,10 @@
 
 ## Recipe 參數管理
 
-- 左側「檢測參數」可收合／展開，預設收合；展開後顯示五個操作入口。
+- 左側「參數選擇」獨立顯示並位於「檢測參數」上方；「檢測參數」主項目可收合／展開，預設收合，展開後顯示四個操作入口。
 - 「新建參數」經確認後會以空白 `SystemParameterSettings` 重置目前 `SystemParameters.ini`，清除 ROI、找物件流程、尺寸／缺陷檢測設定及作用中 Recipe ID；保留目前圖片路徑。全域內部參數保存在獨立的 `config/device-settings.ini`，不會被重置；Recipe 清單與現有 Recipe 檔也不會被刪除。
 - 「參數讀取與加入」會將參數檔加入軟體根目錄的 `recipe` 資料夾；加入不會立即改變目前流程。
-- 「參數選擇」可查看 Recipe 名稱與說明、編輯中繼資料、調整並保存清單順序、刪除未使用的項目，並在明確按下套用後切換作用中參數。
+- 「參數選擇」可查看 Recipe 名稱與說明、編輯中繼資料、調整並保存清單順序、刪除未使用的項目，並在明確按下套用後切換作用中參數。它是「檢測參數」上方的獨立導覽項目，不會隨該主項目收合。
 - 「更新目前recipe」會先要求確認，再將目前設定覆寫至作用中 Recipe，並更新其修改時間；若目前設定無法唯一對應 Recipe，會阻止覆寫。
 - 「另存為新的Recipe」會以目前檢測設定建立新的 Recipe ID，讓新項目成為作用中 Recipe。Recipe 快照不帶入目前圖片路徑或作用中 Recipe ID；此操作不會自動重跑影像流程。
 - `recipe/parameterList.json` 保存 Recipe ID、名稱、說明與排序；每份完整參數另存為 `recipe/<ID>.ini`。目前匯入檔需包含且只包含一組檢測參數。
@@ -135,11 +137,13 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 - `CameraCaptureModule`：從攝影機取像專案複製到主方案的獨立 x64 WinForms 模組，含相機服務、主操作視窗及其原有彈出視窗；後續原相機專案更新不會自動同步到此模組。由 `CameraCaptureHostControl` 嵌入主程式全域設定頁。
 - `IntegratedImageProcessingApp\Controls\CameraCaptureHostControl.cs`：延遲建立／承載相機主視窗；送檢開啟時訂閱並轉送完整影格事件，並於主程式關閉時釋放相機。
 - `IntegratedImageProcessingApp\Forms\MainForm.CameraCapture.cs`：接收相機影格、處理忙碌丟棄／尺寸檢查／暫存 TIFF，以目前參數啟動結果確認，成功時將結果交給總覽。
+- `IntegratedImageProcessingApp\Forms\MainForm.ConnectionController.cs`：總控端站點連線、狀態卡片與 TCP 命令；目前 Recipe 狀態由作用中 Recipe ID 與 `parameterList.json` 名稱解析。
+- `IntegratedImageProcessingApp\Services\ConnectionControllerSettingsService.cs`：總控站點與連線行為 XML 設定模型／讀寫，含 `MonitorCamera` 監控主開關。
 - `IntegratedImageProcessingApp\Forms\MainForm.InspectionOverview.cs`：顯示完成檢測的影像、物件矩陣、尺寸／缺陷／綜合判定、篩選及送往結果確認的操作。
 - `CameraCaptureModule\Forms\CameraSettingsForm.cs` 與 `CameraCaptureModule\Forms\MainForm.cs`：設定兩個獨立事件開關；顯示開關控制原預覽區，送檢開關控制完整影格事件訂閱。
 - `IntegratedImageProcessingApp\Forms`：WinForms 主視窗與各功能流程；`MainForm` 以 partial 檔分工，仍負責主要 UI 協調。
 - `IntegratedImageProcessingApp\Services`：OpenCV 運算、INI 參數、灰階解碼及 ROI／MASK 快取與建置。
-- `IntegratedImageProcessingApp\Forms\MainForm.GlobalSettings.cs`：全域設定頁、攝影機 X/Y 精度與套用 UI。
+- `IntegratedImageProcessingApp\Forms\MainForm.GlobalSettings.cs`：全域設定頁、攝影機 X/Y 精度、總控連線行為與站點清單 UI。
 - `IntegratedImageProcessingApp\Services\CameraDeviceSettingsIniService.cs`：獨立設備精度 INI 的預設值、讀取與保存。
 - `IntegratedImageProcessingApp\config\device-settings.ini`：隨建置複製到輸出目錄的設備設定初始檔；執行時使用輸出目錄中的檔案。
 
@@ -147,4 +151,4 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 
 ## 驗收狀態
 
-2026-10-20 `0e9ace6` 已推送檢測總覽與相機檢測完成後更新總覽的流程；後續改為顯示原始影像並加入格子雙擊返回全圖，另新增可收合的 Recipe 選單及更新／另存操作。`git diff --check` 通過；本次 MSBuild 僅回報啟動訊息、未進入編譯，未取得編譯結果。相機實機、總覽影像／格子更新、Recipe 操作、兩個相機事件開關、Sapera／測速輪硬體及端到端判定仍待驗收。建置需包含 Sapera managed DLL 與 x64 `LSI8181_64.dll`；硬體 runtime／驅動需在設備上驗證。缺陷與頻域等既有流程仍需代表性影像驗收。
+2026-10-21 工作目錄修改尚未提交：Recipe 選擇獨立於可收合的檢測參數主項目，總控端配方顯示改由目前作用中的 Recipe 決定，並新增攝影機監控開關。`git diff --check` 通過；Roslyn 直接編譯 CameraCaptureModule 與主程式成功，但未執行完整 Solution/MSBuild 建置。GUI 操作、TCP 多站點互通、Sapera／測速輪硬體及相機端到端判定仍待驗收。

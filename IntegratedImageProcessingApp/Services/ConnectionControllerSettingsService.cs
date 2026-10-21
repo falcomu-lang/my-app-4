@@ -10,6 +10,7 @@ namespace IntegratedImageProcessingApp.Services
     {
         public ConnectionControllerSettings()
         {
+            MonitorCamera = true;
             ConnectWhenOpened = false;
             AutoReconnect = true;
             ConnectTimeoutSeconds = 5;
@@ -17,6 +18,8 @@ namespace IntegratedImageProcessingApp.Services
             HeartbeatTimeoutSeconds = 10;
             Stations = new List<ConnectionControllerStation>();
         }
+
+        public bool MonitorCamera { get; set; }
 
         public bool ConnectWhenOpened { get; set; }
 
