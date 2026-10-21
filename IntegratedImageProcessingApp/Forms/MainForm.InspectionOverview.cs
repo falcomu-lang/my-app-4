@@ -946,11 +946,11 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
             int columns = Math.Max(1, inspectionOverviewMatrix.ColumnCount - 1);
-            int cellWidth = Math.Max(58,
-                Math.Min(124, Math.Max(1, inspectionOverviewMatrixHost.ClientSize.Width - 4) / columns));
+            int availableWidth = Math.Max(1, inspectionOverviewMatrixHost.ClientSize.Width - 2);
+            const int minimumCellWidth = 58;
             inspectionOverviewMatrix.Width = Math.Max(
-                inspectionOverviewMatrixHost.ClientSize.Width - 2,
-                columns * cellWidth + 42);
+                availableWidth,
+                columns * minimumCellWidth + 42);
             inspectionOverviewMatrix.Height = Math.Max(92,
                 (inspectionOverviewMatrix.RowCount - 1) * 66 + 30);
             if (inspectionOverviewMatrix.ColumnStyles.Count > 0)
@@ -960,8 +960,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
             for (int column = 1; column < inspectionOverviewMatrix.ColumnStyles.Count; column++)
             {
-                inspectionOverviewMatrix.ColumnStyles[column].SizeType = SizeType.Absolute;
-                inspectionOverviewMatrix.ColumnStyles[column].Width = cellWidth;
+                inspectionOverviewMatrix.ColumnStyles[column].SizeType = SizeType.Percent;
+                inspectionOverviewMatrix.ColumnStyles[column].Width = 100F / columns;
             }
             inspectionOverviewMatrixHost.AutoScrollMinSize = inspectionOverviewMatrix.Size;
         }
