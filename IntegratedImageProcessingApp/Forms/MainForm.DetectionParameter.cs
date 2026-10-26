@@ -41,6 +41,8 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDetectionParameterPanel != null)
             {
                 parameterPanel.Controls.Remove(objectDetectionParameterPanel);
+                objectDetectionParameterPanel.Dispose();
+                objectDetectionParameterPanel = null;
             }
 
             parameterPlaceholderLabel.Visible = false;

@@ -19,6 +19,10 @@ namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm
     {
+        private SystemParameterSettings displayedFunctionListSettings;
+        private object displayedFunctionListTarget;
+        private string displayedFunctionListText;
+
         private void MainForm_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode != Keys.Control)
@@ -184,6 +188,29 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string selectedFunction = functionListBox.SelectedItem as string;
+            if (string.IsNullOrEmpty(selectedFunction))
+            {
+                return;
+            }
+
+            object selectedTarget = GetFunctionListNavigationTarget(
+                functionListBox.SelectedIndex,
+                selectedFunction);
+            string navigationText;
+            if (!visibleObjectDetectionParameterGroupNames.TryGetValue(
+                    functionListBox.SelectedIndex, out navigationText))
+            {
+                navigationText = selectedFunction;
+            }
+            // ListBox can notify again when a menu rebuild reselects the same item.
+            if (!IsAKeyDown() &&
+                ReferenceEquals(displayedFunctionListSettings, systemParameters) &&
+                object.Equals(displayedFunctionListTarget, selectedTarget) &&
+                string.Equals(displayedFunctionListText, navigationText, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             if (selectedFunction != ConnectionControllerMenuText)
             {
                 ExitConnectionControllerPanel();
@@ -193,14 +220,10 @@ namespace IntegratedImageProcessingApp.Forms
                 HideGlobalSettingsPanel();
             }
 
-            if (string.IsNullOrEmpty(selectedFunction))
-            {
-                ResetRightFunctionPanel();
-                rightPanelTitleLabel.Text = "參數設定";
-                return;
-            }
-
             ResetRightFunctionPanel();
+            displayedFunctionListSettings = systemParameters;
+            displayedFunctionListTarget = selectedTarget;
+            displayedFunctionListText = navigationText;
             if (selectedFunction == GlobalSettingsMenuText)
             {
                 rightPanelTitleLabel.Text = "全域設定";
@@ -451,8 +474,104 @@ namespace IntegratedImageProcessingApp.Forms
             statusLabel.Text = "目前選擇：" + selectedFunction;
         }
 
+        private object GetFunctionListNavigationTarget(int visibleIndex, string menuText)
+        {
+            if (!menuText.StartsWith(" ", StringComparison.Ordinal))
+            {
+                return menuText;
+            }
+
+            int index = GetRoiIndex(menuText);
+            if (IsRoiMenuItem(menuText) && index >= 0 && index < systemParameters.RoiRegions.Count)
+            {
+                return systemParameters.RoiRegions[index];
+            }
+
+            string id;
+            if (visibleObjectDetectionParameterGroupNames.TryGetValue(visibleIndex, out id))
+            {
+                return "DetectionParameterGroup:" + id;
+            }
+
+            id = GetObjectJudgementGroupId(menuText);
+            if (!string.IsNullOrEmpty(id))
+            {
+                return FindObjectJudgementGroup(id);
+            }
+
+            if (TryGetObjectDetectionParameterLocation(visibleIndex, menuText, out id))
+            {
+                return FindObjectDetectionParameter(id);
+            }
+
+            if (TryGetObjectDefinitionProcessingLocation(visibleIndex, out id, out index))
+            {
+                return FindObjectDefinition(id).ProcessingSteps[index];
+            }
+
+            id = GetObjectDefinitionId(visibleIndex, menuText);
+            if (!string.IsNullOrEmpty(id))
+            {
+                return FindObjectDefinition(id);
+            }
+
+            int processingIndex;
+            if (TryGetObjectJudgementProcessingLocation(
+                    visibleIndex, menuText, out index, out processingIndex))
+            {
+                return systemParameters.ObjectJudgements[index].ProcessingSteps[processingIndex];
+            }
+
+            index = GetObjectJudgementIndex(menuText);
+            if (index >= 0)
+            {
+                return systemParameters.ObjectJudgements[index];
+            }
+
+            id = GetImageRelationGroupId(menuText);
+            if (!string.IsNullOrEmpty(id))
+            {
+                return FindImageRelationGroup(id);
+            }
+
+            index = GetImageRelationIndex(menuText);
+            if (index >= 0)
+            {
+                return systemParameters.ImageRelations[index];
+            }
+
+            index = GetImagePreprocessingStepIndex(menuText);
+            if (index >= 0 && index < systemParameters.ImagePreprocessingSteps.Count)
+            {
+                return systemParameters.ImagePreprocessingSteps[index];
+            }
+
+            id = GetImagePreprocessingGroupId(menuText);
+            if (!string.IsNullOrEmpty(id))
+            {
+                return FindImagePreprocessingGroup(id);
+            }
+
+            id = GetImageProcessingGroupId(menuText);
+            if (!string.IsNullOrEmpty(id))
+            {
+                return FindImageProcessingGroup(id);
+            }
+
+            index = GetImageProcessingStepIndex(menuText);
+            if (index >= 0 && index < systemParameters.ImageProcessingSteps.Count)
+            {
+                return systemParameters.ImageProcessingSteps[index];
+            }
+
+            return "MenuItem:" + visibleIndex.ToString(CultureInfo.InvariantCulture);
+        }
+
         private void ResetRightFunctionPanel()
         {
+            displayedFunctionListSettings = null;
+            displayedFunctionListTarget = null;
+            displayedFunctionListText = null;
             bool wasObjectDetectionResultReviewMode = isObjectDetectionResultReviewMode;
             ExitInspectionOverviewMode();
             ExitObjectDetectionResultReviewMode();
@@ -592,7 +711,16 @@ namespace IntegratedImageProcessingApp.Forms
                     selectedFunction,
                     out objectDetectionParameterId))
             {
-                ShowObjectDetectionParameterPanel(objectDetectionParameterId);
+                if (objectDetectionParameterPanel == null ||
+                    objectDetectionParameterPanel.IsDisposed ||
+                    !objectDetectionParameterPanel.Visible ||
+                    !string.Equals(
+                        activeObjectDetectionParameterId,
+                        objectDetectionParameterId,
+                        StringComparison.Ordinal))
+                {
+                    ShowObjectDetectionParameterPanel(objectDetectionParameterId);
+                }
                 return;
             }
 
@@ -690,8 +818,19 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                     else if (GetObjectDefinitionIndex(selectedFunction) >= 0)
                     {
-                        ShowObjectDefinitionParameterPanel(
-                            GetObjectDefinitionId(functionListBox.SelectedIndex, selectedFunction));
+                        string definitionId = GetObjectDefinitionId(
+                            functionListBox.SelectedIndex,
+                            selectedFunction);
+                        if (objectDefinitionParameterPanel == null ||
+                            objectDefinitionParameterPanel.IsDisposed ||
+                            !objectDefinitionParameterPanel.Visible ||
+                            !string.Equals(
+                                activeObjectDefinitionParameterId,
+                                definitionId,
+                                StringComparison.Ordinal))
+                        {
+                            ShowObjectDefinitionParameterPanel(definitionId);
+                        }
                     }
                     }
                 }

@@ -173,22 +173,76 @@ namespace IntegratedImageProcessingApp.Forms
                 EnsureDetectionRecipeGenerationIsCurrent(
                     capturedRecipeGeneration,
                     operationCancellationToken);
-                await RunObjectDetectionDefectProcessingCoreAsync(
-                    parameterId,
-                    coreKey,
-                    computationCompleted,
-                    displayCompleted,
-                    capturedRecipeGeneration,
-                    operationCancellationToken);
-                if (coreKey == null && !isResultReviewRun &&
-                    !operationCancellationToken.IsCancellationRequested &&
-                    capturedRecipeGeneration == Interlocked.CompareExchange(
-                        ref detectionRecipeGeneration, 0, 0))
+                if (requestedParameter != null &&
+                    requestedParameter.DefectParallelExecutionEnabled &&
+                    (includeFrequency1 || includeFrequency2))
                 {
-                    await RunObjectDetectionSupplementaryAnalysesAsync(
-                        parameterId,
+                    // Prepare the shared source before any branch starts its own analysis.
+                    LargeImageSource source = await PrepareObjectDetectionFrequencySourceAsync(
+                        requestedParameter);
+                    EnsureDetectionRecipeGenerationIsCurrent(
                         capturedRecipeGeneration,
                         operationCancellationToken);
+                    if (source == null)
+                    {
+                        return;
+                    }
+
+                    Stopwatch parallelStopwatch = Stopwatch.StartNew();
+                    Task generalDefects = RunObjectDetectionDefectProcessingCoreAsync(
+                        parameterId,
+                        coreKey,
+                        computationCompleted,
+                        displayCompleted,
+                        capturedRecipeGeneration,
+                        operationCancellationToken);
+                    var tasks = new List<Task> { generalDefects };
+                    for (int frequencyIndex = 0; frequencyIndex < 2; frequencyIndex++)
+                    {
+                        if (frequencyIndex == 0 ? !includeFrequency1 : !includeFrequency2)
+                        {
+                            continue;
+                        }
+                        tasks.Add(RunObjectDetectionFrequencyAnalysisAsync(
+                            parameterId,
+                            true,
+                            operationCancellationToken,
+                            capturedRecipeGeneration,
+                            frequencyIndex: frequencyIndex,
+                            independentCoreCompletion: generalDefects));
+                    }
+                    await Task.WhenAll(tasks);
+                    EnsureDetectionRecipeGenerationIsCurrent(
+                        capturedRecipeGeneration,
+                        operationCancellationToken);
+                    parallelStopwatch.Stop();
+                    if (!IsDisposed && string.Equals(
+                        activeObjectDetectionParameterId, parameterId, StringComparison.Ordinal))
+                    {
+                        AppendDebugTimingMemo("缺陷全部檢測並行牆鐘（含結果更新）：" +
+                            parallelStopwatch.ElapsedMilliseconds.ToString("N0", CultureInfo.CurrentCulture) +
+                            " ms");
+                    }
+                }
+                else
+                {
+                    await RunObjectDetectionDefectProcessingCoreAsync(
+                        parameterId,
+                        coreKey,
+                        computationCompleted,
+                        displayCompleted,
+                        capturedRecipeGeneration,
+                        operationCancellationToken);
+                    if (coreKey == null && !isResultReviewRun &&
+                        !operationCancellationToken.IsCancellationRequested &&
+                        capturedRecipeGeneration == Interlocked.CompareExchange(
+                            ref detectionRecipeGeneration, 0, 0))
+                    {
+                        await RunObjectDetectionSupplementaryAnalysesAsync(
+                            parameterId,
+                            capturedRecipeGeneration,
+                            operationCancellationToken);
+                    }
                 }
             }
             catch (OperationCanceledException)

@@ -131,6 +131,22 @@ namespace IntegratedImageProcessingApp.Forms
 
             public long StatisticsMilliseconds { get; set; }
 
+            public long RoiPreparationMilliseconds { get; set; }
+
+            public long ContrastMilliseconds { get; set; }
+
+            public long PreprocessingMilliseconds { get; set; }
+
+            public long RectificationMilliseconds { get; set; }
+
+            public long MaskPreparationMilliseconds { get; set; }
+
+            public long WindowSearchMilliseconds { get; set; }
+
+            public long ResizeMilliseconds { get; set; }
+
+            public long EnergyCalculationMilliseconds { get; set; }
+
             public long ScannedWindowCount { get; set; }
 
             public Dictionary<int, List<PointF[]>> ObjectPolygons { get; set; }
@@ -144,11 +160,24 @@ namespace IntegratedImageProcessingApp.Forms
 
         private sealed class ObjectDetectionFrequencyWorkspace : IDisposable
         {
+            private const int MaximumMaskLookupBytes = 8 * 1024 * 1024;
+            private int[] invalidMaskCounts;
+            private ulong[] validMaskWindows;
+            private int maskCountTop = -1;
+            private int maskLookupTop;
+            private int maskLookupRows;
+            private int maskLookupWordsPerRow;
+            private bool maskIsFull;
+            private bool maskIsSolidRectangle;
+            private Cv.Rect maskRectangle;
+
             public ObjectDetectionFrequencyWorkspace(
                 Cv.Mat image,
                 Cv.Mat mask,
                 int windowSize,
-                int verticalStretchPercent)
+                int verticalStretchPercent,
+                bool calculateNeighborStatistics,
+                CancellationToken cancellationToken)
             {
                 if (image == null || image.Empty() || image.Type() != Cv.MatType.CV_8UC1 ||
                     mask == null || mask.Empty() || mask.Type() != Cv.MatType.CV_8UC1 ||
@@ -171,9 +200,58 @@ namespace IntegratedImageProcessingApp.Forms
                     windowSize,
                     verticalStretchPercent);
                 VerticalStretchPercent = verticalStretchPercent;
+                CalculateNeighborStatistics = calculateNeighborStatistics;
+                if (calculateNeighborStatistics)
+                {
+                    int blockColumns = Math.Min(4, WindowWidth);
+                    int blockRows = Math.Min(4, WindowHeight);
+                    BlockColumnIndices = new int[WindowWidth];
+                    BlockRowOffsets = new int[WindowHeight];
+                    BlockSums = new double[blockColumns * blockRows];
+                    BlockCounts = new int[BlockSums.Length];
+                    BlockMeans = new double[BlockSums.Length];
+                    var columnCounts = new int[blockColumns];
+                    var rowCounts = new int[blockRows];
+                    for (int column = 0; column < WindowWidth; column++)
+                    {
+                        int blockColumn = Math.Min(blockColumns - 1, column * blockColumns / WindowWidth);
+                        BlockColumnIndices[column] = blockColumn;
+                        columnCounts[blockColumn]++;
+                    }
+                    for (int row = 0; row < WindowHeight; row++)
+                    {
+                        int blockRow = Math.Min(blockRows - 1, row * blockRows / WindowHeight);
+                        BlockRowOffsets[row] = blockRow * blockColumns;
+                        rowCounts[blockRow]++;
+                    }
+                    for (int row = 0; row < blockRows; row++)
+                    {
+                        for (int column = 0; column < blockColumns; column++)
+                        {
+                            BlockCounts[row * blockColumns + column] = rowCounts[row] * columnCounts[column];
+                        }
+                    }
+                }
                 HannWindow = new Cv.Mat();
                 try
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    long maskStarted = Stopwatch.GetTimestamp();
+                    long maskPixels = (long)mask.Rows * mask.Cols;
+                    if (maskPixels <= int.MaxValue)
+                    {
+                        int nonzeroPixels = Cv.Cv2.CountNonZero(mask);
+                        maskIsFull = nonzeroPixels == maskPixels;
+                        IsMaskEmpty = nonzeroPixels == 0;
+                        if (!maskIsFull && !IsMaskEmpty)
+                        {
+                            maskRectangle = Cv.Cv2.BoundingRect(mask);
+                            // Equal area proves that every pixel inside the bounding rectangle is valid.
+                            maskIsSolidRectangle = nonzeroPixels == (long)maskRectangle.Width * maskRectangle.Height;
+                        }
+                    }
+                    MaskPreparationElapsedTicks = Stopwatch.GetTimestamp() - maskStarted;
+                    cancellationToken.ThrowIfCancellationRequested();
                     Cv.Cv2.CreateHanningWindow(
                         HannWindow,
                         new Cv.Size(WindowWidth, WindowHeight),
@@ -223,8 +301,135 @@ namespace IntegratedImageProcessingApp.Forms
 
             public long HannStep { get; private set; }
 
+            public bool CalculateNeighborStatistics { get; private set; }
+            public bool IsMaskEmpty { get; private set; }
+            public int[] BlockColumnIndices { get; private set; }
+            public int[] BlockRowOffsets { get; private set; }
+            public double[] BlockSums { get; private set; }
+            public int[] BlockCounts { get; private set; }
+            public double[] BlockMeans { get; private set; }
+            public long MaskPreparationElapsedTicks { get; private set; }
+            public long WindowSearchElapsedTicks { get; set; }
+            public long ResizeElapsedTicks { get; set; }
+            public long EnergyElapsedTicks { get; set; }
+
+            public unsafe void PrepareMaskWindowLookup(
+                int preferredY, int searchRadius, CancellationToken cancellationToken)
+            {
+                if (maskIsFull || IsMaskEmpty || maskIsSolidRectangle)
+                {
+                    return;
+                }
+
+                long started = Stopwatch.GetTimestamp();
+                int maxY = ImageHeight - WindowWidth;
+                int direction = Math.Sign(maxY / 2 - preferredY);
+                int lastY = preferredY + direction * Math.Max(0, searchRadius);
+                int firstRow = Math.Max(0, Math.Min(preferredY, lastY));
+                int lastRow = Math.Min(maxY, Math.Max(preferredY, lastY));
+                int rows = lastRow - firstRow + 1;
+                long wordsPerRow = (ImageWidth - (long)WindowWidth + 64) / 64;
+                long words = wordsPerRow * rows;
+                maskLookupRows = 0;
+                if (rows <= 0 || words * sizeof(ulong) + (long)ImageWidth * sizeof(int) > MaximumMaskLookupBytes)
+                {
+                    return;
+                }
+
+                if (invalidMaskCounts == null)
+                {
+                    invalidMaskCounts = new int[ImageWidth];
+                }
+                if (validMaskWindows == null || validMaskWindows.Length < words)
+                {
+                    validMaskWindows = new ulong[(int)words];
+                }
+                Array.Clear(validMaskWindows, 0, (int)words);
+                maskLookupWordsPerRow = (int)wordsPerRow;
+                byte* mask = (byte*)MaskData.ToPointer();
+                int maxX = ImageWidth - WindowWidth;
+                // Sliding column counts and one bit per start keep the lookup local to this scan row.
+                for (int y = firstRow; y <= lastRow; y++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (maskCountTop < 0 || Math.Abs(maskCountTop - y) >= WindowWidth)
+                    {
+                        Array.Clear(invalidMaskCounts, 0, invalidMaskCounts.Length);
+                        for (int row = y; row < y + WindowWidth; row++)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            byte* maskRow = mask + (long)row * MaskStep;
+                            for (int x = 0; x < ImageWidth; x++)
+                            {
+                                if (maskRow[x] == 0) invalidMaskCounts[x]++;
+                            }
+                        }
+                        maskCountTop = y;
+                    }
+                    while (maskCountTop != y)
+                    {
+                        bool forward = maskCountTop < y;
+                        int outgoingY = forward ? maskCountTop : maskCountTop + WindowWidth - 1;
+                        int incomingY = forward ? maskCountTop + WindowWidth : maskCountTop - 1;
+                        byte* outgoing = mask + (long)outgoingY * MaskStep;
+                        byte* incoming = mask + (long)incomingY * MaskStep;
+                        for (int x = 0; x < ImageWidth; x++)
+                        {
+                            invalidMaskCounts[x] += (incoming[x] == 0 ? 1 : 0) - (outgoing[x] == 0 ? 1 : 0);
+                        }
+                        maskCountTop += forward ? 1 : -1;
+                    }
+                    int invalid = 0;
+                    for (int x = 0; x < WindowWidth; x++) invalid += invalidMaskCounts[x];
+                    int rowOffset = (y - firstRow) * maskLookupWordsPerRow;
+                    for (int x = 0; x <= maxX; x++)
+                    {
+                        if (x > 0) invalid += invalidMaskCounts[x + WindowWidth - 1] - invalidMaskCounts[x - 1];
+                        if (invalid == 0) validMaskWindows[rowOffset + (x >> 6)] |= 1UL << (x & 63);
+                    }
+                }
+                maskLookupTop = firstRow;
+                maskLookupRows = rows;
+                MaskPreparationElapsedTicks += Stopwatch.GetTimestamp() - started;
+            }
+
+            public unsafe bool IsWindowInsideMask(int startX, int startY)
+            {
+                if (IsMaskEmpty)
+                {
+                    return false;
+                }
+                if (maskIsFull)
+                {
+                    return true;
+                }
+                if (maskIsSolidRectangle)
+                {
+                    return startX >= maskRectangle.X && startY >= maskRectangle.Y &&
+                        startX <= maskRectangle.Right - WindowWidth && startY <= maskRectangle.Bottom - WindowWidth;
+                }
+                if (startY >= maskLookupTop && startY - maskLookupTop < maskLookupRows)
+                {
+                    int word = (startY - maskLookupTop) * maskLookupWordsPerRow + (startX >> 6);
+                    return (validMaskWindows[word] & (1UL << (startX & 63))) != 0;
+                }
+
+                byte* mask = (byte*)MaskData.ToPointer();
+                for (int row = 0; row < WindowWidth; row++)
+                {
+                    byte* maskRow = mask + (long)(startY + row) * MaskStep + startX;
+                    for (int column = 0; column < WindowWidth; column++)
+                    {
+                        if (maskRow[column] == 0) return false;
+                    }
+                }
+                return true;
+            }
+
             public void Dispose()
             {
+                invalidMaskCounts = null;
+                validMaskWindows = null;
                 if (ResizedWindow != null)
                 {
                     ResizedWindow.Dispose();
@@ -1410,7 +1615,8 @@ namespace IntegratedImageProcessingApp.Forms
             CancellationToken cancellationToken = default(CancellationToken),
             int capturedRecipeGeneration = -1,
             bool includeIndependentCoreDefects = true,
-            int frequencyIndex = 0)
+            int frequencyIndex = 0,
+            Task independentCoreCompletion = null)
         {
             activeObjectDetectionFrequencyUiIndex = frequencyIndex;
             ObjectDetectionFrequencyUiState uiState = objectDetectionFrequencyUiStates[
@@ -1506,6 +1712,7 @@ namespace IntegratedImageProcessingApp.Forms
                 RefreshObjectDetectionDefectDisplay();
             }
 
+            ObjectDetectionFrequencyResult pendingResult = null;
             try
             {
                 Stopwatch totalStopwatch = Stopwatch.StartNew();
@@ -1629,7 +1836,7 @@ namespace IntegratedImageProcessingApp.Forms
                 SetObjectDetectionDefectRegionStatus(runParallel
                     ? "平行頻域掃描中：群組內獨立 ROI 同時處理... "
                     : "頻域掃描中：群組內獨立 ROI 依序處理... ");
-                ObjectDetectionFrequencyResult result = await Task.Run(delegate
+                pendingResult = await Task.Run(delegate
                 {
                     try
                     {
@@ -1644,6 +1851,7 @@ namespace IntegratedImageProcessingApp.Forms
                             contrastGain,
                             contrastPivotGray,
                             preprocessingSettings,
+                            parameter.DefectFrequencyNeighborComparisonEnabled,
                             runParallel,
                             progress,
                             cancellationToken);
@@ -1653,14 +1861,21 @@ namespace IntegratedImageProcessingApp.Forms
                         sourceReference.ReleaseReference();
                     }
                 });
+                ObjectDetectionFrequencyResult result = pendingResult;
                 scanStopwatch.Stop();
                 totalStopwatch.Stop();
                 if (result.Cells == null || result.Cells.Count == 0)
                 {
-                    DisposeObjectDetectionFrequencyResult(result);
                     SetObjectDetectionDefectRegionStatus(
                         "檢測範圍內找不到完整且有效的掃描格；請確認ROI位置，或降低掃描高度。 ");
                     return;
+                }
+                if (independentCoreCompletion != null && includeIndependentCoreDefects &&
+                    parameter.DefectFrequencyNeighborComparisonEnabled)
+                {
+                    // Only the final reference comparison depends on general defect results.
+                    await independentCoreCompletion;
+                    EnsureDetectionRecipeGenerationIsCurrent(capturedRecipeGeneration, cancellationToken);
                 }
                 Stopwatch neighborComparisonStopwatch = Stopwatch.StartNew();
                 CalculateObjectDetectionFrequencyNeighborComparison(
@@ -1693,13 +1908,13 @@ namespace IntegratedImageProcessingApp.Forms
                         capturedFlatFieldGeneration), signature, StringComparison.Ordinal))
                 {
                     SetObjectDetectionDefectRegionStatus("掃描期間影像或設定已變更，結果未套用；請重新分析。 ");
-                    DisposeObjectDetectionFrequencyResult(result);
                     return;
                 }
 
                 RemoveObjectDetectionFrequencyResult(parameter.Id, frequencyIndex);
                 objectDetectionFrequencyResults[
                     GetObjectDetectionFrequencyResultKey(parameter.Id, frequencyIndex)] = result;
+                pendingResult = null;
                 InvalidateObjectDetectionDefectIntegrationCache(parameter.Id);
                 RefreshObjectDetectionDefectIntegrationResults(savedParameter);
                 InvalidateObjectDetectionDefectIntegrationDisplay();
@@ -1710,6 +1925,10 @@ namespace IntegratedImageProcessingApp.Forms
                     display.InvalidateImageView();
                 }
                 string summary = UpdateObjectDetectionFrequencyResultSummary(result, frequencyIndex);
+                if (!isObjectDetectionResultReviewMode)
+                {
+                    AppendObjectDetectionFrequencyTimingMemo(result, frequencyIndex);
+                }
                 if (statusLabel != null)
                 {
                     statusLabel.Text = string.Format(
@@ -1740,6 +1959,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             finally
             {
+                DisposeObjectDetectionFrequencyResult(pendingResult);
                 uiState.AnalysisRunning = false;
                 if (!IsDisposed)
                 {
@@ -1840,6 +2060,7 @@ namespace IntegratedImageProcessingApp.Forms
             double contrastGain,
             int contrastPivotGray,
             ObjectDetectionDefectCoreSettings preprocessingSettings,
+            bool calculateNeighborStatistics,
             bool runParallel,
             IProgress<string> progress,
             CancellationToken cancellationToken)
@@ -1849,6 +2070,14 @@ namespace IntegratedImageProcessingApp.Forms
             var processedPatchesByRoiIndex = new ObjectDetectionDefectProcessedPatch[roiWorkItems.Count];
             long cellLoopElapsedTicks = 0;
             long previewGenerationElapsedTicks = 0;
+            long roiPreparationElapsedTicks = 0;
+            long contrastElapsedTicks = 0;
+            long preprocessingElapsedTicks = 0;
+            long rectificationElapsedTicks = 0;
+            long maskPreparationElapsedTicks = 0;
+            long windowSearchElapsedTicks = 0;
+            long resizeElapsedTicks = 0;
+            long energyElapsedTicks = 0;
             long scannedWindowCount = 0;
             Action<int> scanRoi = delegate(int roiIndex)
             {
@@ -1896,15 +2125,18 @@ namespace IntegratedImageProcessingApp.Forms
                     return;
                 }
 
-                using (Cv.Mat gray = CreateObjectDetectionDefectGrayRegionMat(source, crop))
-                using (Cv.Mat adjustedGray = CreateObjectDetectionFrequencyContrastMat(
+                using (Cv.Mat gray = MeasureObjectDetectionFrequencyMat(
+                    () => CreateObjectDetectionDefectGrayRegionMat(source, crop), ref roiPreparationElapsedTicks))
+                using (Cv.Mat adjustedGray = MeasureObjectDetectionFrequencyMat(
+                    () => CreateObjectDetectionFrequencyContrastMat(
                     gray,
                     contrastEnabled,
                     contrastGain,
-                    contrastPivotGray))
-                using (Cv.Mat preprocessedGray = ApplyObjectDetectionFrequencyPreprocessing(
+                    contrastPivotGray), ref contrastElapsedTicks))
+                using (Cv.Mat preprocessedGray = MeasureObjectDetectionFrequencyMat(
+                    () => ApplyObjectDetectionFrequencyPreprocessing(
                     adjustedGray ?? gray,
-                    preprocessingSettings))
+                    preprocessingSettings), ref preprocessingElapsedTicks))
                 using (var polygonMask = new Cv.Mat(
                     crop.Height,
                     crop.Width,
@@ -1931,6 +2163,7 @@ namespace IntegratedImageProcessingApp.Forms
                         InspectionPolygons = corners,
                         ProcessedImage = processedPreview
                     };
+                    long rectificationStarted = Stopwatch.GetTimestamp();
                     foreach (PointF[] regionCorners in corners)
                     {
                         Cv.Point[] polygon = regionCorners.Select(point => new Cv.Point(
@@ -1954,6 +2187,7 @@ namespace IntegratedImageProcessingApp.Forms
                         Cv.InterpolationFlags.Nearest,
                         Cv.BorderTypes.Constant,
                         Cv.Scalar.Black);
+                    Interlocked.Add(ref rectificationElapsedTicks, Stopwatch.GetTimestamp() - rectificationStarted);
                     int windowSize = requestedWindowSize;
                     int step = Math.Max(1, windowSize / 2);
                     List<int> xStarts = CreateFrequencyScanStarts(regionWidth, windowSize, step);
@@ -1962,7 +2196,9 @@ namespace IntegratedImageProcessingApp.Forms
                         rectifiedGray,
                         rectifiedMask,
                         windowSize,
-                        verticalStretchPercent))
+                        verticalStretchPercent,
+                        calculateNeighborStatistics,
+                        cancellationToken))
                     {
                         long objectScannedWindowCount = 0;
                         var usedWindows = new HashSet<long>();
@@ -1971,6 +2207,7 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             cancellationToken.ThrowIfCancellationRequested();
                             int y = yStarts[gridRow];
+                            workspace.PrepareMaskWindowLookup(y, step, cancellationToken);
                             for (int gridColumn = 0; gridColumn < xStarts.Count; gridColumn++)
                             {
                                 cancellationToken.ThrowIfCancellationRequested();
@@ -1981,7 +2218,8 @@ namespace IntegratedImageProcessingApp.Forms
                                 double energy;
                                 double meanGray;
                                 double lowerQuartileBlockMean;
-                                if (!TryFindObjectDetectionFrequencyWindow(
+                                long searchStarted = Stopwatch.GetTimestamp();
+                                bool foundWindow = TryFindObjectDetectionFrequencyWindow(
                                     workspace,
                                     x,
                                     y,
@@ -1992,7 +2230,9 @@ namespace IntegratedImageProcessingApp.Forms
                                     out windowY,
                                     out energy,
                                     out meanGray,
-                                    out lowerQuartileBlockMean))
+                                    out lowerQuartileBlockMean);
+                                workspace.WindowSearchElapsedTicks += Stopwatch.GetTimestamp() - searchStarted;
+                                if (!foundWindow)
                                 {
                                     continue;
                                 }
@@ -2032,6 +2272,11 @@ namespace IntegratedImageProcessingApp.Forms
                         cellLoopStopwatch.Stop();
                         Interlocked.Add(ref cellLoopElapsedTicks, cellLoopStopwatch.ElapsedTicks);
                         Interlocked.Add(ref scannedWindowCount, objectScannedWindowCount);
+                        Interlocked.Add(ref maskPreparationElapsedTicks, workspace.MaskPreparationElapsedTicks);
+                        Interlocked.Add(ref windowSearchElapsedTicks, Math.Max(0,
+                            workspace.WindowSearchElapsedTicks - workspace.ResizeElapsedTicks - workspace.EnergyElapsedTicks));
+                        Interlocked.Add(ref resizeElapsedTicks, workspace.ResizeElapsedTicks);
+                        Interlocked.Add(ref energyElapsedTicks, workspace.EnergyElapsedTicks);
                     }
                 }
                 progress?.Report(
@@ -2092,6 +2337,14 @@ namespace IntegratedImageProcessingApp.Forms
                 cellLoopElapsedTicks);
             result.PreviewGenerationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(
                 previewGenerationElapsedTicks);
+            result.RoiPreparationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(roiPreparationElapsedTicks);
+            result.ContrastMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(contrastElapsedTicks);
+            result.PreprocessingMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(preprocessingElapsedTicks);
+            result.RectificationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(rectificationElapsedTicks);
+            result.MaskPreparationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(maskPreparationElapsedTicks);
+            result.WindowSearchMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(windowSearchElapsedTicks);
+            result.ResizeMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(resizeElapsedTicks);
+            result.EnergyCalculationMilliseconds = ConvertObjectDetectionFrequencyTicksToMilliseconds(energyElapsedTicks);
             result.ScannedWindowCount = scannedWindowCount;
             for (int roiIndex = 0; roiIndex < roiWorkItems.Count; roiIndex++)
             {
@@ -2372,6 +2625,19 @@ namespace IntegratedImageProcessingApp.Forms
             return Math.Max(2.0, medianAbsoluteDeviation * 1.4826);
         }
 
+        private static Cv.Mat MeasureObjectDetectionFrequencyMat(Func<Cv.Mat> create, ref long elapsedTicks)
+        {
+            long started = Stopwatch.GetTimestamp();
+            try
+            {
+                return create();
+            }
+            finally
+            {
+                Interlocked.Add(ref elapsedTicks, Stopwatch.GetTimestamp() - started);
+            }
+        }
+
         private static Cv.Mat CreateObjectDetectionFrequencyContrastMat(
             Cv.Mat source,
             bool enabled,
@@ -2537,7 +2803,7 @@ namespace IntegratedImageProcessingApp.Forms
             energy = 0.0;
             meanGray = 0.0;
             lowerQuartileBlockMean = 0.0;
-            if (workspace == null || usedWindows == null)
+            if (workspace == null || usedWindows == null || workspace.IsMaskEmpty)
             {
                 return false;
             }
@@ -2550,36 +2816,24 @@ namespace IntegratedImageProcessingApp.Forms
             int directionY = Math.Sign(centerY - preferredY);
             for (int radius = 0; radius <= Math.Max(0, searchRadius); radius++)
             {
-                var candidates = new List<Point>(3);
-                if (radius == 0)
+                int candidateCount = radius == 0 ? 1 : 3;
+                for (int candidateIndex = 0; candidateIndex < candidateCount; candidateIndex++)
                 {
-                    candidates.Add(new Point(preferredX, preferredY));
-                }
-                else
-                {
-                    int inwardX = preferredX + (directionX * radius);
-                    int inwardY = preferredY + (directionY * radius);
-                    candidates.Add(new Point(inwardX, preferredY));
-                    candidates.Add(new Point(preferredX, inwardY));
-                    candidates.Add(new Point(inwardX, inwardY));
-                }
-
-                foreach (Point candidate in candidates)
-                {
-                    if (candidate.X < 0 || candidate.Y < 0 || candidate.X > maxX ||
-                        candidate.Y > maxY)
+                    int candidateX = preferredX + (candidateIndex == 1 ? 0 : directionX * radius);
+                    int candidateY = preferredY + (candidateIndex == 0 ? 0 : directionY * radius);
+                    if (candidateX < 0 || candidateY < 0 || candidateX > maxX || candidateY > maxY)
                     {
                         continue;
                     }
-                    long key = ((long)candidate.Y << 32) | (uint)candidate.X;
+                    long key = ((long)candidateY << 32) | (uint)candidateX;
                     if (usedWindows.Contains(key))
                     {
                         continue;
                     }
                     if (!TryCalculateObjectDetectionFrequencyEnergy(
                         workspace,
-                        candidate.X,
-                        candidate.Y,
+                        candidateX,
+                        candidateY,
                         windowSize,
                         out energy,
                         out meanGray,
@@ -2589,8 +2843,8 @@ namespace IntegratedImageProcessingApp.Forms
                     }
 
                     usedWindows.Add(key);
-                    windowX = candidate.X;
-                    windowY = candidate.Y;
+                    windowX = candidateX;
+                    windowY = candidateY;
                     return true;
                 }
             }
@@ -2618,19 +2872,10 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             byte* image = (byte*)workspace.ImageData.ToPointer();
-            byte* mask = (byte*)workspace.MaskData.ToPointer();
             byte* hannBytes = (byte*)workspace.HannData.ToPointer();
-            for (int row = 0; row < windowSize; row++)
+            if (!workspace.IsWindowInsideMask(startX, startY))
             {
-                byte* imageRow = image + (long)(startY + row) * workspace.ImageStep + startX;
-                byte* maskRow = mask + (long)(startY + row) * workspace.MaskStep + startX;
-                for (int column = 0; column < windowSize; column++)
-                {
-                    if (maskRow[column] == 0)
-                    {
-                        return false;
-                    }
-                }
+                return false;
             }
 
             Cv.Mat sourceWindow = null;
@@ -2643,6 +2888,7 @@ namespace IntegratedImageProcessingApp.Forms
                 int validPixels = windowSize * windowSize;
                 if (workspace.VerticalStretchPercent != 100)
                 {
+                    long resizeStarted = Stopwatch.GetTimestamp();
                     sourceWindow = new Cv.Mat(
                         workspace.Image,
                         new Cv.Rect(startX, startY, windowSize, windowSize));
@@ -2660,41 +2906,54 @@ namespace IntegratedImageProcessingApp.Forms
                     energyWidth = workspace.WindowWidth;
                     energyHeight = workspace.WindowHeight;
                     validPixels = energyWidth * energyHeight;
+                    workspace.ResizeElapsedTicks += Stopwatch.GetTimestamp() - resizeStarted;
                 }
 
-                int blockColumns = Math.Min(4, energyWidth);
-                int blockRows = Math.Min(4, energyHeight);
-                var blockSums = new double[blockColumns * blockRows];
-                var blockCounts = new int[blockSums.Length];
+                long energyStarted = Stopwatch.GetTimestamp();
                 double pixelSum = 0.0;
-                for (int row = 0; row < energyHeight; row++)
+                if (workspace.CalculateNeighborStatistics)
                 {
-                    byte* imageRow = energyImage + (long)row * energyImageStep;
-                    int blockRow = Math.Min(blockRows - 1, row * blockRows / energyHeight);
-                    for (int column = 0; column < energyWidth; column++)
+                    double[] blockSums = workspace.BlockSums;
+                    double[] blockMeans = workspace.BlockMeans;
+                    int[] blockCounts = workspace.BlockCounts;
+                    int[] blockColumnIndices = workspace.BlockColumnIndices;
+                    int[] blockRowOffsets = workspace.BlockRowOffsets;
+                    Array.Clear(blockSums, 0, blockSums.Length);
+                    for (int row = 0; row < energyHeight; row++)
                     {
-                        int blockColumn = Math.Min(blockColumns - 1, column * blockColumns / energyWidth);
-                        int blockIndex = blockRow * blockColumns + blockColumn;
-                        byte value = imageRow[column];
-                        pixelSum += value;
-                        blockSums[blockIndex] += value;
-                        blockCounts[blockIndex]++;
+                        byte* imageRow = energyImage + (long)row * energyImageStep;
+                        int blockRow = blockRowOffsets[row];
+                        for (int column = 0; column < energyWidth; column++)
+                        {
+                            byte value = imageRow[column];
+                            pixelSum += value;
+                            blockSums[blockRow + blockColumnIndices[column]] += value;
+                        }
+                    }
+                    for (int index = 0; index < blockSums.Length; index++)
+                    {
+                        blockMeans[index] = blockSums[index] / blockCounts[index];
+                    }
+                    Array.Sort(blockMeans);
+                    int lowerQuartileCount = Math.Max(1, (int)Math.Ceiling(blockMeans.Length * 0.25));
+                    double lowerQuartileSum = 0.0;
+                    for (int index = 0; index < lowerQuartileCount; index++)
+                    {
+                        lowerQuartileSum += blockMeans[index];
+                    }
+                    lowerQuartileBlockMean = lowerQuartileSum / lowerQuartileCount;
+                }
+                else
+                {
+                    for (int row = 0; row < energyHeight; row++)
+                    {
+                        byte* imageRow = energyImage + (long)row * energyImageStep;
+                        for (int column = 0; column < energyWidth; column++) pixelSum += imageRow[column];
                     }
                 }
 
                 float mean = (float)(pixelSum / validPixels);
                 meanGray = mean;
-                var blockMeans = new List<double>(blockSums.Length);
-                for (int index = 0; index < blockSums.Length; index++)
-                {
-                    if (blockCounts[index] > 0)
-                    {
-                        blockMeans.Add(blockSums[index] / blockCounts[index]);
-                    }
-                }
-                blockMeans.Sort();
-                int lowerQuartileCount = Math.Max(1, (int)Math.Ceiling(blockMeans.Count * 0.25));
-                lowerQuartileBlockMean = blockMeans.Take(lowerQuartileCount).Average();
                 double squaredEnergySum = 0.0;
                 for (int row = 0; row < energyHeight; row++)
                 {
@@ -2709,6 +2968,7 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 energy = squaredEnergySum / validPixels;
+                workspace.EnergyElapsedTicks += Stopwatch.GetTimestamp() - energyStarted;
                 return true;
             }
             finally
@@ -2738,6 +2998,34 @@ namespace IntegratedImageProcessingApp.Forms
             return values.Count % 2 == 0
                 ? (values[middle - 1] + values[middle]) * 0.5
                 : values[middle];
+        }
+
+        private void AppendObjectDetectionFrequencyTimingMemo(
+            ObjectDetectionFrequencyResult result, int frequencyIndex, bool isResultReview = false)
+        {
+            AppendDebugTimingMemo(string.Format(
+                CultureInfo.CurrentCulture,
+                "{0}（各 ROI 工作累計，非牆鐘）\r\n" +
+                "  ROI 影像準備：{1:N0} ms\r\n" +
+                "  對比調整：{2:N0} ms\r\n" +
+                "  前處理：{3:N0} ms\r\n" +
+                "  MASK 建立／座標校正：{4:N0} ms\r\n" +
+                "  MASK 查詢準備：{5:N0} ms\r\n" +
+                "  有效格搜尋：{6:N0} ms\r\n" +
+                "  垂直縮放：{7:N0} ms\r\n" +
+                "  能量／灰階統計：{8:N0} ms\r\n" +
+                "  預覽圖產生：{9:N0} ms",
+                "頻域異常" + (frequencyIndex + 1).ToString(CultureInfo.CurrentCulture) +
+                    (isResultReview ? "最近結果" : string.Empty),
+                result.RoiPreparationMilliseconds,
+                result.ContrastMilliseconds,
+                result.PreprocessingMilliseconds,
+                result.RectificationMilliseconds,
+                result.MaskPreparationMilliseconds,
+                result.WindowSearchMilliseconds,
+                result.ResizeMilliseconds,
+                result.EnergyCalculationMilliseconds,
+                result.PreviewGenerationMilliseconds));
         }
 
         private string UpdateObjectDetectionFrequencyResultSummary(

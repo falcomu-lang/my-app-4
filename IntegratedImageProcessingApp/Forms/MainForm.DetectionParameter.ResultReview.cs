@@ -1685,6 +1685,19 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionResultReviewMeasurementDisplayMilliseconds, "尺寸量測顯示"));
             AppendDebugTimingMemo("  缺陷檢測顯示：" + FormatObjectDetectionResultReviewStageTime(
                 objectDetectionResultReviewDefectDisplayMilliseconds, "缺陷檢測顯示"));
+            if (allStagesComplete && !string.IsNullOrEmpty(objectDetectionResultReviewSelectedParameterId))
+            {
+                for (int frequencyIndex = 0; frequencyIndex < objectDetectionFrequencyUiStates.Length; frequencyIndex++)
+                {
+                    ObjectDetectionFrequencyResult frequencyResult;
+                    if (objectDetectionFrequencyResults.TryGetValue(
+                            GetObjectDetectionFrequencyResultKey(
+                                objectDetectionResultReviewSelectedParameterId, frequencyIndex), out frequencyResult))
+                    {
+                        AppendObjectDetectionFrequencyTimingMemo(frequencyResult, frequencyIndex, true);
+                    }
+                }
+            }
         }
 
         private string FormatObjectDetectionResultReviewStageTime(long? elapsedMilliseconds, string stage)

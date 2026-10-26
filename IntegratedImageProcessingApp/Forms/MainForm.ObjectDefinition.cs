@@ -21,6 +21,7 @@ namespace IntegratedImageProcessingApp.Forms
         private readonly Dictionary<int, string> visibleObjectDefinitionProcessingOwnerIds =
             new Dictionary<int, string>();
         private Panel objectDefinitionParameterPanel;
+        private string activeObjectDefinitionParameterId;
 
         private static string CreateObjectDefinitionText(int definitionNumber)
         {
@@ -472,6 +473,17 @@ namespace IntegratedImageProcessingApp.Forms
             expandedObjectDefinitionIds.Remove(definitionId);
             SaveSystemParameters();
             RebuildVisibleObjectDefinitions();
+            if (objectDefinitionParameterPanel != null &&
+                objectDefinitionParameterPanel.Visible &&
+                string.Equals(
+                    activeObjectDefinitionParameterId,
+                    definitionId,
+                    StringComparison.Ordinal))
+            {
+                ResetRightFunctionPanel();
+                activeObjectDefinitionParameterId = null;
+                rightPanelTitleLabel.Text = "參數設定";
+            }
             statusLabel.Text = "已刪除物件組";
         }
 
@@ -585,6 +597,8 @@ namespace IntegratedImageProcessingApp.Forms
             if (objectDefinitionParameterPanel != null)
             {
                 parameterPanel.Controls.Remove(objectDefinitionParameterPanel);
+                objectDefinitionParameterPanel.Dispose();
+                objectDefinitionParameterPanel = null;
             }
 
             parameterPlaceholderLabel.Visible = false;
@@ -1008,6 +1022,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             parameterPanel.Controls.Add(panel);
             panel.BringToFront();
+            activeObjectDefinitionParameterId = definition.Id;
             rightPanelTitleLabel.Text = definition.DisplayName + " 參數";
         }
 
