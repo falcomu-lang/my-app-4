@@ -292,17 +292,19 @@ namespace IntegratedImageProcessingApp.Controls
                 return;
             }
 
-            var capturedHandler = imageCapturedHandlers;
-            if (capturedHandler != null)
-            {
-                capturedHandler(this, e);
-            }
-
             var inspectionHandler = imageAcquiredHandlers;
             if (inspectionHandler != null && !suppressAutomaticInspectionForwarding &&
                 cameraForm.IsImageProcessingEnabled)
             {
                 inspectionHandler(this, e);
+            }
+
+            // Queue direct in-memory inspection before any optional display or
+            // remote-capture subscriber creates a Bitmap copy of the frame.
+            var capturedHandler = imageCapturedHandlers;
+            if (capturedHandler != null)
+            {
+                capturedHandler(this, e);
             }
         }
     }

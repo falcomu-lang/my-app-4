@@ -814,8 +814,26 @@ namespace CameraCaptureApp.Services
                     _pendingExternalTriggerEvents--;
                 }
 
-                PublishPreviewFrame();
-                PublishAcquiredImage(imageSequence);
+                CameraGrayscaleFrame frame = null;
+                try
+                {
+                    frame = TryReadGrayscaleFrame();
+                    if (frame == null)
+                    {
+                        _status.LastMessage = "Unable to read an 8-bit grayscale camera frame.";
+                        return;
+                    }
+
+                    // Read the Sapera buffer once. The live inspection path and
+                    // optional camera preview now share this immutable frame.
+                    PublishAcquiredImage(frame, imageSequence);
+                    PublishPreviewFrame(frame);
+                }
+                catch (Exception ex)
+                {
+                    _status.LastMessage = "Acquired grayscale frame handoff failed: " + ex.Message;
+                    AppLogger.Log("Acquired grayscale frame handoff failed.", ex);
+                }
             }
         }
 
@@ -858,8 +876,14 @@ namespace CameraCaptureApp.Services
             }
         }
 
-        private void PublishPreviewFrame()
+        private void PublishPreviewFrame(CameraGrayscaleFrame frame)
         {
+            var handler = FrameReady;
+            if (handler == null || frame == null)
+            {
+                return;
+            }
+
             lock (_frameSync)
             {
                 var elapsed = DateTime.UtcNow - _lastPreviewFrameUtc;
@@ -874,18 +898,10 @@ namespace CameraCaptureApp.Services
             Bitmap previewFrame = null;
             try
             {
-                previewFrame = TryCreatePreviewBitmap();
-                if (previewFrame == null)
-                {
-                    return;
-                }
+                previewFrame = frame.CreateBitmapCopy();
 
-                var handler = FrameReady;
-                if (handler != null)
-                {
-                    handler(this, new CameraFrameEventArgs(previewFrame));
-                    previewFrame = null;
-                }
+                handler(this, new CameraFrameEventArgs(previewFrame));
+                previewFrame = null;
             }
             catch (Exception ex)
             {
@@ -900,40 +916,26 @@ namespace CameraCaptureApp.Services
             }
         }
 
-        private void PublishAcquiredImage(long sequenceNumber)
+        private void PublishAcquiredImage(CameraGrayscaleFrame frame, long sequenceNumber)
         {
             var handler = ImageAcquired;
-            if (handler == null)
+            if (handler == null || frame == null)
             {
                 return;
             }
 
-            Bitmap image = null;
             try
             {
-                image = TryCreatePreviewBitmap();
-                if (image == null)
-                {
-                    return;
-                }
-
-                handler(this, new CameraImageAcquiredEventArgs(image, sequenceNumber, DateTime.UtcNow));
+                handler(this, new CameraImageAcquiredEventArgs(frame, sequenceNumber, DateTime.UtcNow));
             }
             catch (Exception ex)
             {
                 _status.LastMessage = "Acquired image handoff failed: " + ex.Message;
                 AppLogger.Log("Acquired image handoff failed.", ex);
             }
-            finally
-            {
-                if (image != null)
-                {
-                    image.Dispose();
-                }
-            }
         }
 
-        private Bitmap TryCreatePreviewBitmap()
+        private CameraGrayscaleFrame TryReadGrayscaleFrame()
         {
             if (_buffers == null || !_buffers.Initialized)
             {
@@ -955,19 +957,28 @@ namespace CameraCaptureApp.Services
                 return null;
             }
 
-            var bytesPerPixel = Math.Max(1, (pixelDepth + 7) / 8);
-            if (bytesPerPixel != 1 && bytesPerPixel != 3)
+            // The inspection pipeline consumes CV_8UC1 directly. Keep the
+            // acquired grayscale bytes in that format; do not convert them to
+            // RGB or create an intermediate full-size Bitmap.
+            if (pixelDepth != 8)
             {
-                bytesPerPixel = 1;
+                _status.LastMessage = "Unsupported camera pixel depth: " + pixelDepth + " (expected 8-bit grayscale).";
+                return null;
             }
 
-            var expectedStride = width * bytesPerPixel;
+            var expectedStride = width;
             if (pitch < expectedStride)
             {
                 pitch = expectedStride;
             }
 
-            var rawBytes = new byte[pitch * height];
+            long bufferLength = (long)pitch * height;
+            if (bufferLength > int.MaxValue)
+            {
+                throw new InvalidOperationException("Camera frame exceeds the supported managed buffer size.");
+            }
+
+            var rawBytes = new byte[(int)bufferLength];
             var handle = GCHandle.Alloc(rawBytes, GCHandleType.Pinned);
             try
             {
@@ -981,55 +992,7 @@ namespace CameraCaptureApp.Services
                 handle.Free();
             }
 
-            return bytesPerPixel == 3
-                ? CreateRgbBitmap(rawBytes, width, height, pitch)
-                : CreateMonoBitmap(rawBytes, width, height, pitch);
-        }
-
-        private static Bitmap CreateMonoBitmap(byte[] rawBytes, int width, int height, int sourceStride)
-        {
-            var bitmap = new Bitmap(width, height, PixelFormat.Format8bppIndexed);
-            var palette = bitmap.Palette;
-            for (var i = 0; i < 256; i++)
-            {
-                palette.Entries[i] = Color.FromArgb(i, i, i);
-            }
-
-            bitmap.Palette = palette;
-            var data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
-            try
-            {
-                for (var y = 0; y < height; y++)
-                {
-                    Marshal.Copy(rawBytes, y * sourceStride, data.Scan0 + (y * data.Stride), width);
-                }
-            }
-            finally
-            {
-                bitmap.UnlockBits(data);
-            }
-
-            return bitmap;
-        }
-
-        private static Bitmap CreateRgbBitmap(byte[] rawBytes, int width, int height, int sourceStride)
-        {
-            var bitmap = new Bitmap(width, height, PixelFormat.Format24bppRgb);
-            var data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
-            try
-            {
-                var rowLength = width * 3;
-                for (var y = 0; y < height; y++)
-                {
-                    Marshal.Copy(rawBytes, y * sourceStride, data.Scan0 + (y * data.Stride), rowLength);
-                }
-            }
-            finally
-            {
-                bitmap.UnlockBits(data);
-            }
-
-            return bitmap;
+            return new CameraGrayscaleFrame(rawBytes, width, height, pitch);
         }
 
         private bool OpenCurrentConnection()

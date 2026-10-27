@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using CameraCaptureApp.Services;
 using IntegratedImageProcessingApp.Services;
+using Cv = OpenCvSharp;
 
 namespace IntegratedImageProcessingApp.Forms
 {
@@ -16,6 +17,9 @@ namespace IntegratedImageProcessingApp.Forms
         private int cameraInspectionFrameInFlight;
         private int cameraInspectionFramesDropped;
         private string latestCameraInspectionFramePath;
+        private string latestCameraInspectionFrameIdentity;
+
+        private const string CameraMemoryImageIdentityPrefix = "camera-memory://";
 
         private void CameraCaptureHostControl_ImageAcquired(
             object sender,
@@ -32,42 +36,36 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            Bitmap image;
-            try
-            {
-                image = e.CreateImageCopy();
-            }
-            catch (Exception exception)
+            CameraGrayscaleFrame frame = e.GrayscaleFrame;
+            if (frame == null)
             {
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
-                SetCameraInspectionStatus("相機影像複製失敗：" + exception.Message);
+                SetCameraInspectionStatus("相機沒有提供可用的灰階影像資料。");
                 return;
             }
-
             long sequenceNumber = e.SequenceNumber;
             try
             {
                 BeginInvoke(new Action(async delegate
                 {
-                    await ProcessCameraAcquiredImageAsync(image, sequenceNumber);
+                    await ProcessCameraAcquiredImageAsync(frame, sequenceNumber);
                 }));
             }
             catch (ObjectDisposedException)
             {
-                image.Dispose();
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
             }
             catch (InvalidOperationException)
             {
-                image.Dispose();
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
             }
         }
 
-        private async Task ProcessCameraAcquiredImageAsync(Bitmap image, long sequenceNumber)
+        private async Task ProcessCameraAcquiredImageAsync(CameraGrayscaleFrame frame, long sequenceNumber)
         {
-            string imagePath = null;
-            bool imageLoaded = false;
+            string imageIdentity = null;
+            string imageSavePath = null;
+            LargeImageSource memorySource = null;
             bool returnToInspectionOverview = isInspectionOverviewActive;
             string previousCameraImagePath = latestCameraInspectionFramePath;
             ResultReviewParameterChoice selectedChoice = null;
@@ -119,26 +117,39 @@ namespace IntegratedImageProcessingApp.Forms
                 selectedChoice = objectDetectionResultReviewParameterComboBox == null
                     ? null
                     : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
-                Size imageSize = new Size(image.Width, image.Height);
-                imagePath = await Task.Run(() => SaveCameraInspectionImage(image, sequenceNumber));
-                latestCameraInspectionFramePath = imagePath;
+                Size imageSize = new Size(frame.Width, frame.Height);
+                imageIdentity = CameraMemoryImageIdentityPrefix + sequenceNumber.ToString("D10") + "/" +
+                    Guid.NewGuid().ToString("N");
                 var imageLoadStopwatch = System.Diagnostics.Stopwatch.StartNew();
                 objectDetectionResultReviewImageLoadMilliseconds = null;
                 objectDetectionResultReviewImageLoadSucceeded = null;
                 ResetObjectDetectionResultReviewProcessingTimings();
                 UpdateObjectDetectionResultReviewTimingMemo();
                 SetObjectDetectionResultReviewStatus(
-                    "已收到相機影像 #" + sequenceNumber + "，正在載入並執行尺寸與缺陷判定...");
+                    "已收到相機灰階影像 #" + sequenceNumber + "，直接從記憶體執行尺寸與缺陷判定...");
 
                 isLoadingImage = true;
                 SetObjectDetectionResultReviewControlsEnabled(false);
                 try
                 {
                     ClearObjectDetectionResultReviewResults();
-                    systemParameters.LastImagePath = imagePath;
-                    objectDetectionResultReviewImagePath = imagePath;
-                    await LoadImageIntoOriginalDisplaysAsync(imagePath, CancellationToken.None);
-                    imageLoaded = true;
+                    memorySource = await Task.Run(
+                        () => new LargeImageSource(
+                            frame.Pixels,
+                            frame.Width,
+                            frame.Height,
+                            frame.Stride));
+                    systemParameters.LastImagePath = imageIdentity;
+                    objectDetectionResultReviewImagePath = imageIdentity;
+                    imageSavePath = CreateCameraInspectionImagePath(sequenceNumber);
+                    latestCameraInspectionFramePath = imageSavePath;
+                    latestCameraInspectionFrameIdentity = imageIdentity;
+                    StartCameraInspectionImageSave(
+                        memorySource,
+                        imageSavePath,
+                        imageIdentity,
+                        sequenceNumber);
+                    LoadMemoryImageIntoOriginalDisplays(memorySource);
                     if (objectDetectionResultReviewReferenceImageSize.IsEmpty)
                     {
                         objectDetectionResultReviewReferenceImageSize = imageSize;
@@ -157,12 +168,16 @@ namespace IntegratedImageProcessingApp.Forms
                 }
                 finally
                 {
+                    if (memorySource != null)
+                    {
+                        memorySource.ReleaseReference();
+                        memorySource = null;
+                    }
                     isLoadingImage = false;
                     SetObjectDetectionResultReviewControlsEnabled(true);
                 }
 
-                latestCameraInspectionFramePath = imagePath;
-                if (!string.Equals(previousCameraImagePath, imagePath, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(previousCameraImagePath, imageSavePath, StringComparison.OrdinalIgnoreCase))
                 {
                     TryDeleteCameraInspectionImage(previousCameraImagePath);
                 }
@@ -173,7 +188,7 @@ namespace IntegratedImageProcessingApp.Forms
                 if (showPendingOverviewSnapshot)
                 {
                     await CaptureUndeterminedCameraInspectionSnapshotAsync(
-                        imagePath,
+                        imageIdentity,
                         selectedChoice == null ? null : selectedChoice.Parameter,
                         null,
                         null,
@@ -183,7 +198,7 @@ namespace IntegratedImageProcessingApp.Forms
                 if (selectedChoice == null || selectedChoice.Parameter == null)
                 {
                     await CaptureUndeterminedCameraInspectionSnapshotAsync(
-                        imagePath, null, null, null, "目前沒有可執行的檢測參數");
+                        imageIdentity, null, null, null, "目前沒有可執行的檢測參數");
                     SetObjectDetectionResultReviewStatus("相機影像已取得；目前沒有可執行的檢測參數。");
                     SetCameraInspectionStatus("相機影像已保留；目前沒有可執行的檢測參數，總覽標示為待確認。");
                     ReturnCameraInspectionToOverview(returnToInspectionOverview);
@@ -194,7 +209,7 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionResultReviewReferenceImageSize != imageSize)
                 {
                     await CaptureUndeterminedCameraInspectionSnapshotAsync(
-                        imagePath,
+                        imageIdentity,
                         selectedChoice.Parameter,
                         null,
                         null,
@@ -212,7 +227,7 @@ namespace IntegratedImageProcessingApp.Forms
                 bool judgementCompleted = objectDetectionResultReviewSnapshot != null &&
                     objectDetectionResultReviewSnapshot.JudgementComplete &&
                     string.Equals(objectDetectionResultReviewSnapshot.ImagePath,
-                        imagePath, StringComparison.OrdinalIgnoreCase);
+                        imageIdentity, StringComparison.OrdinalIgnoreCase);
                 if (!judgementCompleted)
                 {
                     ObjectDetectionParameterSettings parameter = selectedChoice.Parameter;
@@ -227,7 +242,7 @@ namespace IntegratedImageProcessingApp.Forms
                         ? "檢測流程未完成"
                         : objectDetectionResultReviewStatusLabel.Text;
                     await CaptureUndeterminedCameraInspectionSnapshotAsync(
-                        imagePath, parameter, definition, objects, reason);
+                        imageIdentity, parameter, definition, objects, reason);
                     SetCameraInspectionStatus(
                         "相機影像 #" + sequenceNumber + " 已保留，但判定未完成；總覽以灰色待確認顯示。");
                     ReturnCameraInspectionToOverview(returnToInspectionOverview);
@@ -236,11 +251,11 @@ namespace IntegratedImageProcessingApp.Forms
 
                 ReturnCameraInspectionToOverview(returnToInspectionOverview);
                 SetCameraInspectionStatus(
-                    "相機影像 #" + sequenceNumber + " 已送入目前檢測參數完成判定。");
+                    "相機影像 #" + sequenceNumber + " 已由灰階記憶體影像完成判定；原圖同步保存中。");
             }
             catch (Exception exception)
             {
-                if (!string.IsNullOrWhiteSpace(imagePath))
+                if (!string.IsNullOrWhiteSpace(imageIdentity))
                 {
                     try
                     {
@@ -256,7 +271,7 @@ namespace IntegratedImageProcessingApp.Forms
                                 definition,
                                 CreateObjectDefinitionProcessingSignature(definition));
                         await CaptureUndeterminedCameraInspectionSnapshotAsync(
-                            imagePath, parameter, definition, objects, exception.Message);
+                            imageIdentity, parameter, definition, objects, exception.Message);
                     }
                     catch
                     {
@@ -268,22 +283,15 @@ namespace IntegratedImageProcessingApp.Forms
             }
             finally
             {
-                if (image != null)
+                if (memorySource != null)
                 {
-                    image.Dispose();
-                }
-                if (!imageLoaded && !string.Equals(
-                    systemParameters.LastImagePath,
-                    imagePath,
-                    StringComparison.OrdinalIgnoreCase))
-                {
-                    TryDeleteCameraInspectionImage(imagePath);
+                    memorySource.ReleaseReference();
                 }
 
                 int droppedCount = Interlocked.Exchange(ref cameraInspectionFramesDropped, 0);
                 ObjectDetectionResultReviewSnapshot latestSnapshot = objectDetectionResultReviewSnapshot;
                 if (latestSnapshot != null && latestSnapshot.JudgementComplete &&
-                    string.Equals(latestSnapshot.ImagePath, latestCameraInspectionFramePath,
+                    string.Equals(latestSnapshot.ImagePath, latestCameraInspectionFrameIdentity,
                         StringComparison.OrdinalIgnoreCase))
                 {
                     lastCameraInspectionCompletedUtc = DateTime.UtcNow;
@@ -373,22 +381,132 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private static string SaveCameraInspectionImage(Bitmap image, long sequenceNumber)
+        private static string CreateCameraInspectionImagePath(long sequenceNumber)
         {
             string directory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "IntegratedImageProcessingApp",
                 "CameraFrames");
-            Directory.CreateDirectory(directory);
             string fileName = "camera_frame_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff") + "_" +
                 sequenceNumber.ToString("D10") + "_" + Guid.NewGuid().ToString("N") + ".tif";
-            string path = Path.Combine(directory, fileName);
-            using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+            return Path.Combine(directory, fileName);
+        }
+
+        private void StartCameraInspectionImageSave(
+            LargeImageSource source,
+            string imagePath,
+            string imageIdentity,
+            long sequenceNumber)
+        {
+            LargeImageSource saveSource = source.AddReference();
+            Task.Run(delegate
             {
-                image.Save(stream, ImageFormat.Tiff);
+                try
+                {
+                    SaveCameraInspectionImage(saveSource, imagePath);
+                }
+                catch (Exception exception)
+                {
+                    TryDeleteCameraInspectionImage(imagePath);
+                    System.Diagnostics.Debug.WriteLine(
+                        "Camera image save failed; live inspection continued: " + exception);
+                    if (string.Equals(
+                        Interlocked.CompareExchange(ref latestCameraInspectionFrameIdentity, null, null),
+                        imageIdentity,
+                        StringComparison.Ordinal))
+                    {
+                        try
+                        {
+                            BeginInvoke(new Action(delegate
+                            {
+                                if (string.Equals(latestCameraInspectionFrameIdentity, imageIdentity,
+                                    StringComparison.Ordinal))
+                                {
+                                    SetCameraInspectionStatus(
+                                        "相機影像 #" + sequenceNumber +
+                                        " 原圖保存失敗；檢測仍直接使用灰階記憶體影像執行。" +
+                                        exception.Message);
+                                }
+                            }));
+                        }
+                        catch (ObjectDisposedException) { }
+                        catch (InvalidOperationException) { }
+                    }
+                }
+                finally
+                {
+                    saveSource.ReleaseReference();
+                }
+
+                if (!string.Equals(
+                    Interlocked.CompareExchange(ref latestCameraInspectionFrameIdentity, null, null),
+                    imageIdentity,
+                    StringComparison.Ordinal))
+                {
+                    TryDeleteCameraInspectionImage(imagePath);
+                }
+            });
+        }
+
+        private static void SaveCameraInspectionImage(LargeImageSource source, string imagePath)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException("source");
             }
 
-            return path;
+            string directory = Path.GetDirectoryName(imagePath);
+            Directory.CreateDirectory(directory);
+            using (Cv.Mat grayscale = source.CreateGrayscaleMatView(
+                new Rectangle(0, 0, source.Width, source.Height)))
+            {
+                if (!Cv.Cv2.ImWrite(imagePath, grayscale))
+                {
+                    throw new IOException("OpenCV 無法寫入相機灰階 TIFF 影像。");
+                }
+            }
+        }
+
+        private bool IsActiveCameraMemoryImageIdentity(string imageIdentity)
+        {
+            return !string.IsNullOrWhiteSpace(imageIdentity) &&
+                imageIdentity.StartsWith(CameraMemoryImageIdentityPrefix, StringComparison.Ordinal) &&
+                string.Equals(systemParameters.LastImagePath, imageIdentity, StringComparison.Ordinal) &&
+                rightOriginalDisplayControl != null &&
+                !rightOriginalDisplayControl.IsDisposed &&
+                rightOriginalDisplayControl.IsLargeImageMode &&
+                rightOriginalDisplayControl.HasImage;
+        }
+
+        private bool TryGetActiveImageSize(string imageIdentity, out Size imageSize)
+        {
+            imageSize = Size.Empty;
+            if (!IsActiveCameraMemoryImageIdentity(imageIdentity))
+            {
+                return false;
+            }
+
+            LargeImageSource source = rightOriginalDisplayControl.GetSharedLargeImageSource();
+            if (source == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                imageSize = new Size(source.Width, source.Height);
+                return true;
+            }
+            finally
+            {
+                source.ReleaseReference();
+            }
+        }
+
+        private bool HasActiveImageSource(string imageIdentity)
+        {
+            return !string.IsNullOrWhiteSpace(imageIdentity) &&
+                (File.Exists(imageIdentity) || IsActiveCameraMemoryImageIdentity(imageIdentity));
         }
 
         private static bool IsOwnedCameraInspectionImagePath(string path)

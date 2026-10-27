@@ -30,6 +30,7 @@ namespace IntegratedImageProcessingApp.Controls
         private readonly LinkedList<string> _tileOrder;
         private readonly HashSet<string> _pendingTiles;
         private readonly List<PreviewLevel> _previewLevels;
+        private GCHandle _memoryBufferHandle;
         private int _referenceCount = 1;
         private bool _previewBuildQueued;
         private bool _disposed;
@@ -71,6 +72,55 @@ namespace IntegratedImageProcessingApp.Controls
             _previewLevels = new List<PreviewLevel>();
             InitializePreviewLevels();
             CreateFastPreview();
+        }
+
+        // Pins the camera-owned grayscale buffer and wraps it without copying
+        // the full frame. The caller must not modify the buffer after passing
+        // it in; this source keeps it alive until its final reference is released.
+        public LargeImageSource(byte[] grayscaleBuffer, int width, int height, int stride)
+        {
+            if (grayscaleBuffer == null)
+            {
+                throw new ArgumentNullException("grayscaleBuffer");
+            }
+            if (width <= 0 || height <= 0 || stride < width ||
+                grayscaleBuffer.LongLength < (long)stride * height)
+            {
+                throw new ArgumentOutOfRangeException("grayscaleBuffer", "記憶體灰階影像的尺寸或行距無效。");
+            }
+
+            _tileCache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
+            _tileOrder = new LinkedList<string>();
+            _pendingTiles = new HashSet<string>(StringComparer.Ordinal);
+            _previewLevels = new List<PreviewLevel>();
+            try
+            {
+                _memoryBufferHandle = GCHandle.Alloc(grayscaleBuffer, GCHandleType.Pinned);
+                _memoryGray = new Cv.Mat(
+                    height,
+                    width,
+                    Cv.MatType.CV_8UC1,
+                    _memoryBufferHandle.AddrOfPinnedObject(),
+                    stride);
+                Width = width;
+                Height = height;
+                SourceIsGrayscale = true;
+                InitializePreviewLevels();
+                CreateFastPreview();
+            }
+            catch
+            {
+                if (_memoryGray != null)
+                {
+                    _memoryGray.Dispose();
+                    _memoryGray = null;
+                }
+                if (_memoryBufferHandle.IsAllocated)
+                {
+                    _memoryBufferHandle.Free();
+                }
+                throw;
+            }
         }
 
         public LargeImageSource(
@@ -813,6 +863,10 @@ namespace IntegratedImageProcessingApp.Controls
                 {
                     _memoryGray.Dispose();
                     _memoryGray = null;
+                }
+                if (_memoryBufferHandle.IsAllocated)
+                {
+                    _memoryBufferHandle.Free();
                 }
 
                 if (_stream != null)

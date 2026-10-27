@@ -320,6 +320,14 @@ namespace IntegratedImageProcessingApp.Forms
                 statusLabel.Text = "目前選擇：檢測總覽";
                 return;
             }
+            else if (selectedFunction == InspectionHistoryMenuText)
+            {
+                HideImageProcessingFlowTree();
+                rightPanelTitleLabel.Text = InspectionHistoryMenuText;
+                parameterPlaceholderLabel.Text = "歷史資料功能尚未實作。";
+                statusLabel.Text = "目前選擇：" + InspectionHistoryMenuText;
+                return;
+            }
             else if (selectedFunction == ConnectionControllerMenuText)
             {
                 HideImageProcessingFlowTree();

@@ -113,8 +113,7 @@ namespace IntegratedImageProcessingApp.Forms
         private async void RequestPreprocessedImageUpdateCore()
         {
             if (!preprocessingExecutionRequested || isPreparingPreprocessedImage || !preprocessedImageDirty ||
-                !HasConfiguredImagePreprocessingSteps() || string.IsNullOrWhiteSpace(systemParameters.LastImagePath) ||
-                !File.Exists(systemParameters.LastImagePath)) return;
+                !HasConfiguredImagePreprocessingSteps() || !HasActiveImageSource(systemParameters.LastImagePath)) return;
 
             isPreparingPreprocessedImage = true;
             int generation = preprocessedImageGeneration;

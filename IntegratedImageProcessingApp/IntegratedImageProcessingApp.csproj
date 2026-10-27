@@ -278,9 +278,7 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="config\device-settings.ini">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <None Include="config\device-settings.ini" />
     <Content Include="config\connection-controller-settings.xml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -300,4 +298,11 @@
   </ItemGroup>
   <Import Project="..\packages\OpenCvSharp4.runtime.win.4.10.0.20240616\build\net48\OpenCvSharp4.runtime.win.props" Condition="Exists('..\packages\OpenCvSharp4.runtime.win.4.10.0.20240616\build\net48\OpenCvSharp4.runtime.win.props')" />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="SeedDeviceSettingsInOutputIfMissing" AfterTargets="Build">
+    <MakeDir Directories="$(TargetDir)config" Condition="!Exists('$(TargetDir)config\device-settings.ini')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\config\device-settings.ini"
+          DestinationFiles="$(TargetDir)config\device-settings.ini"
+          SkipUnchangedFiles="true"
+          Condition="!Exists('$(TargetDir)config\device-settings.ini')" />
+  </Target>
 </Project>

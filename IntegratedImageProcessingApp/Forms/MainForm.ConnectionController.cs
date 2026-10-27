@@ -1251,29 +1251,31 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            Bitmap image = null;
+            CameraCaptureApp.Services.CameraGrayscaleFrame frame = null;
             try
             {
-                image = e.CreateImageCopy();
+                frame = e.GrayscaleFrame;
+                if (frame == null)
+                {
+                    Interlocked.Exchange(ref remoteInspectionRequested, 0);
+                    Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
+                    SetCameraInspectionStatus("遠端相機沒有提供可用的灰階影像資料。");
+                    return;
+                }
                 long sequenceNumber = e.SequenceNumber;
-                Bitmap capturedImage = image;
-                image = null;
+                CameraCaptureApp.Services.CameraGrayscaleFrame capturedFrame = frame;
+                frame = null;
                 BeginInvoke(new Action(async delegate
                 {
                     try
                     {
                         Interlocked.Exchange(ref remoteInspectionRequested, 0);
                         isRemoteControllerInspectionActive = true;
-                        await ProcessCameraAcquiredImageAsync(capturedImage, sequenceNumber);
-                        capturedImage = null;
+                        await ProcessCameraAcquiredImageAsync(capturedFrame, sequenceNumber);
+                        capturedFrame = null;
                     }
                     catch (Exception exception)
                     {
-                        if (capturedImage != null)
-                        {
-                            capturedImage.Dispose();
-                            capturedImage = null;
-                        }
                         Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
                         SetCameraInspectionStatus("遠端檢測失敗：" + exception.Message);
                     }
@@ -1301,13 +1303,9 @@ namespace IntegratedImageProcessingApp.Forms
             }
             catch (Exception exception)
             {
-                if (image != null)
-                {
-                    image.Dispose();
-                }
                 Interlocked.Exchange(ref remoteInspectionRequested, 0);
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
-                SetCameraInspectionStatus("遠端影像複製失敗：" + exception.Message);
+                SetCameraInspectionStatus("遠端灰階影像交接失敗：" + exception.Message);
             }
         }
 

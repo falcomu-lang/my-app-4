@@ -161,7 +161,33 @@ namespace IntegratedImageProcessingApp.Services
                 : settings.ListenIpAddress.Trim());
             content.Append("ListenPort=").AppendLine(Math.Max(1024, Math.Min(65535, settings.ListenPort)).ToString(CultureInfo.InvariantCulture));
             content.Append("AllowConnections=").AppendLine(settings.AllowConnections ? "true" : "false");
-            File.WriteAllText(filePath, content.ToString(), new UTF8Encoding(false));
+            string temporaryPath = filePath + ".tmp";
+            try
+            {
+                using (var stream = new FileStream(temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+                {
+                    writer.Write(content.ToString());
+                    writer.Flush();
+                    stream.Flush(true);
+                }
+
+                if (File.Exists(filePath))
+                {
+                    File.Replace(temporaryPath, filePath, null);
+                }
+                else
+                {
+                    File.Move(temporaryPath, filePath);
+                }
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
         }
 
         private static double ParsePositiveScale(string value, double fallback)

@@ -1500,7 +1500,7 @@ namespace CameraCaptureApp.Forms
 
         private static string SaveSnapshotBitmap(Bitmap bitmap, CameraSettings settings)
         {
-            var outputFolder = ResolveSnapshotFolder(settings);
+            var outputFolder = ResolveSnapshotFolder();
             Directory.CreateDirectory(outputFolder);
 
             var filePath = BuildSnapshotPath(outputFolder, settings);
@@ -1510,7 +1510,7 @@ namespace CameraCaptureApp.Forms
 
         private string SaveRollingCaptureSnapshot(CameraSettings settings)
         {
-            var outputFolder = ResolveSnapshotFolder(settings);
+            var outputFolder = ResolveSnapshotFolder();
             Directory.CreateDirectory(outputFolder);
 
             var filePath = BuildSnapshotPath(outputFolder, settings);
@@ -1528,7 +1528,7 @@ namespace CameraCaptureApp.Forms
             RollingCaptureDirection direction,
             Action<int, string> reportProgress)
         {
-            var outputFolder = Path.Combine(Application.StartupPath, "snapshot");
+            var outputFolder = ResolveDailySnapshotFolder(Path.Combine(Application.StartupPath, "snapshot"));
             Directory.CreateDirectory(outputFolder);
 
             var baseName = "rolling_" + DateTime.Now.ToString("yyyy_MM_dd_HH_mm_ss_fff");
@@ -1581,14 +1581,14 @@ namespace CameraCaptureApp.Forms
             }
         }
 
-        private static string ResolveSnapshotFolder(CameraSettings settings)
+        private static string ResolveSnapshotFolder()
         {
-            if (!string.IsNullOrWhiteSpace(settings.SaveFolder))
-            {
-                return settings.SaveFolder.Trim();
-            }
+            return ResolveDailySnapshotFolder(Path.Combine(Application.StartupPath, "CameraCapture"));
+        }
 
-            return Path.Combine(Application.StartupPath, "CameraCapture", "Captures");
+        private static string ResolveDailySnapshotFolder(string rootFolder)
+        {
+            return Path.Combine(rootFolder, DateTime.Now.ToString("yyyyMMdd"));
         }
 
         private static string BuildSnapshotPath(string outputFolder, CameraSettings settings)

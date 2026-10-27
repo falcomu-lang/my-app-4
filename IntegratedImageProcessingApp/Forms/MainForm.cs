@@ -292,6 +292,7 @@ namespace IntegratedImageProcessingApp.Forms
         private const string ObjectDetectionParameterMenuText = "檢測參數設定";
         private const string ObjectDetectionResultReviewMenuText = "參數結果確認";
         private const string InspectionOverviewMenuText = "檢測總覽";
+        private const string InspectionHistoryMenuText = "歷史資料";
         private const string ConnectionControllerMenuText = "連線總控角色";
         private const string GlobalSettingsMenuText = "全域設定";
         private const string DeleteImageProcessingStepMenuText = "      刪除";
@@ -412,21 +413,30 @@ namespace IntegratedImageProcessingApp.Forms
                     resultReviewIndex < 0 ? functionListBox.Items.Count : resultReviewIndex + 1,
                     InspectionOverviewMenuText);
             }
+            if (!functionListBox.Items.Contains(InspectionHistoryMenuText))
+            {
+                int overviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
+                functionListBox.Items.Insert(
+                    overviewIndex < 0 ? functionListBox.Items.Count : overviewIndex + 1,
+                    InspectionHistoryMenuText);
+            }
             if (!functionListBox.Items.Contains(GlobalSettingsMenuText))
             {
-                int resultReviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
+                int resultReviewIndex = functionListBox.Items.IndexOf(InspectionHistoryMenuText);
                 functionListBox.Items.Insert(
                     resultReviewIndex < 0 ? functionListBox.Items.Count : resultReviewIndex + 1,
                     GlobalSettingsMenuText);
             }
             if (!functionListBox.Items.Contains(ConnectionControllerMenuText))
             {
-                int overviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
+                int overviewIndex = functionListBox.Items.IndexOf(InspectionHistoryMenuText);
                 functionListBox.Items.Insert(
                     overviewIndex < 0 ? functionListBox.Items.Count : overviewIndex + 1,
                     ConnectionControllerMenuText);
             }
-            MoveFunctionListItemAfter(ConnectionControllerMenuText, InspectionOverviewMenuText);
+            MoveFunctionListItemAfter(InspectionHistoryMenuText, InspectionOverviewMenuText);
+            MoveFunctionListItemAfter(ConnectionControllerMenuText, InspectionHistoryMenuText);
+            MoveFunctionListItemAfter(GlobalSettingsMenuText, ConnectionControllerMenuText);
             MoveFunctionListItemAfter(FindObjectFlowMenuText, RoiMenuText);
             MoveFunctionListItemAfter(ImagePreprocessingMenuText, FindObjectFlowMenuText);
             MoveFunctionListItemAfter(ImageProcessingMenuText, ImagePreprocessingMenuText);
@@ -2425,6 +2435,28 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void SaveSystemParameters()
         {
+            string activeImageIdentity = systemParameters.LastImagePath;
+            if (!string.IsNullOrWhiteSpace(activeImageIdentity) &&
+                activeImageIdentity.StartsWith(
+                    CameraMemoryImageIdentityPrefix,
+                    StringComparison.Ordinal))
+            {
+                systemParameters.LastImagePath =
+                    !string.IsNullOrWhiteSpace(latestCameraInspectionFramePath) &&
+                    File.Exists(latestCameraInspectionFramePath)
+                        ? latestCameraInspectionFramePath
+                        : string.Empty;
+                try
+                {
+                    systemParameterService.Save(systemParameters);
+                }
+                finally
+                {
+                    systemParameters.LastImagePath = activeImageIdentity;
+                }
+                return;
+            }
+
             systemParameterService.Save(systemParameters);
         }
 
@@ -2604,6 +2636,34 @@ namespace IntegratedImageProcessingApp.Forms
             RequestPreprocessedImageUpdate();
         }
 
+        private void LoadMemoryImageIntoOriginalDisplays(LargeImageSource sharedSource)
+        {
+            if (sharedSource == null)
+            {
+                throw new ArgumentNullException("sharedSource");
+            }
+
+            Interlocked.Increment(ref imageSourceGeneration);
+            Interlocked.Increment(ref imageContentGeneration);
+            ClearObjectDetectionDefectCoreResults();
+            ClearObjectDetectionFlatFieldMaskOverlays();
+            ClearObjectDetectionFlatFieldCorrectionPreview();
+            ClearLargeRoiGrayCache();
+
+            leftOriginalDisplayControl.SetSharedLargeImageSource(sharedSource);
+            rightOriginalDisplayControl.SetSharedLargeImageSource(sharedSource);
+            leftPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
+            rightPreprocessedDisplayControl.SetSharedLargeImageSource(sharedSource);
+            leftBlockProcessingDisplayControl.SetSharedLargeImageSource(sharedSource);
+            rightBlockProcessingDisplayControl.SetSharedLargeImageSource(sharedSource);
+            leftObjectsDisplayControl.SetSharedLargeImageSource(sharedSource);
+            rightObjectsDisplayControl.SetSharedLargeImageSource(sharedSource);
+            statusLabel.Text = "已直接載入相機灰階記憶體影像";
+
+            RefreshObjectDetectionFlatFieldDisplay();
+            RequestPreprocessedImageUpdate();
+        }
+
         private void FunctionListBox_DrawItem(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0)
@@ -2716,6 +2776,8 @@ namespace IntegratedImageProcessingApp.Forms
                     return FunctionMenuIcon.Measure;
                 case InspectionOverviewMenuText:
                     return FunctionMenuIcon.Overview;
+                case InspectionHistoryMenuText:
+                    return FunctionMenuIcon.Folder;
                 case ConnectionControllerMenuText:
                     return FunctionMenuIcon.Network;
                 case GlobalSettingsMenuText:

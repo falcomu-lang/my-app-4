@@ -235,7 +235,12 @@ namespace IntegratedImageProcessingApp.Forms
                 string referencePath = objectDetectionResultReviewReferenceImageSize.IsEmpty
                     ? systemParameters.LastImagePath
                     : null;
-                if (!string.IsNullOrWhiteSpace(referencePath) && File.Exists(referencePath))
+                Size activeImageSize;
+                if (TryGetActiveImageSize(referencePath, out activeImageSize))
+                {
+                    objectDetectionResultReviewReferenceImageSize = activeImageSize;
+                }
+                else if (!string.IsNullOrWhiteSpace(referencePath) && File.Exists(referencePath))
                 {
                     try
                     {
@@ -312,8 +317,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             string currentImagePath = systemParameters.LastImagePath;
-            bool hasCurrentImage = !string.IsNullOrWhiteSpace(currentImagePath) &&
-                File.Exists(currentImagePath);
+            bool hasCurrentImage = HasActiveImageSource(currentImagePath);
             bool hadReviewImage = !string.IsNullOrWhiteSpace(objectDetectionResultReviewImagePath);
             bool imageWasAddedWhileAway = isRestoringExistingReviewPanel &&
                 !hadReviewImage && hasCurrentImage;
@@ -330,14 +334,22 @@ namespace IntegratedImageProcessingApp.Forms
                 objectDetectionResultReviewImagePath = currentImagePath;
                 if (objectDetectionResultReviewReferenceImageSize.IsEmpty || imageSourceChanged)
                 {
-                    try
+                    Size activeImageSize;
+                    if (TryGetActiveImageSize(currentImagePath, out activeImageSize))
                     {
-                        objectDetectionResultReviewReferenceImageSize =
-                            LargeImageSource.ReadImageSize(currentImagePath);
+                        objectDetectionResultReviewReferenceImageSize = activeImageSize;
                     }
-                    catch
+                    else
                     {
-                        objectDetectionResultReviewReferenceImageSize = Size.Empty;
+                        try
+                        {
+                            objectDetectionResultReviewReferenceImageSize =
+                                LargeImageSource.ReadImageSize(currentImagePath);
+                        }
+                        catch
+                        {
+                            objectDetectionResultReviewReferenceImageSize = Size.Empty;
+                        }
                     }
                 }
                 if (imageSourceChanged)
@@ -407,7 +419,7 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (string.IsNullOrWhiteSpace(objectDetectionResultReviewImagePath) &&
                 !string.IsNullOrWhiteSpace(systemParameters.LastImagePath) &&
-                File.Exists(systemParameters.LastImagePath))
+                HasActiveImageSource(systemParameters.LastImagePath))
             {
                 objectDetectionResultReviewImagePath = systemParameters.LastImagePath;
             }
@@ -415,7 +427,10 @@ namespace IntegratedImageProcessingApp.Forms
                 !string.IsNullOrWhiteSpace(objectDetectionResultReviewImagePath))
             {
                 objectDetectionResultReviewImageLabel.Text =
-                    Path.GetFileName(objectDetectionResultReviewImagePath) +
+                    (objectDetectionResultReviewImagePath.StartsWith(
+                        CameraMemoryImageIdentityPrefix, StringComparison.Ordinal)
+                        ? "相機影像（記憶體來源）"
+                        : Path.GetFileName(objectDetectionResultReviewImagePath)) +
                     (objectDetectionResultReviewReferenceImageSize.Width > 0 &&
                      objectDetectionResultReviewReferenceImageSize.Height > 0
                         ? "  (" +
@@ -3011,7 +3026,8 @@ namespace IntegratedImageProcessingApp.Forms
             IList<ObjectDefinitionDetectedObject> objects,
             string reason)
         {
-            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            if (string.IsNullOrWhiteSpace(imagePath) ||
+                (!File.Exists(imagePath) && !IsActiveCameraMemoryImageIdentity(imagePath)))
             {
                 return;
             }
@@ -3044,6 +3060,7 @@ namespace IntegratedImageProcessingApp.Forms
                         StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(systemParameters.LastImagePath, imagePath,
                         StringComparison.OrdinalIgnoreCase) &&
+                    HasActiveImageSource(imagePath) &&
                     rightOriginalDisplayControl != null && rightOriginalDisplayControl.HasImage)
                 {
                     if (rightOriginalDisplayControl.IsLargeImageMode)
@@ -3057,10 +3074,17 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                 }
 
-                if (snapshot.OriginalLargeSource == null && snapshot.OriginalBitmap == null)
+                if (snapshot.OriginalLargeSource == null && snapshot.OriginalBitmap == null &&
+                    File.Exists(imagePath))
                 {
                     snapshot.OriginalLargeSource = await Task.Run(
                         () => new LargeImageSource(imagePath));
+                }
+
+                if (snapshot.OriginalLargeSource == null && snapshot.OriginalBitmap == null)
+                {
+                    snapshot.Dispose();
+                    return;
                 }
 
                 if (snapshot.OriginalLargeSource != null)

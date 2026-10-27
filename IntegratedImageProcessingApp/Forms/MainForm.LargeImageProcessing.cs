@@ -21,7 +21,7 @@ namespace IntegratedImageProcessingApp.Forms
     {
         private void PrepareLargeProcessedPreview()
         {
-            if (string.IsNullOrWhiteSpace(systemParameters.LastImagePath) || !File.Exists(systemParameters.LastImagePath))
+            if (!HasActiveImageSource(systemParameters.LastImagePath))
             {
                 return;
             }
