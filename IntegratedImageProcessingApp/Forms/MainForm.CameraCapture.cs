@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using CameraCaptureApp.Services;
+using IntegratedImageProcessingApp.Controls;
 using IntegratedImageProcessingApp.Services;
 using Cv = OpenCvSharp;
 

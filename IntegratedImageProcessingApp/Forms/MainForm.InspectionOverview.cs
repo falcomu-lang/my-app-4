@@ -145,6 +145,7 @@ namespace IntegratedImageProcessingApp.Forms
         private bool inspectionOverviewCameraImageCapturedSubscribed;
         private long inspectionOverviewCameraImageSequence;
         private int inspectionOverviewCameraImageUpdateInFlight;
+        private CameraCaptureApp.Services.CameraGrayscaleFrame inspectionOverviewPendingGrayscaleFrame;
         private SizeType[] inspectionOverviewPreviousColumnTypes;
         private float[] inspectionOverviewPreviousColumnWidths;
 
@@ -1289,11 +1290,17 @@ namespace IntegratedImageProcessingApp.Forms
             Bitmap pendingImage = null;
             try
             {
+                CameraCaptureApp.Services.CameraGrayscaleFrame frame = e.GrayscaleFrame;
+                if (frame == null)
+                {
+                    throw new InvalidOperationException("相機沒有提供可用的灰階影像資料。");
+                }
                 image = e.CreateImageCopy();
                 long sequenceNumber = e.SequenceNumber;
                 pendingImage = image;
                 image = null;
                 Bitmap capturedImage = pendingImage;
+                CameraCaptureApp.Services.CameraGrayscaleFrame capturedFrame = frame;
                 BeginInvoke(new Action(delegate
                 {
                     bool transferred = false;
@@ -1306,7 +1313,8 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             transferred = ApplyInspectionOverviewCameraImage(
                                 capturedImage,
-                                sequenceNumber);
+                                sequenceNumber,
+                                capturedFrame);
                         }
                     }
                     catch (Exception exception)
@@ -1340,9 +1348,12 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private bool ApplyInspectionOverviewCameraImage(Bitmap image, long sequenceNumber)
+        private bool ApplyInspectionOverviewCameraImage(
+            Bitmap image,
+            long sequenceNumber,
+            CameraCaptureApp.Services.CameraGrayscaleFrame grayscaleFrame)
         {
-            if (image == null)
+            if (image == null || grayscaleFrame == null)
             {
                 return false;
             }
@@ -1381,6 +1392,7 @@ namespace IntegratedImageProcessingApp.Forms
                 inspectionOverviewFilter = InspectionOverviewFilter.All;
                 inspectionOverviewHasUninspectedCameraImage = true;
                 inspectionOverviewCameraImageSequence = sequenceNumber;
+                inspectionOverviewPendingGrayscaleFrame = grayscaleFrame;
                 RefreshInspectionOverview();
                 SetCameraInspectionStatus("相機影像 #" +
                     sequenceNumber.ToString(CultureInfo.CurrentCulture) +
@@ -1545,14 +1557,14 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            Bitmap image = null;
             try
             {
-                image = inspectionOverviewImageDisplay.CloneImage();
-                if (image == null)
+                CameraCaptureApp.Services.CameraGrayscaleFrame frame =
+                    inspectionOverviewPendingGrayscaleFrame;
+                if (frame == null)
                 {
                     Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
-                    SetCameraInspectionStatus("無法複製目前相機影像，請重新取像。");
+                    SetCameraInspectionStatus("目前影像沒有可用的灰階記憶體來源，請重新取像。");
                     return;
                 }
 
@@ -1570,8 +1582,8 @@ namespace IntegratedImageProcessingApp.Forms
                 SetCameraInspectionStatus("開始使用目前檢測參數判定相機影像 #" +
                     sequenceNumber.ToString(CultureInfo.CurrentCulture) + "...");
                 string previousImagePath = latestCameraInspectionFramePath;
-                await ProcessCameraAcquiredImageAsync(image, sequenceNumber);
-                image = null;
+                inspectionOverviewPendingGrayscaleFrame = null;
+                await ProcessCameraAcquiredImageAsync(frame, sequenceNumber);
                 if (!string.Equals(previousImagePath, latestCameraInspectionFramePath,
                     StringComparison.OrdinalIgnoreCase))
                 {
@@ -1584,10 +1596,6 @@ namespace IntegratedImageProcessingApp.Forms
             }
             catch (Exception exception)
             {
-                if (image != null)
-                {
-                    image.Dispose();
-                }
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
                 SetCameraInspectionStatus("檢測啟動失敗：" + exception.Message);
             }
