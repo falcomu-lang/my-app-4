@@ -10,12 +10,14 @@ namespace IntegratedImageProcessingApp.Controls
     {
         private MainForm cameraForm;
         private EventHandler<CameraImageAcquiredEventArgs> imageAcquiredHandlers;
-        private EventHandler<CameraImageAcquiredEventArgs> imageCapturedHandlers;
+        private EventHandler<CameraImageAcquiredEventArgs> overviewImageCapturedHandlers;
+        private EventHandler<CameraImageAcquiredEventArgs> remoteImageCapturedHandlers;
         private bool disposing;
         private bool hasCameraProgramBeenOpened;
         private bool cameraImageAcquiredSubscribed;
         private volatile bool suppressAutomaticInspectionForwarding;
-        private volatile bool captureForwardingEnabled;
+        private volatile bool overviewCaptureForwardingEnabled;
+        private volatile bool remoteCaptureForwardingEnabled;
 
         public bool IsCameraConnected
         {
@@ -74,16 +76,30 @@ namespace IntegratedImageProcessingApp.Controls
             }
         }
 
-        public bool CaptureForwardingEnabled
+        public bool OverviewCaptureForwardingEnabled
         {
-            get { return captureForwardingEnabled; }
+            get { return overviewCaptureForwardingEnabled; }
             set
             {
-                if (captureForwardingEnabled == value)
+                if (overviewCaptureForwardingEnabled == value)
                 {
                     return;
                 }
-                captureForwardingEnabled = value;
+                overviewCaptureForwardingEnabled = value;
+                UpdateCameraImageAcquiredSubscription();
+            }
+        }
+
+        public bool RemoteCaptureForwardingEnabled
+        {
+            get { return remoteCaptureForwardingEnabled; }
+            set
+            {
+                if (remoteCaptureForwardingEnabled == value)
+                {
+                    return;
+                }
+                remoteCaptureForwardingEnabled = value;
                 UpdateCameraImageAcquiredSubscription();
             }
         }
@@ -119,7 +135,7 @@ namespace IntegratedImageProcessingApp.Controls
             }
         }
 
-        public event EventHandler<CameraImageAcquiredEventArgs> ImageCaptured
+        public event EventHandler<CameraImageAcquiredEventArgs> OverviewImageCaptured
         {
             add
             {
@@ -128,7 +144,7 @@ namespace IntegratedImageProcessingApp.Controls
                     return;
                 }
 
-                imageCapturedHandlers += value;
+                overviewImageCapturedHandlers += value;
                 UpdateCameraImageAcquiredSubscription();
             }
             remove
@@ -138,7 +154,31 @@ namespace IntegratedImageProcessingApp.Controls
                     return;
                 }
 
-                imageCapturedHandlers -= value;
+                overviewImageCapturedHandlers -= value;
+                UpdateCameraImageAcquiredSubscription();
+            }
+        }
+
+        public event EventHandler<CameraImageAcquiredEventArgs> RemoteImageCaptured
+        {
+            add
+            {
+                if (value == null)
+                {
+                    return;
+                }
+
+                remoteImageCapturedHandlers += value;
+                UpdateCameraImageAcquiredSubscription();
+            }
+            remove
+            {
+                if (value == null)
+                {
+                    return;
+                }
+
+                remoteImageCapturedHandlers -= value;
                 UpdateCameraImageAcquiredSubscription();
             }
         }
@@ -265,7 +305,8 @@ namespace IntegratedImageProcessingApp.Controls
             }
 
             bool shouldSubscribe = !disposing &&
-                ((captureForwardingEnabled && imageCapturedHandlers != null) ||
+                ((overviewCaptureForwardingEnabled && overviewImageCapturedHandlers != null) ||
+                    (remoteCaptureForwardingEnabled && remoteImageCapturedHandlers != null) ||
                     (imageAcquiredHandlers != null && cameraForm.IsImageProcessingEnabled &&
                         !suppressAutomaticInspectionForwarding));
             if (shouldSubscribe == cameraImageAcquiredSubscribed)
@@ -299,12 +340,16 @@ namespace IntegratedImageProcessingApp.Controls
                 inspectionHandler(this, e);
             }
 
-            // Queue direct in-memory inspection before any optional display or
-            // remote-capture subscriber creates a Bitmap copy of the frame.
-            var capturedHandler = imageCapturedHandlers;
-            if (capturedHandler != null)
+            var overviewHandler = overviewImageCapturedHandlers;
+            if (overviewCaptureForwardingEnabled && overviewHandler != null)
             {
-                capturedHandler(this, e);
+                overviewHandler(this, e);
+            }
+
+            var remoteHandler = remoteImageCapturedHandlers;
+            if (remoteCaptureForwardingEnabled && remoteHandler != null)
+            {
+                remoteHandler(this, e);
             }
         }
     }

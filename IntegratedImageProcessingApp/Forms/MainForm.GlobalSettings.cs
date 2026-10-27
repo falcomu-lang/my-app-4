@@ -137,7 +137,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Name = "cameraCaptureHostControl"
             };
             cameraCaptureHostControl.ImageAcquired += CameraCaptureHostControl_ImageAcquired;
-            cameraCaptureHostControl.ImageCaptured += CameraCaptureHostControl_RemoteImageCaptured;
+            cameraCaptureHostControl.RemoteImageCaptured += CameraCaptureHostControl_RemoteImageCaptured;
             lineScanPage.Controls.Add(cameraCaptureHostControl);
 
             var internalParameterPage = new TabPage("內部參數")

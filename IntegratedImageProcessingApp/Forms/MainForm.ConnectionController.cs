@@ -123,7 +123,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (cameraCaptureHostControl != null && !cameraCaptureHostControl.IsDisposed)
             {
-                cameraCaptureHostControl.ImageCaptured -= CameraCaptureHostControl_RemoteImageCaptured;
+                cameraCaptureHostControl.RemoteImageCaptured -= CameraCaptureHostControl_RemoteImageCaptured;
             }
             if (inspectionTcpTransport != null)
             {
@@ -1159,7 +1159,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             remoteContinuousCaptureActive = true;
             cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = true;
-            cameraCaptureHostControl.CaptureForwardingEnabled = true;
+            cameraCaptureHostControl.RemoteCaptureForwardingEnabled = true;
             accepted = true;
             return "已接受連續取像；不會自動進入檢測。";
         }
@@ -1172,7 +1172,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 if (Interlocked.CompareExchange(ref remoteInspectionRequested, 0, 0) == 0)
                 {
-                    cameraCaptureHostControl.CaptureForwardingEnabled = false;
+                    cameraCaptureHostControl.RemoteCaptureForwardingEnabled = false;
                 }
                 if (!isInspectionOverviewActive)
                 {
@@ -1212,7 +1212,7 @@ namespace IntegratedImageProcessingApp.Forms
                 return "檢測未接受：目前沒有可用的檢測參數。";
             }
             cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = true;
-            cameraCaptureHostControl.CaptureForwardingEnabled = true;
+            cameraCaptureHostControl.RemoteCaptureForwardingEnabled = true;
             remoteInspectionStartedPreview = !cameraCaptureHostControl.IsCameraPreviewing;
             if (remoteInspectionStartedPreview)
             {
@@ -1220,7 +1220,7 @@ namespace IntegratedImageProcessingApp.Forms
                 if (!cameraCaptureHostControl.StartPreview(out previewMessage))
                 {
                     Interlocked.Exchange(ref remoteInspectionRequested, 0);
-                    cameraCaptureHostControl.CaptureForwardingEnabled = remoteContinuousCaptureActive;
+                    cameraCaptureHostControl.RemoteCaptureForwardingEnabled = remoteContinuousCaptureActive;
                     return "檢測未啟動：無法開始相機預覽。" + previewMessage;
                 }
             }
@@ -1286,7 +1286,7 @@ namespace IntegratedImageProcessingApp.Forms
                             cameraCaptureHostControl != null)
                         {
                             cameraCaptureHostControl.StopPreview();
-                            cameraCaptureHostControl.CaptureForwardingEnabled = false;
+                            cameraCaptureHostControl.RemoteCaptureForwardingEnabled = false;
                             if (!isInspectionOverviewActive)
                             {
                                 cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = false;

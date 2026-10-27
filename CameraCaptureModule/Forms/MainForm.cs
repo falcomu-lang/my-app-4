@@ -77,9 +77,20 @@ namespace CameraCaptureApp.Forms
 
         public bool ClearMeterWheelEncoderFromHost(out string message)
         {
-            if (_meterWheelService == null || !_meterWheelService.IsInitialized)
+            if (_meterWheelService == null)
             {
                 message = "Meter wheel is not connected; encoder zero was not applied.";
+                return false;
+            }
+
+            if (!_meterWheelService.IsInitialized)
+            {
+                AutoConnectMeterWheel();
+            }
+            if (!_meterWheelService.IsInitialized)
+            {
+                message = "Meter wheel auto-connect failed; encoder zero was not applied. " +
+                    labelFooterMessageValue.Text;
                 return false;
             }
 
@@ -119,6 +130,19 @@ namespace CameraCaptureApp.Forms
             {
                 message = "Connect the camera before starting preview.";
                 return false;
+            }
+
+            if (_settings != null && _settings.TriggerMode == TriggerMode.SoftwareTrigger &&
+                (_meterWheelService == null || !_meterWheelService.IsInitialized))
+            {
+                AutoConnectMeterWheel();
+                if (_meterWheelService == null || !_meterWheelService.IsInitialized)
+                {
+                    message = "Software Trigger cannot start: meter wheel is not connected. " +
+                        labelFooterMessageValue.Text;
+                    UpdateStatus();
+                    return false;
+                }
             }
 
             if (IsCameraPreviewing)
