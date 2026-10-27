@@ -96,7 +96,7 @@ namespace IntegratedImageProcessingApp.Controls
             try
             {
                 _memoryBufferHandle = GCHandle.Alloc(grayscaleBuffer, GCHandleType.Pinned);
-                _memoryGray = new Cv.Mat(
+                _memoryGray = Cv.Mat.FromPixelData(
                     height,
                     width,
                     Cv.MatType.CV_8UC1,
