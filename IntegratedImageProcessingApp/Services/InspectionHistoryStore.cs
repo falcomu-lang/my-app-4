@@ -72,6 +72,7 @@ namespace IntegratedImageProcessingApp.Services
         [DataMember(Order = 22)] public int CombinedNgCount { get; set; }
         [DataMember(Order = 23)] public int CombinedPendingCount { get; set; }
         [DataMember(Order = 24)] public List<InspectionHistoryObjectRecord> Objects { get; set; }
+        [DataMember(Order = 25)] public string ParameterId { get; set; }
     }
 
     /// <summary>
@@ -150,7 +151,7 @@ namespace IntegratedImageProcessingApp.Services
                 try
                 {
                     database.Execute(
-                        "INSERT OR REPLACE INTO batches (batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT OR REPLACE INTO batches (batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         record.BatchId,
                         record.InspectedAt.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture),
                         record.CameraSequence,
@@ -173,7 +174,8 @@ namespace IntegratedImageProcessingApp.Services
                         record.CombinedACount,
                         record.CombinedBCount,
                         record.CombinedNgCount,
-                        record.CombinedPendingCount);
+                        record.CombinedPendingCount,
+                        record.ParameterId);
                     database.Execute("DELETE FROM objects WHERE batch_id=?", record.BatchId);
                     foreach (InspectionHistoryObjectRecord item in record.Objects)
                     {
@@ -211,7 +213,7 @@ namespace IntegratedImageProcessingApp.Services
             {
                 EnsureSchema(database);
                 List<object[]> rows = database.Query(
-                    "SELECT batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending FROM batches ORDER BY inspected_at DESC");
+                    "SELECT batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id FROM batches ORDER BY inspected_at DESC");
                 return rows.Select(MapBatch).ToList();
             }
         }
@@ -225,7 +227,7 @@ namespace IntegratedImageProcessingApp.Services
             {
                 EnsureSchema(database);
                 List<object[]> rows = database.Query(
-                    "SELECT batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending FROM batches WHERE batch_id=? LIMIT 1",
+                    "SELECT batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id FROM batches WHERE batch_id=? LIMIT 1",
                     batchId);
                 if (rows.Count == 0) return null;
                 InspectionHistoryBatchRecord record = MapBatch(rows[0]);
@@ -255,7 +257,14 @@ namespace IntegratedImageProcessingApp.Services
             database.Execute("PRAGMA journal_mode=WAL");
             database.Execute("PRAGMA synchronous=NORMAL");
             database.Execute("PRAGMA foreign_keys=ON");
-            database.Execute("CREATE TABLE IF NOT EXISTS batches (batch_id TEXT PRIMARY KEY, inspected_at TEXT NOT NULL, camera_sequence INTEGER NOT NULL, recipe_id TEXT, recipe_name TEXT, recipe_snapshot_path TEXT, image_path TEXT, judgement_complete INTEGER NOT NULL, undetermined_reason TEXT, image_width INTEGER NOT NULL, image_height INTEGER NOT NULL, object_count INTEGER NOT NULL, size_a INTEGER NOT NULL, size_b INTEGER NOT NULL, size_ng INTEGER NOT NULL, size_pending INTEGER NOT NULL, defect_a INTEGER NOT NULL, defect_ng INTEGER NOT NULL, defect_pending INTEGER NOT NULL, combined_a INTEGER NOT NULL, combined_b INTEGER NOT NULL, combined_ng INTEGER NOT NULL, combined_pending INTEGER NOT NULL)");
+            database.Execute("CREATE TABLE IF NOT EXISTS batches (batch_id TEXT PRIMARY KEY, inspected_at TEXT NOT NULL, camera_sequence INTEGER NOT NULL, recipe_id TEXT, recipe_name TEXT, recipe_snapshot_path TEXT, image_path TEXT, judgement_complete INTEGER NOT NULL, undetermined_reason TEXT, image_width INTEGER NOT NULL, image_height INTEGER NOT NULL, object_count INTEGER NOT NULL, size_a INTEGER NOT NULL, size_b INTEGER NOT NULL, size_ng INTEGER NOT NULL, size_pending INTEGER NOT NULL, defect_a INTEGER NOT NULL, defect_ng INTEGER NOT NULL, defect_pending INTEGER NOT NULL, combined_a INTEGER NOT NULL, combined_b INTEGER NOT NULL, combined_ng INTEGER NOT NULL, combined_pending INTEGER NOT NULL, parameter_id TEXT)");
+            bool hasParameterId = database.Query("PRAGMA table_info(batches)")
+                .Any(row => row.Length > 1 && string.Equals(
+                    Text(row[1]), "parameter_id", StringComparison.OrdinalIgnoreCase));
+            if (!hasParameterId)
+            {
+                database.Execute("ALTER TABLE batches ADD COLUMN parameter_id TEXT");
+            }
             database.Execute("CREATE TABLE IF NOT EXISTS objects (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL, object_number INTEGER NOT NULL, grid_row INTEGER NOT NULL, grid_column INTEGER NOT NULL, bounds_x INTEGER NOT NULL, bounds_y INTEGER NOT NULL, bounds_width INTEGER NOT NULL, bounds_height INTEGER NOT NULL, size_grade TEXT NOT NULL, defect_grade TEXT NOT NULL, combined_grade TEXT NOT NULL, size_details_json TEXT NOT NULL, defect_details_json TEXT NOT NULL, FOREIGN KEY(batch_id) REFERENCES batches(batch_id) ON DELETE CASCADE)");
             database.Execute("CREATE INDEX IF NOT EXISTS idx_batches_inspected_at ON batches(inspected_at)");
             database.Execute("CREATE INDEX IF NOT EXISTS idx_objects_batch ON objects(batch_id, object_number)");
@@ -273,7 +282,8 @@ namespace IntegratedImageProcessingApp.Services
                 ImageWidth = Int(row[9]), ImageHeight = Int(row[10]), ObjectCount = Int(row[11]),
                 SizeACount = Int(row[12]), SizeBCount = Int(row[13]), SizeNgCount = Int(row[14]), SizePendingCount = Int(row[15]),
                 DefectACount = Int(row[16]), DefectNgCount = Int(row[17]), DefectPendingCount = Int(row[18]),
-                CombinedACount = Int(row[19]), CombinedBCount = Int(row[20]), CombinedNgCount = Int(row[21]), CombinedPendingCount = Int(row[22])
+                CombinedACount = Int(row[19]), CombinedBCount = Int(row[20]), CombinedNgCount = Int(row[21]), CombinedPendingCount = Int(row[22]),
+                ParameterId = row.Length > 23 ? Text(row[23]) : string.Empty
             };
         }
 

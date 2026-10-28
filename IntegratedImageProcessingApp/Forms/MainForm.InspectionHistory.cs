@@ -149,7 +149,7 @@ namespace IntegratedImageProcessingApp.Forms
             content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 84F));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 76F));
+            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 88F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 190F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
@@ -382,27 +382,45 @@ namespace IntegratedImageProcessingApp.Forms
                     }
                 }
             };
-            card.Controls.Add(new Label
+            var cardContent = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 2,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+                BackColor = Color.Transparent
+            };
+            cardContent.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            cardContent.RowStyles.Add(new RowStyle(SizeType.Absolute, 22F));
+            cardContent.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            cardContent.Controls.Add(new Label
             {
                 Text = labelText,
-                Dock = DockStyle.Top,
-                Height = 22,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = Color.FromArgb(100, 119, 145),
-                Font = new Font("Microsoft JhengHei UI", 8F)
-            });
+                Font = new Font("Microsoft JhengHei UI", 8F),
+                Margin = Padding.Empty,
+                AutoEllipsis = true
+            }, 0, 0);
             var valueLabel = new Label
             {
                 Text = "—",
                 Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
                 ForeColor = isPassMetric ? Color.FromArgb(19, 131, 63) : Color.FromArgb(24, 104, 177),
-                Font = new Font("Microsoft JhengHei UI", 15F, FontStyle.Bold)
+                Font = new Font("Microsoft JhengHei UI", 15F, FontStyle.Bold),
+                Margin = Padding.Empty,
+                AutoEllipsis = true
             };
+            cardContent.Controls.Add(valueLabel, 0, 1);
+            card.Controls.Add(cardContent);
             if (inspectionHistorySummaryValueLabels == null)
             {
                 inspectionHistorySummaryValueLabels = new Label[5];
             }
             inspectionHistorySummaryValueLabels[summaryIndex] = valueLabel;
-            card.Controls.Add(valueLabel);
             return card;
         }
 
@@ -820,6 +838,7 @@ namespace IntegratedImageProcessingApp.Forms
                     BatchId = Guid.NewGuid().ToString("N"),
                     InspectedAt = inspectedAt,
                     CameraSequence = sequenceNumber,
+                    ParameterId = snapshot.ParameterId,
                     ImagePath = archiveSourceImage
                         ? string.Empty
                         : (inspectionHistoryStore == null
@@ -1089,14 +1108,41 @@ namespace IntegratedImageProcessingApp.Forms
                     throw new InvalidDataException("歷史 Recipe 快照內沒有檢測參數。");
                 }
 
+                ObjectDetectionParameterSettings historicalParameter;
+                if (!string.IsNullOrWhiteSpace(record.ParameterId))
+                {
+                    List<ObjectDetectionParameterSettings> matchingParameters =
+                        historical.ObjectDetectionParameters.Where(parameter => parameter != null &&
+                            string.Equals(parameter.Id, record.ParameterId, StringComparison.Ordinal)).ToList();
+                    if (matchingParameters.Count != 1)
+                    {
+                        throw new InvalidDataException(
+                            "歷史紀錄指定的檢測參數 ID 在參數快照中不存在或重複。為避免使用錯誤參數，已取消重新檢測。");
+                    }
+                    historicalParameter = matchingParameters[0];
+                }
+                else if (historical.ObjectDetectionParameters.Count == 1 &&
+                    historical.ObjectDetectionParameters[0] != null)
+                {
+                    // Legacy rows with a single parameter are unambiguous.
+                    historicalParameter = historical.ObjectDetectionParameters[0];
+                }
+                else
+                {
+                    throw new InvalidDataException(
+                        "這筆舊歷史紀錄沒有保存當時使用的檢測參數 ID，而且快照含有多個參數。" +
+                        "為避免選錯參數，已取消重新檢測；請先由操作人員確認該次使用的參數。");
+                }
+
                 inspectionHistoryPreviousSystemParameters = systemParameters;
                 inspectionHistoryPreviousActiveParameterId = activeObjectDetectionParameterId;
                 inspectionHistoryPreviousReviewParameterId = objectDetectionResultReviewSelectedParameterId;
                 inspectionHistoryPreviousReferenceImageSize = objectDetectionResultReviewReferenceImageSize;
                 isInspectionHistoryRerunActive = true;
                 historical.LastImagePath = imagePath;
+                historical.ActiveDetectionRecipeId = record.RecipeId ?? string.Empty;
                 systemParameters = historical;
-                activeObjectDetectionParameterId = historical.ObjectDetectionParameters[0].Id;
+                activeObjectDetectionParameterId = historicalParameter.Id;
                 objectDetectionResultReviewSelectedParameterId = activeObjectDetectionParameterId;
                 objectDetectionResultReviewReferenceImageSize = Size.Empty;
                 objectDetectionResultReviewImagePath = string.Empty;
@@ -1111,7 +1157,7 @@ namespace IntegratedImageProcessingApp.Forms
                         : "參數結果確認圖片") + "。");
                 BeginInvoke(new Action(async delegate
                 {
-                    try { await LoadInspectionHistoryImageAndRunAsync(imagePath); }
+                    try { await LoadInspectionHistoryImageAndRunAsync(imagePath, historicalParameter.Id); }
                     catch (Exception exception)
                     {
                         RestoreInspectionHistoryRerunContext();
@@ -1125,12 +1171,12 @@ namespace IntegratedImageProcessingApp.Forms
             catch (Exception exception)
             {
                 RestoreInspectionHistoryRerunContext();
-                MessageBox.Show(this, "無法載入歷史 Recipe 快照：\r\n" + exception.Message,
+                MessageBox.Show(this, "無法確認歷史檢測參數：\r\n" + exception.Message,
                     "歷史資料", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private async Task LoadInspectionHistoryImageAndRunAsync(string imagePath)
+        private async Task LoadInspectionHistoryImageAndRunAsync(string imagePath, string expectedParameterId)
         {
             if (!IsObjectDetectionResultReviewUiAvailable())
             {
@@ -1158,7 +1204,27 @@ namespace IntegratedImageProcessingApp.Forms
                 isLoadingImage = false;
                 SetObjectDetectionResultReviewControlsEnabled(true);
             }
+
+            ResultReviewParameterChoice selectedChoice = objectDetectionResultReviewParameterComboBox == null
+                ? null
+                : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+            if (selectedChoice == null || selectedChoice.Parameter == null ||
+                !string.Equals(selectedChoice.Parameter.Id, expectedParameterId, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "參數結果確認頁面未選到歷史紀錄指定的檢測參數，已取消運算以避免選錯。");
+            }
+
             await RunObjectDetectionResultReviewAsync();
+            if (objectDetectionResultReviewSnapshot == null ||
+                !string.Equals(
+                    objectDetectionResultReviewSnapshot.ParameterId,
+                    expectedParameterId,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    "重新檢測使用的參數 ID 與歷史紀錄不一致，已取消本次結果。");
+            }
         }
 
         private void RestoreInspectionHistoryRerunContext()

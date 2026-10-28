@@ -1,17 +1,17 @@
 # Project Handoff：整合式影像處理軟體
 
-文件更新日：2026-10-27
-程式碼檢視基準：main 的 917531e（Add continuous inspection mode to overview）
+文件更新日：2026-10-28
+程式碼基準：main／origin/main 的 914d5c9fa56add98f08fdb2886e7176819106b90（feat: add inspection history and result review recording）
 Solution：MyApp4.sln
 工作目錄：此文件所在專案根目錄
 
-本次整理前，main 與 origin/main 都在 917531e，工作目錄乾淨。這次交接以目前程式碼為準；下方標示「待驗收」的項目沒有被描述成已完成。這次只整理文件，沒有變更程式，也沒有執行建置或測試。
+核對時 main 與 origin/main 指向同一個 914d5c9；工作目錄另有兩個尚未提交的程式檔修改：MainForm.InspectionHistory.cs 與 InspectionHistoryStore.cs。它們包含歷史重跑依 ParameterId 精確選取參數、舊資料相容防誤選，以及歷史頁摘要卡片版面修正；尚未推送到 GitHub。最近一次程式修改已成功建置到替代輸出目錄；本次只更新文件，未重跑建置、GUI、相機或演算法驗收。文件中的狀態以目前工作目錄為準，待驗收項目會明確標示。
 
 ## 1. 專案定位與目前結論
 
 這是一套以單台線掃描攝影機為本機取像來源的 Windows 灰階影像檢測程式。單一執行個體控制一台本機攝影機；總控頁可連接多個被控站點，收集各站的相機狀態與逐物件判定。
 
-目前有完整的找物件、Recipe、尺寸／缺陷檢測、結果確認、檢測總覽、相機整合與 TCP/IP 通訊介面。程式仍由 WinForms 主視窗協調大部分流程；相機實機、公司影像、長時間負載、歷史資料持久化與跨設備通訊尚未完成整體驗收。因此目前可以視為具備檢測軟體的主要流程與原型功能，尚不能只憑程式碼存在就認定已達產線驗收狀態。
+目前有完整的找物件、Recipe、尺寸／缺陷檢測、結果確認、檢測總覽、相機整合、歷史資料與 TCP/IP 通訊介面。程式仍由 WinForms 主視窗協調大部分流程；相機實機、公司影像、長時間負載、歷史資料保存故障處理與跨設備通訊尚未完成整體驗收。因此目前具備檢測軟體主要流程，但不能只憑程式碼存在或成功建置就認定已達產線驗收狀態。
 
 Solution 目前含兩個專案，沒有獨立的測試專案：
 
@@ -71,7 +71,7 @@ CameraCaptureModule / Sapera
   -> 成功或待確認的逐物件狀態交給檢測總覽
 ~~~
 
-檢測輸入直接使用記憶體灰階緩衝區，不需先寫 TIFF 再讀回來。相機檢測路徑會同時在背景寫一份暫存 TIFF 到 %LOCALAPPDATA%/IntegratedImageProcessingApp/CameraFrames；主流程不以這份 TIFF 作為演算法輸入。相機程式的自動存圖是另一條由 CameraCaptureModule 設定控制的存檔工作。
+檢測輸入直接使用記憶體灰階緩衝區，不需先寫 TIFF 再讀回來。相機檢測路徑以 LargeImageSource 的參照生命週期保護影格，並在背景把原始大圖保存到主程式根目錄的 CameraCapture/yyyyMMdd；這份 TIFF 是保存／歷史來源，不會再讀回作為演算法輸入。保存失敗會記錄診斷，不應中斷目前影格的檢測。相機模組自身的自動存圖仍是另一條取像存檔設定。
 
 總覽的操作語意：
 
@@ -106,7 +106,7 @@ CameraCaptureModule / Sapera
 | 檢測總覽 | 原始影像、物件格位、尺寸／缺陷／綜合結果、篩選、選取聚焦、回復全圖及相機操作已接入。 | 真正相機觸發、持續檢測壓力、缺件／無效參數與現場顯示。 |
 | 相機模組 | 嵌入主程式，保留相機原本設定、波形、米輪彈出視窗；具備 Mono8 frame event。 | Sapera 驅動、相機、米輪、Software／External Trigger 的實機完整驗收。 |
 | TCP/IP | 本機 listener、總控多站卡片、心跳、重連、狀態和命令程式碼存在。 | 防火牆、多機、多站 ID、掉線恢復與長時間連線驗收。 |
-| 歷史資料 | 左側歷史資料入口目前顯示「歷史資料功能尚未實作」。 | 每日 DB、逐片明細、Recipe 快照關聯、圖片關聯與歷史參數重跑均未實作。 |
+| 歷史資料 | 已有日期、Recipe、判定狀態查詢、摘要卡、檢測清單、尺寸／缺陷明細及右鍵歷史重跑；相機紀錄自動保存，手動結果確認由全域開關控制。 | 驗收每日 DB、兩種記錄路徑、圖片保存失敗、舊 schema 遷移、長期容量與備份。歷史重跑依批次 ParameterId 精確選擇 Recipe 快照中的參數；舊資料含多參數而無 ID 時拒絕猜測。 |
 
 ## 4. 平行運算與效能解讀
 
@@ -115,8 +115,8 @@ CameraCaptureModule / Sapera
 - 一般缺陷、頻域及量測內部也能按物件／ROI 平行。這些是 Task Parallel Library 的工作，不等於固定建立「物件數 × 核心數」條 OS 執行緒。
 - 巢狀平行可能讓 CPU、RAM、影像副本及預覽 patch 同時增加。現行程式沒有統一的全流程 CPU／記憶體預算；最大吞吐與最長等待時間需用實際設備量測。
 - 頻域每格以 OpenCV 建立的加窗影像能量為基礎，直接遍歷影像資料計算；名稱中的「頻域」不表示目前執行 DFT。
-- 舊交接紀錄曾記載 2026-10-23 的合成影像比對與排程檢查。這些是該日期版本的證據，未在 917531e 上重跑，也不代表公司的產品影像或實機節拍已驗收。
-- 本次只修改文件，未執行 MSBuild、GUI 或相機測試。
+- 舊交接紀錄曾記載 2026-10-23 的合成影像比對與排程檢查。這些是當時版本的證據，不代表目前版本的公司產品影像或實機節拍已驗收。
+- 最近一次程式修改已用替代輸出目錄建置成功；因一般 Debug 執行檔正被使用，未覆寫該輸出。這次只更新文件，沒有重新建置或執行 GUI／硬體測試。
 
 ## 5. 設定檔、資料夾與保存語意
 
@@ -127,12 +127,13 @@ CameraCaptureModule / Sapera
 | SystemParameters.ini | SystemParameterIniService 保存目前正在編輯的完整檢測設定。 | 新建參數會重設這份設定；它與 recipe 目錄的快照分開。 |
 | recipe/parameterList.json | DetectionRecipeCatalogService 保存 Recipe ID、顯示名稱、說明與排序。 | 名稱可編輯，關聯以 ID 為主。 |
 | recipe/{ID}.ini | 每個 Recipe 的完整參數快照。 | 一次只有一組載入為作用中設定；套用 Recipe 會以快照更新目前流程。 |
-| config/device-settings.ini | CameraDeviceSettingsIniService 保存設備名稱／站點 ID、X/Y mm-per-pixel、換算開關、本機監聽 IP／Port 與允許連線。 | 缺檔預設精度 1、換算關閉、ID 1、0.0.0.0:5000、允許連線關閉。程式只在輸出目錄缺少時複製初始檔。 |
+| config/device-settings.ini | CameraDeviceSettingsIniService 保存設備名稱／站點 ID、X/Y mm-per-pixel、換算開關、本機監聽 IP／Port、允許連線及手動結果確認歷史記錄開關。 | 缺檔預設精度 1、換算關閉、ID 1、0.0.0.0:5000、允許連線關閉。程式只在輸出目錄缺少時複製初始檔。 |
 | config/connection-controller-settings.xml | ConnectionControllerSettingsService 保存總控監控、進入頁面自動連線、重連、timeout、heartbeat 與站點表。 | 舊 XML 沒有 MonitorCamera 時，模型預設為啟用。 |
 | captureSetting.ini | CameraCaptureModule 的 SettingsService 保存相機、觸發、預覽、自動存圖、格式與米輪欄位。 | 儲存於執行檔目錄；缺少時嘗試複製同目錄的 settings.ini 或 setting.ini。 |
-| CameraCapture/yyyyMMdd | CameraCaptureModule 的相機自動存圖目錄。 | 主程式啟動目錄下按日期建立；檔名依 FileNamePattern。 |
-| snapshot/ | CameraCaptureModule 的一般手動單張影像目錄。 | 現行一般單張手動存圖直接放在此處；手動滾動影像存於 snapshot/yyyyMMdd。 |
-| %LOCALAPPDATA%/IntegratedImageProcessingApp/CameraFrames | 主程式建立相機檢測影格的暫存 TIFF。 | 判定使用記憶體 frame；新影格取代舊暫存路徑，舊檔或失敗檔會嘗試清理。 |
+| CameraCapture/yyyyMMdd | 主程式相機檢測影格保存的原始灰階 TIFF；CameraCaptureModule 也會依其自動存圖設定保存影像。 | 主程式相機流程背景保存，演算法直接用記憶體 frame，不讀回 TIFF。 |
+| snapshot/yyyyMMdd | 手動載入圖片執行確認後，供歷史記錄連結與重跑的影像副本。 | 由歷史紀錄功能按需複製；若複製失敗會保留來源路徑並記錄診斷。 |
+| history/yyyyMMdd.db | 每日 SQLite 批次與逐物件明細。 | 使用 Windows winsqlite3.dll；啟用 WAL 與交易，schema 會補上 parameter_id 欄位以相容舊 DB。 |
+| history/recipe-snapshots/{SHA256}.ini | 歷史批次對應的完整 Recipe／參數快照。 | 正規化後以 SHA-256 去重；歷史重跑以批次保存的 ParameterId 找當時使用的參數。 |
 | logs/camera/app.log | CameraCaptureModule 的 AppLogger 記錄相機模組例外。 | 寫在執行檔目錄下 logs/camera。 |
 
 **存圖需求差異：** CameraSettings.SaveFolder 有模型欄位及 INI 讀寫，但目前程式存圖路徑沒有讀取該欄位。一般手動單張圖也沒有日期目錄。若現場要求所有影像固定依日期分流或指定根目錄，需另做程式修改。
@@ -187,8 +188,9 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 | IntegratedImageProcessingApp/Forms/MainForm.FunctionTree.cs | 找物件流程、影像處理步驟／群組及 ROI 清單的情境選單與清單操作。 |
 | IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs | 全域設定頁、CameraCaptureHostControl、設備精度／IP／Port／站點 ID 及總控設定 UI。 |
 | IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs | TCP listener／station 連線、站點卡片、心跳狀態、遠端連續取像與檢測命令、逐物件結果發布。 |
-| IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs | 接收本機相機影格、忙碌丟棄、建立記憶體影像來源、並行暫存 TIFF、進入結果確認及回報總覽。 |
+| IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs | 接收本機相機影格、忙碌丟棄、建立記憶體影像來源、背景保存原始 TIFF、安排結果確認流程及回報總覽／歷史資料。 |
 | IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs | 檢測總覽原圖、逐物件矩陣／選取／篩選、連線與連續取像／持續檢測按鈕。 |
+| IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs | 歷史頁 UI、查詢／摘要／明細、手動與相機紀錄建立、歷史參數快照重跑及返回前工作狀態還原。 |
 | IntegratedImageProcessingApp/Forms/MainForm.ImageView.cs | 多影像頁縮放／平移同步、視圖狀態更新及顯示模式切換。 |
 | IntegratedImageProcessingApp/Forms/MainForm.Preprocessing.cs | 前處理參數 UI、步驟排序及 OpenCV 灰階前處理排程。 |
 | IntegratedImageProcessingApp/Forms/MainForm.ImageProcessing.cs | 影像處理步驟運算、遮罩、來源解析與二值 MASK 快取。 |
@@ -233,6 +235,7 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 | IntegratedImageProcessingApp/Services/SystemParameterSettings.cs | 所有找物件、物件定義、Recipe、尺寸、平場、缺陷、ROI 群組與頻域參數模型。 |
 | IntegratedImageProcessingApp/Services/SystemParameterIniService.cs | SystemParameters.ini 與 Recipe INI 的欄位讀寫、預設值、正規化與舊欄位相容處理。 |
 | IntegratedImageProcessingApp/Services/DetectionRecipeCatalogService.cs | Recipe 清單 JSON、參數檔加入、名稱／說明／排序及 ID 對應。 |
+| IntegratedImageProcessingApp/Services/InspectionHistoryStore.cs | 每日 SQLite schema／遷移、批次與逐物件明細交易、Recipe 快照 SHA-256 去重、路徑轉換與舊資料讀取。 |
 | IntegratedImageProcessingApp/Services/CameraDeviceSettingsIniService.cs | 全域設備精度、站點 ID 和本機網路設定的 INI 讀寫／預設值。 |
 | IntegratedImageProcessingApp/Services/ConnectionControllerSettingsService.cs | 總控站點表、連線行為 XML 讀寫。 |
 | IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs | TCP listener/client、JSON line 訊息、peer／heartbeat／連線事件與傳送。 |
@@ -294,12 +297,12 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 ### 需要持續處理的風險
 
 1. **主流程仍與 WinForms UI 緊密耦合。** MainForm partial 共享欄位和可變狀態。partial 只是分檔，尚未形成可單獨重用／測試的 pipeline。
-2. **主要檔案很大。** 目前非 Designer 檔中，ResultReview 約 3,366 行、CameraService 約 3,303 行、DefectFrequency 約 3,216 行、DefectRegion 約 2,877 行、SystemParameterIniService 約 2,763 行、MainForm 約 2,658 行。拆分應先依責任和輸入輸出界線進行。
+2. **少數檔案承載過多責任。** 目前有 107 個 C# 檔案；MainForm 有 44 個 partial 宣告。主要大檔約為 ResultReview 3,372 行、CameraService 3,303 行、DefectFrequency 3,216 行、DefectRegion 2,877 行、SystemParameterIniService 2,763 行、MainForm 2,658 行。這些行數是 2026-10-28 檢視值；拆分應按責任界線，不設硬性行數門檻。
 3. **巢狀平行沒有全域資源預算。** 外層條件、ROI、物件和量測可能同時建立工作；需要用現場影像量測 CPU、記憶體峰值及 UI 延遲，再設全域最大併發。
 4. **相機忙碌策略會丟影格。** 目前沒有等待佇列；這符合「忙碌時跳過新影像」的需求，但要驗收設備訊號頻率和略過計數。
-5. **相機檢測路徑尚不是獨立服務。** MainForm.CameraCapture 會切換／使用結果確認頁的控制項與狀態，並另寫暫存 TIFF；後續宜抽成接收 immutable frame／Recipe snapshot 並回傳 InspectionResult 的服務，讓相機、載圖、TCP 命令共用同一入口。
+5. **相機檢測路徑仍依賴結果確認頁狀態。** MainForm.CameraCapture 目前直接安排結果確認頁的物件／尺寸／缺陷流程，再將結果交給總覽與歷史紀錄。影像演算法輸入已是記憶體 frame，另在背景保存 CameraCapture/yyyyMMdd 原圖。後續應逐步抽出接受不可變 frame 與 Recipe／Parameter snapshot、回傳 InspectionResult 的共用服務，避免把 UI 頁面當成執行引擎。
 6. **設定檔缺少明確 schema 版本。** SystemParameterIniService 手動維護許多鍵；Recipe 欄位新增時要檢查舊檔預設、遷移及往返讀寫。
-7. **歷史資料未持久化。** 目前沒有每日 SQLite／DB、逐片紀錄索引、Recipe 快照引用或歷史重跑。
+7. **歷史功能已接入，但仍需營運級驗收。** 每日 SQLite、逐物件明細、Recipe 快照、圖片路徑及 ParameterId 重跑已存在；尚需驗收 DB 損毀復原、硬碟滿、圖片遺失、跨日切檔、保留期限、備份與多個程式同時存取。
 8. **TCP 尚缺部署級協定保護。** 現有 line-delimited JSON 沒有 TLS、身分驗證、協定版本和重複訊息持久化策略；需依整合程式規格決定。
 9. **存圖設定與實作有差異。** CameraSettings.SaveFolder 會讀寫但目前存圖路徑不使用它；一般手動單張存圖也沒有日期目錄。
 10. **測試與硬體證據不足。** Solution 沒有測試專案。離線合成資料不能代表公司影像；成功編譯也不代表相機、米輪、TCP 或算法品質已驗收。
@@ -309,11 +312,11 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 1. 先以代表性影像驗證找物件、ROI 群組映射、尺寸標定、缺陷誤報／漏檢和逐物件判定。
 2. 用目標相機與米輪驗收連線、Software Trigger 原點確認／Encoder Clear、External Trigger、預覽開關、連續取像、持續檢測與忙碌略過。
 3. 用兩台以上實際執行個體驗收 TCP 站點 ID、listener IP／port、命令 ack、重連、心跳與每站逐物件資料。
-4. 決定歷史紀錄 DB schema、每日切檔、保存圖片關聯、Recipe 快照引用與歷史重跑規則，再實作歷史資料頁。
-5. 抽離相機／手動載圖共用的 InspectionPipeline 輸入輸出契約，避免以頁面導覽作為執行控制。
+4. 驗收已實作的歷史資料流程：相機成功／待確認紀錄、手動結果確認勾選保存、每日資料庫、圖片路徑、Recipe 快照、ParameterId 遷移及多參數歷史重跑。
+5. 先建立明確的檢測輸入／輸出資料契約，再抽離相機、手動載圖共用的 InspectionPipeline；禁止讓頁面切換決定檢測是否執行。
 6. 設定全流程併發與影像副本上限；以真實大圖測量每張牆鐘時間、CPU、RAM、落後／丟棄影格數。
-7. 為 Recipe 遷移、尺寸公式、ROI 群組、尺寸／缺陷整合與 TCP 訊息建立可重複自動化測試。
-8. 修正存圖目錄規則與 SaveFolder 欄位不一致，再驗收更新程式時保留現場 config 的部署流程。
+7. 逐步拆出純計算／序列化元件，並為 Recipe 舊檔、尺寸公式、ROI 群組、缺陷結果和歷史重跑建立可重複驗證。
+8. 確認相機 SaveFolder 實際使用方式、影像保存失敗行為、歷史圖片保留期限及現場 config 更新策略。
 
 ## 9. 建置與維護
 
@@ -337,4 +340,42 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 - OpenCV Mat、Bitmap、大型影像來源和外部 pinned buffer 必須明確釋放；勿讓預覽、overlay 或快取長期持有不必要的大圖。
 - 套用 Recipe、切換圖片或修改 ROI 後，確認相關 generation／signature／結果快照確實失效。
 - 設備 config 位於執行檔旁；部署更新要避免覆蓋現場值。缺少精度時 1 mm/pixel 是預設值，不是實際校正值。
-- 建置／檢視文件不等同現場驗收。本次文件更新沒有執行建置或測試。
+- 建置／檢視文件不等同現場驗收。本次文件更新沒有重新執行建置、GUI、相機或影像測試；最近一次程式版本曾在替代輸出目錄建置成功。
+
+## 10. 大檔案拆分評估與建議
+
+### 結論
+
+可以拆，而且值得逐步拆。現在的主要問題不是單純「檔案多」，而是少數檔案同時包 UI 建構、流程協調、計算、快取／生命週期和資料保存。另一方面，44 個 MainForm partial 仍共用同一批欄位；只把方法搬到另一個 partial 或換檔名，會減少單檔行數，但不會降低模組耦合。
+
+因此建議先抽出有明確輸入／輸出的純計算或持久化責任，讓 UI 收集參數、呼叫服務、顯示結果。每一步都保留既有參數與畫面行為，避免一次重寫檢測流程。現有方案沒有自動化測試專案，拆分演算法前應先建立少量可重播的合成影像與歷史資料案例；這是降低回歸風險的前置工作，不應把「編譯成功」當作結果等價證明。
+
+### 建議優先順序
+
+| 優先 | 目標檔案／責任 | 建議邊界 | 風險 |
+|---|---|---|---|
+| 1 | MainForm.DetectionParameter.DefectFrequency.cs（3,216 行） | 將掃描格座標、加窗能量、統計尺度、鄰格比較抽成 FrequencyAnomalyAnalyzer；輸入明確的來源、ROI work items 與設定，輸出候選格／分數／計時資料。WinForms 控制項、預覽和繪圖留在頁面層。先搬資料型別，再搬純計算，保持 ROI 邊界與縮放規則不變。 | 中高。這是影像檢出核心，任何座標、邊界填補、計分順序差異都可能改變結果。 |
+| 2 | MainForm.DetectionParameter.ResultReview.cs（3,372 行） | 先抽「尺寸量測計算」與良品公式 parser 為獨立服務；再把執行確認協調抽成 ResultReviewRunner，回傳不可變結果快照。頁面只負責參數選擇、進度、取消與呈現。歷史 ParameterId 固定後再動這條主線。 | 高。它控制取消世代、參數 ID、物件搜尋等待、尺寸／缺陷平行、影像 generation 和 UI snapshot；不宜一次搬整檔。 |
+| 3 | SystemParameterIniService.cs（2,763 行） | 保留外部 Load／Save façade，內部分成 INI 文件 parser／writer、Object Definition codec、Detection Parameter codec、共用 migration／reference repair。先抽不改格式的 helper，再驗證舊檔載入與保存往返一致。 | 中高。預設值、舊鍵遷移、ID 修復及引用關聯都集中在此；需要舊 Recipe 範例作回歸。 |
+| 4 | MainForm.DetectionParameter.DefectRegion.cs（2,877 行） | 把 ROI group membership、名稱唯一性、ID 解析和啟用條件驗證抽成純 DefectRoiGroupResolver／Validator；畫框、拖曳、overlay 再考慮移到專用 UserControl。 | 中。ROI 編輯座標和運算範圍必須一致；先抽資料規則比搬滑鼠互動安全。 |
+| 5 | CameraCaptureModule/Services/CameraService.cs（3,303 行） | 分開 Sapera 裝置探索／診斷、相機 feature 設定、取像生命週期；CameraService 留作協調器。不要只按行數切 helper，先用實機覆蓋 Software／External Trigger、Encoder Clear、connect／disconnect 和故障復原。 | 很高。SDK 資源生命週期與硬體設定相依，必須有可用相機／米輪才能可靠驗證。 |
+| 6 | MainForm.cs、ImageDisplayControl.cs、ObjectJudgementProcessing.cs（約 2,100–2,658 行） | MainForm 保持視窗組裝與導航，將共享狀態逐步移到功能控制器／狀態物件；影像控制項分開 renderer、viewport input 與 overlay；區塊處理分開純 OpenCV 運算與 UI。 | 高。畫面狀態、快取、影像參照計數及跨頁同步容易被破壞。 |
+
+歷史頁目前已分成 MainForm.InspectionHistory.cs（1,331 行 UI／協調）與 InspectionHistoryStore.cs（508 行 SQLite／資料模型）；這個界線比把 DB SQL 留在 MainForm 更清楚。下一步若再拆，可把歷史記錄 DTO 獨立成 model，但不應為了湊小檔而過度拆成大量單用途檔。
+
+### 不建議的拆法與實作順序
+
+- 不要為降低行數，把 private helper 搬到另一個 MainForm partial 後宣稱已完成模組化；它仍然共享主視窗全部狀態。
+- 不要一次重寫頻域、ResultReview、CameraService。先從 pure function／DTO／codec 開始，維持公開呼叫介面。
+- Designer 產生檔（如 MainForm.Designer.cs）不應手動大幅重排；版面重構應用 WinForms designer 或新增專用 UserControl。
+- 新 .cs 檔須加入舊式 csproj 的 Compile 清單，並一併更新此文件檔案職責表。
+- 建議每次只拆一個責任，先記錄代表性輸入的結果與計時，再搬移、比對輸出、建置並用實際 UI／影像驗收。先把 History 的 ParameterId 選擇與舊 DB 遷移驗收完成，再碰共用參數／Recipe 持久化。
+
+### 本次程式檔案修改
+
+目前工作目錄的未提交程式修改為：
+
+- MainForm.InspectionHistory.cs：歷史頁摘要卡片的高度／列配置修正；歷史重跑按保存的 ParameterId 選用參數，回跑後核對實際執行參數。
+- InspectionHistoryStore.cs：每日 DB schema 新增 parameter_id 欄位，舊資料庫以啟動時遷移補欄位；保存與讀取歷史紀錄時攜帶此 ID。
+
+以上程式修改目前只在本機工作目錄，尚未提交／推送。
