@@ -226,16 +226,15 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             bool inspectionModeRemainsActive = isInspectionOverviewInspectionModeActive;
+            bool continuousCaptureRemainsActive = isInspectionOverviewContinuousCaptureActive;
+            bool captureModeRemainsActive = inspectionModeRemainsActive ||
+                continuousCaptureRemainsActive;
             isInspectionOverviewActive = false;
-            if (isInspectionOverviewContinuousCaptureActive)
-            {
-                StopInspectionOverviewContinuousCapture(!inspectionModeRemainsActive);
-            }
             if (cameraCaptureHostControl != null)
             {
                 cameraCaptureHostControl.OverviewCaptureForwardingEnabled = false;
                 cameraCaptureHostControl.SuppressAutomaticInspectionForwarding =
-                    inspectionModeRemainsActive || remoteContinuousCaptureActive ||
+                    captureModeRemainsActive || remoteContinuousCaptureActive ||
                     Interlocked.CompareExchange(ref remoteInspectionRequested, 0, 0) != 0;
                 if (inspectionOverviewCameraImageCapturedSubscribed)
                 {
@@ -253,7 +252,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 inspectionOverviewPanel.Visible = false;
             }
-            if (!inspectionModeRemainsActive && !inspectionOverviewHasUninspectedCameraImage &&
+            if (!captureModeRemainsActive && !inspectionOverviewHasUninspectedCameraImage &&
                 inspectionOverviewImageDisplay != null &&
                 !inspectionOverviewImageDisplay.IsDisposed)
             {
@@ -1538,6 +1537,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void StopInspectionOverviewContinuousCapture(bool stopCameraPreview)
         {
             isInspectionOverviewContinuousCaptureActive = false;
+            Interlocked.Exchange(ref inspectionOverviewAcceptNextCameraFrame, 0);
             if (cameraCaptureHostControl != null)
             {
                 if (stopCameraPreview)
