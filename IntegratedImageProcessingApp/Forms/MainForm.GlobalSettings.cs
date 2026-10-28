@@ -393,6 +393,46 @@ namespace IntegratedImageProcessingApp.Forms
             stationIdentityLayout.Controls.Add(softwareIdApplyButton, 1, 1);
             stationIdentityGroup.Controls.Add(stationIdentityLayout);
 
+            var historyRecordGroup = new GroupBox
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                Left = 0,
+                Top = 660,
+                Width = 480,
+                Height = 100,
+                Text = "歷史紀錄",
+                Padding = new Padding(10)
+            };
+            var historyRecordLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 2,
+                Padding = new Padding(4)
+            };
+            historyRecordLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 76F));
+            historyRecordLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24F));
+            historyRecordLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            historyRecordLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            var recordResultReviewCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "參數結果確認執行完成後，新增一筆歷史資料",
+                Checked = cameraDeviceSettings != null && cameraDeviceSettings.RecordResultReviewRuns,
+                Anchor = AnchorStyles.Left
+            };
+            var historyRecordApplyButton = new Button
+            {
+                Text = "套用",
+                Width = 84,
+                Height = 28,
+                Anchor = AnchorStyles.Right
+            };
+            historyRecordLayout.Controls.Add(recordResultReviewCheckBox, 0, 0);
+            historyRecordLayout.SetColumnSpan(recordResultReviewCheckBox, 2);
+            historyRecordLayout.Controls.Add(historyRecordApplyButton, 1, 1);
+            historyRecordGroup.Controls.Add(historyRecordLayout);
+
             var pathLabel = new Label
             {
                 AutoSize = true,
@@ -400,11 +440,12 @@ namespace IntegratedImageProcessingApp.Forms
                 ForeColor = Color.FromArgb(92, 101, 116),
                 Padding = new Padding(0, 4, 0, 0)
             };
-            var container = new Panel { Dock = DockStyle.Top, Height = 676 };
+            var container = new Panel { Dock = DockStyle.Top, Height = 790 };
             container.Controls.Add(cameraPrecisionGroup);
             container.Controls.Add(programNameGroup);
             container.Controls.Add(connectionSettingsGroup);
             container.Controls.Add(stationIdentityGroup);
+            container.Controls.Add(historyRecordGroup);
             container.Controls.Add(pathLabel);
             Action updateGroupWidth = delegate
             {
@@ -416,8 +457,9 @@ namespace IntegratedImageProcessingApp.Forms
                     programNameGroup.Width = groupWidth;
                     connectionSettingsGroup.Width = groupWidth;
                     stationIdentityGroup.Width = groupWidth;
+                    historyRecordGroup.Width = groupWidth;
                 }
-                pathLabel.Location = new Point(4, stationIdentityGroup.Bottom + 2);
+                pathLabel.Location = new Point(4, historyRecordGroup.Bottom + 2);
             };
             container.Resize += delegate { updateGroupWidth(); };
             updateGroupWidth();
@@ -523,6 +565,28 @@ namespace IntegratedImageProcessingApp.Forms
                     MessageBox.Show(
                         this,
                         "無法保存軟體 ID：" + exception.Message,
+                        "全域設定",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            };
+
+            historyRecordApplyButton.Click += delegate
+            {
+                CameraDeviceSettings updated = CreateCameraDeviceSettingsCopy();
+                updated.RecordResultReviewRuns = recordResultReviewCheckBox.Checked;
+                try
+                {
+                    SaveCameraDeviceSettings(updated);
+                    statusLabel.Text = updated.RecordResultReviewRuns
+                        ? "已套用歷史紀錄設定：手動執行確認完成後會新增一筆歷史資料"
+                        : "已套用歷史紀錄設定：手動執行確認不新增歷史資料";
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(
+                        this,
+                        "無法保存歷史紀錄設定：" + exception.Message,
                         "全域設定",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
@@ -1041,7 +1105,8 @@ namespace IntegratedImageProcessingApp.Forms
                 ListenPort = cameraDeviceSettings == null
                     ? 5000
                     : cameraDeviceSettings.ListenPort,
-                AllowConnections = cameraDeviceSettings != null && cameraDeviceSettings.AllowConnections
+                AllowConnections = cameraDeviceSettings != null && cameraDeviceSettings.AllowConnections,
+                RecordResultReviewRuns = cameraDeviceSettings != null && cameraDeviceSettings.RecordResultReviewRuns
             };
         }
 

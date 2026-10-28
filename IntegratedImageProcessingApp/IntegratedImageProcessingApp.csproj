@@ -90,6 +90,7 @@
     <Compile Include="Controls\LargeImageSource.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Services\SystemParameterIniService.cs" />
+    <Compile Include="Services\InspectionHistoryStore.cs" />
     <Compile Include="Services\CameraDeviceSettingsIniService.cs" />
     <Compile Include="Services\ConnectionControllerSettingsService.cs" />
     <Compile Include="Services\InspectionTcpTransport.cs" />
@@ -262,6 +263,10 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Forms\MainForm.InspectionOverview.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Forms\MainForm.InspectionHistory.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
       <SubType>Form</SubType>
     </Compile>

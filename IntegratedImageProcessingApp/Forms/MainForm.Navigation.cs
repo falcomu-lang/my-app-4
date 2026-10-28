@@ -193,6 +193,12 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
+            if (isInspectionHistoryRerunActive &&
+                selectedFunction != ObjectDetectionResultReviewMenuText)
+            {
+                RestoreInspectionHistoryRerunContext();
+            }
+
             object selectedTarget = GetFunctionListNavigationTarget(
                 functionListBox.SelectedIndex,
                 selectedFunction);
@@ -311,6 +317,17 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 HideImageProcessingFlowTree();
                 ShowObjectDetectionResultReviewPanel();
+                if (inspectionHistoryNeedsReviewRefresh)
+                {
+                    ClearObjectDetectionResultReviewResults();
+                    objectDetectionResultReviewSelectedParameterId =
+                        string.IsNullOrWhiteSpace(inspectionHistoryPreviousReviewParameterId)
+                            ? activeObjectDetectionParameterId
+                            : inspectionHistoryPreviousReviewParameterId;
+                    PopulateObjectDetectionResultReviewParameters();
+                    inspectionHistoryNeedsReviewRefresh = false;
+                    inspectionHistoryPreviousReviewParameterId = null;
+                }
                 return;
             }
             else if (selectedFunction == InspectionOverviewMenuText)
@@ -324,8 +341,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 HideImageProcessingFlowTree();
                 rightPanelTitleLabel.Text = InspectionHistoryMenuText;
-                parameterPlaceholderLabel.Text = "歷史資料功能尚未實作。";
-                statusLabel.Text = "目前選擇：" + InspectionHistoryMenuText;
+                ShowInspectionHistoryPanel();
                 return;
             }
             else if (selectedFunction == ConnectionControllerMenuText)
@@ -582,6 +598,7 @@ namespace IntegratedImageProcessingApp.Forms
             displayedFunctionListText = null;
             bool wasObjectDetectionResultReviewMode = isObjectDetectionResultReviewMode;
             ExitInspectionOverviewMode();
+            ExitInspectionHistoryMode();
             ExitObjectDetectionResultReviewMode();
             HideImageRelationParameterPanel();
             HideObjectJudgementParameterPanel();

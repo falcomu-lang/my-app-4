@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -68,13 +69,7 @@ namespace IntegratedImageProcessingApp.Forms
             string imageSavePath = null;
             LargeImageSource memorySource = null;
             bool returnToInspectionOverview = isInspectionOverviewActive;
-            string previousCameraImagePath = latestCameraInspectionFramePath;
             ResultReviewParameterChoice selectedChoice = null;
-            if (string.IsNullOrWhiteSpace(previousCameraImagePath) &&
-                IsOwnedCameraInspectionImagePath(systemParameters.LastImagePath))
-            {
-                previousCameraImagePath = systemParameters.LastImagePath;
-            }
 
             try
             {
@@ -183,11 +178,6 @@ namespace IntegratedImageProcessingApp.Forms
                     SetObjectDetectionResultReviewControlsEnabled(true);
                 }
 
-                if (!string.Equals(previousCameraImagePath, imageSavePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    TryDeleteCameraInspectionImage(previousCameraImagePath);
-                }
-
                 bool showPendingOverviewSnapshot = returnToInspectionOverview &&
                     isInspectionOverviewActive && overviewIndex >= 0 &&
                     functionListBox.SelectedIndex == overviewIndex;
@@ -289,6 +279,7 @@ namespace IntegratedImageProcessingApp.Forms
             }
             finally
             {
+                SaveCameraInspectionHistory(imageIdentity, imageSavePath, sequenceNumber);
                 if (memorySource != null)
                 {
                     memorySource.ReleaseReference();
@@ -389,11 +380,12 @@ namespace IntegratedImageProcessingApp.Forms
 
         private static string CreateCameraInspectionImagePath(long sequenceNumber)
         {
+            DateTime capturedAt = DateTime.Now;
             string directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "IntegratedImageProcessingApp",
-                "CameraFrames");
-            string fileName = "camera_frame_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff") + "_" +
+                AppDomain.CurrentDomain.BaseDirectory,
+                "CameraCapture",
+                capturedAt.ToString("yyyyMMdd", CultureInfo.InvariantCulture));
+            string fileName = "camera_frame_" + capturedAt.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture) + "_" +
                 sequenceNumber.ToString("D10") + "_" + Guid.NewGuid().ToString("N") + ".tif";
             return Path.Combine(directory, fileName);
         }
@@ -444,13 +436,6 @@ namespace IntegratedImageProcessingApp.Forms
                     saveSource.ReleaseReference();
                 }
 
-                if (!string.Equals(
-                    Interlocked.CompareExchange(ref latestCameraInspectionFrameIdentity, null, null),
-                    imageIdentity,
-                    StringComparison.Ordinal))
-                {
-                    TryDeleteCameraInspectionImage(imagePath);
-                }
             });
         }
 
@@ -525,9 +510,8 @@ namespace IntegratedImageProcessingApp.Forms
             try
             {
                 string directory = Path.GetFullPath(Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "IntegratedImageProcessingApp",
-                    "CameraFrames"));
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    "CameraCapture"));
                 string fullPath = Path.GetFullPath(path);
                 string directoryPrefix = directory.TrimEnd(Path.DirectorySeparatorChar) +
                     Path.DirectorySeparatorChar;

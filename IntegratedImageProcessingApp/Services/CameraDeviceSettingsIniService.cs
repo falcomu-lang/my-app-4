@@ -17,6 +17,7 @@ namespace IntegratedImageProcessingApp.Services
             ListenIpAddress = "0.0.0.0";
             ListenPort = 5000;
             AllowConnections = false;
+            RecordResultReviewRuns = false;
         }
 
         public double XMillimetersPerPixel { get; set; }
@@ -34,6 +35,8 @@ namespace IntegratedImageProcessingApp.Services
         public int ListenPort { get; set; }
 
         public bool AllowConnections { get; set; }
+
+        public bool RecordResultReviewRuns { get; set; }
     }
 
     public sealed class CameraDeviceSettingsIniService
@@ -56,6 +59,7 @@ namespace IntegratedImageProcessingApp.Services
             bool inCameraSection = false;
             bool inApplicationSection = false;
             bool inNetworkSection = false;
+            bool inHistorySection = false;
             foreach (string rawLine in File.ReadAllLines(filePath))
             {
                 string line = rawLine.Trim();
@@ -75,6 +79,8 @@ namespace IntegratedImageProcessingApp.Services
                         sectionName, "Application", StringComparison.OrdinalIgnoreCase);
                     inNetworkSection = string.Equals(
                         sectionName, "Network", StringComparison.OrdinalIgnoreCase);
+                    inHistorySection = string.Equals(
+                        sectionName, "History", StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
@@ -126,6 +132,11 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     settings.AllowConnections = ParseBoolean(value, false);
                 }
+                else if (inHistorySection && string.Equals(
+                    key, "RecordResultReviewRuns", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.RecordResultReviewRuns = ParseBoolean(value, false);
+                }
             }
 
             return settings;
@@ -161,6 +172,9 @@ namespace IntegratedImageProcessingApp.Services
                 : settings.ListenIpAddress.Trim());
             content.Append("ListenPort=").AppendLine(Math.Max(1024, Math.Min(65535, settings.ListenPort)).ToString(CultureInfo.InvariantCulture));
             content.Append("AllowConnections=").AppendLine(settings.AllowConnections ? "true" : "false");
+            content.AppendLine("[History]");
+            content.Append("RecordResultReviewRuns=")
+                .AppendLine(settings.RecordResultReviewRuns ? "true" : "false");
             string temporaryPath = filePath + ".tmp";
             try
             {

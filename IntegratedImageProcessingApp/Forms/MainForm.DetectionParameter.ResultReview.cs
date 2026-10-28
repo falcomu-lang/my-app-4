@@ -577,7 +577,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Margin = new Padding(4)
             };
             objectDetectionResultReviewRunButton.Click +=
-                async delegate { await RunObjectDetectionResultReviewAsync(); };
+                async delegate { await RunObjectDetectionResultReviewAsync(false, true); };
             header.Controls.Add(objectDetectionResultReviewRunButton, 4, 0);
 
             objectDetectionResultReviewStatusLabel = new Label
@@ -1016,7 +1016,9 @@ namespace IntegratedImageProcessingApp.Forms
             }
         }
 
-        private async Task RunObjectDetectionResultReviewAsync(bool preserveCurrentSnapshot = false)
+        private async Task RunObjectDetectionResultReviewAsync(
+            bool preserveCurrentSnapshot = false,
+            bool recordHistory = false)
         {
             if (isObjectDetectionResultReviewRunning)
             {
@@ -1546,6 +1548,10 @@ namespace IntegratedImageProcessingApp.Forms
                     BuildObjectDetectionResultReviewSummary(parameter, objects.Count);
                 objectDetectionResultReviewImageGeneration = imageContentGeneration;
                 CaptureObjectDetectionResultReviewSnapshot(parameter, definition, objects);
+                if (recordHistory)
+                {
+                    SaveManualObjectDetectionResultReviewHistory();
+                }
                 RestoreObjectDetectionResultReviewSnapshotDisplays();
                 objectDetectionResultReviewLastSuccessfulSettingsSignature =
                     currentSettingsSignature;
