@@ -62,6 +62,40 @@ namespace IntegratedImageProcessingApp.Controls
             get { return hasCameraProgramBeenOpened; }
         }
 
+        public bool InitializeCameraProgram(out string message)
+        {
+            if (disposing || IsDisposed)
+            {
+                message = "Camera control is being disposed.";
+                return false;
+            }
+
+            try
+            {
+                EnsureCameraForm();
+                hasCameraProgramBeenOpened = cameraForm != null && !cameraForm.IsDisposed;
+                message = hasCameraProgramBeenOpened ? null : "Camera control is not available.";
+                return hasCameraProgramBeenOpened;
+            }
+            catch (Exception exception)
+            {
+                hasCameraProgramBeenOpened = false;
+                if (cameraForm != null)
+                {
+                    try
+                    {
+                        cameraForm.Dispose();
+                    }
+                    catch
+                    {
+                    }
+                    cameraForm = null;
+                }
+                message = exception.Message;
+                return false;
+            }
+        }
+
         public bool SuppressAutomaticInspectionForwarding
         {
             get { return suppressAutomaticInspectionForwarding; }
@@ -239,8 +273,8 @@ namespace IntegratedImageProcessingApp.Controls
             base.OnVisibleChanged(e);
             if (Visible && !disposing)
             {
-                hasCameraProgramBeenOpened = true;
-                EnsureCameraForm();
+                string message;
+                InitializeCameraProgram(out message);
             }
         }
 
@@ -271,10 +305,15 @@ namespace IntegratedImageProcessingApp.Controls
 
         private void EnsureCameraForm()
         {
-            if (cameraForm != null || IsDisposed || Disposing)
+            if (IsDisposed || Disposing || disposing)
             {
                 return;
             }
+            if (cameraForm != null && !cameraForm.IsDisposed)
+            {
+                return;
+            }
+            cameraForm = null;
 
             cameraForm = new MainForm(new CameraService(), new SettingsService())
             {

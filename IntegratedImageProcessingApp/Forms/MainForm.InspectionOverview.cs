@@ -225,20 +225,17 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            if (isInspectionOverviewInspectionModeActive)
-            {
-                StopInspectionOverviewInspectionMode(true);
-            }
+            bool inspectionModeRemainsActive = isInspectionOverviewInspectionModeActive;
             isInspectionOverviewActive = false;
             if (isInspectionOverviewContinuousCaptureActive)
             {
-                StopInspectionOverviewContinuousCapture(true);
+                StopInspectionOverviewContinuousCapture(!inspectionModeRemainsActive);
             }
             if (cameraCaptureHostControl != null)
             {
                 cameraCaptureHostControl.OverviewCaptureForwardingEnabled = false;
                 cameraCaptureHostControl.SuppressAutomaticInspectionForwarding =
-                    remoteContinuousCaptureActive ||
+                    inspectionModeRemainsActive || remoteContinuousCaptureActive ||
                     Interlocked.CompareExchange(ref remoteInspectionRequested, 0, 0) != 0;
                 if (inspectionOverviewCameraImageCapturedSubscribed)
                 {
@@ -256,7 +253,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 inspectionOverviewPanel.Visible = false;
             }
-            if (!inspectionOverviewHasUninspectedCameraImage &&
+            if (!inspectionModeRemainsActive && !inspectionOverviewHasUninspectedCameraImage &&
                 inspectionOverviewImageDisplay != null &&
                 !inspectionOverviewImageDisplay.IsDisposed)
             {
@@ -1428,11 +1425,10 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void InspectionOverviewConnectCameraButton_Click(object sender, EventArgs e)
         {
-            if (cameraCaptureHostControl == null ||
-                !cameraCaptureHostControl.HasCameraProgramBeenOpened)
+            string initializationMessage;
+            if (!EnsureCameraCaptureProgramInitialized(out initializationMessage))
             {
-                SetCameraInspectionStatus(
-                    "請先開啟「全域設定」>「與線掃描取像結合」攝影機程式，再返回檢測總覽連線。");
+                SetCameraInspectionStatus("線掃描攝影機程式初始化失敗：" + initializationMessage);
                 return;
             }
 

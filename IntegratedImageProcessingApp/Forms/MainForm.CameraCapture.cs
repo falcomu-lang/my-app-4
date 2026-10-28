@@ -98,10 +98,15 @@ namespace IntegratedImageProcessingApp.Forms
                 if (!IsObjectDetectionResultReviewUiAvailable())
                 {
                     bool restoreOverview = returnToInspectionOverview;
-                    if (restoreOverview)
+                    bool preserveInspectionMode = restoreOverview &&
+                        isInspectionOverviewInspectionModeActive;
+                    if (restoreOverview && !preserveInspectionMode)
                     {
                         ExitInspectionOverviewMode();
                     }
+
+                    // First-time result-review initialization is an internal page setup,
+                    // not an operator request to stop the latched overview inspection mode.
                     ShowObjectDetectionResultReviewPanel();
                     if (restoreOverview)
                     {

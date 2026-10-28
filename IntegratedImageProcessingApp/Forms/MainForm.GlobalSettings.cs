@@ -45,11 +45,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void ShowGlobalSettingsPanel()
         {
-            if (globalSettingsTabControl == null || globalSettingsTabControl.IsDisposed)
-            {
-                globalSettingsTabControl = CreateGlobalSettingsTabControl();
-                centerPanel.Controls.Add(globalSettingsTabControl);
-            }
+            EnsureGlobalSettingsTabControlCreated();
 
             if (!isGlobalSettingsActive)
             {
@@ -82,6 +78,30 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 mainLayoutPanel.ResumeLayout(true);
             }
+        }
+
+        private void EnsureGlobalSettingsTabControlCreated()
+        {
+            if (globalSettingsTabControl != null && !globalSettingsTabControl.IsDisposed)
+            {
+                return;
+            }
+
+            globalSettingsTabControl = CreateGlobalSettingsTabControl();
+            centerPanel.Controls.Add(globalSettingsTabControl);
+            globalSettingsTabControl.Visible = false;
+        }
+
+        private bool EnsureCameraCaptureProgramInitialized(out string message)
+        {
+            EnsureGlobalSettingsTabControlCreated();
+            if (cameraCaptureHostControl == null || cameraCaptureHostControl.IsDisposed)
+            {
+                message = "無法建立線掃描攝影機控制項。";
+                return false;
+            }
+
+            return cameraCaptureHostControl.InitializeCameraProgram(out message);
         }
 
         private void HideGlobalSettingsPanel()
