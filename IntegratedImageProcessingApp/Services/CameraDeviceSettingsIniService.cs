@@ -18,6 +18,7 @@ namespace IntegratedImageProcessingApp.Services
             ListenPort = 5000;
             AllowConnections = false;
             RecordResultReviewRuns = false;
+            KeepResultReviewImages = true;
         }
 
         public double XMillimetersPerPixel { get; set; }
@@ -37,6 +38,8 @@ namespace IntegratedImageProcessingApp.Services
         public bool AllowConnections { get; set; }
 
         public bool RecordResultReviewRuns { get; set; }
+
+        public bool KeepResultReviewImages { get; set; }
     }
 
     public sealed class CameraDeviceSettingsIniService
@@ -137,6 +140,11 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     settings.RecordResultReviewRuns = ParseBoolean(value, false);
                 }
+                else if (inHistorySection && string.Equals(
+                    key, "KeepResultReviewImages", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.KeepResultReviewImages = ParseBoolean(value, true);
+                }
             }
 
             return settings;
@@ -175,6 +183,8 @@ namespace IntegratedImageProcessingApp.Services
             content.AppendLine("[History]");
             content.Append("RecordResultReviewRuns=")
                 .AppendLine(settings.RecordResultReviewRuns ? "true" : "false");
+            content.Append("KeepResultReviewImages=")
+                .AppendLine(settings.KeepResultReviewImages ? "true" : "false");
             string temporaryPath = filePath + ".tmp";
             try
             {

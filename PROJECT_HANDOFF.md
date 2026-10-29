@@ -1,11 +1,11 @@
 # Project Handoff：整合式影像處理軟體
 
-文件更新日：2026-10-28
-程式碼基準：main／origin/main 的 914d5c9fa56add98f08fdb2886e7176819106b90（feat: add inspection history and result review recording）
+文件更新日：2026-10-29
+程式碼基準：main／origin/main 的 6f5054dea2d57029ddc521629a342e3213cbdd48（docs: refresh handoff and secure history replay parameter）
 Solution：MyApp4.sln
 工作目錄：此文件所在專案根目錄
 
-核對時 main 與 origin/main 指向同一個 914d5c9；工作目錄另有兩個尚未提交的程式檔修改：MainForm.InspectionHistory.cs 與 InspectionHistoryStore.cs。它們包含歷史重跑依 ParameterId 精確選取參數、舊資料相容防誤選，以及歷史頁摘要卡片版面修正；尚未推送到 GitHub。最近一次程式修改已成功建置到替代輸出目錄；本次只更新文件，未重跑建置、GUI、相機或演算法驗收。文件中的狀態以目前工作目錄為準，待驗收項目會明確標示。
+核對時 main 與 origin/main 指向同一個 6f5054d。工作目錄另有四個尚未提交的程式／設定修改：歷史摘要卡片框線版面、全域設定圖片保留開關、設定檔保存及歷史記錄不保留圖片時仍保存判定明細。新設定對缺少該鍵的舊 INI 預設為保留，以維持既有行為。這些修改尚未推送；狀態以目前工作目錄為準。
 
 ## 1. 專案定位與目前結論
 
@@ -106,7 +106,7 @@ CameraCaptureModule / Sapera
 | 檢測總覽 | 原始影像、物件格位、尺寸／缺陷／綜合結果、篩選、選取聚焦、回復全圖及相機操作已接入。 | 真正相機觸發、持續檢測壓力、缺件／無效參數與現場顯示。 |
 | 相機模組 | 嵌入主程式，保留相機原本設定、波形、米輪彈出視窗；具備 Mono8 frame event。 | Sapera 驅動、相機、米輪、Software／External Trigger 的實機完整驗收。 |
 | TCP/IP | 本機 listener、總控多站卡片、心跳、重連、狀態和命令程式碼存在。 | 防火牆、多機、多站 ID、掉線恢復與長時間連線驗收。 |
-| 歷史資料 | 已有日期、Recipe、判定狀態查詢、摘要卡、檢測清單、尺寸／缺陷明細及右鍵歷史重跑；相機紀錄自動保存，手動結果確認由全域開關控制。 | 驗收每日 DB、兩種記錄路徑、圖片保存失敗、舊 schema 遷移、長期容量與備份。歷史重跑依批次 ParameterId 精確選擇 Recipe 快照中的參數；舊資料含多參數而無 ID 時拒絕猜測。 |
+| 歷史資料 | 已有日期、Recipe、判定狀態查詢、摘要卡、檢測清單、尺寸／缺陷明細及右鍵歷史重跑；相機紀錄自動保存，手動結果確認可獨立設定是否記錄及是否另存圖片。 | 驗收每日 DB、兩種記錄路徑、圖片保存失敗、舊 schema 遷移、長期容量與備份。未保留圖片時仍保存判定明細，但該筆無法用歷史原圖重新檢測。歷史重跑依批次 ParameterId 精確選擇 Recipe 快照中的參數；舊資料含多參數而無 ID 時拒絕猜測。 |
 
 ## 4. 平行運算與效能解讀
 
@@ -127,7 +127,7 @@ CameraCaptureModule / Sapera
 | SystemParameters.ini | SystemParameterIniService 保存目前正在編輯的完整檢測設定。 | 新建參數會重設這份設定；它與 recipe 目錄的快照分開。 |
 | recipe/parameterList.json | DetectionRecipeCatalogService 保存 Recipe ID、顯示名稱、說明與排序。 | 名稱可編輯，關聯以 ID 為主。 |
 | recipe/{ID}.ini | 每個 Recipe 的完整參數快照。 | 一次只有一組載入為作用中設定；套用 Recipe 會以快照更新目前流程。 |
-| config/device-settings.ini | CameraDeviceSettingsIniService 保存設備名稱／站點 ID、X/Y mm-per-pixel、換算開關、本機監聽 IP／Port、允許連線及手動結果確認歷史記錄開關。 | 缺檔預設精度 1、換算關閉、ID 1、0.0.0.0:5000、允許連線關閉。程式只在輸出目錄缺少時複製初始檔。 |
+| config/device-settings.ini | CameraDeviceSettingsIniService 保存設備名稱／站點 ID、X/Y mm-per-pixel、換算開關、本機監聽 IP／Port、允許連線、手動結果確認歷史記錄及圖片保留開關。 | 缺檔預設精度 1、換算關閉、ID 1、0.0.0.0:5000、允許連線關閉；圖片保留預設開啟。程式只在輸出目錄缺少時複製初始檔。 |
 | config/connection-controller-settings.xml | ConnectionControllerSettingsService 保存總控監控、進入頁面自動連線、重連、timeout、heartbeat 與站點表。 | 舊 XML 沒有 MonitorCamera 時，模型預設為啟用。 |
 | captureSetting.ini | CameraCaptureModule 的 SettingsService 保存相機、觸發、預覽、自動存圖、格式與米輪欄位。 | 儲存於執行檔目錄；缺少時嘗試複製同目錄的 settings.ini 或 setting.ini。 |
 | CameraCapture/yyyyMMdd | 主程式相機檢測影格保存的原始灰階 TIFF；CameraCaptureModule 也會依其自動存圖設定保存影像。 | 主程式相機流程背景保存，演算法直接用記憶體 frame，不讀回 TIFF。 |
@@ -186,11 +186,11 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 | IntegratedImageProcessingApp/Forms/MainForm.Designer.cs | 主視窗設計器產生的三欄版面與基本控制項。 |
 | IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs | 左側選單導覽、功能切換、鍵盤操作及相同目標的重複選取處理。 |
 | IntegratedImageProcessingApp/Forms/MainForm.FunctionTree.cs | 找物件流程、影像處理步驟／群組及 ROI 清單的情境選單與清單操作。 |
-| IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs | 全域設定頁、CameraCaptureHostControl、設備精度／IP／Port／站點 ID 及總控設定 UI。 |
+| IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs | 全域設定頁、CameraCaptureHostControl、設備精度／IP／Port／站點 ID、歷史紀錄／圖片保留及總控設定 UI。 |
 | IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs | TCP listener／station 連線、站點卡片、心跳狀態、遠端連續取像與檢測命令、逐物件結果發布。 |
 | IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs | 接收本機相機影格、忙碌丟棄、建立記憶體影像來源、背景保存原始 TIFF、安排結果確認流程及回報總覽／歷史資料。 |
 | IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs | 檢測總覽原圖、逐物件矩陣／選取／篩選、連線與連續取像／持續檢測按鈕。 |
-| IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs | 歷史頁 UI、查詢／摘要／明細、手動與相機紀錄建立、歷史參數快照重跑及返回前工作狀態還原。 |
+| IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs | 歷史頁 UI、查詢／摘要／明細、手動與相機紀錄建立、手動圖片副本保留控制、歷史參數快照重跑及返回前工作狀態還原。 |
 | IntegratedImageProcessingApp/Forms/MainForm.ImageView.cs | 多影像頁縮放／平移同步、視圖狀態更新及顯示模式切換。 |
 | IntegratedImageProcessingApp/Forms/MainForm.Preprocessing.cs | 前處理參數 UI、步驟排序及 OpenCV 灰階前處理排程。 |
 | IntegratedImageProcessingApp/Forms/MainForm.ImageProcessing.cs | 影像處理步驟運算、遮罩、來源解析與二值 MASK 快取。 |
@@ -236,7 +236,7 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 | IntegratedImageProcessingApp/Services/SystemParameterIniService.cs | SystemParameters.ini 與 Recipe INI 的欄位讀寫、預設值、正規化與舊欄位相容處理。 |
 | IntegratedImageProcessingApp/Services/DetectionRecipeCatalogService.cs | Recipe 清單 JSON、參數檔加入、名稱／說明／排序及 ID 對應。 |
 | IntegratedImageProcessingApp/Services/InspectionHistoryStore.cs | 每日 SQLite schema／遷移、批次與逐物件明細交易、Recipe 快照 SHA-256 去重、路徑轉換與舊資料讀取。 |
-| IntegratedImageProcessingApp/Services/CameraDeviceSettingsIniService.cs | 全域設備精度、站點 ID 和本機網路設定的 INI 讀寫／預設值。 |
+| IntegratedImageProcessingApp/Services/CameraDeviceSettingsIniService.cs | 全域設備精度、站點 ID、本機網路、手動歷史記錄與圖片保留設定的 INI 讀寫／預設值。 |
 | IntegratedImageProcessingApp/Services/ConnectionControllerSettingsService.cs | 總控站點表、連線行為 XML 讀寫。 |
 | IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs | TCP listener/client、JSON line 訊息、peer／heartbeat／連線事件與傳送。 |
 | IntegratedImageProcessingApp/Services/OpenCvImageProcessingService.cs | 通用 OpenCV 影像處理函式。 |
@@ -373,9 +373,10 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 
 ### 本次程式檔案修改
 
-目前工作目錄的未提交程式修改為：
+目前工作目錄未提交的程式／設定修改：
 
-- MainForm.InspectionHistory.cs：歷史頁摘要卡片的高度／列配置修正；歷史重跑按保存的 ParameterId 選用參數，回跑後核對實際執行參數。
-- InspectionHistoryStore.cs：每日 DB schema 新增 parameter_id 欄位，舊資料庫以啟動時遷移補欄位；保存與讀取歷史紀錄時攜帶此 ID。
+- MainForm.InspectionHistory.cs：增加摘要卡下方留白並使用單一框線；手動結果確認關閉圖片保留時，仍寫入歷史判定及明細但不另存圖片副本。
+- MainForm.GlobalSettings.cs：歷史紀錄群組新增「保留參數結果確認的圖片」核取方塊及套用保存。
+- CameraDeviceSettingsIniService.cs、config/device-settings.ini：保存圖片保留設定；舊設定檔缺少此鍵時預設保留，以延續原本行為。
 
-以上程式修改目前只在本機工作目錄，尚未提交／推送。
+以上修改仍在本機工作目錄，尚未提交／推送；需建置及檢查實際畫面後再確認。

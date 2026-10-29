@@ -399,7 +399,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Left = 0,
                 Top = 660,
                 Width = 480,
-                Height = 100,
+                Height = 126,
                 Text = "歷史紀錄",
                 Padding = new Padding(10)
             };
@@ -407,18 +407,26 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 2,
+                RowCount = 3,
                 Padding = new Padding(4)
             };
             historyRecordLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 76F));
             historyRecordLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 24F));
-            historyRecordLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            historyRecordLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            historyRecordLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             historyRecordLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             var recordResultReviewCheckBox = new CheckBox
             {
                 AutoSize = true,
                 Text = "參數結果確認執行完成後，新增一筆歷史資料",
                 Checked = cameraDeviceSettings != null && cameraDeviceSettings.RecordResultReviewRuns,
+                Anchor = AnchorStyles.Left
+            };
+            var keepResultReviewImagesCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "保留參數結果確認的圖片",
+                Checked = cameraDeviceSettings == null || cameraDeviceSettings.KeepResultReviewImages,
                 Anchor = AnchorStyles.Left
             };
             var historyRecordApplyButton = new Button
@@ -430,7 +438,9 @@ namespace IntegratedImageProcessingApp.Forms
             };
             historyRecordLayout.Controls.Add(recordResultReviewCheckBox, 0, 0);
             historyRecordLayout.SetColumnSpan(recordResultReviewCheckBox, 2);
-            historyRecordLayout.Controls.Add(historyRecordApplyButton, 1, 1);
+            historyRecordLayout.Controls.Add(keepResultReviewImagesCheckBox, 0, 1);
+            historyRecordLayout.SetColumnSpan(keepResultReviewImagesCheckBox, 2);
+            historyRecordLayout.Controls.Add(historyRecordApplyButton, 1, 2);
             historyRecordGroup.Controls.Add(historyRecordLayout);
 
             var pathLabel = new Label
@@ -440,7 +450,7 @@ namespace IntegratedImageProcessingApp.Forms
                 ForeColor = Color.FromArgb(92, 101, 116),
                 Padding = new Padding(0, 4, 0, 0)
             };
-            var container = new Panel { Dock = DockStyle.Top, Height = 790 };
+            var container = new Panel { Dock = DockStyle.Top, Height = 820 };
             container.Controls.Add(cameraPrecisionGroup);
             container.Controls.Add(programNameGroup);
             container.Controls.Add(connectionSettingsGroup);
@@ -575,12 +585,16 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 CameraDeviceSettings updated = CreateCameraDeviceSettingsCopy();
                 updated.RecordResultReviewRuns = recordResultReviewCheckBox.Checked;
+                updated.KeepResultReviewImages = keepResultReviewImagesCheckBox.Checked;
                 try
                 {
                     SaveCameraDeviceSettings(updated);
-                    statusLabel.Text = updated.RecordResultReviewRuns
+                    string historyStatus = updated.RecordResultReviewRuns
                         ? "已套用歷史紀錄設定：手動執行確認完成後會新增一筆歷史資料"
                         : "已套用歷史紀錄設定：手動執行確認不新增歷史資料";
+                    statusLabel.Text = historyStatus + (updated.KeepResultReviewImages
+                        ? "；保留參數結果確認圖片"
+                        : "；不另存參數結果確認圖片");
                 }
                 catch (Exception exception)
                 {
@@ -1106,7 +1120,8 @@ namespace IntegratedImageProcessingApp.Forms
                     ? 5000
                     : cameraDeviceSettings.ListenPort,
                 AllowConnections = cameraDeviceSettings != null && cameraDeviceSettings.AllowConnections,
-                RecordResultReviewRuns = cameraDeviceSettings != null && cameraDeviceSettings.RecordResultReviewRuns
+                RecordResultReviewRuns = cameraDeviceSettings != null && cameraDeviceSettings.RecordResultReviewRuns,
+                KeepResultReviewImages = cameraDeviceSettings == null || cameraDeviceSettings.KeepResultReviewImages
             };
         }
 

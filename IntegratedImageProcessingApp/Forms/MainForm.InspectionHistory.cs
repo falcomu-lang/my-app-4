@@ -149,7 +149,7 @@ namespace IntegratedImageProcessingApp.Forms
             content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 84F));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 88F));
+            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 98F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 190F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
@@ -346,7 +346,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Fill,
                 ColumnCount = 5,
                 RowCount = 1,
-                Margin = new Padding(0, 7, 0, 0)
+                Margin = new Padding(0, 7, 0, 5)
             };
             for (int index = 0; index < 5; index++)
             {
@@ -369,18 +369,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Fill,
                 BackColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle,
-                Padding = new Padding(9, 5, 5, 3)
-            };
-            card.Paint += delegate(object sender, PaintEventArgs e)
-            {
-                Panel target = sender as Panel;
-                if (target != null)
-                {
-                    using (var pen = new Pen(Color.FromArgb(211, 221, 234)))
-                    {
-                        e.Graphics.DrawRectangle(pen, 0, 0, target.Width - 1, target.Height - 1);
-                    }
-                }
+                Padding = new Padding(9, 5, 8, 5)
             };
             var cardContent = new TableLayoutPanel
             {
@@ -793,22 +782,29 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            string imagePath = snapshot.ImagePath;
-            if (imagePath.StartsWith(CameraMemoryImageIdentityPrefix, StringComparison.Ordinal))
+            bool keepImage = cameraDeviceSettings.KeepResultReviewImages;
+            string imagePath = string.Empty;
+            bool archiveSourceImage = false;
+            if (keepImage)
             {
-                if (!string.Equals(latestCameraInspectionFrameIdentity, imagePath, StringComparison.Ordinal) ||
-                    string.IsNullOrWhiteSpace(latestCameraInspectionFramePath))
+                imagePath = snapshot.ImagePath;
+                if (imagePath.StartsWith(CameraMemoryImageIdentityPrefix, StringComparison.Ordinal))
                 {
-                    SetCameraInspectionStatus("檢測已完成，但無法保存歷史資料：找不到相機原圖路徑。");
+                    if (!string.Equals(latestCameraInspectionFrameIdentity, imagePath, StringComparison.Ordinal) ||
+                        string.IsNullOrWhiteSpace(latestCameraInspectionFramePath))
+                    {
+                        SetCameraInspectionStatus("檢測已完成，但無法保存歷史資料：找不到相機原圖路徑。");
+                        return;
+                    }
+                    imagePath = latestCameraInspectionFramePath;
+                }
+
+                if (!File.Exists(imagePath) && !IsOwnedCameraInspectionImagePath(imagePath))
+                {
+                    SetCameraInspectionStatus("檢測已完成，但無法保存歷史資料：原始圖片檔不存在。");
                     return;
                 }
-                imagePath = latestCameraInspectionFramePath;
-            }
-
-            if (!File.Exists(imagePath) && !IsOwnedCameraInspectionImagePath(imagePath))
-            {
-                SetCameraInspectionStatus("檢測已完成，但無法保存歷史資料：原始圖片檔不存在。");
-                return;
+                archiveSourceImage = !IsOwnedCameraInspectionImagePath(imagePath);
             }
 
             SaveInspectionHistoryRecord(
@@ -816,7 +812,7 @@ namespace IntegratedImageProcessingApp.Forms
                 DateTime.Now,
                 -1,
                 imagePath,
-                !IsOwnedCameraInspectionImagePath(imagePath));
+                archiveSourceImage);
         }
 
         private void SaveInspectionHistoryRecord(
@@ -828,7 +824,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             try
             {
-                if (snapshot == null || string.IsNullOrWhiteSpace(imagePath))
+                if (snapshot == null)
                 {
                     return;
                 }
