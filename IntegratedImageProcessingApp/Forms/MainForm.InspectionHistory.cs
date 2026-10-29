@@ -149,7 +149,7 @@ namespace IntegratedImageProcessingApp.Forms
             content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 54F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 84F));
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 98F));
+            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 88F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 190F));
             content.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
@@ -346,8 +346,11 @@ namespace IntegratedImageProcessingApp.Forms
                 Dock = DockStyle.Fill,
                 ColumnCount = 5,
                 RowCount = 1,
+                GrowStyle = TableLayoutPanelGrowStyle.FixedSize,
                 Margin = new Padding(0, 7, 0, 5)
             };
+            // Constrain the cards to the available height instead of their default preferred height.
+            summary.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             for (int index = 0; index < 5; index++)
             {
                 summary.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
