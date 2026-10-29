@@ -284,9 +284,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="config\device-settings.ini" />
-    <Content Include="config\connection-controller-settings.xml">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <None Include="config\connection-controller-settings.xml" />
     <Content Include="$(LsiNativeDirectory)\LSI8181_64.dll" Condition="Exists('$(LsiNativeDirectory)\LSI8181_64.dll')">
       <Link>LSI8181_64.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -309,5 +307,13 @@
           DestinationFiles="$(TargetDir)config\device-settings.ini"
           SkipUnchangedFiles="true"
           Condition="!Exists('$(TargetDir)config\device-settings.ini')" />
+  </Target>
+  <Target Name="SeedConnectionControllerSettingsInOutputIfMissing" AfterTargets="Build">
+    <MakeDir Directories="$(TargetDir)config"
+             Condition="!Exists('$(TargetDir)config\connection-controller-settings.xml')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\config\connection-controller-settings.xml"
+          DestinationFiles="$(TargetDir)config\connection-controller-settings.xml"
+          SkipUnchangedFiles="true"
+          Condition="!Exists('$(TargetDir)config\connection-controller-settings.xml')" />
   </Target>
 </Project>

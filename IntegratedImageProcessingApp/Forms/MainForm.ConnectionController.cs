@@ -1080,7 +1080,6 @@ namespace IntegratedImageProcessingApp.Forms
                         Name = message.StationName ?? "站點 " + stationId,
                         Enabled = true
                     };
-                    connectionControllerSettings.Stations.Add(configuration);
                 }
                 state = new ConnectionControllerStationViewState { Configuration = configuration };
                 state.Card = CreateConnectionControllerStationCard(state);

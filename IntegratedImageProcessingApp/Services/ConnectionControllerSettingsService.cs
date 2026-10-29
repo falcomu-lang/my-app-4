@@ -10,7 +10,7 @@ namespace IntegratedImageProcessingApp.Services
     {
         public ConnectionControllerSettings()
         {
-            MonitorCamera = true;
+            MonitorCamera = false;
             ConnectWhenOpened = false;
             AutoReconnect = true;
             ConnectTimeoutSeconds = 5;
