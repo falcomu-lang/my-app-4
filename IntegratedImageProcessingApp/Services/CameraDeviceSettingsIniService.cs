@@ -19,6 +19,8 @@ namespace IntegratedImageProcessingApp.Services
             AllowConnections = false;
             RecordResultReviewRuns = false;
             KeepResultReviewImages = true;
+            LimitImageYHeightEnabled = false;
+            RequiredImageYHeight = 0;
         }
 
         public double XMillimetersPerPixel { get; set; }
@@ -40,6 +42,10 @@ namespace IntegratedImageProcessingApp.Services
         public bool RecordResultReviewRuns { get; set; }
 
         public bool KeepResultReviewImages { get; set; }
+
+        public bool LimitImageYHeightEnabled { get; set; }
+
+        public int RequiredImageYHeight { get; set; }
     }
 
     public sealed class CameraDeviceSettingsIniService
@@ -63,6 +69,7 @@ namespace IntegratedImageProcessingApp.Services
             bool inApplicationSection = false;
             bool inNetworkSection = false;
             bool inHistorySection = false;
+            bool inImageSpecificationSection = false;
             foreach (string rawLine in File.ReadAllLines(filePath))
             {
                 string line = rawLine.Trim();
@@ -84,6 +91,8 @@ namespace IntegratedImageProcessingApp.Services
                         sectionName, "Network", StringComparison.OrdinalIgnoreCase);
                     inHistorySection = string.Equals(
                         sectionName, "History", StringComparison.OrdinalIgnoreCase);
+                    inImageSpecificationSection = string.Equals(
+                        sectionName, "ImageSpecification", StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
@@ -145,6 +154,16 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     settings.KeepResultReviewImages = ParseBoolean(value, true);
                 }
+                else if (inImageSpecificationSection && string.Equals(
+                    key, "LimitImageYHeightEnabled", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.LimitImageYHeightEnabled = ParseBoolean(value, false);
+                }
+                else if (inImageSpecificationSection && string.Equals(
+                    key, "RequiredImageYHeight", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.RequiredImageYHeight = ParseIntegerInRange(value, 0, 0, int.MaxValue);
+                }
             }
 
             return settings;
@@ -185,6 +204,11 @@ namespace IntegratedImageProcessingApp.Services
                 .AppendLine(settings.RecordResultReviewRuns ? "true" : "false");
             content.Append("KeepResultReviewImages=")
                 .AppendLine(settings.KeepResultReviewImages ? "true" : "false");
+            content.AppendLine("[ImageSpecification]");
+            content.Append("LimitImageYHeightEnabled=")
+                .AppendLine(settings.LimitImageYHeightEnabled ? "true" : "false");
+            content.Append("RequiredImageYHeight=")
+                .AppendLine(Math.Max(0, settings.RequiredImageYHeight).ToString(CultureInfo.InvariantCulture));
             string temporaryPath = filePath + ".tmp";
             try
             {

@@ -391,8 +391,8 @@ namespace IntegratedImageProcessingApp.Forms
             var historyRecordGroup = new GroupBox
             {
                 Anchor = AnchorStyles.Top | AnchorStyles.Left,
-                Left = 0,
-                Top = 660,
+                Left = 496,
+                Top = 0,
                 Width = 480,
                 Height = 126,
                 Text = "歷史紀錄",
@@ -438,6 +438,72 @@ namespace IntegratedImageProcessingApp.Forms
             historyRecordLayout.Controls.Add(historyRecordApplyButton, 1, 2);
             historyRecordGroup.Controls.Add(historyRecordLayout);
 
+            var imageSpecificationGroup = new GroupBox
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                Left = 496,
+                Top = 136,
+                Width = 480,
+                Height = 150,
+                Text = "合格影像規格",
+                Padding = new Padding(10)
+            };
+            var imageSpecificationLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 4,
+                Padding = new Padding(4)
+            };
+            imageSpecificationLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42F));
+            imageSpecificationLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58F));
+            imageSpecificationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            imageSpecificationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            imageSpecificationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            imageSpecificationLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+            var limitImageYHeightCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "是否限制影像條件",
+                Checked = cameraDeviceSettings != null && cameraDeviceSettings.LimitImageYHeightEnabled,
+                Anchor = AnchorStyles.Left
+            };
+            var requiredImageYHeightTextBox = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                MaxLength = 10,
+                Text = cameraDeviceSettings == null || cameraDeviceSettings.RequiredImageYHeight <= 0
+                    ? string.Empty
+                    : cameraDeviceSettings.RequiredImageYHeight.ToString(CultureInfo.InvariantCulture),
+                Enabled = limitImageYHeightCheckBox.Checked
+            };
+            var imageSpecificationApplyButton = new Button
+            {
+                Text = "套用",
+                Width = 84,
+                Height = 28,
+                Anchor = AnchorStyles.Right
+            };
+            var imageSpecificationNote = new Label
+            {
+                AutoSize = true,
+                Text = "高度不符時略過檢測，仍建立待確認歷史紀錄。",
+                ForeColor = Color.FromArgb(92, 101, 116),
+                Anchor = AnchorStyles.Left
+            };
+            imageSpecificationLayout.Controls.Add(limitImageYHeightCheckBox, 0, 0);
+            imageSpecificationLayout.SetColumnSpan(limitImageYHeightCheckBox, 2);
+            imageSpecificationLayout.Controls.Add(CreateCameraPrecisionLabel("Y 高度 (pixel，須相等)"), 0, 1);
+            imageSpecificationLayout.Controls.Add(requiredImageYHeightTextBox, 1, 1);
+            imageSpecificationLayout.Controls.Add(imageSpecificationApplyButton, 1, 2);
+            imageSpecificationLayout.Controls.Add(imageSpecificationNote, 0, 3);
+            imageSpecificationLayout.SetColumnSpan(imageSpecificationNote, 2);
+            imageSpecificationGroup.Controls.Add(imageSpecificationLayout);
+            limitImageYHeightCheckBox.CheckedChanged += delegate
+            {
+                requiredImageYHeightTextBox.Enabled = limitImageYHeightCheckBox.Checked;
+            };
+
             var pathLabel = new Label
             {
                 AutoSize = true,
@@ -445,26 +511,31 @@ namespace IntegratedImageProcessingApp.Forms
                 ForeColor = Color.FromArgb(92, 101, 116),
                 Padding = new Padding(0, 4, 0, 0)
             };
-            var container = new Panel { Dock = DockStyle.Top, Height = 820 };
+            var container = new Panel { Dock = DockStyle.Top, Height = 820, AutoScroll = true };
             container.Controls.Add(cameraPrecisionGroup);
             container.Controls.Add(programNameGroup);
             container.Controls.Add(connectionSettingsGroup);
             container.Controls.Add(stationIdentityGroup);
             container.Controls.Add(historyRecordGroup);
+            container.Controls.Add(imageSpecificationGroup);
             container.Controls.Add(pathLabel);
             Action updateGroupWidth = delegate
             {
                 int availableWidth = container.ClientSize.Width;
                 if (availableWidth > 0)
                 {
-                    int groupWidth = Math.Min(availableWidth, Math.Max(410, availableWidth / 3));
+                    int groupWidth = Math.Min(480, Math.Max(410, (availableWidth - 16) / 2));
                     cameraPrecisionGroup.Width = groupWidth;
                     programNameGroup.Width = groupWidth;
                     connectionSettingsGroup.Width = groupWidth;
                     stationIdentityGroup.Width = groupWidth;
                     historyRecordGroup.Width = groupWidth;
+                    imageSpecificationGroup.Width = groupWidth;
+                    historyRecordGroup.Left = groupWidth + 16;
+                    imageSpecificationGroup.Left = groupWidth + 16;
                 }
-                pathLabel.Location = new Point(4, historyRecordGroup.Bottom + 2);
+                pathLabel.Location = new Point(4,
+                    Math.Max(stationIdentityGroup.Bottom, imageSpecificationGroup.Bottom) + 2);
             };
             container.Resize += delegate { updateGroupWidth(); };
             updateGroupWidth();
@@ -596,6 +667,52 @@ namespace IntegratedImageProcessingApp.Forms
                     MessageBox.Show(
                         this,
                         "無法保存歷史紀錄設定：" + exception.Message,
+                        "全域設定",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            };
+
+            imageSpecificationApplyButton.Click += delegate
+            {
+                int requiredHeight = 0;
+                if (limitImageYHeightCheckBox.Checked &&
+                    (!int.TryParse(requiredImageYHeightTextBox.Text.Trim(), NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out requiredHeight) || requiredHeight <= 0))
+                {
+                    MessageBox.Show(
+                        this,
+                        "啟用影像尺寸限制時，請輸入大於 0 的 Y 高度像素整數。",
+                        "合格影像規格",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    requiredImageYHeightTextBox.Focus();
+                    return;
+                }
+
+                if (!limitImageYHeightCheckBox.Checked)
+                {
+                    int.TryParse(requiredImageYHeightTextBox.Text.Trim(), NumberStyles.Integer,
+                        CultureInfo.InvariantCulture, out requiredHeight);
+                    requiredHeight = Math.Max(0, requiredHeight);
+                }
+
+                CameraDeviceSettings updated = CreateCameraDeviceSettingsCopy();
+                updated.LimitImageYHeightEnabled = limitImageYHeightCheckBox.Checked;
+                updated.RequiredImageYHeight = requiredHeight;
+                try
+                {
+                    SaveCameraDeviceSettings(updated);
+                    statusLabel.Text = updated.LimitImageYHeightEnabled
+                        ? "已套用合格影像規格：Y 高度必須等於 " +
+                            updated.RequiredImageYHeight.ToString(CultureInfo.InvariantCulture) + " pixel；不符影像略過檢測並記錄歷史"
+                        : "已套用合格影像規格：未限制影像 Y 高度";
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(
+                        this,
+                        "無法保存合格影像規格：" + exception.Message,
                         "全域設定",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
@@ -1116,7 +1233,9 @@ namespace IntegratedImageProcessingApp.Forms
                     : cameraDeviceSettings.ListenPort,
                 AllowConnections = cameraDeviceSettings != null && cameraDeviceSettings.AllowConnections,
                 RecordResultReviewRuns = cameraDeviceSettings != null && cameraDeviceSettings.RecordResultReviewRuns,
-                KeepResultReviewImages = cameraDeviceSettings == null || cameraDeviceSettings.KeepResultReviewImages
+                KeepResultReviewImages = cameraDeviceSettings == null || cameraDeviceSettings.KeepResultReviewImages,
+                LimitImageYHeightEnabled = cameraDeviceSettings != null && cameraDeviceSettings.LimitImageYHeightEnabled,
+                RequiredImageYHeight = cameraDeviceSettings == null ? 0 : cameraDeviceSettings.RequiredImageYHeight
             };
         }
 

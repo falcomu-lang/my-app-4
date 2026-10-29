@@ -119,6 +119,9 @@ namespace IntegratedImageProcessingApp.Forms
                     ? null
                     : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
                 Size imageSize = new Size(frame.Width, frame.Height);
+                bool imageYHeightMismatch = cameraDeviceSettings != null &&
+                    cameraDeviceSettings.LimitImageYHeightEnabled &&
+                    imageSize.Height != cameraDeviceSettings.RequiredImageYHeight;
                 imageIdentity = CameraMemoryImageIdentityPrefix + sequenceNumber.ToString("D10") + "/" +
                     Guid.NewGuid().ToString("N");
                 var imageLoadStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -151,7 +154,7 @@ namespace IntegratedImageProcessingApp.Forms
                         imageIdentity,
                         sequenceNumber);
                     LoadMemoryImageIntoOriginalDisplays(memorySource);
-                    if (objectDetectionResultReviewReferenceImageSize.IsEmpty)
+                    if (objectDetectionResultReviewReferenceImageSize.IsEmpty && !imageYHeightMismatch)
                     {
                         objectDetectionResultReviewReferenceImageSize = imageSize;
                     }
@@ -162,6 +165,34 @@ namespace IntegratedImageProcessingApp.Forms
                     objectDetectionResultReviewImageLabel.Text =
                         "相機影像 #" + sequenceNumber + "  (" +
                         imageSize.Width.ToString("N0") + " x " + imageSize.Height.ToString("N0") + ")";
+
+                    if (imageYHeightMismatch)
+                    {
+                        string reason = "影像 Y 高度不符：收到 " +
+                            imageSize.Height.ToString("N0", CultureInfo.InvariantCulture) +
+                            " px，設定為 " +
+                            cameraDeviceSettings.RequiredImageYHeight.ToString(
+                                "N0", CultureInfo.InvariantCulture) + " px；已略過檢測";
+                        await CaptureUndeterminedCameraInspectionSnapshotAsync(
+                            imageIdentity,
+                            selectedChoice == null ? null : selectedChoice.Parameter,
+                            null,
+                            null,
+                            reason);
+                        SetObjectDetectionResultReviewStatus(reason + "，影像已記錄為待確認。");
+                        SetCameraInspectionStatus(
+                            "相機影像 #" + sequenceNumber + " 的 Y 高度為 " +
+                            imageSize.Height.ToString("N0", CultureInfo.InvariantCulture) +
+                            " px，必須等於設定值 " +
+                            cameraDeviceSettings.RequiredImageYHeight.ToString(
+                                "N0", CultureInfo.InvariantCulture) +
+                            " px；已略過尺寸與缺陷檢測並記錄歷史。" +
+                            "原始灰階 TIFF 仍會依相機取像流程同步保存。");
+                        UpdateObjectDetectionResultReviewTimingMemo();
+                        ReturnCameraInspectionToOverview(returnToInspectionOverview);
+                        return;
+                    }
+
                     RefreshObjectDetectionFlatFieldDisplay();
                     RefreshObjectDetectionMeasurementDisplay();
                     RefreshObjectDetectionDefectDisplay();

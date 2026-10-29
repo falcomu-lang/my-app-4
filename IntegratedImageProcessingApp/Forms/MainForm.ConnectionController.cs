@@ -18,6 +18,7 @@ namespace IntegratedImageProcessingApp.Forms
             public bool TcpConnected;
             public bool CameraConnected;
             public bool IsCapturing;
+            public bool IsInspecting;
             public bool JudgementComplete;
             public string Status;
             public string RecipeName;
@@ -30,6 +31,12 @@ namespace IntegratedImageProcessingApp.Forms
             public Label RecipeLabel;
             public Label StatusLabel;
             public Panel ObjectGridHost;
+        }
+
+        private sealed class ConnectionControllerPendingCommand
+        {
+            public int StationId;
+            public string Command;
         }
 
         private InspectionTcpTransport inspectionTcpTransport;
@@ -49,8 +56,17 @@ namespace IntegratedImageProcessingApp.Forms
         private bool connectionControllerSettingsLoaded;
         private bool connectionControllerConnectRequested;
         private bool isConnectionControllerContinuousCaptureRequested;
+        private bool isConnectionControllerInspectionRequested;
+        private bool connectionControllerCommandInFlight;
+        private readonly Dictionary<string, ConnectionControllerPendingCommand>
+            connectionControllerPendingCommands =
+                new Dictionary<string, ConnectionControllerPendingCommand>();
+        private readonly Dictionary<int, string> connectionControllerLatestModeCommandIds =
+            new Dictionary<int, string>();
+        private readonly HashSet<int> connectionControllerCaptureStations = new HashSet<int>();
+        private readonly HashSet<int> connectionControllerInspectionStations = new HashSet<int>();
         private bool remoteContinuousCaptureActive;
-        private bool remoteInspectionStartedPreview;
+        private volatile bool remoteContinuousInspectionActive;
         private bool isRemoteControllerInspectionActive;
         private bool connectionControllerRecipeMetadataResolved;
         private string connectionControllerRecipeMetadataId;
@@ -612,9 +628,7 @@ namespace IntegratedImageProcessingApp.Forms
                 ? Color.FromArgb(31, 132, 73)
                 : Color.FromArgb(120, 128, 138);
             state.CameraLabel.Text = "相機　" + (state.CameraConnected ? "已連線" : "未連線");
-            state.CameraLabel.ForeColor = state.CameraConnected
-                ? Color.FromArgb(31, 132, 73)
-                : Color.FromArgb(120, 128, 138);
+            UpdateConnectionControllerCameraLabel(state);
             state.ResultLabel.Text = state.ResultAtUtc.HasValue
                 ? "最新結果　" + state.ResultAtUtc.Value.ToLocalTime().ToString("yyyy/MM/dd HH:mm:ss")
                 : "最新結果　尚無判定回報";
@@ -622,9 +636,28 @@ namespace IntegratedImageProcessingApp.Forms
                 ? "配方　--"
                 : "配方　" + state.RecipeName;
             state.StatusLabel.Text = string.IsNullOrWhiteSpace(state.Status)
-                ? (state.IsCapturing ? "連續取像中" : "等待站點回報")
+                ? (state.IsInspecting ? "持續檢測中" :
+                    state.IsCapturing ? "連續取像中" : "等待站點回報")
                 : state.Status;
             RenderConnectionControllerObjectGrid(state);
+        }
+
+        private void UpdateConnectionControllerCameraLabel(ConnectionControllerStationViewState state)
+        {
+            if (state == null || state.CameraLabel == null || state.CameraLabel.IsDisposed)
+            {
+                return;
+            }
+
+            bool modeRequested = isConnectionControllerContinuousCaptureRequested ||
+                isConnectionControllerInspectionRequested;
+            bool shouldAlert = !state.CameraConnected && modeRequested &&
+                state.Configuration != null && state.Configuration.Enabled;
+            state.CameraLabel.ForeColor = state.CameraConnected
+                ? Color.FromArgb(31, 132, 73)
+                : (shouldAlert
+                    ? Color.FromArgb(198, 45, 48)
+                    : Color.FromArgb(120, 128, 138));
         }
 
         private void RenderConnectionControllerObjectGrid(ConnectionControllerStationViewState state)
@@ -770,18 +803,50 @@ namespace IntegratedImageProcessingApp.Forms
                     ? "中斷已連線站點"
                     : "連線已啟用站點";
             }
-            bool anyConnected = connected > 0;
+            bool anyConnected = connected > 0 && connectionControllerSettings != null &&
+                connectionControllerSettings.MonitorCamera;
+            if (connected == 0)
+            {
+                isConnectionControllerContinuousCaptureRequested = false;
+                isConnectionControllerInspectionRequested = false;
+                connectionControllerCaptureStations.Clear();
+                connectionControllerInspectionStations.Clear();
+                connectionControllerPendingCommands.Clear();
+                connectionControllerLatestModeCommandIds.Clear();
+            }
+            foreach (ConnectionControllerStationViewState state in connectionControllerStationViews.Values)
+            {
+                UpdateConnectionControllerCameraLabel(state);
+            }
             if (connectionControllerContinuousCaptureButton != null &&
                 !connectionControllerContinuousCaptureButton.IsDisposed)
             {
-                connectionControllerContinuousCaptureButton.Enabled = anyConnected;
+                connectionControllerContinuousCaptureButton.Enabled = anyConnected &&
+                    !connectionControllerCommandInFlight && !isConnectionControllerInspectionRequested;
                 connectionControllerContinuousCaptureButton.Text =
-                    isConnectionControllerContinuousCaptureRequested ? "停止連續取像" : "連續取像";
+                    isConnectionControllerContinuousCaptureRequested ? "停止取像" : "連續取像";
+                SetConnectionControllerModeButtonStyle(connectionControllerContinuousCaptureButton,
+                    isConnectionControllerContinuousCaptureRequested, Color.FromArgb(22, 112, 196));
             }
             if (connectionControllerInspectButton != null && !connectionControllerInspectButton.IsDisposed)
             {
-                connectionControllerInspectButton.Enabled = anyConnected;
+                connectionControllerInspectButton.Enabled = anyConnected &&
+                    !connectionControllerCommandInFlight &&
+                    !isConnectionControllerContinuousCaptureRequested;
+                connectionControllerInspectButton.Text = isConnectionControllerInspectionRequested
+                    ? "停止檢測" : "檢測";
+                SetConnectionControllerModeButtonStyle(connectionControllerInspectButton,
+                    isConnectionControllerInspectionRequested, Color.FromArgb(34, 139, 75));
             }
+        }
+
+        private static void SetConnectionControllerModeButtonStyle(
+            Button button, bool active, Color idleColor)
+        {
+            Color color = active ? Color.FromArgb(190, 65, 59) : idleColor;
+            button.BackColor = color;
+            button.ForeColor = Color.White;
+            button.FlatAppearance.BorderColor = color;
         }
 
         private void UpdateConnectionControllerNetworkStatus()
@@ -829,25 +894,61 @@ namespace IntegratedImageProcessingApp.Forms
 
         private async void ConnectionControllerContinuousCaptureButton_Click(object sender, EventArgs e)
         {
-            string command = isConnectionControllerContinuousCaptureRequested
-                ? "stop-capture"
-                : "start-capture";
-            int sent = await SendControllerCommandToConnectedStationsAsync(command);
-            if (sent > 0)
+            if (connectionControllerCommandInFlight || isConnectionControllerInspectionRequested)
             {
-                isConnectionControllerContinuousCaptureRequested = command == "start-capture";
+                return;
+            }
+            bool wasActive = isConnectionControllerContinuousCaptureRequested;
+            string command = wasActive ? "stop-capture" : "start-capture";
+            isConnectionControllerContinuousCaptureRequested = !wasActive;
+            if (!wasActive) connectionControllerCaptureStations.Clear();
+            connectionControllerCommandInFlight = true;
+            UpdateConnectionControllerSummary();
+            int sent = 0;
+            try
+            {
+                sent = await SendControllerCommandToConnectedStationsAsync(command);
+            }
+            finally
+            {
+                if (sent == 0) isConnectionControllerContinuousCaptureRequested = wasActive;
+                connectionControllerCommandInFlight = false;
+                if (sent > 0) ReconcileConnectionControllerMode(command);
                 UpdateConnectionControllerSummary();
             }
             SetConnectionControllerStatus(sent > 0
-                ? (command == "start-capture" ? "已傳送連續取像命令。" : "已傳送停止取像命令。")
+                ? (wasActive ? "已傳送停止取像命令。" : "已傳送連續取像命令。")
                 : "沒有已連線的被控站點可接收命令。");
         }
 
         private async void ConnectionControllerInspectButton_Click(object sender, EventArgs e)
         {
-            int sent = await SendControllerCommandToConnectedStationsAsync("inspect");
+            if (connectionControllerCommandInFlight ||
+                isConnectionControllerContinuousCaptureRequested)
+            {
+                return;
+            }
+            bool wasActive = isConnectionControllerInspectionRequested;
+            string command = wasActive ? "stop-inspection" : "start-inspection";
+            isConnectionControllerInspectionRequested = !wasActive;
+            if (!wasActive) connectionControllerInspectionStations.Clear();
+            connectionControllerCommandInFlight = true;
+            UpdateConnectionControllerSummary();
+            int sent = 0;
+            try
+            {
+                sent = await SendControllerCommandToConnectedStationsAsync(command);
+            }
+            finally
+            {
+                if (sent == 0) isConnectionControllerInspectionRequested = wasActive;
+                connectionControllerCommandInFlight = false;
+                if (sent > 0) ReconcileConnectionControllerMode(command);
+                UpdateConnectionControllerSummary();
+            }
             SetConnectionControllerStatus(sent > 0
-                ? "已傳送檢測命令；各站會以自己的目前 Recipe 判定並回傳結果。"
+                ? (wasActive ? "已傳送停止檢測命令。" :
+                    "已傳送持續檢測命令；各站會以目前 Recipe 判定並回傳結果。")
                 : "沒有已連線的被控站點可接收檢測命令。");
         }
 
@@ -863,27 +964,77 @@ namespace IntegratedImageProcessingApp.Forms
             int sent = 0;
             foreach (ConnectionControllerStation station in targets)
             {
+                string commandId = Guid.NewGuid().ToString("N");
+                string previousCommandId;
+                connectionControllerLatestModeCommandIds.TryGetValue(
+                    station.SoftwareId, out previousCommandId);
+                connectionControllerPendingCommands[commandId] =
+                    new ConnectionControllerPendingCommand
+                    {
+                        StationId = station.SoftwareId,
+                        Command = command
+                    };
+                connectionControllerLatestModeCommandIds[station.SoftwareId] = commandId;
                 bool success = await inspectionTcpTransport.SendToStationAsync(station.SoftwareId,
                     new InspectionTcpMessage
                     {
                         MessageType = "command",
                         Command = command,
-                        CommandId = Guid.NewGuid().ToString("N"),
+                        CommandId = commandId,
                         StationId = cameraDeviceSettings == null ? 1 : cameraDeviceSettings.SoftwareId,
                         StationName = GetLocalStationName()
                     });
                 if (success)
                 {
                     sent++;
-                    ConnectionControllerStationViewState state;
-                    if (connectionControllerStationViews.TryGetValue(station.SoftwareId, out state))
+                    foreach (string oldCommandId in connectionControllerPendingCommands
+                        .Where(item => item.Value.StationId == station.SoftwareId &&
+                            item.Key != commandId)
+                        .Select(item => item.Key).ToList())
                     {
-                        state.Status = "已送出命令：" + command;
-                        UpdateConnectionControllerStationCard(state);
+                        connectionControllerPendingCommands.Remove(oldCommandId);
+                    }
+                }
+                else
+                {
+                    connectionControllerPendingCommands.Remove(commandId);
+                    string latestId;
+                    if (connectionControllerLatestModeCommandIds.TryGetValue(
+                            station.SoftwareId, out latestId) && latestId == commandId)
+                    {
+                        if (!string.IsNullOrEmpty(previousCommandId) &&
+                            connectionControllerPendingCommands.ContainsKey(previousCommandId))
+                        {
+                            connectionControllerLatestModeCommandIds[station.SoftwareId] =
+                                previousCommandId;
+                        }
+                        else
+                        {
+                            connectionControllerLatestModeCommandIds.Remove(station.SoftwareId);
+                        }
                     }
                 }
             }
             return sent;
+        }
+
+        private void ReconcileConnectionControllerMode(string command)
+        {
+            if (connectionControllerCommandInFlight ||
+                connectionControllerPendingCommands.Values.Any(item => item.Command == command))
+            {
+                return;
+            }
+            if (command == "stop-capture")
+            {
+                isConnectionControllerContinuousCaptureRequested =
+                    connectionControllerCaptureStations.Count > 0;
+            }
+            else if (command == "stop-inspection")
+            {
+                isConnectionControllerInspectionRequested =
+                    connectionControllerInspectionStations.Count > 0;
+            }
         }
 
         private async Task ConnectConfiguredStationsAsync()
@@ -968,13 +1119,26 @@ namespace IntegratedImageProcessingApp.Forms
                             {
                                 state.CameraConnected = false;
                                 state.IsCapturing = false;
+                                state.IsInspecting = false;
                                 state.Status = "TCP/IP 已連線，等待設備狀態";
                             }
                             else
                             {
                                 state.CameraConnected = false;
                                 state.IsCapturing = false;
+                                state.IsInspecting = false;
                                 state.Status = "TCP/IP 連線中斷";
+                                connectionControllerCaptureStations.Remove(e.StationId.Value);
+                                connectionControllerInspectionStations.Remove(e.StationId.Value);
+                                connectionControllerLatestModeCommandIds.Remove(e.StationId.Value);
+                                foreach (string commandId in connectionControllerPendingCommands
+                                    .Where(item => item.Value.StationId == e.StationId.Value)
+                                    .Select(item => item.Key).ToList())
+                                {
+                                    connectionControllerPendingCommands.Remove(commandId);
+                                }
+                                ReconcileConnectionControllerMode("start-capture");
+                                ReconcileConnectionControllerMode("start-inspection");
                             }
                             UpdateConnectionControllerStationCard(state);
                         }
@@ -1045,6 +1209,40 @@ namespace IntegratedImageProcessingApp.Forms
                     ackState.Status = message.Status ?? (message.Accepted ? "命令已接受" : "命令遭拒絕");
                     UpdateConnectionControllerStationCard(ackState);
                 }
+                ConnectionControllerPendingCommand pending;
+                if (!string.IsNullOrEmpty(message.CommandId) &&
+                    connectionControllerPendingCommands.TryGetValue(message.CommandId, out pending) &&
+                    pending.StationId == stationId)
+                {
+                    connectionControllerPendingCommands.Remove(message.CommandId);
+                    string latestId;
+                    bool isLatest = connectionControllerLatestModeCommandIds.TryGetValue(
+                        stationId, out latestId) && latestId == message.CommandId;
+                    if (message.Accepted && isLatest)
+                    {
+                        switch (pending.Command)
+                        {
+                            case "start-capture":
+                                connectionControllerCaptureStations.Add(stationId);
+                                break;
+                            case "stop-capture":
+                                connectionControllerCaptureStations.Remove(stationId);
+                                break;
+                            case "start-inspection":
+                                connectionControllerInspectionStations.Add(stationId);
+                                break;
+                            case "stop-inspection":
+                                connectionControllerInspectionStations.Remove(stationId);
+                                break;
+                        }
+                    }
+                    if (isLatest)
+                    {
+                        connectionControllerLatestModeCommandIds.Remove(stationId);
+                    }
+                    ReconcileConnectionControllerMode(pending.Command);
+                    UpdateConnectionControllerSummary();
+                }
                 return;
             }
             if (string.Equals(message.MessageType, "station-status", StringComparison.OrdinalIgnoreCase))
@@ -1085,6 +1283,24 @@ namespace IntegratedImageProcessingApp.Forms
             state.TcpConnected = true;
             state.CameraConnected = message.CameraConnected;
             state.IsCapturing = message.IsCapturing;
+            state.IsInspecting = message.IsInspecting;
+            bool hasPendingModeCommand = connectionControllerPendingCommands.Values.Any(item =>
+                item.StationId == stationId);
+            if (!hasPendingModeCommand)
+            {
+                if (isConnectionControllerContinuousCaptureRequested)
+                {
+                    if (message.IsCapturing) connectionControllerCaptureStations.Add(stationId);
+                    else connectionControllerCaptureStations.Remove(stationId);
+                    ReconcileConnectionControllerMode("start-capture");
+                }
+                if (isConnectionControllerInspectionRequested)
+                {
+                    if (message.IsInspecting) connectionControllerInspectionStations.Add(stationId);
+                    else connectionControllerInspectionStations.Remove(stationId);
+                    ReconcileConnectionControllerMode("start-inspection");
+                }
+            }
             state.JudgementComplete = message.JudgementComplete;
             state.Status = message.Status;
             state.RecipeName = string.IsNullOrWhiteSpace(message.RecipeName)
@@ -1121,6 +1337,12 @@ namespace IntegratedImageProcessingApp.Forms
                 case "inspect":
                     response = RequestRemoteInspection(out accepted);
                     break;
+                case "start-inspection":
+                    response = StartRemoteContinuousInspection(out accepted);
+                    break;
+                case "stop-inspection":
+                    response = StopRemoteContinuousInspection(out accepted);
+                    break;
                 default:
                     response = "不支援的命令：" + command;
                     break;
@@ -1141,6 +1363,16 @@ namespace IntegratedImageProcessingApp.Forms
         private string StartRemoteContinuousCapture(out bool accepted)
         {
             accepted = false;
+            if (isInspectionOverviewInspectionModeActive ||
+                isInspectionOverviewContinuousCaptureActive)
+            {
+                return "無法連續取像：本機取像或檢測模式正在運行。";
+            }
+            if (remoteContinuousInspectionActive ||
+                Interlocked.CompareExchange(ref remoteInspectionRequested, 0, 0) != 0)
+            {
+                return "無法連續取像：目前正在檢測。";
+            }
             if (!IsRemoteCameraReady())
             {
                 return "無法連續取像：攝影機程式尚未開啟或相機尚未連線。";
@@ -1164,15 +1396,17 @@ namespace IntegratedImageProcessingApp.Forms
             remoteContinuousCaptureActive = false;
             if (cameraCaptureHostControl != null && !cameraCaptureHostControl.IsDisposed)
             {
-                if (Interlocked.CompareExchange(ref remoteInspectionRequested, 0, 0) == 0)
+                if (!remoteContinuousInspectionActive &&
+                    Interlocked.CompareExchange(ref remoteInspectionRequested, 0, 0) == 0)
                 {
                     cameraCaptureHostControl.RemoteCaptureForwardingEnabled = false;
                 }
-                if (!isInspectionOverviewActive)
+                if (!isInspectionOverviewActive && !remoteContinuousInspectionActive)
                 {
                     cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = false;
                 }
                 if (!isInspectionOverviewContinuousCaptureActive &&
+                    !remoteContinuousInspectionActive &&
                     cameraCaptureHostControl.IsCameraPreviewing)
                 {
                     cameraCaptureHostControl.StopPreview();
@@ -1184,6 +1418,15 @@ namespace IntegratedImageProcessingApp.Forms
         private string RequestRemoteInspection(out bool accepted)
         {
             accepted = false;
+            if (isInspectionOverviewInspectionModeActive ||
+                isInspectionOverviewContinuousCaptureActive)
+            {
+                return "檢測未啟動：本機取像或檢測模式正在運行。";
+            }
+            if (remoteContinuousCaptureActive)
+            {
+                return "檢測未啟動：目前正在連續取像。";
+            }
             if (!IsRemoteCameraReady())
             {
                 return "檢測未啟動：攝影機程式尚未開啟或相機尚未連線。";
@@ -1199,27 +1442,82 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             EnsureInspectionOverviewResultReviewParametersInitialized();
-            if (objectDetectionResultReviewParameterComboBox == null ||
-                objectDetectionResultReviewParameterComboBox.SelectedItem == null)
+            ResultReviewParameterChoice choice = objectDetectionResultReviewParameterComboBox == null
+                ? null
+                : objectDetectionResultReviewParameterComboBox.SelectedItem as ResultReviewParameterChoice;
+            if (choice == null || choice.Parameter == null)
             {
                 Interlocked.Exchange(ref remoteInspectionRequested, 0);
                 return "檢測未接受：目前沒有可用的檢測參數。";
             }
             cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = true;
             cameraCaptureHostControl.RemoteCaptureForwardingEnabled = true;
-            remoteInspectionStartedPreview = !cameraCaptureHostControl.IsCameraPreviewing;
-            if (remoteInspectionStartedPreview)
+            if (!cameraCaptureHostControl.IsCameraPreviewing)
             {
                 string previewMessage;
                 if (!cameraCaptureHostControl.StartPreview(out previewMessage))
                 {
                     Interlocked.Exchange(ref remoteInspectionRequested, 0);
                     cameraCaptureHostControl.RemoteCaptureForwardingEnabled = remoteContinuousCaptureActive;
+                    if (!isInspectionOverviewActive)
+                    {
+                        cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = false;
+                    }
                     return "檢測未啟動：無法開始相機預覽。" + previewMessage;
                 }
             }
             accepted = true;
             return "已接受檢測命令，將以目前 Recipe 處理下一張相機影像。";
+        }
+
+        private string StartRemoteContinuousInspection(out bool accepted)
+        {
+            if (remoteContinuousInspectionActive)
+            {
+                accepted = true;
+                return "持續檢測已在運行。";
+            }
+            remoteContinuousInspectionActive = true;
+            string response = RequestRemoteInspection(out accepted);
+            if (!accepted)
+            {
+                remoteContinuousInspectionActive = false;
+                return response;
+            }
+            return "已啟動持續檢測；上一張處理完成後才接收下一張影像。";
+        }
+
+        private string StopRemoteContinuousInspection(out bool accepted)
+        {
+            accepted = true;
+            remoteContinuousInspectionActive = false;
+            Interlocked.Exchange(ref remoteInspectionRequested, 0);
+            if (Interlocked.CompareExchange(ref cameraInspectionFrameInFlight, 0, 0) == 0)
+            {
+                FinishRemoteInspectionCapture();
+            }
+            return "已停止持續檢測；正在處理的影像會完成。";
+        }
+
+        private void FinishRemoteInspectionCapture()
+        {
+            if (remoteContinuousInspectionActive || remoteContinuousCaptureActive ||
+                Interlocked.CompareExchange(ref remoteInspectionRequested, 0, 0) != 0 ||
+                cameraCaptureHostControl == null || cameraCaptureHostControl.IsDisposed)
+            {
+                return;
+            }
+            cameraCaptureHostControl.RemoteCaptureForwardingEnabled = false;
+            if (!isInspectionOverviewContinuousCaptureActive &&
+                !isInspectionOverviewInspectionModeActive &&
+                cameraCaptureHostControl.IsCameraPreviewing)
+            {
+                cameraCaptureHostControl.StopPreview();
+            }
+            if (!isInspectionOverviewActive)
+            {
+                cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = false;
+            }
         }
 
         private bool IsRemoteCameraReady()
@@ -1251,7 +1549,8 @@ namespace IntegratedImageProcessingApp.Forms
                 frame = e.GrayscaleFrame;
                 if (frame == null)
                 {
-                    Interlocked.Exchange(ref remoteInspectionRequested, 0);
+                    Interlocked.Exchange(ref remoteInspectionRequested,
+                        remoteContinuousInspectionActive ? 1 : 0);
                     Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
                     SetCameraInspectionStatus("遠端相機沒有提供可用的灰階影像資料。");
                     return;
@@ -1276,16 +1575,15 @@ namespace IntegratedImageProcessingApp.Forms
                     finally
                     {
                         isRemoteControllerInspectionActive = false;
-                        if (remoteInspectionStartedPreview && !remoteContinuousCaptureActive &&
-                            cameraCaptureHostControl != null)
+                        if (remoteContinuousInspectionActive && IsRemoteCameraReady())
                         {
-                            cameraCaptureHostControl.StopPreview();
-                            cameraCaptureHostControl.RemoteCaptureForwardingEnabled = false;
-                            if (!isInspectionOverviewActive)
-                            {
-                                cameraCaptureHostControl.SuppressAutomaticInspectionForwarding = false;
-                            }
-                            remoteInspectionStartedPreview = false;
+                            Interlocked.Exchange(ref remoteInspectionRequested, 1);
+                        }
+                        else
+                        {
+                            remoteContinuousInspectionActive = false;
+                            Interlocked.Exchange(ref remoteInspectionRequested, 0);
+                            FinishRemoteInspectionCapture();
                         }
                         if (isConnectionControllerPanelActive)
                         {
@@ -1297,7 +1595,8 @@ namespace IntegratedImageProcessingApp.Forms
             }
             catch (Exception exception)
             {
-                Interlocked.Exchange(ref remoteInspectionRequested, 0);
+                Interlocked.Exchange(ref remoteInspectionRequested,
+                    remoteContinuousInspectionActive ? 1 : 0);
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
                 SetCameraInspectionStatus("遠端灰階影像交接失敗：" + exception.Message);
             }
@@ -1334,14 +1633,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 connectionControllerConnectButton.Enabled = enabled;
             }
-            if (connectionControllerContinuousCaptureButton != null)
-            {
-                connectionControllerContinuousCaptureButton.Enabled = enabled;
-            }
-            if (connectionControllerInspectButton != null)
-            {
-                connectionControllerInspectButton.Enabled = enabled;
-            }
+            UpdateConnectionControllerSummary();
         }
 
         private void InvalidateConnectionControllerRecipeMetadata()
@@ -1428,6 +1720,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Status = statusOverride ?? (statusLabel == null ? string.Empty : statusLabel.Text),
                 CameraConnected = cameraCaptureHostControl != null && cameraCaptureHostControl.IsCameraConnected,
                 IsCapturing = remoteContinuousCaptureActive || isInspectionOverviewContinuousCaptureActive,
+                IsInspecting = remoteContinuousInspectionActive,
                 JudgementComplete = currentSnapshot && snapshot.JudgementComplete,
                 RecipeId = string.IsNullOrWhiteSpace(connectionControllerRecipeMetadataId)
                     ? null

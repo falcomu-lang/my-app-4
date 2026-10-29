@@ -43,6 +43,7 @@ namespace IntegratedImageProcessingApp.Services
         [DataMember(Order = 19)] public List<InspectionTcpObjectResult> Objects { get; set; }
         [DataMember(Order = 20)] public bool Accepted { get; set; }
         [DataMember(Order = 21)] public string ResultAtUtc { get; set; }
+        [DataMember(Order = 22)] public bool IsInspecting { get; set; }
     }
 
     [DataContract]

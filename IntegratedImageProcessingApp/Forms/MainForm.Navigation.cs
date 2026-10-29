@@ -183,7 +183,6 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void MainForm_Load(object sender, EventArgs e)
         {
-            WindowState = FormWindowState.Maximized;
             functionListBox.SelectedIndex = functionListBox.Items.IndexOf(LoadImageMenuText);
             statusLabel.Text = "介面框架準備就緒";
             BeginInvoke(new Action(async () => await RestoreSystemParametersAsync()));

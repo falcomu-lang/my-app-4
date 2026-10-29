@@ -338,6 +338,10 @@ namespace IntegratedImageProcessingApp.Forms
             LoadSavedObjectDetectionFlatFieldProfiles();
 
             InitializeComponent();
+            // A width change moves the expand arrow. Repaint the whole list so
+            // the arrow drawn at the old width cannot remain in the new view.
+            functionListBox.Resize += delegate { functionListBox.Invalidate(); };
+            Shown += delegate { functionListBox.Invalidate(); };
             UpdateProgramNameHeader();
             KeyPreview = true;
             KeyDown += MainForm_KeyDown;
@@ -454,6 +458,8 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 InitializeImageDisplayControls();
                 InitializeInspectionTcpTransport();
+                // Maximize before the first visible paint, rather than in Load.
+                WindowState = FormWindowState.Maximized;
             }
         }
 
@@ -2701,16 +2707,18 @@ namespace IntegratedImageProcessingApp.Forms
             Rectangle textBounds = new Rectangle(
                 textLeft,
                 e.Bounds.Top,
-                Math.Max(0, e.Bounds.Right - textLeft - 4),
+                Math.Max(0, e.Bounds.Right - textLeft -
+                    (menuText == FindObjectFlowMenuText || menuText == DetectionParameterMenuText ? 24 : 4)),
                 e.Bounds.Height);
 
             TextRenderer.DrawText(
                 e.Graphics,
                 menuText.Trim(),
-                e.Font,
+                functionListBox.Font,
                 textBounds,
                 foreColor,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left);
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left |
+                TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
             if (menuText == FindObjectFlowMenuText || menuText == DetectionParameterMenuText)
             {
