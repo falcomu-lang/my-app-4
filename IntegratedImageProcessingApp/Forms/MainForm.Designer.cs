@@ -310,8 +310,8 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.mainLayoutPanel.BackColor = System.Drawing.Color.White;
             this.mainLayoutPanel.ColumnCount = 3;
-            this.mainLayoutPanel.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 20F));
-            this.mainLayoutPanel.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 60F));
+            this.mainLayoutPanel.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 16F));
+            this.mainLayoutPanel.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 64F));
             this.mainLayoutPanel.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 20F));
             this.mainLayoutPanel.Controls.Add(this.leftPanel, 0, 0);
             this.mainLayoutPanel.Controls.Add(this.centerPanel, 1, 0);

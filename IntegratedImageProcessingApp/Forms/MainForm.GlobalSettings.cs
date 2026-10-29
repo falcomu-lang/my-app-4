@@ -62,12 +62,7 @@ namespace IntegratedImageProcessingApp.Forms
             mainLayoutPanel.SuspendLayout();
             try
             {
-                mainLayoutPanel.ColumnStyles[0].SizeType = SizeType.Percent;
-                mainLayoutPanel.ColumnStyles[0].Width = 20F;
-                mainLayoutPanel.ColumnStyles[1].SizeType = SizeType.Percent;
-                mainLayoutPanel.ColumnStyles[1].Width = 80F;
-                mainLayoutPanel.ColumnStyles[2].SizeType = SizeType.Percent;
-                mainLayoutPanel.ColumnStyles[2].Width = 0F;
+                SetMainLayoutColumnPercentages(false);
                 rightPanel.Visible = false;
                 imageLayoutPanel.Visible = false;
                 globalSettingsTabControl.Visible = true;

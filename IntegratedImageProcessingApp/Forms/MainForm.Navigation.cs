@@ -23,6 +23,20 @@ namespace IntegratedImageProcessingApp.Forms
         private object displayedFunctionListTarget;
         private string displayedFunctionListText;
 
+        private const float FunctionMenuColumnPercent = 16F;
+        private const float RightParameterColumnPercent = 20F;
+
+        private void SetMainLayoutColumnPercentages(bool includeRightColumn)
+        {
+            float rightPercent = includeRightColumn ? RightParameterColumnPercent : 0F;
+            mainLayoutPanel.ColumnStyles[0].SizeType = SizeType.Percent;
+            mainLayoutPanel.ColumnStyles[0].Width = FunctionMenuColumnPercent;
+            mainLayoutPanel.ColumnStyles[1].SizeType = SizeType.Percent;
+            mainLayoutPanel.ColumnStyles[1].Width = 100F - FunctionMenuColumnPercent - rightPercent;
+            mainLayoutPanel.ColumnStyles[2].SizeType = SizeType.Percent;
+            mainLayoutPanel.ColumnStyles[2].Width = rightPercent;
+        }
+
         private void MainForm_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode != Keys.Control)
