@@ -111,7 +111,6 @@ namespace IntegratedImageProcessingApp.Forms
         private bool processedImageDirty = true;
         private string latestProcessedImageCacheKey;
         private bool imageProcessingExecutionRequested;
-        private bool displayRefreshPendingWhileSuppressed;
         private bool hasSharedImageViewState;
         private ImageViewState sharedImageViewState;
         private bool isImageViewerMaximized;
@@ -123,158 +122,12 @@ namespace IntegratedImageProcessingApp.Forms
 
         private bool IsImageDisplayUpdateSuppressed
         {
-            get
-            {
-                return suppressImageDisplayCheckBox != null &&
-                    suppressImageDisplayCheckBox.Checked;
-            }
+            get { return false; }
         }
 
         private bool SkipImageDisplayUpdate()
         {
-            if (!IsImageDisplayUpdateSuppressed)
-            {
-                return false;
-            }
-
-            displayRefreshPendingWhileSuppressed = true;
-            return true;
-        }
-
-        private void SuppressImageDisplayCheckBox_CheckedChanged(object sender, EventArgs e)
-        {
-            ImageDisplayControl.SuppressViewUpdates = IsImageDisplayUpdateSuppressed;
-            if (centerPanel != null)
-            {
-                centerPanel.Visible = isGlobalSettingsActive || !IsImageDisplayUpdateSuppressed;
-            }
-
-            if (IsImageDisplayUpdateSuppressed)
-            {
-                displayRefreshPendingWhileSuppressed = true;
-                statusLabel.Text = "已暫停所有畫面準備與更新，影像仍會繼續處理";
-                return;
-            }
-
-            if (displayRefreshPendingWhileSuppressed)
-            {
-                displayRefreshPendingWhileSuppressed = false;
-                RestoreCachedImageDisplaysAfterSuppression();
-                RefreshAllImageDisplaysAfterSuppression();
-            }
-
-            statusLabel.Text = "已恢復畫面準備與更新";
-        }
-
-        private void RestoreCachedImageDisplaysAfterSuppression()
-        {
-            if (IsImageDisplayUpdateSuppressed)
-            {
-                return;
-            }
-
-            lock (largePreprocessedImageLock)
-            {
-                if (largePreprocessedImageSource != null && !preprocessedImageDirty)
-                {
-                    leftPreprocessedDisplayControl.SetSharedLargeImageSource(
-                        largePreprocessedImageSource,
-                        true);
-                    rightPreprocessedDisplayControl.SetSharedLargeImageSource(
-                        largePreprocessedImageSource,
-                        true);
-                }
-            }
-
-            if (latestPreprocessedImage != null && !preprocessedImageDirty)
-            {
-                leftPreprocessedDisplayControl.SetDisplayImage(
-                    new Bitmap(latestPreprocessedImage),
-                    true);
-                rightPreprocessedDisplayControl.SetDisplayImage(
-                    new Bitmap(latestPreprocessedImage),
-                    true);
-            }
-
-            ApplyLatestProcessedImageToVisibleTabs();
-            if (rightOriginalDisplayControl != null &&
-                rightOriginalDisplayControl.IsLargeImageMode &&
-                imageProcessingExecutionRequested &&
-                !processedImageDirty)
-            {
-                PrepareLargeProcessedPreview();
-            }
-        }
-
-        private void RefreshAllImageDisplaysAfterSuppression()
-        {
-            if (IsImageDisplayUpdateSuppressed)
-            {
-                return;
-            }
-
-            // Repaint existing cached overlays/results without starting a new
-            // image-processing request.  The next explicit command can still
-            // replace these images when its parameters have changed.
-            if (leftPreprocessedDisplayControl != null)
-            {
-                leftPreprocessedDisplayControl.InvalidateImageView();
-            }
-            if (rightPreprocessedDisplayControl != null)
-            {
-                rightPreprocessedDisplayControl.InvalidateImageView();
-            }
-            if (leftProcessedDisplayControl != null)
-            {
-                leftProcessedDisplayControl.InvalidateImageView();
-            }
-            if (rightProcessedDisplayControl != null)
-            {
-                rightProcessedDisplayControl.InvalidateImageView();
-            }
-            InvalidateBlockProcessingDisplays();
-            if (leftObjectsDisplayControl != null)
-            {
-                leftObjectsDisplayControl.InvalidateImageView();
-            }
-            if (rightObjectsDisplayControl != null)
-            {
-                rightObjectsDisplayControl.InvalidateImageView();
-            }
-            if (isObjectDetectionParameterImageLayout)
-            {
-                RefreshObjectDetectionFlatFieldDisplay();
-                RefreshObjectDetectionDefectDisplay();
-                if (objectDetectionFlatFieldPreviewDisplayControl != null)
-                {
-                    objectDetectionFlatFieldPreviewDisplayControl.InvalidateImageView();
-                }
-            }
-
-            foreach (ImageDisplayControl displayControl in new ImageDisplayControl[]
-            {
-                leftOriginalDisplayControl,
-                rightOriginalDisplayControl,
-                leftPreprocessedDisplayControl,
-                rightPreprocessedDisplayControl,
-                leftProcessedDisplayControl,
-                rightProcessedDisplayControl,
-                leftBlockProcessingDisplayControl,
-                rightBlockProcessingDisplayControl,
-                leftObjectsDisplayControl,
-                rightObjectsDisplayControl,
-                objectDetectionMeasurementDisplayControl,
-                objectDetectionFlatFieldPreviewDisplayControl,
-                objectDetectionDefectDisplayControl,
-                leftDebugDisplayControl,
-                rightDebugDisplayControl
-            })
-            {
-                if (displayControl != null)
-                {
-                    displayControl.ResumeImageViewPreparation();
-                }
-            }
+            return false;
         }
 
         private const string DetectionParameterMenuText = "檢測參數";
@@ -453,6 +306,7 @@ namespace IntegratedImageProcessingApp.Forms
             RebuildVisibleObjectJudgements();
             RebuildVisibleObjectDefinitions();
             RebuildVisibleObjectDetectionParameters();
+            InitializeMainFormRoleSwitcher();
 
             if (!IsRunningInDesigner())
             {

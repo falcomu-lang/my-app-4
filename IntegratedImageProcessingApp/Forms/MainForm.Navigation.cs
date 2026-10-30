@@ -19,6 +19,191 @@ namespace IntegratedImageProcessingApp.Forms
 {
     public partial class MainForm
     {
+        private enum MainFormRole
+        {
+            Operator,
+            Engineer,
+            Manager,
+            Monitoring
+        }
+
+        private MainFormRole selectedMainFormRole;
+        private bool isApplyingMainFormRole;
+        private List<object> functionMenuItemsBeforeMonitoring;
+        private string functionMenuSelectionBeforeMonitoring;
+
+        private void InitializeMainFormRoleSwitcher()
+        {
+            selectedMainFormRole = ParseMainFormRole(
+                cameraDeviceSettings == null ? null : cameraDeviceSettings.LastSelectedRole);
+            roleSelectorComboBox.SelectedIndex = (int)selectedMainFormRole;
+            roleSelectorComboBox.SelectedIndexChanged += RoleSelectorComboBox_SelectedIndexChanged;
+            if (selectedMainFormRole == MainFormRole.Monitoring)
+            {
+                functionMenuItemsBeforeMonitoring = functionListBox.Items
+                    .Cast<object>().ToList();
+                functionMenuSelectionBeforeMonitoring = LoadImageMenuText;
+                functionListBox.Items.Clear();
+                functionListBox.Items.Add(ConnectionControllerMenuText);
+            }
+            else
+            {
+                SetConnectionControllerMenuVisible(selectedMainFormRole == MainFormRole.Manager);
+            }
+        }
+
+        private void RoleSelectorComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (isApplyingMainFormRole || roleSelectorComboBox.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            SetMainFormRole((MainFormRole)roleSelectorComboBox.SelectedIndex);
+        }
+
+        private static MainFormRole ParseMainFormRole(string role)
+        {
+            if (string.Equals(role, "Engineer", StringComparison.OrdinalIgnoreCase))
+                return MainFormRole.Engineer;
+            if (string.Equals(role, "Manager", StringComparison.OrdinalIgnoreCase))
+                return MainFormRole.Manager;
+            if (string.Equals(role, "Monitoring", StringComparison.OrdinalIgnoreCase))
+                return MainFormRole.Monitoring;
+            return MainFormRole.Operator;
+        }
+
+        private static string GetMainFormRoleSettingValue(MainFormRole role)
+        {
+            switch (role)
+            {
+                case MainFormRole.Engineer: return "Engineer";
+                case MainFormRole.Manager: return "Manager";
+                case MainFormRole.Monitoring: return "Monitoring";
+                default: return "Operator";
+            }
+        }
+
+        private void SetMainFormRole(MainFormRole role)
+        {
+            if (selectedMainFormRole == role)
+            {
+                return;
+            }
+
+            MainFormRole previousRole = selectedMainFormRole;
+            bool wasMonitoring = previousRole == MainFormRole.Monitoring;
+            string currentSelection = functionListBox.SelectedItem as string;
+            if (role == MainFormRole.Monitoring && !wasMonitoring)
+            {
+                functionMenuItemsBeforeMonitoring = functionListBox.Items
+                    .Cast<object>().ToList();
+                functionMenuSelectionBeforeMonitoring = currentSelection;
+            }
+
+            isApplyingMainFormRole = true;
+            functionListBox.BeginUpdate();
+            try
+            {
+                if (wasMonitoring && role != MainFormRole.Monitoring &&
+                    functionMenuItemsBeforeMonitoring != null)
+                {
+                    functionListBox.Items.Clear();
+                    functionListBox.Items.AddRange(functionMenuItemsBeforeMonitoring.ToArray());
+                }
+
+                selectedMainFormRole = role;
+                if (role == MainFormRole.Monitoring)
+                {
+                    functionListBox.Items.Clear();
+                    functionListBox.Items.Add(ConnectionControllerMenuText);
+                }
+                else
+                {
+                    SetConnectionControllerMenuVisible(role == MainFormRole.Manager);
+                }
+
+                string targetSelection = role == MainFormRole.Monitoring
+                    ? ConnectionControllerMenuText
+                    : (wasMonitoring ? functionMenuSelectionBeforeMonitoring : currentSelection);
+                if (role != MainFormRole.Manager && role != MainFormRole.Monitoring &&
+                    targetSelection == ConnectionControllerMenuText)
+                {
+                    targetSelection = InspectionOverviewMenuText;
+                }
+                if (string.IsNullOrEmpty(targetSelection) ||
+                    !functionListBox.Items.Contains(targetSelection))
+                {
+                    targetSelection = functionListBox.Items.Contains(InspectionOverviewMenuText)
+                        ? InspectionOverviewMenuText
+                        : LoadImageMenuText;
+                }
+
+                if (functionListBox.Items.Contains(targetSelection))
+                {
+                    functionListBox.SelectedItem = targetSelection;
+                }
+
+                if (wasMonitoring && role != MainFormRole.Monitoring)
+                {
+                    functionMenuItemsBeforeMonitoring = null;
+                    functionMenuSelectionBeforeMonitoring = null;
+                }
+            }
+            finally
+            {
+                functionListBox.EndUpdate();
+                isApplyingMainFormRole = false;
+            }
+
+            string selectedFunction = functionListBox.SelectedItem as string;
+            if (!string.IsNullOrEmpty(selectedFunction))
+            {
+                FunctionListBox_SelectedIndexChanged(functionListBox, EventArgs.Empty);
+            }
+            PersistMainFormRoleSelection();
+        }
+
+        private void PersistMainFormRoleSelection()
+        {
+            try
+            {
+                CameraDeviceSettings updated = CreateCameraDeviceSettingsCopy();
+                updated.LastSelectedRole = GetMainFormRoleSettingValue(selectedMainFormRole);
+                cameraDeviceSettingsIniService.Save(updated);
+                cameraDeviceSettings = updated;
+            }
+            catch (Exception exception)
+            {
+                if (statusLabel != null)
+                {
+                    statusLabel.Text = "角色已切換，但無法保存角色狀態：" + exception.Message;
+                }
+            }
+        }
+
+        private void SetConnectionControllerMenuVisible(bool visible)
+        {
+            int itemIndex = functionListBox.Items.IndexOf(ConnectionControllerMenuText);
+            if (!visible)
+            {
+                if (itemIndex >= 0)
+                {
+                    functionListBox.Items.RemoveAt(itemIndex);
+                }
+                return;
+            }
+
+            if (itemIndex < 0)
+            {
+                int historyIndex = functionListBox.Items.IndexOf(InspectionHistoryMenuText);
+                functionListBox.Items.Insert(
+                    historyIndex < 0 ? functionListBox.Items.Count : historyIndex + 1,
+                    ConnectionControllerMenuText);
+            }
+            MoveFunctionListItemAfter(ConnectionControllerMenuText, InspectionHistoryMenuText);
+        }
+
         private SystemParameterSettings displayedFunctionListSettings;
         private object displayedFunctionListTarget;
         private string displayedFunctionListText;
@@ -183,14 +368,18 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void MainForm_Load(object sender, EventArgs e)
         {
-            functionListBox.SelectedIndex = functionListBox.Items.IndexOf(LoadImageMenuText);
+            string firstPage = selectedMainFormRole == MainFormRole.Monitoring
+                ? ConnectionControllerMenuText
+                : LoadImageMenuText;
+            functionListBox.SelectedIndex = functionListBox.Items.IndexOf(firstPage);
             statusLabel.Text = "介面框架準備就緒";
             BeginInvoke(new Action(async () => await RestoreSystemParametersAsync()));
         }
 
         private void FunctionListBox_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (isUpdatingFunctionListText ||
+            if (isApplyingMainFormRole ||
+                isUpdatingFunctionListText ||
                 isImportingDetectionParameterSettings ||
                 isRebuildingImagePreprocessingMenu ||
                 isRebuildingObjectJudgementMenu ||
@@ -203,6 +392,22 @@ namespace IntegratedImageProcessingApp.Forms
             string selectedFunction = functionListBox.SelectedItem as string;
             if (string.IsNullOrEmpty(selectedFunction))
             {
+                return;
+            }
+
+            if (selectedMainFormRole == MainFormRole.Monitoring &&
+                selectedFunction != ConnectionControllerMenuText)
+            {
+                isApplyingMainFormRole = true;
+                try
+                {
+                    functionListBox.SelectedItem = ConnectionControllerMenuText;
+                }
+                finally
+                {
+                    isApplyingMainFormRole = false;
+                }
+                FunctionListBox_SelectedIndexChanged(functionListBox, EventArgs.Empty);
                 return;
             }
 

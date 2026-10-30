@@ -1235,7 +1235,11 @@ namespace IntegratedImageProcessingApp.Forms
                 RecordResultReviewRuns = cameraDeviceSettings != null && cameraDeviceSettings.RecordResultReviewRuns,
                 KeepResultReviewImages = cameraDeviceSettings == null || cameraDeviceSettings.KeepResultReviewImages,
                 LimitImageYHeightEnabled = cameraDeviceSettings != null && cameraDeviceSettings.LimitImageYHeightEnabled,
-                RequiredImageYHeight = cameraDeviceSettings == null ? 0 : cameraDeviceSettings.RequiredImageYHeight
+                RequiredImageYHeight = cameraDeviceSettings == null ? 0 : cameraDeviceSettings.RequiredImageYHeight,
+                LastSelectedRole = cameraDeviceSettings == null ||
+                    string.IsNullOrWhiteSpace(cameraDeviceSettings.LastSelectedRole)
+                    ? "Operator"
+                    : cameraDeviceSettings.LastSelectedRole
             };
         }
 

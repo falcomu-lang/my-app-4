@@ -57,7 +57,7 @@
 |---|---|
 | SystemParameters.ini | 目前工作中的檢測設定。 |
 | recipe/parameterList.json、recipe/{ID}.ini | Recipe 名稱／說明／排序與每份完整參數快照。 |
-| config/device-settings.ini | 相機精度、程式名稱、站點 ID、本機監聽 IP／Port、允許連線、手動歷史記錄與圖片保留開關。 |
+| config/device-settings.ini | 相機精度、程式名稱、站點 ID、本機監聽 IP／Port、允許連線、手動歷史記錄／圖片保留開關，以及上次選取的介面角色。 |
 | config/connection-controller-settings.xml | 總控連線行為與被控站點清單。 |
 | captureSetting.ini | 相機取像、觸發、顯示、存圖與米輪設定。 |
 | CameraCapture/yyyyMMdd | 相機取像原始灰階 TIFF 的每日保存目錄。 |

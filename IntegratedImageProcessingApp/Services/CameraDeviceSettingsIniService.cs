@@ -21,6 +21,7 @@ namespace IntegratedImageProcessingApp.Services
             KeepResultReviewImages = true;
             LimitImageYHeightEnabled = false;
             RequiredImageYHeight = 0;
+            LastSelectedRole = "Operator";
         }
 
         public double XMillimetersPerPixel { get; set; }
@@ -46,6 +47,8 @@ namespace IntegratedImageProcessingApp.Services
         public bool LimitImageYHeightEnabled { get; set; }
 
         public int RequiredImageYHeight { get; set; }
+
+        public string LastSelectedRole { get; set; }
     }
 
     public sealed class CameraDeviceSettingsIniService
@@ -70,6 +73,7 @@ namespace IntegratedImageProcessingApp.Services
             bool inNetworkSection = false;
             bool inHistorySection = false;
             bool inImageSpecificationSection = false;
+            bool inAccessControlSection = false;
             foreach (string rawLine in File.ReadAllLines(filePath))
             {
                 string line = rawLine.Trim();
@@ -93,6 +97,8 @@ namespace IntegratedImageProcessingApp.Services
                         sectionName, "History", StringComparison.OrdinalIgnoreCase);
                     inImageSpecificationSection = string.Equals(
                         sectionName, "ImageSpecification", StringComparison.OrdinalIgnoreCase);
+                    inAccessControlSection = string.Equals(
+                        sectionName, "AccessControl", StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
@@ -164,6 +170,11 @@ namespace IntegratedImageProcessingApp.Services
                 {
                     settings.RequiredImageYHeight = ParseIntegerInRange(value, 0, 0, int.MaxValue);
                 }
+                else if (inAccessControlSection && string.Equals(
+                    key, "LastSelectedRole", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.LastSelectedRole = NormalizeRole(value);
+                }
             }
 
             return settings;
@@ -209,6 +220,9 @@ namespace IntegratedImageProcessingApp.Services
                 .AppendLine(settings.LimitImageYHeightEnabled ? "true" : "false");
             content.Append("RequiredImageYHeight=")
                 .AppendLine(Math.Max(0, settings.RequiredImageYHeight).ToString(CultureInfo.InvariantCulture));
+            content.AppendLine("[AccessControl]");
+            content.Append("LastSelectedRole=")
+                .AppendLine(NormalizeRole(settings.LastSelectedRole));
             string temporaryPath = filePath + ".tmp";
             try
             {
@@ -289,6 +303,14 @@ namespace IntegratedImageProcessingApp.Services
             }
 
             return fallback;
+        }
+
+        private static string NormalizeRole(string value)
+        {
+            if (string.Equals(value, "Engineer", StringComparison.OrdinalIgnoreCase)) return "Engineer";
+            if (string.Equals(value, "Manager", StringComparison.OrdinalIgnoreCase)) return "Manager";
+            if (string.Equals(value, "Monitoring", StringComparison.OrdinalIgnoreCase)) return "Monitoring";
+            return "Operator";
         }
     }
 }
