@@ -1,11 +1,11 @@
 # Project Handoff：整合式影像處理軟體
 
-文件更新日：2026-10-30
-程式碼基準：b512791（Add architecture review and persist UI role selection）
+文件更新日：2026-11-02
+程式碼基準：main；本次角色驗證修改以 8760dcd 為起點
 Solution：MyApp4.sln
 工作目錄：此文件所在專案根目錄
 
-本次核對起點 main 與 origin/main 同為 b512791。先前歷史頁、圖片保留、總控預設、影像高度限制及角色選單的修改已包含於目前程式。本次新增的是文件集與文件產出工具，未修改檢測原始碼。完整文件入口為 [docs/README.md](docs/README.md)，包含操作手冊、功能規格、目前／目標架構、驗收及來源對照；Word／PDF 位於 docs/exports。
+本次從 main 的 8760dcd 開始，加入角色套用密碼驗證、`SystemParameters.ini` 密碼欄位保存及本文件更新。既有完整文件入口為 [docs/README.md](docs/README.md)，包含操作手冊、功能規格、目前／目標架構、驗收及來源對照；Word／PDF 位於 docs/exports。
 
 ## 1. 專案定位與目前結論
 
@@ -88,6 +88,19 @@ CameraCaptureModule / Sapera
 
 目前的訊息以換行分隔 JSON 傳輸，包含 hello、station-status、command、command-ack 等類型。總控端能傳送連續取像開始／停止及檢測命令；被控端回傳連線、取像、Recipe 名稱、判定時間、逐物件格位及尺寸／缺陷／綜合等級。TCP 不傳影像本身。程式尚未提供 TLS、訊息驗證或明確的協定版本欄位，跨電腦、斷線重連及多站同時操作仍需驗收。
 
+### 2.6 角色切換與密碼
+
+左側角色控制分為「目前角色」標籤、候選角色下拉選單及「套用」按鈕；選下拉項目不會立即變更權限。取消密碼視窗或驗證失敗時，會還原下拉選擇並維持原角色。成功套用才更新頁面可見項目並保存 `LastSelectedRole` 至 `config/device-settings.ini`。
+
+| 角色變更 | 驗證方式 |
+|---|---|
+| 切換至操作員 | 一般免密碼；若目前角色是總監控模式，需輸入 `[Password] operator`，預設 `op0000`。 |
+| 切換至工程師 | `[Password] Engineer`，預設 `engineer0000`。 |
+| 切換至管理者 | `[Password] Admin`，預設 `admin0000`。 |
+| 切換至總監控模式 | `[Password] Monitor`，預設 `monitor0000`。 |
+
+密碼保存於主程式執行目錄的 `SystemParameters.ini`，檔案以明文保存。根目錄同名檔只在輸出目錄尚無設定檔時作為初始檔複製；設定服務重寫主要參數、建立空白參數、載入 Recipe 時都會保留 `[Password]`。這是本機角色切換門檻，不提供個人帳號、登入紀錄或 TCP/IP 認證。
+
 ## 3. 功能進度與待驗收項目
 
 | 功能 | 程式現況 | 尚待確認 |
@@ -124,7 +137,7 @@ CameraCaptureModule / Sapera
 
 | 檔案／路徑 | 寫入者與內容 | 重要語意 |
 |---|---|---|
-| SystemParameters.ini | SystemParameterIniService 保存目前正在編輯的完整檢測設定。 | 新建參數會重設這份設定；它與 recipe 目錄的快照分開。 |
+| SystemParameters.ini | SystemParameterIniService 保存目前正在編輯的完整檢測設定及 `[Password]` 角色密碼。 | 新建參數會重設檢測設定但保留角色密碼；它與 recipe 目錄的快照分開。 |
 | recipe/parameterList.json | DetectionRecipeCatalogService 保存 Recipe ID、顯示名稱、說明與排序。 | 名稱可編輯，關聯以 ID 為主。 |
 | recipe/{ID}.ini | 每個 Recipe 的完整參數快照。 | 一次只有一組載入為作用中設定；套用 Recipe 會以快照更新目前流程。 |
 | config/device-settings.ini | CameraDeviceSettingsIniService 保存設備名稱／站點 ID、X/Y mm-per-pixel、換算開關、本機監聽 IP／Port、允許連線、手動結果確認歷史記錄及圖片保留開關。 | 缺檔預設精度 1、換算關閉、ID 1、0.0.0.0:5000、允許連線關閉；圖片保留預設開啟。程式只在輸出目錄缺少時複製初始檔。 |
@@ -184,7 +197,7 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 |---|---|
 | IntegratedImageProcessingApp/Forms/MainForm.cs | 主視窗狀態、參數服務初始化、功能選單結構、目前影像載入與主要生命週期協調。 |
 | IntegratedImageProcessingApp/Forms/MainForm.Designer.cs | 主視窗設計器產生的三欄版面與基本控制項。 |
-| IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs | 左側選單導覽、功能切換、鍵盤操作及相同目標的重複選取處理。 |
+| IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs | 左側選單導覽、功能切換、角色權限篩選、角色套用與密碼視窗、鍵盤操作及重複選取處理。 |
 | IntegratedImageProcessingApp/Forms/MainForm.FunctionTree.cs | 找物件流程、影像處理步驟／群組及 ROI 清單的情境選單與清單操作。 |
 | IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs | 全域設定頁、CameraCaptureHostControl、設備精度／IP／Port／站點 ID、歷史紀錄／圖片保留及總控設定 UI。 |
 | IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs | TCP listener／station 連線、站點卡片、心跳狀態、遠端連續取像與檢測命令、逐物件結果發布。 |
@@ -379,7 +392,7 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 - MainForm.GlobalSettings.cs：歷史紀錄群組新增「保留參數結果確認的圖片」核取方塊及套用保存。
 - CameraDeviceSettingsIniService.cs、config/device-settings.ini：保存圖片保留設定；舊設定檔缺少此鍵時預設保留，以延續原本行為。
 
-上述功能仍需以實際畫面驗收。b512791 另包含左下角色下拉選單與 LastSelectedRole 保存，刪除不顯示畫面開關；操作員／工程師隱藏總控，管理者可看總控，總監控模式僅看總控，尚未有登入機制。
+上述功能仍需以實際畫面驗收。角色權限為：操作員只看參數選擇、檢測總覽、歷史資料；工程師可看其他功能但不含連線總控與全域設定；管理者可看全部；總監控模式只看連線總控。角色切換需按套用；工程師、管理者、總監控模式需各自密碼，總監控模式切回操作員需 `operator` 密碼。密碼放在 `SystemParameters.ini` 的 `[Password]`，預設為 `op0000`、`engineer0000`、`admin0000`、`monitor0000`。這只是角色切換驗證，尚無使用者帳號及操作稽核。
 
 ## 11 本次新增的規格與來源核對
 

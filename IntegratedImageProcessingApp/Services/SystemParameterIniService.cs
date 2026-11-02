@@ -10,6 +10,7 @@ namespace IntegratedImageProcessingApp.Services
     public class SystemParameterIniService
     {
         private const string SectionSystem = "System";
+        private const string SectionPassword = "Password";
         private const string SectionRoi = "ROI";
         private const string SectionRois = "ROIs";
         private const string SectionImageProcessing = "ImageProcessing";
@@ -915,6 +916,26 @@ namespace IntegratedImageProcessingApp.Services
 
         public void Save(SystemParameterSettings settings)
         {
+            string passwordSourcePath = filePath;
+            string canonicalSettingsPath = Path.Combine(
+                Path.GetDirectoryName(filePath) ?? string.Empty,
+                "SystemParameters.ini");
+            if (!string.Equals(
+                    Path.GetFullPath(filePath),
+                    Path.GetFullPath(canonicalSettingsPath),
+                    StringComparison.OrdinalIgnoreCase) &&
+                File.Exists(canonicalSettingsPath))
+            {
+                passwordSourcePath = canonicalSettingsPath;
+            }
+
+            Dictionary<string, Dictionary<string, string>> existingSections =
+                new SystemParameterIniService(passwordSourcePath).ReadSections();
+            string operatorPassword = GetValue(existingSections, SectionPassword, "operator", "op0000");
+            string engineerPassword = GetValue(existingSections, SectionPassword, "Engineer", "engineer0000");
+            string adminPassword = GetValue(existingSections, SectionPassword, "Admin", "admin0000");
+            string monitorPassword = GetValue(existingSections, SectionPassword, "Monitor", "monitor0000");
+
             string directory = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
@@ -1396,6 +1417,13 @@ namespace IntegratedImageProcessingApp.Services
                         writer.WriteLine("{0}.AlternativeSpecificationExpression={1}", rulePrefix, Escape(rule.AlternativeSpecificationExpression));
                     }
                 }
+
+                writer.WriteLine();
+                writer.WriteLine("[Password]");
+                writer.WriteLine("operator={0}", Escape(operatorPassword));
+                writer.WriteLine("Engineer={0}", Escape(engineerPassword));
+                writer.WriteLine("Admin={0}", Escape(adminPassword));
+                writer.WriteLine("Monitor={0}", Escape(monitorPassword));
             }
         }
 

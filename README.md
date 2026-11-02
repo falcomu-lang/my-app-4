@@ -2,8 +2,8 @@
 
 本 repository 是以 Windows WinForms 為主的灰階線掃描影像檢測程式，包含本機相機取像、物件搜尋、Recipe、尺寸與缺陷判定、結果總覽、歷史資料及 TCP/IP 總控／被控通訊。
 
-- 文件核對日期：2026-10-30
-- 程式基準：b512791（Add architecture review and persist UI role selection）
+- 文件核對日期：2026-11-02
+- 程式基準：main；本次角色驗證修改以 8760dcd 為起點
 - 完整架構、流程、檔案職責、風險與拆檔建議：[PROJECT_HANDOFF.md](PROJECT_HANDOFF.md)
 - 操作手冊、功能規格、目前／目標架構與驗收清單：[docs 文件入口](docs/README.md)
 - 完整程式架構檢視：[ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md)
@@ -12,7 +12,7 @@
 
 [操作手冊](docs/USER_MANUAL.md)涵蓋 Recipe、物件搜尋、尺寸、平場、缺陷、相機、歷史與總控；[功能規格書](docs/SYSTEM_SPECIFICATION.md)記錄實際判定、預設值、儲存與 TCP/IP 合約。兩者另有 Word／PDF，請由 docs 文件入口下載。
 
-[目前架構](docs/CURRENT_ARCHITECTURE.md)、[目標架構與遷移](docs/TARGET_ARCHITECTURE.md)、[已知限制與驗收](docs/VALIDATION_AND_LIMITATIONS.md)分別記錄現況、建議與尚待驗證的工作。文件版本為 1.1，並非產品版本號。本次僅更新文件與產出工具，未修改檢測程式。
+[目前架構](docs/CURRENT_ARCHITECTURE.md)、[目標架構與遷移](docs/TARGET_ARCHITECTURE.md)、[已知限制與驗收](docs/VALIDATION_AND_LIMITATIONS.md)分別記錄現況、建議與尚待驗證的工作。文件版本為 1.1，並非產品版本號。本次另完成角色套用密碼驗證及密碼設定保存。
 
 [圖解操作指南](docs/ILLUSTRATED_GUIDE.md)提供 18 張操作示意圖及 2 張架構圖，包含 ROI 編輯與分組、量測、缺陷條件、相機、歷史與總控。圖文已加入 27 頁操作手冊及 18 頁規格書的 Word／PDF；圖中配置與數值為依程式繪製的說明範例，非實際截圖。
 
@@ -31,8 +31,16 @@
 | 歷史資料 | 每日 SQLite 檢測紀錄、逐物件明細、日期／Recipe／狀態查詢，以及以當時參數快照重新檢測。 |
 | 相機 | Sapera 線掃描模組嵌入主程式；Mono8 frame 由記憶體直接進檢測，存檔在背景並行執行。 |
 | TCP/IP | 本機被控 listener 與總控多站連線、狀態與命令交換；不傳送影像本身。 |
-| 角色 | 左下下拉選擇操作員、工程師、管理者、總監控模式並保存；目前沒有登入驗證。 |
+| 角色 | 左下選擇候選角色並按「套用」；工程師、管理者、總監控模式需密碼，總監控模式切回操作員也需密碼。 |
 | 合格影像規格 | 相機入口可檢查 Y 高度完全相等；手動結果確認另檢查參數參考寬高。 |
+
+## 角色切換與密碼
+
+- 左下「目前的角色」顯示已套用的角色。下拉選單只是候選值，按「套用」才會變更角色與可見功能。
+- 操作員切換到工程師、管理者、總監控模式時，分別要求 `[Password]` 的 `Engineer`、`Admin`、`Monitor` 密碼；切換到操作員通常免密碼，但從總監控模式切回操作員必須輸入 `op0000`（設定鍵為 `operator`）。
+- 密碼視窗按取消或輸入錯誤時，仍維持原角色；只有成功套用才保存 `LastSelectedRole`。
+- 預設密碼位於主程式執行目錄的 `SystemParameters.ini`：`operator=op0000`、`Engineer=engineer0000`、`Admin=admin0000`、`Monitor=monitor0000`。根目錄的同名檔是輸出目錄缺檔時使用的初始檔。設定服務保存檢測參數、建立空白參數或套用 Recipe 時會保留此區段。
+- 角色切換密碼是本機 INI 設定，不代表具備個人帳號、操作稽核或網路身分驗證。
 
 ## 檢測資料流
 
@@ -68,7 +76,7 @@
 
 | 路徑 | 用途 |
 |---|---|
-| SystemParameters.ini | 目前工作中的檢測設定。 |
+| SystemParameters.ini | 目前工作中的檢測設定及 `[Password]` 角色切換密碼。 |
 | recipe/parameterList.json、recipe/{ID}.ini | Recipe 名稱／說明／排序與每份完整參數快照。 |
 | config/device-settings.ini | 相機精度、程式名稱、站點 ID、本機監聽 IP／Port、允許連線、手動歷史記錄／圖片保留開關，以及上次選取的介面角色。 |
 | config/connection-controller-settings.xml | 總控連線行為與被控站點清單。 |

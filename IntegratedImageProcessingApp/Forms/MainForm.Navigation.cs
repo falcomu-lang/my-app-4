@@ -29,27 +29,21 @@ namespace IntegratedImageProcessingApp.Forms
 
         private MainFormRole selectedMainFormRole;
         private bool isApplyingMainFormRole;
-        private List<object> functionMenuItemsBeforeMonitoring;
-        private string functionMenuSelectionBeforeMonitoring;
+        private List<object> functionMenuItemsBeforeRestrictedRole;
+        private string functionMenuSelectionBeforeRestrictedRole;
 
         private void InitializeMainFormRoleSwitcher()
         {
+            functionMenuItemsBeforeRestrictedRole = functionListBox.Items
+                .Cast<object>().ToList();
             selectedMainFormRole = ParseMainFormRole(
                 cameraDeviceSettings == null ? null : cameraDeviceSettings.LastSelectedRole);
             roleSelectorComboBox.SelectedIndex = (int)selectedMainFormRole;
             roleSelectorComboBox.SelectedIndexChanged += RoleSelectorComboBox_SelectedIndexChanged;
-            if (selectedMainFormRole == MainFormRole.Monitoring)
-            {
-                functionMenuItemsBeforeMonitoring = functionListBox.Items
-                    .Cast<object>().ToList();
-                functionMenuSelectionBeforeMonitoring = LoadImageMenuText;
-                functionListBox.Items.Clear();
-                functionListBox.Items.Add(ConnectionControllerMenuText);
-            }
-            else
-            {
-                SetConnectionControllerMenuVisible(selectedMainFormRole == MainFormRole.Manager);
-            }
+            applyRoleButton.Click += ApplyRoleButton_Click;
+            UpdateCurrentRoleLabel();
+            UpdateRoleApplyButtonState();
+            ApplyMainFormRoleMenu(selectedMainFormRole);
         }
 
         private void RoleSelectorComboBox_SelectedIndexChanged(object sender, EventArgs e)
@@ -59,7 +53,227 @@ namespace IntegratedImageProcessingApp.Forms
                 return;
             }
 
-            SetMainFormRole((MainFormRole)roleSelectorComboBox.SelectedIndex);
+            UpdateRoleApplyButtonState();
+        }
+
+        private void ApplyRoleButton_Click(object sender, EventArgs e)
+        {
+            if (roleSelectorComboBox.SelectedIndex < 0)
+            {
+                return;
+            }
+
+            MainFormRole requestedRole = (MainFormRole)roleSelectorComboBox.SelectedIndex;
+            if (requestedRole == selectedMainFormRole)
+            {
+                UpdateRoleApplyButtonState();
+                return;
+            }
+
+            bool requiresPassword = requestedRole != MainFormRole.Operator ||
+                selectedMainFormRole == MainFormRole.Monitoring;
+            if (requiresPassword)
+            {
+                string enteredPassword;
+                if (!ShowRolePasswordDialog(requestedRole, out enteredPassword))
+                {
+                    RestoreAppliedRoleSelection();
+                    return;
+                }
+
+                string configuredPassword = ReadRolePassword(requestedRole);
+                if (!string.Equals(enteredPassword, configuredPassword, StringComparison.Ordinal))
+                {
+                    MessageBox.Show(
+                        this,
+                        "密碼錯誤，角色維持不變。",
+                        "角色套用",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    RestoreAppliedRoleSelection();
+                    return;
+                }
+            }
+
+            SetMainFormRole(requestedRole);
+            UpdateCurrentRoleLabel();
+            UpdateRoleApplyButtonState();
+        }
+
+        private void RestoreAppliedRoleSelection()
+        {
+            isApplyingMainFormRole = true;
+            try
+            {
+                roleSelectorComboBox.SelectedIndex = (int)selectedMainFormRole;
+            }
+            finally
+            {
+                isApplyingMainFormRole = false;
+            }
+
+            UpdateCurrentRoleLabel();
+            UpdateRoleApplyButtonState();
+        }
+
+        private void UpdateRoleApplyButtonState()
+        {
+            if (applyRoleButton != null)
+            {
+                applyRoleButton.Enabled = roleSelectorComboBox.SelectedIndex >= 0 &&
+                    roleSelectorComboBox.SelectedIndex != (int)selectedMainFormRole;
+            }
+        }
+
+        private void UpdateCurrentRoleLabel()
+        {
+            if (currentRoleLabel != null)
+            {
+                currentRoleLabel.Text = "目前的角色：" + GetMainFormRoleDisplayName(selectedMainFormRole);
+            }
+        }
+
+        private static string GetMainFormRoleDisplayName(MainFormRole role)
+        {
+            switch (role)
+            {
+                case MainFormRole.Engineer: return "工程師";
+                case MainFormRole.Manager: return "管理者";
+                case MainFormRole.Monitoring: return "總監控模式";
+                default: return "操作員";
+            }
+        }
+
+        private static string GetRolePasswordKey(MainFormRole role)
+        {
+            switch (role)
+            {
+                case MainFormRole.Operator: return "operator";
+                case MainFormRole.Engineer: return "Engineer";
+                case MainFormRole.Manager: return "Admin";
+                case MainFormRole.Monitoring: return "Monitor";
+                default: return string.Empty;
+            }
+        }
+
+        private static string GetDefaultRolePassword(MainFormRole role)
+        {
+            switch (role)
+            {
+                case MainFormRole.Operator: return "op0000";
+                case MainFormRole.Engineer: return "engineer0000";
+                case MainFormRole.Manager: return "admin0000";
+                case MainFormRole.Monitoring: return "monitor0000";
+                default: return string.Empty;
+            }
+        }
+
+        private string ReadRolePassword(MainFormRole role)
+        {
+            string key = GetRolePasswordKey(role);
+            string password = GetDefaultRolePassword(role);
+            string filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SystemParameters.ini");
+            if (!File.Exists(filePath))
+            {
+                return password;
+            }
+
+            bool inPasswordSection = false;
+            foreach (string rawLine in File.ReadAllLines(filePath))
+            {
+                string line = rawLine.Trim();
+                if (line.Length == 0 || line.StartsWith(";", StringComparison.Ordinal) ||
+                    line.StartsWith("#", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (line.StartsWith("[", StringComparison.Ordinal) && line.EndsWith("]", StringComparison.Ordinal))
+                {
+                    inPasswordSection = string.Equals(
+                        line.Substring(1, line.Length - 2).Trim(),
+                        "Password",
+                        StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+
+                if (!inPasswordSection)
+                {
+                    continue;
+                }
+
+                int separator = line.IndexOf('=');
+                if (separator <= 0 || !string.Equals(line.Substring(0, separator).Trim(), key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string configuredValue = line.Substring(separator + 1).Trim()
+                    .Replace("\\n", "\n")
+                    .Replace("\\r", "\r")
+                    .Replace("\\\\", "\\");
+                if (!string.IsNullOrEmpty(configuredValue))
+                {
+                    password = configuredValue;
+                }
+                break;
+            }
+
+            return password;
+        }
+
+        private bool ShowRolePasswordDialog(MainFormRole role, out string password)
+        {
+            password = string.Empty;
+            using (var dialog = new Form())
+            using (var promptLabel = new Label())
+            using (var passwordTextBox = new TextBox())
+            using (var confirmButton = new Button())
+            using (var cancelButton = new Button())
+            {
+                dialog.Text = "套用角色";
+                dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dialog.StartPosition = FormStartPosition.CenterParent;
+                dialog.MinimizeBox = false;
+                dialog.MaximizeBox = false;
+                dialog.ShowInTaskbar = false;
+                dialog.ClientSize = new Size(320, 126);
+                dialog.Font = new Font("Microsoft JhengHei UI", 9F);
+
+                promptLabel.AutoSize = false;
+                promptLabel.Location = new Point(16, 14);
+                promptLabel.Size = new Size(288, 22);
+                promptLabel.Text = "請輸入「" + GetMainFormRoleDisplayName(role) + "」密碼：";
+
+                passwordTextBox.Location = new Point(16, 42);
+                passwordTextBox.Size = new Size(288, 25);
+                passwordTextBox.UseSystemPasswordChar = true;
+
+                confirmButton.Text = "確定";
+                confirmButton.DialogResult = DialogResult.OK;
+                confirmButton.Location = new Point(144, 84);
+                confirmButton.Size = new Size(75, 27);
+
+                cancelButton.Text = "取消";
+                cancelButton.DialogResult = DialogResult.Cancel;
+                cancelButton.Location = new Point(229, 84);
+                cancelButton.Size = new Size(75, 27);
+
+                dialog.Controls.Add(promptLabel);
+                dialog.Controls.Add(passwordTextBox);
+                dialog.Controls.Add(confirmButton);
+                dialog.Controls.Add(cancelButton);
+                dialog.AcceptButton = confirmButton;
+                dialog.CancelButton = cancelButton;
+
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                {
+                    return false;
+                }
+
+                password = passwordTextBox.Text;
+                return true;
+            }
         }
 
         private static MainFormRole ParseMainFormRole(string role)
@@ -92,45 +306,47 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             MainFormRole previousRole = selectedMainFormRole;
-            bool wasMonitoring = previousRole == MainFormRole.Monitoring;
             string currentSelection = functionListBox.SelectedItem as string;
-            if (role == MainFormRole.Monitoring && !wasMonitoring)
+            bool wasRestrictedRole = IsRestrictedMainFormRole(previousRole);
+            bool isRestrictedRole = IsRestrictedMainFormRole(role);
+
+            if (!wasRestrictedRole && isRestrictedRole)
             {
-                functionMenuItemsBeforeMonitoring = functionListBox.Items
+                functionMenuItemsBeforeRestrictedRole = functionListBox.Items
                     .Cast<object>().ToList();
-                functionMenuSelectionBeforeMonitoring = currentSelection;
+                functionMenuSelectionBeforeRestrictedRole = currentSelection;
             }
 
             isApplyingMainFormRole = true;
             functionListBox.BeginUpdate();
             try
             {
-                if (wasMonitoring && role != MainFormRole.Monitoring &&
-                    functionMenuItemsBeforeMonitoring != null)
+                if (wasRestrictedRole && !isRestrictedRole &&
+                    functionMenuItemsBeforeRestrictedRole != null)
                 {
                     functionListBox.Items.Clear();
-                    functionListBox.Items.AddRange(functionMenuItemsBeforeMonitoring.ToArray());
+                    functionListBox.Items.AddRange(functionMenuItemsBeforeRestrictedRole.ToArray());
                 }
 
                 selectedMainFormRole = role;
-                if (role == MainFormRole.Monitoring)
-                {
-                    functionListBox.Items.Clear();
-                    functionListBox.Items.Add(ConnectionControllerMenuText);
-                }
-                else
-                {
-                    SetConnectionControllerMenuVisible(role == MainFormRole.Manager);
-                }
+                ApplyMainFormRoleMenu(role);
 
-                string targetSelection = role == MainFormRole.Monitoring
-                    ? ConnectionControllerMenuText
-                    : (wasMonitoring ? functionMenuSelectionBeforeMonitoring : currentSelection);
-                if (role != MainFormRole.Manager && role != MainFormRole.Monitoring &&
-                    targetSelection == ConnectionControllerMenuText)
+                string targetSelection;
+                if (role == MainFormRole.Operator)
                 {
                     targetSelection = InspectionOverviewMenuText;
                 }
+                else if (role == MainFormRole.Monitoring)
+                {
+                    targetSelection = ConnectionControllerMenuText;
+                }
+                else
+                {
+                    targetSelection = wasRestrictedRole
+                        ? functionMenuSelectionBeforeRestrictedRole
+                        : currentSelection;
+                }
+
                 if (string.IsNullOrEmpty(targetSelection) ||
                     !functionListBox.Items.Contains(targetSelection))
                 {
@@ -144,10 +360,10 @@ namespace IntegratedImageProcessingApp.Forms
                     functionListBox.SelectedItem = targetSelection;
                 }
 
-                if (wasMonitoring && role != MainFormRole.Monitoring)
+                if (wasRestrictedRole && !isRestrictedRole)
                 {
-                    functionMenuItemsBeforeMonitoring = null;
-                    functionMenuSelectionBeforeMonitoring = null;
+                    functionMenuItemsBeforeRestrictedRole = null;
+                    functionMenuSelectionBeforeRestrictedRole = null;
                 }
             }
             finally
@@ -162,6 +378,36 @@ namespace IntegratedImageProcessingApp.Forms
                 FunctionListBox_SelectedIndexChanged(functionListBox, EventArgs.Empty);
             }
             PersistMainFormRoleSelection();
+            UpdateCurrentRoleLabel();
+            UpdateRoleApplyButtonState();
+        }
+
+        private static bool IsRestrictedMainFormRole(MainFormRole role)
+        {
+            return role == MainFormRole.Operator || role == MainFormRole.Monitoring;
+        }
+
+        private void ApplyMainFormRoleMenu(MainFormRole role)
+        {
+            if (role == MainFormRole.Operator)
+            {
+                functionListBox.Items.Clear();
+                functionListBox.Items.Add(DetectionParameterSelectMenuText);
+                functionListBox.Items.Add(InspectionOverviewMenuText);
+                functionListBox.Items.Add(InspectionHistoryMenuText);
+                return;
+            }
+
+            if (role == MainFormRole.Monitoring)
+            {
+                functionListBox.Items.Clear();
+                functionListBox.Items.Add(ConnectionControllerMenuText);
+                return;
+            }
+
+            bool isManager = role == MainFormRole.Manager;
+            SetConnectionControllerMenuVisible(isManager);
+            SetGlobalSettingsMenuVisible(isManager);
         }
 
         private void PersistMainFormRoleSelection()
@@ -202,6 +448,35 @@ namespace IntegratedImageProcessingApp.Forms
                     ConnectionControllerMenuText);
             }
             MoveFunctionListItemAfter(ConnectionControllerMenuText, InspectionHistoryMenuText);
+        }
+
+        private void SetGlobalSettingsMenuVisible(bool visible)
+        {
+            int itemIndex = functionListBox.Items.IndexOf(GlobalSettingsMenuText);
+            if (!visible)
+            {
+                if (itemIndex >= 0)
+                {
+                    functionListBox.Items.RemoveAt(itemIndex);
+                }
+                return;
+            }
+
+            if (itemIndex < 0)
+            {
+                string previousItem = functionListBox.Items.Contains(ConnectionControllerMenuText)
+                    ? ConnectionControllerMenuText
+                    : InspectionHistoryMenuText;
+                int previousIndex = functionListBox.Items.IndexOf(previousItem);
+                functionListBox.Items.Insert(
+                    previousIndex < 0 ? functionListBox.Items.Count : previousIndex + 1,
+                    GlobalSettingsMenuText);
+            }
+
+            string anchor = functionListBox.Items.Contains(ConnectionControllerMenuText)
+                ? ConnectionControllerMenuText
+                : InspectionHistoryMenuText;
+            MoveFunctionListItemAfter(GlobalSettingsMenuText, anchor);
         }
 
         private SystemParameterSettings displayedFunctionListSettings;
@@ -370,7 +645,9 @@ namespace IntegratedImageProcessingApp.Forms
         {
             string firstPage = selectedMainFormRole == MainFormRole.Monitoring
                 ? ConnectionControllerMenuText
-                : LoadImageMenuText;
+                : selectedMainFormRole == MainFormRole.Operator
+                    ? InspectionOverviewMenuText
+                    : LoadImageMenuText;
             functionListBox.SelectedIndex = functionListBox.Items.IndexOf(firstPage);
             statusLabel.Text = "介面框架準備就緒";
             BeginInvoke(new Action(async () => await RestoreSystemParametersAsync()));

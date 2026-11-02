@@ -13,6 +13,9 @@ namespace IntegratedImageProcessingApp.Forms
         private System.Windows.Forms.Label leftPanelTitleLabel;
         private System.Windows.Forms.ListBox functionListBox;
         private System.Windows.Forms.ComboBox roleSelectorComboBox;
+        private System.Windows.Forms.Panel roleSelectorPanel;
+        private System.Windows.Forms.Label currentRoleLabel;
+        private System.Windows.Forms.Button applyRoleButton;
         private System.Windows.Forms.TextBox debugTimingMemo;
         private System.Windows.Forms.Label rightPanelTitleLabel;
         private System.Windows.Forms.Panel parameterPanel;
@@ -133,7 +136,10 @@ namespace IntegratedImageProcessingApp.Forms
             this.mainLayoutPanel = new System.Windows.Forms.TableLayoutPanel();
             this.leftPanel = new System.Windows.Forms.Panel();
             this.functionListBox = new System.Windows.Forms.ListBox();
+            this.roleSelectorPanel = new System.Windows.Forms.Panel();
             this.roleSelectorComboBox = new System.Windows.Forms.ComboBox();
+            this.applyRoleButton = new System.Windows.Forms.Button();
+            this.currentRoleLabel = new System.Windows.Forms.Label();
             this.debugTimingMemo = new System.Windows.Forms.TextBox();
             this.leftPanelTitleLabel = new System.Windows.Forms.Label();
             this.centerPanel = new System.Windows.Forms.Panel();
@@ -229,6 +235,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.topBarPanel.SuspendLayout();
             this.mainLayoutPanel.SuspendLayout();
             this.leftPanel.SuspendLayout();
+            this.roleSelectorPanel.SuspendLayout();
             this.centerPanel.SuspendLayout();
             this.imageLayoutPanel.SuspendLayout();
             this.leftImageTabControl.SuspendLayout();
@@ -328,7 +335,7 @@ namespace IntegratedImageProcessingApp.Forms
             // 
             this.leftPanel.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(241)))), ((int)(((byte)(244)))), ((int)(((byte)(248)))));
             this.leftPanel.Controls.Add(this.functionListBox);
-            this.leftPanel.Controls.Add(this.roleSelectorComboBox);
+            this.leftPanel.Controls.Add(this.roleSelectorPanel);
             this.leftPanel.Controls.Add(this.debugTimingMemo);
             this.leftPanel.Controls.Add(this.leftPanelTitleLabel);
             this.leftPanel.Dock = System.Windows.Forms.DockStyle.Fill;
@@ -357,18 +364,28 @@ namespace IntegratedImageProcessingApp.Forms
             "影像處理"});
             this.functionListBox.Location = new System.Drawing.Point(14, 46);
             this.functionListBox.Name = "functionListBox";
-            this.functionListBox.Size = new System.Drawing.Size(136, 442);
+            this.functionListBox.Size = new System.Drawing.Size(136, 407);
             this.functionListBox.TabIndex = 1;
             this.functionListBox.MouseClick += new System.Windows.Forms.MouseEventHandler(this.FunctionListBox_MouseClick);
             this.functionListBox.DrawItem += new System.Windows.Forms.DrawItemEventHandler(this.FunctionListBox_DrawItem);
             this.functionListBox.SelectedIndexChanged += new System.EventHandler(this.FunctionListBox_SelectedIndexChanged);
-            //
+            // 
+            // roleSelectorPanel
+            // 
+            this.roleSelectorPanel.Controls.Add(this.roleSelectorComboBox);
+            this.roleSelectorPanel.Controls.Add(this.applyRoleButton);
+            this.roleSelectorPanel.Controls.Add(this.currentRoleLabel);
+            this.roleSelectorPanel.Dock = System.Windows.Forms.DockStyle.Bottom;
+            this.roleSelectorPanel.Location = new System.Drawing.Point(14, 453);
+            this.roleSelectorPanel.Name = "roleSelectorPanel";
+            this.roleSelectorPanel.Size = new System.Drawing.Size(136, 62);
+            this.roleSelectorPanel.TabIndex = 3;
+            // 
             // roleSelectorComboBox
-            //
+            // 
             this.roleSelectorComboBox.BackColor = System.Drawing.Color.White;
-            this.roleSelectorComboBox.Dock = System.Windows.Forms.DockStyle.Bottom;
             this.roleSelectorComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-            this.roleSelectorComboBox.Font = new System.Drawing.Font("Microsoft JhengHei UI", 9F);
+            this.roleSelectorComboBox.Font = new System.Drawing.Font("Microsoft JhengHei UI", 8.25F);
             this.roleSelectorComboBox.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(39)))), ((int)(((byte)(46)))), ((int)(((byte)(56)))));
             this.roleSelectorComboBox.FormattingEnabled = true;
             this.roleSelectorComboBox.Items.AddRange(new object[] {
@@ -376,11 +393,34 @@ namespace IntegratedImageProcessingApp.Forms
             "工程師",
             "管理者",
             "總監控模式"});
-            this.roleSelectorComboBox.Location = new System.Drawing.Point(14, 488);
-            this.roleSelectorComboBox.Margin = new System.Windows.Forms.Padding(0, 4, 0, 4);
+            this.roleSelectorComboBox.Location = new System.Drawing.Point(0, 26);
+            this.roleSelectorComboBox.Margin = new System.Windows.Forms.Padding(0);
             this.roleSelectorComboBox.Name = "roleSelectorComboBox";
-            this.roleSelectorComboBox.Size = new System.Drawing.Size(136, 27);
-            this.roleSelectorComboBox.TabIndex = 3;
+            this.roleSelectorComboBox.Size = new System.Drawing.Size(91, 26);
+            this.roleSelectorComboBox.TabIndex = 1;
+            // 
+            // applyRoleButton
+            // 
+            this.applyRoleButton.Font = new System.Drawing.Font("Microsoft JhengHei UI", 8.25F);
+            this.applyRoleButton.Location = new System.Drawing.Point(96, 26);
+            this.applyRoleButton.Name = "applyRoleButton";
+            this.applyRoleButton.Size = new System.Drawing.Size(40, 25);
+            this.applyRoleButton.TabIndex = 2;
+            this.applyRoleButton.Text = "套用";
+            this.applyRoleButton.UseVisualStyleBackColor = true;
+            // 
+            // currentRoleLabel
+            // 
+            this.currentRoleLabel.AutoEllipsis = true;
+            this.currentRoleLabel.Dock = System.Windows.Forms.DockStyle.Top;
+            this.currentRoleLabel.Font = new System.Drawing.Font("Microsoft JhengHei UI", 8.25F);
+            this.currentRoleLabel.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(39)))), ((int)(((byte)(46)))), ((int)(((byte)(56)))));
+            this.currentRoleLabel.Location = new System.Drawing.Point(0, 0);
+            this.currentRoleLabel.Name = "currentRoleLabel";
+            this.currentRoleLabel.Size = new System.Drawing.Size(136, 20);
+            this.currentRoleLabel.TabIndex = 0;
+            this.currentRoleLabel.Text = "目前的角色：操作員";
+            this.currentRoleLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             // 
             // debugTimingMemo
             // 
@@ -1468,6 +1508,7 @@ namespace IntegratedImageProcessingApp.Forms
             this.mainLayoutPanel.ResumeLayout(false);
             this.leftPanel.ResumeLayout(false);
             this.leftPanel.PerformLayout();
+            this.roleSelectorPanel.ResumeLayout(false);
             this.centerPanel.ResumeLayout(false);
             this.imageLayoutPanel.ResumeLayout(false);
             this.leftImageTabControl.ResumeLayout(false);
