@@ -1,0 +1,193 @@
+[
+  {
+    "key": "01_workspace",
+    "title": "主畫面要先看哪裡",
+    "chapter": "2",
+    "note": "①選功能 ②看圖片位置 ③編輯或查結果 ④看耗時與訊息。",
+    "sources": [
+      "MainForm.Designer.cs",
+      "MainForm.Navigation.cs"
+    ]
+  },
+  {
+    "key": "02_global",
+    "title": "全域內部參數怎麼設定",
+    "chapter": "3",
+    "note": "①先用標準件設定精度；示例數值不是推薦值。②目前相機入口檢查 Y 完全相等。",
+    "sources": [
+      "MainForm.GlobalSettings.cs",
+      "CameraDeviceSettingsIniService.cs"
+    ]
+  },
+  {
+    "key": "03_recipe",
+    "title": "選中 Recipe 後還要套用",
+    "chapter": "4.3",
+    "note": "①選列 ②看或編輯說明 ③套用並等待重新處理；清單排序須另外保存。",
+    "sources": [
+      "DetectionRecipeDialogs.cs",
+      "MainForm.DetectionParameter.Recipes.cs"
+    ]
+  },
+  {
+    "key": "04_objects",
+    "title": "先找到物件，再建立逐片檢測",
+    "chapter": "5.3",
+    "note": "先確認物件數、編號與排列正確，尺寸與缺陷才有一致的物件依據。",
+    "sources": [
+      "MainForm.ObjectDefinition.cs",
+      "MainForm.FunctionTree.cs"
+    ]
+  },
+  {
+    "key": "05_measurement",
+    "title": "尺寸量測先選 MASK 再畫線",
+    "chapter": "6.1",
+    "note": "①指定並套用來源 MASK ②建立線位、套用量測設定，再保存量測紀錄。",
+    "sources": [
+      "MainForm.DetectionParameter.MeasurementDrawing.cs",
+      "MainForm.DetectionParameter.MeasurementCalculation.cs"
+    ]
+  },
+  {
+    "key": "06_grading",
+    "title": "一片一片判斷 A 規 B 規 NG",
+    "chapter": "6.3",
+    "note": "示意圖描述每片的條件流程；A／B 可使用不同計算式與規格。",
+    "sources": [
+      "MainForm.DetectionParameter.ResultReview.GoodJudgement.cs",
+      "MainForm.InspectionOverview.cs"
+    ]
+  },
+  {
+    "key": "07_flatfield",
+    "title": "平場校正與原圖各用在哪裡",
+    "chapter": "7",
+    "note": "左右是同一張合成示例的概念，並非公司圖片或演算法實測輸出。",
+    "sources": [
+      "MainForm.FlatFieldCalibration.Correction.cs",
+      "MainForm.InspectionOverview.cs"
+    ]
+  },
+  {
+    "key": "08_roi_edit",
+    "title": "在代表物件上建立可重用 ROI",
+    "chapter": "8.1",
+    "note": "①命名並框選 ②微調邊線 ③套用；同一個定義會使用在所有物件上。",
+    "sources": [
+      "MainForm.DetectionParameter.DefectRegion.cs"
+    ]
+  },
+  {
+    "key": "09_roi_group",
+    "title": "多個獨立 ROI 組成檢測範圍組",
+    "chapter": "8.2",
+    "note": "①只點勾選框才改變成員；群組內取聯集，各檢測條件仍分別運算。",
+    "sources": [
+      "MainForm.DetectionParameter.DefectRegion.cs"
+    ]
+  },
+  {
+    "key": "10_defect_core",
+    "title": "條件設定完成後按套用看結果",
+    "chapter": "8.3",
+    "note": "①套用後看對應圖片頁；顯示 MASK 和框的開關不等於啟用判定。",
+    "sources": [
+      "MainForm.DetectionParameter.DefectCores.cs",
+      "MainForm.DetectionParameter.DefectProcessing.cs"
+    ]
+  },
+  {
+    "key": "11_frequency_ui",
+    "title": "頻域異常頁先選範圍再調掃描",
+    "chapter": "9.1",
+    "note": "①調整掃描與門檻 ②開始分析；套用保存設定，熱圖與框可分別顯示。",
+    "sources": [
+      "MainForm.DetectionParameter.DefectFrequency.cs"
+    ]
+  },
+  {
+    "key": "12_frequency_windows",
+    "title": "原圖取樣範圍與計算縮放要分開看",
+    "chapter": "9.2",
+    "note": "左圖的色框是多個取樣落點示意，不表示以不完整視窗或補黑影像計算。",
+    "sources": [
+      "MainForm.DetectionParameter.DefectFrequency.cs"
+    ]
+  },
+  {
+    "key": "13_integration",
+    "title": "雙擊整合結果可聚焦缺陷",
+    "chapter": "9.4",
+    "note": "①雙擊一列，聚焦該缺陷；選中的小黑點周圍仍保留背景。",
+    "sources": [
+      "MainForm.DetectionParameter.DefectIntegration.cs"
+    ]
+  },
+  {
+    "key": "14_review",
+    "title": "在參數結果確認追查每一片",
+    "chapter": "10.2",
+    "note": "①選參數及圖片 ②選片看明細；再點同一序號取消選取，回到總覽。",
+    "sources": [
+      "MainForm.DetectionParameter.ResultReview.cs",
+      "MainForm.DetectionParameter.ResultReview.GoodJudgement.cs"
+    ]
+  },
+  {
+    "key": "15_overview",
+    "title": "檢測總覽把每片三種結果排在一起",
+    "chapter": "11.3",
+    "note": "每片各自判定，物件 3 的 NG 不會把物件 1、2 一起改為 NG。",
+    "sources": [
+      "MainForm.InspectionOverview.cs"
+    ]
+  },
+  {
+    "key": "16_camera",
+    "title": "取得影像後事件控制預覽與處理交接",
+    "chapter": "12",
+    "note": "兩個勾選功能互相獨立；連續取像與檢測模式的差異請見檢測總覽。",
+    "sources": [
+      "CameraSettingsForm.cs",
+      "MainForm.InspectionOverview.cs"
+    ]
+  },
+  {
+    "key": "17_history",
+    "title": "先選日期查詢，再點紀錄看明細",
+    "chapter": "13.1",
+    "note": "①選日期與篩選後查詢 ②點一列更新下方明細；右鍵開始歷史重跑。",
+    "sources": [
+      "MainForm.InspectionHistory.cs",
+      "InspectionHistoryStore.cs"
+    ]
+  },
+  {
+    "key": "18_controller",
+    "title": "總控收到各站結果與運行狀態",
+    "chapter": "14",
+    "note": "圖為要求檢測時的狀態示例；連續取像與檢測互斥，另一模式會停用。",
+    "sources": [
+      "MainForm.ConnectionController.cs"
+    ]
+  },
+  {
+    "key": "19_current_architecture",
+    "title": "目前架構的主要依賴",
+    "chapter": "目前架構",
+    "note": "圖示呈現現有依賴，並非重構完成狀態。",
+    "sources": [
+      "CURRENT_ARCHITECTURE.md"
+    ]
+  },
+  {
+    "key": "20_target_architecture",
+    "title": "建議目標架構",
+    "chapter": "目標架構",
+    "note": "圖中目標類別尚未建立。",
+    "sources": [
+      "TARGET_ARCHITECTURE.md"
+    ]
+  }
+]

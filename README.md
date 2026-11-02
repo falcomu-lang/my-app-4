@@ -2,10 +2,19 @@
 
 本 repository 是以 Windows WinForms 為主的灰階線掃描影像檢測程式，包含本機相機取像、物件搜尋、Recipe、尺寸與缺陷判定、結果總覽、歷史資料及 TCP/IP 總控／被控通訊。
 
-- 文件核對日期：2026-10-29
-- Git 基準：main／origin/main 的 6f5054d（docs: refresh handoff and secure history replay parameter）
+- 文件核對日期：2026-10-30
+- 程式基準：b512791（Add architecture review and persist UI role selection）
 - 完整架構、流程、檔案職責、風險與拆檔建議：[PROJECT_HANDOFF.md](PROJECT_HANDOFF.md)
-- 工作目錄另有歷史頁版面與圖片保存選項修改，尚未推送到 GitHub。
+- 操作手冊、功能規格、目前／目標架構與驗收清單：[docs 文件入口](docs/README.md)
+- 完整程式架構檢視：[ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md)
+
+## 操作與規格文件
+
+[操作手冊](docs/USER_MANUAL.md)涵蓋 Recipe、物件搜尋、尺寸、平場、缺陷、相機、歷史與總控；[功能規格書](docs/SYSTEM_SPECIFICATION.md)記錄實際判定、預設值、儲存與 TCP/IP 合約。兩者另有 Word／PDF，請由 docs 文件入口下載。
+
+[目前架構](docs/CURRENT_ARCHITECTURE.md)、[目標架構與遷移](docs/TARGET_ARCHITECTURE.md)、[已知限制與驗收](docs/VALIDATION_AND_LIMITATIONS.md)分別記錄現況、建議與尚待驗證的工作。文件版本為 1.1，並非產品版本號。本次僅更新文件與產出工具，未修改檢測程式。
+
+[圖解操作指南](docs/ILLUSTRATED_GUIDE.md)提供 18 張操作示意圖及 2 張架構圖，包含 ROI 編輯與分組、量測、缺陷條件、相機、歷史與總控。圖文已加入 27 頁操作手冊及 18 頁規格書的 Word／PDF；圖中配置與數值為依程式繪製的說明範例，非實際截圖。
 
 ## 專案狀態
 
@@ -22,6 +31,8 @@
 | 歷史資料 | 每日 SQLite 檢測紀錄、逐物件明細、日期／Recipe／狀態查詢，以及以當時參數快照重新檢測。 |
 | 相機 | Sapera 線掃描模組嵌入主程式；Mono8 frame 由記憶體直接進檢測，存檔在背景並行執行。 |
 | TCP/IP | 本機被控 listener 與總控多站連線、狀態與命令交換；不傳送影像本身。 |
+| 角色 | 左下下拉選擇操作員、工程師、管理者、總監控模式並保存；目前沒有登入驗證。 |
+| 合格影像規格 | 相機入口可檢查 Y 高度完全相等；手動結果確認另檢查參數參考寬高。 |
 
 ## 檢測資料流
 
@@ -40,6 +51,8 @@
 相機影像直接由灰階記憶體 buffer 建立大型影像來源供演算法使用，不會先存 TIFF 再讀回來。另一路背景存檔把相機原圖寫入每日資料夾。每次最多處理一張；處理忙碌時新影格會略過，不排隊。
 
 「頻域異常」目前使用掃描視窗的加窗能量和可選鄰格比較，沒有 FFT／DFT。紋理異常與自動方向線分析已移除。
+
+目前另有總覽切頁可能中斷本機檢測轉送、TCP 舊 peer 清理影響新連線、歷史未保存當時設備精度等風險。這些未因文件更新而修正，詳見 docs 驗收與已知限制。
 
 ## 歷史紀錄
 

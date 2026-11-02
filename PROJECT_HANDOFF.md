@@ -1,11 +1,11 @@
 # Project Handoff：整合式影像處理軟體
 
-文件更新日：2026-10-29
-程式碼基準：main／origin/main 的 6f5054dea2d57029ddc521629a342e3213cbdd48（docs: refresh handoff and secure history replay parameter）
+文件更新日：2026-10-30
+程式碼基準：b512791（Add architecture review and persist UI role selection）
 Solution：MyApp4.sln
 工作目錄：此文件所在專案根目錄
 
-核對時 main 與 origin/main 指向同一個 6f5054d。工作目錄另有四個尚未提交的程式／設定修改：歷史摘要卡片框線版面、全域設定圖片保留開關、設定檔保存及歷史記錄不保留圖片時仍保存判定明細。新設定對缺少該鍵的舊 INI 預設為保留，以維持既有行為。這些修改尚未推送；狀態以目前工作目錄為準。
+本次核對起點 main 與 origin/main 同為 b512791。先前歷史頁、圖片保留、總控預設、影像高度限制及角色選單的修改已包含於目前程式。本次新增的是文件集與文件產出工具，未修改檢測原始碼。完整文件入口為 [docs/README.md](docs/README.md)，包含操作手冊、功能規格、目前／目標架構、驗收及來源對照；Word／PDF 位於 docs/exports。
 
 ## 1. 專案定位與目前結論
 
@@ -116,7 +116,7 @@ CameraCaptureModule / Sapera
 - 巢狀平行可能讓 CPU、RAM、影像副本及預覽 patch 同時增加。現行程式沒有統一的全流程 CPU／記憶體預算；最大吞吐與最長等待時間需用實際設備量測。
 - 頻域每格以 OpenCV 建立的加窗影像能量為基礎，直接遍歷影像資料計算；名稱中的「頻域」不表示目前執行 DFT。
 - 舊交接紀錄曾記載 2026-10-23 的合成影像比對與排程檢查。這些是當時版本的證據，不代表目前版本的公司產品影像或實機節拍已驗收。
-- 最近一次程式修改已用替代輸出目錄建置成功；因一般 Debug 執行檔正被使用，未覆寫該輸出。這次只更新文件，沒有重新建置或執行 GUI／硬體測試。
+- 舊版曾有替代輸出目錄的建置成功紀錄，不能當作目前版本的證據。2026-10-30 的建置嘗試因環境無 dotnet CLI，改用 VS2019 MSBuild 後停在方案組態階段並中止，未取得成功編譯證據。本次文件核對未再進行相機／GUI 驗收。
 
 ## 5. 設定檔、資料夾與保存語意
 
@@ -128,7 +128,7 @@ CameraCaptureModule / Sapera
 | recipe/parameterList.json | DetectionRecipeCatalogService 保存 Recipe ID、顯示名稱、說明與排序。 | 名稱可編輯，關聯以 ID 為主。 |
 | recipe/{ID}.ini | 每個 Recipe 的完整參數快照。 | 一次只有一組載入為作用中設定；套用 Recipe 會以快照更新目前流程。 |
 | config/device-settings.ini | CameraDeviceSettingsIniService 保存設備名稱／站點 ID、X/Y mm-per-pixel、換算開關、本機監聽 IP／Port、允許連線、手動結果確認歷史記錄及圖片保留開關。 | 缺檔預設精度 1、換算關閉、ID 1、0.0.0.0:5000、允許連線關閉；圖片保留預設開啟。程式只在輸出目錄缺少時複製初始檔。 |
-| config/connection-controller-settings.xml | ConnectionControllerSettingsService 保存總控監控、進入頁面自動連線、重連、timeout、heartbeat 與站點表。 | 舊 XML 沒有 MonitorCamera 時，模型預設為啟用。 |
+| config/connection-controller-settings.xml | ConnectionControllerSettingsService 保存總控監控、進入頁面自動連線、重連、timeout、heartbeat 與站點表。 | 目前模型 MonitorCamera 預設關閉，ConnectWhenOpened 亦關閉。 |
 | captureSetting.ini | CameraCaptureModule 的 SettingsService 保存相機、觸發、預覽、自動存圖、格式與米輪欄位。 | 儲存於執行檔目錄；缺少時嘗試複製同目錄的 settings.ini 或 setting.ini。 |
 | CameraCapture/yyyyMMdd | 主程式相機檢測影格保存的原始灰階 TIFF；CameraCaptureModule 也會依其自動存圖設定保存影像。 | 主程式相機流程背景保存，演算法直接用記憶體 frame，不讀回 TIFF。 |
 | snapshot/yyyyMMdd | 手動載入圖片執行確認後，供歷史記錄連結與重跑的影像副本。 | 由歷史紀錄功能按需複製；若複製失敗會保留來源路徑並記錄診斷。 |
@@ -340,7 +340,7 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 - OpenCV Mat、Bitmap、大型影像來源和外部 pinned buffer 必須明確釋放；勿讓預覽、overlay 或快取長期持有不必要的大圖。
 - 套用 Recipe、切換圖片或修改 ROI 後，確認相關 generation／signature／結果快照確實失效。
 - 設備 config 位於執行檔旁；部署更新要避免覆蓋現場值。缺少精度時 1 mm/pixel 是預設值，不是實際校正值。
-- 建置／檢視文件不等同現場驗收。本次文件更新沒有重新執行建置、GUI、相機或影像測試；最近一次程式版本曾在替代輸出目錄建置成功。
+- 建置／檢視文件不等同現場驗收。此次文件核對未執行 GUI、相機或影像測試；目前版本尚無此次環境的成功建置證據。
 
 ## 10. 大檔案拆分評估與建議
 
@@ -371,12 +371,27 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 - 新 .cs 檔須加入舊式 csproj 的 Compile 清單，並一併更新此文件檔案職責表。
 - 建議每次只拆一個責任，先記錄代表性輸入的結果與計時，再搬移、比對輸出、建置並用實際 UI／影像驗收。先把 History 的 ParameterId 選擇與舊 DB 遷移驗收完成，再碰共用參數／Recipe 持久化。
 
-### 本次程式檔案修改
+### 此前版本的程式檔案修改
 
-目前工作目錄未提交的程式／設定修改：
+以下修改已包含於目前程式，不再是工作目錄未提交內容：
 
 - MainForm.InspectionHistory.cs：增加摘要卡下方留白並使用單一框線；手動結果確認關閉圖片保留時，仍寫入歷史判定及明細但不另存圖片副本。
 - MainForm.GlobalSettings.cs：歷史紀錄群組新增「保留參數結果確認的圖片」核取方塊及套用保存。
 - CameraDeviceSettingsIniService.cs、config/device-settings.ini：保存圖片保留設定；舊設定檔缺少此鍵時預設保留，以延續原本行為。
 
-以上修改仍在本機工作目錄，尚未提交／推送；需建置及檢查實際畫面後再確認。
+上述功能仍需以實際畫面驗收。b512791 另包含左下角色下拉選單與 LastSelectedRole 保存，刪除不顯示畫面開關；操作員／工程師隱藏總控，管理者可看總控，總監控模式僅看總控，尚未有登入機制。
+
+## 11 本次新增的規格與來源核對
+
+- 操作手冊及功能規格以 b512791 為準，對應 58 個來源錨點；完整檔案職責仍沿用本文件與 ARCHITECTURE_REVIEW 的 107 檔盤點。
+- 全域 Y 高度限制目前僅在相機入口；手動結果確認依參數參考寬高拒絕不符圖，且不保證拒收歷史。應列為後續入口一致性工作。
+- 尺寸 mm 開關只控制尺寸換算，缺陷 X/Y mm 篩選直接使用全域精度。歷史快照未保存當時精度，重跑可能改值。
+- TCP heartbeat 主要確認存活；最新狀態事件發布與 hello 不構成逐筆結果可靠重送。
+- 目前總覽切頁轉送、TCP peer 清理等風險未於本次修正。改善順序與 48 個待執行案例見 docs/VALIDATION_AND_LIMITATIONS.md。
+
+### 圖文版文件 1.1
+
+- 新增 18 張操作示意圖與 2 張目前／目標架構圖，含主畫面、全域設定、Recipe、找物件、量測與分級、平場、ROI 編輯／分組、一般缺陷、頻域、整合、結果確認、總覽、相機、歷史及總控。
+- 操作手冊 27 頁、規格書 18 頁，Word 與 PDF 已同步插圖與圖說，逐頁檢視共 45 頁。圖解索引為 [docs/ILLUSTRATED_GUIDE.md](docs/ILLUSTRATED_GUIDE.md)，各圖列出程式來源。
+- 圖片是依 b512791 繪製的教學示意，配置與數值為範例；不代表實際截圖或檢出效果驗證。此次未修改 C#、參數或硬體控制程式。
+- 重畫與同步入口為 docs/tools/build_documents.py；不要只改 PNG，應修改 build_illustrations.py 的原稿及章節對照後重建。核對記錄與雜湊在 docs/DOCUMENTATION_VERIFICATION.json。
