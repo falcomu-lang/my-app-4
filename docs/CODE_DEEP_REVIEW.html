@@ -10,7 +10,7 @@
    70              LargeImageSource memorySource = null;
    71              bool returnToInspectionOverview = isInspectionOverviewActive;
    72              ResultReviewParameterChoice selectedChoice = null;
-   73  </code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs:830</summary><pre><code>  829  
+   73  </code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs:830</summary><pre><code>  829
   830                  var record = new InspectionHistoryBatchRecord
   831                  {
   832                      BatchId = Guid.NewGuid().ToString(&quot;N&quot;),
@@ -34,14 +34,14 @@
  1782              Bitmap original,
  1783              System.Threading.CancellationToken cancellationToken,
  1784              int recipeGeneration,
- 1785              int imageGeneration)</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2854</summary><pre><code> 2853  
+ 1785              int imageGeneration)</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2854</summary><pre><code> 2853
  2854          private static unsafe bool TryCalculateObjectDetectionFrequencyEnergy(
  2855              ObjectDetectionFrequencyWorkspace workspace,
  2856              int startX,
  2857              int startY,
  2858              int windowSize,
  2859              out double energy,</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs">開啟原始檔</a></details></article><article class="dimension" id="d4"><div class="cardhead"><span>04 · Recipe 與參數一致性</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>有穩定 ID、作用中 Recipe、匯入／新建的臨時檔替換及取消世代。</p><p><strong>扣分依據：</strong>可變參數、UI 選擇與工作簽章分散；一般 SystemParameters 存檔直接截斷原檔，且序列化同時夾帶角色密碼區段。</p><p><strong>改善與驗收：</strong>每次檢測固定 RecipeSnapshot；以原子替換保存工作設定，將設備／權限設定的保存責任與 Recipe 序列化分開。</p><details><summary>IntegratedImageProcessingApp/Services/SystemParameterIniService.cs:916</summary><pre><code>  915          }
-  916  
+  916
   917          public void Save(SystemParameterSettings settings)
   918          {
   919              string passwordSourcePath = filePath;
@@ -52,19 +52,19 @@
   291              var blankSettings = new SystemParameterSettings
   292              {
   293                  LastImagePath = systemParameters == null
-  294                      ? string.Empty</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.Recipes.cs">開啟原始檔</a></details></article><article class="dimension" id="d5"><div class="cardhead"><span>05 · 尺寸量測與逐片分級</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>逐物件量測有取消與影像世代檢查，物件平行度限制至最多四個工作；有 A／B／NG 結果流程。</p><p><strong>扣分依據：</strong>計算尚位於 MainForm，MASK 解析、畫面與全域精度仍需協調；邊界公式、缺測、斜線與單位換算缺回歸證據。</p><p><strong>改善與驗收：</strong>抽出 MeasurementEngine 與公式求值器，以已知幾何影像驗證最小／最大／分段、A→B→NG 和缺值語意。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs:1778</summary><pre><code> 1777  
+  294                      ? string.Empty</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.Recipes.cs">開啟原始檔</a></details></article><article class="dimension" id="d5"><div class="cardhead"><span>05 · 尺寸量測與逐片分級</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>逐物件量測有取消與影像世代檢查，物件平行度限制至最多四個工作；有 A／B／NG 結果流程。</p><p><strong>扣分依據：</strong>計算尚位於 MainForm，MASK 解析、畫面與全域精度仍需協調；邊界公式、缺測、斜線與單位換算缺回歸證據。</p><p><strong>改善與驗收：</strong>抽出 MeasurementEngine 與公式求值器，以已知幾何影像驗證最小／最大／分段、A→B→NG 和缺值語意。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs:1778</summary><pre><code> 1777
  1778          private ResultReviewMeasurementCalculationResult CalculateObjectDetectionResultReviewMeasurements(
  1779              ObjectDetectionParameterSettings parameter,
  1780              IList&lt;ObjectDefinitionDetectedObject&gt; objects,
  1781              LargeImageSource largeSource,
  1782              Bitmap original,
  1783              System.Threading.CancellationToken cancellationToken,</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs:20</summary><pre><code>   19          }
-   20  
+   20
    21          private enum ResultReviewGoodJudgementConditionState
    22          {
    23              NotConfigured,
    24              Passed,
-   25              Failed,</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs">開啟原始檔</a></details></article><article class="dimension" id="d6"><div class="cardhead"><span>06 · ROI／MASK 幾何安全</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>有共用 ROI 定義、群組、來源 MASK、圖像座標與有效視窗檢查，掃描計算會拒絕不完整落於 MASK 的格子。</p><p><strong>扣分依據：</strong>不越界與覆蓋所有邊界位置是兩個不同要求；不規則或狹窄 MASK 未必容得下完整視窗，須明確告知未掃描區。</p><p><strong>改善與驗收：</strong>增加掃描覆蓋圖與有效像素統計；固定 ROI／重疊群組／旋轉物件驗證運算範圍和各顯示頁框位相同。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2874</summary><pre><code> 2873  
+   25              Failed,</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs">開啟原始檔</a></details></article><article class="dimension" id="d6"><div class="cardhead"><span>06 · ROI／MASK 幾何安全</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>有共用 ROI 定義、群組、來源 MASK、圖像座標與有效視窗檢查，掃描計算會拒絕不完整落於 MASK 的格子。</p><p><strong>扣分依據：</strong>不越界與覆蓋所有邊界位置是兩個不同要求；不規則或狹窄 MASK 未必容得下完整視窗，須明確告知未掃描區。</p><p><strong>改善與驗收：</strong>增加掃描覆蓋圖與有效像素統計；固定 ROI／重疊群組／旋轉物件驗證運算範圍和各顯示頁框位相同。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2874</summary><pre><code> 2873
  2874              byte* image = (byte*)workspace.ImageData.ToPointer();
  2875              byte* hannBytes = (byte*)workspace.HannData.ToPointer();
  2876              if (!workspace.IsWindowInsideMask(startX, startY))
@@ -72,9 +72,9 @@
  2878                  return false;
  2879              }</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectRegion.cs:20</summary><pre><code>   19                  DisplayName = displayName ?? string.Empty;
    20              }
-   21  
+   21
    22              public string Id { get; private set; }
-   23  
+   23
    24              public string DisplayName { get; private set; }
    25  </code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectRegion.cs">開啟原始檔</a></details></article><article class="dimension" id="d7"><div class="cardhead"><span>07 · 一般缺陷判定與整合</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>平場及條件一至六、暗亮門檻、形態處理、尺寸篩選和候選整合均有運算路徑。</p><p><strong>扣分依據：</strong>多條件相依與大量共享狀態會增加來源選錯、舊結果併入或框位轉換出錯的風險，實際誤報／漏報率未驗證。</p><p><strong>改善與驗收：</strong>用固定缺陷樣本逐一對照核心遮罩、符合定義的框、重疊去重及逐片最終等級。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs:1326</summary><pre><code> 1325                      {
  1326                          Parallel.For(
@@ -82,11 +82,11 @@
  1328                              cores.Count,
  1329                              new ParallelOptions
  1330                              {
- 1331                                  MaxDegreeOfParallelism = cores.Count</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectIntegration.cs:20</summary><pre><code>   19  
+ 1331                                  MaxDegreeOfParallelism = cores.Count</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectIntegration.cs:20</summary><pre><code>   19
    20              public ObjectDetectionDefectCoreSettings Core { get; set; }
-   21  
+   21
    22              public int ObjectNumber { get; set; }
-   23  
+   23
    24              public RectangleF Bounds { get; set; }
    25  </code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectIntegration.cs">開啟原始檔</a></details></article><article class="dimension" id="d8"><div class="cardhead"><span>08 · 掃描異常演算法可解釋性</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>實際用去平均、Hann 加窗後的平方能量，含垂直縮放與 robust 基準統計；有細項時間。</p><p><strong>扣分依據：</strong>目前不是 DFT／FFT；純總能量對具有相似能量但方向或分布不同的紋理可能無法區分。縮放後數值不可假設門檻等價。</p><p><strong>改善與驗收：</strong>介面說清楚加窗空間能量；保存能量分布、縮放倍率與誤報樣本，使用良品／缺陷資料做門檻評估。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2957</summary><pre><code> 2956                  meanGray = mean;
  2957                  double squaredEnergySum = 0.0;
@@ -117,14 +117,14 @@
  1142                  {
  1143                      return;
  1144                  }
- 1145  
- 1146                  if (_cameraService.CaptureFrame())</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Services/CameraService.cs:302</summary><pre><code>  301  
+ 1145
+ 1146                  if (_cameraService.CaptureFrame())</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Services/CameraService.cs:302</summary><pre><code>  301
   302              if (_transfer.Snap())
   303              {
   304                  _status.IsCaptureInProgress = true;
   305                  _status.ScanStateText = &quot;Snap&quot;;
   306                  _status.LastMessage = &quot;Single frame capture requested.&quot;;
-  307                  return true;</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details></article><article class="dimension" id="d11"><div class="cardhead"><span>11 · 影像記憶體與生命週期</span><b>2/5</b></div><div class="track"><i style="width:40%"></i></div><p><strong>已有基礎：</strong>主程式大圖來源已有參照計數與背景使用保護，許多 OpenCV 資源以 using／finally 管理。</p><p><strong>扣分依據：</strong>相機模組另一套大圖快取仍將 Bitmap 借給 UI 後解鎖，快取淘汰可同時 Dispose；取消顯示延遲也有未收尾資源路徑。</p><p><strong>改善與驗收：</strong>統一 ImageLease 所有權，確保繪圖持有有效租約；壓力測試連續切頁、縮放、取消及關閉期間的 GDI／RAM。</p><details><summary>IntegratedImageProcessingApp/Controls/LargeImageSource.cs:264</summary><pre><code>  263  
+  307                  return true;</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details></article><article class="dimension" id="d11"><div class="cardhead"><span>11 · 影像記憶體與生命週期</span><b>2/5</b></div><div class="track"><i style="width:40%"></i></div><p><strong>已有基礎：</strong>主程式大圖來源已有參照計數與背景使用保護，許多 OpenCV 資源以 using／finally 管理。</p><p><strong>扣分依據：</strong>相機模組另一套大圖快取仍將 Bitmap 借給 UI 後解鎖，快取淘汰可同時 Dispose；取消顯示延遲也有未收尾資源路徑。</p><p><strong>改善與驗收：</strong>統一 ImageLease 所有權，確保繪圖持有有效租約；壓力測試連續切頁、縮放、取消及關閉期間的 GDI／RAM。</p><details><summary>IntegratedImageProcessingApp/Controls/LargeImageSource.cs:264</summary><pre><code>  263
   264          public void ReleaseReference()
   265          {
   266              lock (_sync)
@@ -135,14 +135,14 @@
   184                      return true;
   185                  }
   186              }
-  187  
-  188              tile = null;</code></pre><a href="../CameraCaptureModule/Controls/LargeImageSource.cs">開啟原始檔</a></details></article><article class="dimension" id="d12"><div class="cardhead"><span>12 · UI 狀態與互動一致性</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>已加入相同選項去重、角色標籤、候選值與套用機制，結果有記憶體快照。</p><p><strong>扣分依據：</strong>頁面與執行狀態仍相連，切頁清理可停掉事件訂閱；多種布局與手動高度調整需要 DPI／小螢幕驗收。</p><p><strong>改善與驗收：</strong>將頁面狀態與運轉模式拆開；在 100／125／150% DPI、初次載入與切頁往返驗證不閃爍、不遺失結果、不改變取像模式。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs:216</summary><pre><code>  215  
+  187
+  188              tile = null;</code></pre><a href="../CameraCaptureModule/Controls/LargeImageSource.cs">開啟原始檔</a></details></article><article class="dimension" id="d12"><div class="cardhead"><span>12 · UI 狀態與互動一致性</span><b>3/5</b></div><div class="track"><i style="width:60%"></i></div><p><strong>已有基礎：</strong>已加入相同選項去重、角色標籤、候選值與套用機制，結果有記憶體快照。</p><p><strong>扣分依據：</strong>頁面與執行狀態仍相連，切頁清理可停掉事件訂閱；多種布局與手動高度調整需要 DPI／小螢幕驗收。</p><p><strong>改善與驗收：</strong>將頁面狀態與運轉模式拆開；在 100／125／150% DPI、初次載入與切頁往返驗證不閃爍、不遺失結果、不改變取像模式。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs:216</summary><pre><code>  215
   216          private void ExitInspectionOverviewMode()
   217          {
   218              if (!isInspectionOverviewActive)
   219              {
   220                  return;
-  221              }</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs:59</summary><pre><code>   58  
+  221              }</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs:59</summary><pre><code>   58
    59          private void ApplyRoleButton_Click(object sender, EventArgs e)
    60          {
    61              if (roleSelectorComboBox.SelectedIndex &lt; 0)
@@ -152,21 +152,21 @@
  1792                  var selectorApplied = TrySetNotebookEnumFeatureValue(device, &quot;TriggerSelector&quot;, new[] { selector });
  1793                  var modeApplied = TrySetNotebookEnumFeatureValue(device, &quot;TriggerMode&quot;, new[] { enabled ? &quot;On&quot; : &quot;Off&quot; });
  1794                  var sourceApplied = !enabled || TrySetNotebookEnumFeatureValue(device, &quot;TriggerSource&quot;, sources);
- 1795  
+ 1795
  1796                  details.Add(
- 1797                      selector</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Services/Lsi8181MeterWheelService.cs:47</summary><pre><code>   46  
+ 1797                      selector</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Services/Lsi8181MeterWheelService.cs:47</summary><pre><code>   46
    47              _initialized = true;
    48              _cardId = cardId;
-   49  
+   49
    50              ulong ioAddress = 0;
    51              ulong tcAddress = 0;
-   52              status = Lsi8181Native.LSI8181_info(cardId, ref ioAddress, ref tcAddress);</code></pre><a href="../CameraCaptureModule/Services/Lsi8181MeterWheelService.cs">開啟原始檔</a></details></article><article class="dimension" id="d14"><div class="cardhead"><span>14 · 影格與保存影像一致性</span><b>2/5</b></div><div class="track"><i style="width:40%"></i></div><p><strong>已有基礎：</strong>主程式檢測直接用 Mono8 frame，另起背景保存，不需寫 TIFF 再讀回判定。</p><p><strong>扣分依據：</strong>原相機模組部分保存路徑取自節流的 FrameReady；延後存圖又讀取最新影格，不能保證對應發出請求的那一張。</p><p><strong>改善與驗收：</strong>存圖、檢測、歷史均使用同一 FrameId 與不可變影格租約；儲存忙碌時採明確的有界丟棄／警報策略。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:887</summary><pre><code>  886  
+   52              status = Lsi8181Native.LSI8181_info(cardId, ref ioAddress, ref tcAddress);</code></pre><a href="../CameraCaptureModule/Services/Lsi8181MeterWheelService.cs">開啟原始檔</a></details></article><article class="dimension" id="d14"><div class="cardhead"><span>14 · 影格與保存影像一致性</span><b>2/5</b></div><div class="track"><i style="width:40%"></i></div><p><strong>已有基礎：</strong>主程式檢測直接用 Mono8 frame，另起背景保存，不需寫 TIFF 再讀回判定。</p><p><strong>扣分依據：</strong>原相機模組部分保存路徑取自節流的 FrameReady；延後存圖又讀取最新影格，不能保證對應發出請求的那一張。</p><p><strong>改善與驗收：</strong>存圖、檢測、歷史均使用同一 FrameId 與不可變影格租約；儲存忙碌時採明確的有界丟棄／警報策略。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:887</summary><pre><code>  886
   887              lock (_frameSync)
   888              {
   889                  var elapsed = DateTime.UtcNow - _lastPreviewFrameUtc;
   890                  if (elapsed.TotalMilliseconds &lt; PreviewIntervalMilliseconds)
   891                  {
-  892                      return;</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:529</summary><pre><code>  528  
+  892                      return;</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:529</summary><pre><code>  528
   529              using (var snapshot = _frameRecorder.SnapshotLatest())
   530              {
   531                  if (snapshot == null)
@@ -178,7 +178,7 @@
   342                      return true;
   343                  }
   344                  finally
-  345                  {</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs:528</summary><pre><code>  527  
+  345                  {</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs:528</summary><pre><code>  527
   528          private void RemovePeer(PeerConnection peer)
   529          {
   530              bool removed;
@@ -190,7 +190,7 @@
    41              roleSelectorComboBox.SelectedIndex = (int)selectedMainFormRole;
    42              roleSelectorComboBox.SelectedIndexChanged += RoleSelectorComboBox_SelectedIndexChanged;
    43              applyRoleButton.Click += ApplyRoleButton_Click;
-   44              UpdateCurrentRoleLabel();</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs:1193</summary><pre><code> 1192  
+   44              UpdateCurrentRoleLabel();</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs:1193</summary><pre><code> 1192
  1193              if (string.Equals(message.MessageType, &quot;command&quot;, StringComparison.OrdinalIgnoreCase))
  1194              {
  1195                  _ = HandleRemoteInspectionCommandAsync(e, message);
@@ -229,7 +229,7 @@
   480              finally</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Services/AppLogger.cs:1</summary><pre><code>    1  using System;
     2  using System.IO;
     3  using System.Text;
-    4  
+    4
     5  namespace CameraCaptureApp.Services
     6  {</code></pre><a href="../CameraCaptureModule/Services/AppLogger.cs">開啟原始檔</a></details></article><article class="dimension" id="d20"><div class="cardhead"><span>20 · 驗證／建置／交付可重現性</span><b>2/5</b></div><div class="track"><i style="width:40%"></i></div><p><strong>已有基礎：</strong>兩個 csproj 的 107 個來源項目均完整對應，有套件清單、x64 設定及文件工具。</p><p><strong>扣分依據：</strong>未見獨立應用測試專案或 CI；SDK 預設指向相鄰使用者專案，缺少可重跑的演算法與並行回歸證據。文檔工具的成功不等同程式判定正確。</p><p><strong>改善與驗收：</strong>先固定一套可建置環境，再建立合成圖、Recipe 往返、框位、斷線／取消／歷史重跑案例；硬體留在獨立實機驗收層。</p><details><summary>CameraCaptureModule/CameraCaptureModule.csproj:17</summary><pre><code>   16    &lt;PropertyGroup&gt;
    17      &lt;CameraSdkDirectory Condition=&quot; &#x27;$(CameraSdkDirectory)&#x27; == &#x27;&#x27; &quot;&gt;$(MSBuildProjectDirectory)\..\..\..\攝影機影像擷取\my-app-2\CameraCaptureApp\bin\Debug&lt;/CameraSdkDirectory&gt;
@@ -244,7 +244,7 @@
    18      &lt;PlatformTarget&gt;x64&lt;/PlatformTarget&gt;
    19      &lt;Prefer32Bit&gt;false&lt;/Prefer32Bit&gt;
    20      &lt;DebugSymbols&gt;true&lt;/DebugSymbols&gt;</code></pre><a href="../IntegratedImageProcessingApp/IntegratedImageProcessingApp.csproj">開啟原始檔</a></details></article></div></section>
-<section id="findings"><h2>40 項問題／風險與程式證據</h2><p>P1：優先處理，會影響判定持續性、結果交付或關鍵資料。P2：需安排改善的可靠度、效能或維護風險。P3：用語／工具與後續治理。以下區分可由來源確認的行為與尚待重現的競態風險；不能將所有項目都視為已在現場發生的錯誤。</p><p class="tools"><select id="priority" aria-label="篩選優先度"><option value="">全部優先度</option><option>P1</option><option>P2</option><option>P3</option></select></p><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>上游 MASK 改變後，量測 MASK 快取可能繼續命中舊結果</h3><span>有條件的舊快取命中路徑可確認</span></div><p>量測快取鍵含圖片世代、來源 ID、物件序號與 bounds，缺少上游結果版本。區塊關聯修改會使物件定義與來源 MASK 失效，但沒有同步清除量測快取。</p><p><strong>觸發／影響：</strong>同張圖、相同物件外框但內部 MASK 像素已改變時，可能直接複製舊 MASK。若保存平場 profile 的自動套用清掉快取，可掩蓋此問題，因此不是每次修改都會發生。</p><p><strong>建議：</strong>在鍵內加入上游結果 generation／相依簽章，並統一相依失效傳播；用外框相同、內部不同的兩個 MASK 驗證。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MaskSource.cs:94</summary><pre><code>   93  
+<section id="findings"><h2>40 項問題／風險與程式證據</h2><p>P1：優先處理，會影響判定持續性、結果交付或關鍵資料。P2：需安排改善的可靠度、效能或維護風險。P3：用語／工具與後續治理。以下區分可由來源確認的行為與尚待重現的競態風險；不能將所有項目都視為已在現場發生的錯誤。</p><p class="tools"><select id="priority" aria-label="篩選優先度"><option value="">全部優先度</option><option>P1</option><option>P2</option><option>P3</option></select></p><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>上游 MASK 改變後，量測 MASK 快取可能繼續命中舊結果</h3><span>有條件的舊快取命中路徑可確認</span></div><p>量測快取鍵含圖片世代、來源 ID、物件序號與 bounds，缺少上游結果版本。區塊關聯修改會使物件定義與來源 MASK 失效，但沒有同步清除量測快取。</p><p><strong>觸發／影響：</strong>同張圖、相同物件外框但內部 MASK 像素已改變時，可能直接複製舊 MASK。若保存平場 profile 的自動套用清掉快取，可掩蓋此問題，因此不是每次修改都會發生。</p><p><strong>建議：</strong>在鍵內加入上游結果 generation／相依簽章，並統一相依失效傳播；用外框相同、內部不同的兩個 MASK 驗證。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MaskSource.cs:94</summary><pre><code>   93
    94              lock (objectDetectionMeasurementMaskLock)
    95              {
    96                  if (string.Equals(
@@ -280,7 +280,7 @@
   440              {
   441                  RestoreObjectDetectionResultReviewSnapshotDisplays();
   442              }
-  443              else if (!isRestoringExistingReviewPanel || imageSourceChanged ||</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>表格排序後可能編輯或刪除不同的量測／良品條件</h3><span>排序後以索引對應資料的缺口可確認</span></div><p>量測和良品條件部分處理以 rowIndex 存取底層 List，而文字欄位未全面禁用排序，也未以穩定 ID 解析該列。</p><p><strong>觸發／影響：</strong>使用者排序後點選可見列，實際載入／刪除可能作用在原清單相同索引的另一筆。</p><p><strong>建議：</strong>每列 Tag 或隱藏鍵保存 RecordId，所有編輯／刪除／移動都用 ID；若排序沒有用途則明確關閉。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MeasurementRecords.cs:292</summary><pre><code>  291  
+  443              else if (!isRestoringExistingReviewPanel || imageSourceChanged ||</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>表格排序後可能編輯或刪除不同的量測／良品條件</h3><span>排序後以索引對應資料的缺口可確認</span></div><p>量測和良品條件部分處理以 rowIndex 存取底層 List，而文字欄位未全面禁用排序，也未以穩定 ID 解析該列。</p><p><strong>觸發／影響：</strong>使用者排序後點選可見列，實際載入／刪除可能作用在原清單相同索引的另一筆。</p><p><strong>建議：</strong>每列 Tag 或隱藏鍵保存 RecordId，所有編輯／刪除／移動都用 ID；若排序沒有用途則明確關閉。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MeasurementRecords.cs:292</summary><pre><code>  291
   292              ObjectDetectionMeasurementRecordSettings record = parameter.MeasurementRecords[rowIndex];
   293              if (record == null)
   294              {
@@ -292,7 +292,7 @@
   818                      {
   819                          Name = &quot;MeasurementNumber&quot;,
   820                          HeaderText = &quot;編號&quot;,
-  821                          FillWeight = 10</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.Measurement.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.GoodCondition.cs:758</summary><pre><code>  757  
+  821                          FillWeight = 10</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.Measurement.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.GoodCondition.cs:758</summary><pre><code>  757
   758              ObjectDetectionGoodJudgementRuleSettings rule = parameter.GoodJudgementRules[rowIndex];
   759              if (MessageBox.Show(
   760                      this,
@@ -313,7 +313,7 @@
   608                                      if (_disposed)</code></pre><a href="../IntegratedImageProcessingApp/Controls/LargeImageSource.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>降冪小數規格式的格式驗證與整數不一致</h3><span>正規表示式規則缺口可確認</span></div><p>降冪範圍 regex 的第一個數字 token 缺少小數後綴；10&gt;=x&gt;=5 可通過，10.5&gt;=x&gt;=5.5 卻被拒絕，升冪小數有支援。</p><p><strong>觸發／影響：</strong>正常的尺寸規格輸入會被判格式錯誤，使用者必須換寫法；這不是量測演算法本身誤算。</p><p><strong>建議：</strong>以同一數字 token 組合所有比較式，再驗證升／降冪、負數、小數、等號與空白的格式規則。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.GoodCondition.cs:1048</summary><pre><code> 1047                  normalized,
  1048                  @&quot;^(?:x(?:&lt;=|&gt;=|&lt;|&gt;)-?\d+(?:\.\d+)?|-?\d+(?:\.\d+)?(?:&lt;=|&gt;=|&lt;|&gt;)x|-?\d+(?:\.\d+)?(?:&lt;=|&lt;)x(?:&lt;=|&lt;)-?\d+(?:\.\d+)?|-?\d+(?:&gt;=|&gt;)x(?:&gt;=|&gt;)-?\d+(?:\.\d+)?)$&quot;);
  1049          }
- 1050  
+ 1050
  1051      }
  1052  }</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.GoodCondition.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>平場校正仍需要全幅灰階及完整複本</h3><span>配置策略可確認；OOM 取決於尺寸</span></div><p>平場修正先取得全解析度灰階，再 Clone 全圖；1024 列分段只限制運算暫存，沒有消除這兩份完整圖像。</p><p><strong>觸發／影響：</strong>即使只檢測小 ROI，也可能保留完整輸入加完整校正輸出。100,000×100,000 Mono8 兩份約 20GB，尚未加來源緩衝、MASK 與預覽。這是估算，不是測得記憶體占用。</p><p><strong>建議：</strong>根據需要的 ROI／tile 延遲校正，或用記憶體映射與有界 tile cache；在開始前估算容量並回報超出預算。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.FlatFieldCalibration.Correction.cs:30</summary><pre><code>   29          {
    30              Rectangle imageBounds = new Rectangle(0, 0, imageWidth, imageHeight);
@@ -352,12 +352,12 @@
   767              {
   768                  if (sourceGray != null)
   769                  {</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.Relation.cs">開啟原始檔</a></details></article><article class="finding" data-level="P3"><div class="cardhead"><span class="badge">P3</span><h3>主大圖參照計數與 Mat view 仍需明確租約契約</h3><span>介面強化建議；未證實實際失效路徑</span></div><p>ReleaseReference 降至零後解鎖才 Dispose，API 理論上有重新 AddReference 的空隙；直接 Mat view 也不自行保留 pinned buffer owner。已檢視的主要呼叫者有持有 source／控制項鎖，因此未證實合法現行呼叫能觸發。</p><p><strong>觸發／影響：</strong>應作 API 強化，不能當成已證明主程式 use-after-free。未來重構若誤用這些 API，風險會增加。</p><p><strong>建議：</strong>在同一鎖內將零參照標成 closing，禁止復活；Mat 與 tile 一律由 lease 保留 owner，明訂呼叫端所有權。</p><details><summary>IntegratedImageProcessingApp/Controls/LargeImageSource.cs:253</summary><pre><code>  252          }
-  253  
+  253
   254          public LargeImageSource AddReference()
   255          {
   256              lock (_sync)
   257              {
-  258                  ThrowIfDisposed();</code></pre><a href="../IntegratedImageProcessingApp/Controls/LargeImageSource.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Controls/LargeImageSource.cs:273</summary><pre><code>  272  
+  258                  ThrowIfDisposed();</code></pre><a href="../IntegratedImageProcessingApp/Controls/LargeImageSource.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Controls/LargeImageSource.cs:273</summary><pre><code>  272
   273                  _referenceCount--;
   274                  if (_referenceCount &gt; 0)
   275                  {
@@ -384,14 +384,14 @@
   731                  (int)Math.Round(objectBounds.Y + startY + (deltaY * firstRatio)),</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MeasurementCalculation.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>INI Escape／Unescape 會破壞含反斜線 n／r 的路徑與文字</h3><span>字串往返不互逆可確認</span></div><p>Escape 先將反斜線加倍；Unescape 卻先把反斜線 n 和反斜線 r 轉成控制字元，最後才還原雙反斜線。這組函式不是互逆，角色密碼讀取也複製相同順序。</p><p><strong>觸發／影響：</strong>例如 Windows 路徑 C:\new\raw.tif 經 Save→Load 可混入換行／回車，導致找不到原圖，或密碼讀取與輸入不一致；Recipe／歷史正規化也經過這個服務。</p><p><strong>建議：</strong>改用逐字元 escape parser 或成熟 INI 編碼；先建立 Windows 路徑、實際換行、連續反斜線及密碼的往返案例，保持舊檔遷移可控。</p><details><summary>IntegratedImageProcessingApp/Services/SystemParameterIniService.cs:2917</summary><pre><code> 2916          {
  2917              return (value ?? string.Empty).Replace(&quot;\\&quot;, &quot;\\\\&quot;).Replace(&quot;\r&quot;, &quot;\\r&quot;).Replace(&quot;\n&quot;, &quot;\\n&quot;);
  2918          }
- 2919  
+ 2919
  2920          private static string Unescape(string value)
  2921          {
  2922              return (value ?? string.Empty).Replace(&quot;\\n&quot;, &quot;\n&quot;).Replace(&quot;\\r&quot;, &quot;\r&quot;).Replace(&quot;\\\\&quot;, &quot;\\&quot;);</code></pre><a href="../IntegratedImageProcessingApp/Services/SystemParameterIniService.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Services/SystemParameterIniService.cs:2922</summary><pre><code> 2921          {
  2922              return (value ?? string.Empty).Replace(&quot;\\n&quot;, &quot;\n&quot;).Replace(&quot;\\r&quot;, &quot;\r&quot;).Replace(&quot;\\\\&quot;, &quot;\\&quot;);
  2923          }
  2924      }
- 2925  }</code></pre><a href="../IntegratedImageProcessingApp/Services/SystemParameterIniService.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs:211</summary><pre><code>  210  
+ 2925  }</code></pre><a href="../IntegratedImageProcessingApp/Services/SystemParameterIniService.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs:211</summary><pre><code>  210
   211                  string configuredValue = line.Substring(separator + 1).Trim()
   212                      .Replace(&quot;\\n&quot;, &quot;\n&quot;)
   213                      .Replace(&quot;\\r&quot;, &quot;\r&quot;)
@@ -409,7 +409,7 @@
   799                      {
   800                          result.Dispose();
   801                      }
-  802                  }</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.ObjectJudgementProcessing.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.LargeImageProcessing.cs:1061</summary><pre><code> 1060  
+  802                  }</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.ObjectJudgementProcessing.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.LargeImageProcessing.cs:1061</summary><pre><code> 1060
  1061                          BeginInvoke(
  1062                              new Action(
  1063                                  delegate
@@ -439,13 +439,13 @@
   396                  functionListBox.Items.Add(InspectionOverviewMenuText);
   397                  functionListBox.Items.Add(InspectionHistoryMenuText);
   398                  return;
-  399              }</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs:1145</summary><pre><code> 1144  
+  399              }</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs:1145</summary><pre><code> 1144
  1145                  int reviewIndex = functionListBox.Items.IndexOf(ObjectDetectionResultReviewMenuText);
  1146                  if (reviewIndex &lt; 0) throw new InvalidOperationException(&quot;找不到「參數結果確認」功能入口。&quot;);
  1147                  functionListBox.SelectedIndex = reviewIndex;
  1148                  SetCameraInspectionStatus(&quot;已載入歷史 Recipe「&quot; + record.RecipeName + &quot;」，正在重新檢測&quot; +
  1149                      (record.CameraSequence &gt; 0
- 1150                          ? &quot;影像 #&quot; + record.CameraSequence.ToString(CultureInfo.CurrentCulture)</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs:1834</summary><pre><code> 1833  
+ 1150                          ? &quot;影像 #&quot; + record.CameraSequence.ToString(CultureInfo.CurrentCulture)</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs:1834</summary><pre><code> 1833
  1834              int resultReviewIndex = functionListBox.Items.IndexOf(ObjectDetectionResultReviewMenuText);
  1835              if (resultReviewIndex &gt;= 0)
  1836              {
@@ -474,7 +474,7 @@
    86              {
    87                  throw new InvalidDataException(&quot;參數清單 parameterList.json 無法讀取。&quot;, exception);
    88              }
-   89  
+   89
    90              if (document == null || document.Version != CatalogVersion || document.ParameterList == null)</code></pre><a href="../IntegratedImageProcessingApp/Services/DetectionRecipeCatalogService.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>總控狀態更新反覆清空並重建控制項</h3><span>缺少確定性 Dispose 可確認；成長量需量測</span></div><p>物件格狀結果以 host.Controls.Clear 移除舊控制項，再建立新控制項；清空集合並不等於 Dispose 每個舊控制項。站點卡片重建也有同樣模式。</p><p><strong>觸發／影響：</strong>長時間多站更新會增加控制項／Handle 與 GC 負擔。實際峰值與是否最終回收要以執行時量測，不能直接宣稱每次都永久漏記憶體。</p><p><strong>建議：</strong>更新既有格子狀態；確實需要重建時逐一 Dispose 舊控制項，避免每次站點訊息都重建整張表。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs:473</summary><pre><code>  472                      connectionControllerStationViews);
   473                  connectionControllerCardsHost.Controls.Clear();
   474                  connectionControllerStationViews.Clear();
@@ -511,7 +511,7 @@
  1732                                          continue;
  1733                                      }
  1734                                      var points = new PointF[contour.Length];
- 1735                                      float minX = float.MaxValue;</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>摘要可顯示良品，但逐片缺陷等級仍是待確認</h3><span>兩套判定規則不一致可確認</span></div><p>缺陷表格只用核心 Enabled 與結果存在判斷完成；兩個暗亮門檻都關閉也可產出未檢出整合列。摘要再從表格讀取 defectReady。逐片缺陷分級則明確將暗亮門檻皆關閉視為 Pending。</p><p><strong>觸發／影響：</strong>尺寸合格、ROI 存在而啟用核心未開任何門檻時，文字摘要與逐片矩陣可能互相矛盾。這個問題是不同畫面判定依據不一致，不代表每條網路結果都會錯。</p><p><strong>建議：</strong>摘要、矩陣、歷史與 TCP 共用同一純判定結果，UI 不再從表格反推業務狀態；明訂無有效檢測條件時的 Pending 語意。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs:2391</summary><pre><code> 2390  
+ 1735                                      float minX = float.MaxValue;</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>摘要可顯示良品，但逐片缺陷等級仍是待確認</h3><span>兩套判定規則不一致可確認</span></div><p>缺陷表格只用核心 Enabled 與結果存在判斷完成；兩個暗亮門檻都關閉也可產出未檢出整合列。摘要再從表格讀取 defectReady。逐片缺陷分級則明確將暗亮門檻皆關閉視為 Pending。</p><p><strong>觸發／影響：</strong>尺寸合格、ROI 存在而啟用核心未開任何門檻時，文字摘要與逐片矩陣可能互相矛盾。這個問題是不同畫面判定依據不一致，不代表每條網路結果都會錯。</p><p><strong>建議：</strong>摘要、矩陣、歷史與 TCP 共用同一純判定結果，UI 不再從表格反推業務狀態；明訂無有效檢測條件時的 Pending 語意。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs:2391</summary><pre><code> 2390
  2391                  ObjectDetectionDefectCoreResult result;
  2392                  if (!TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out result))
  2393                  {
@@ -553,7 +553,7 @@
  1630              {
  1631                  return candidatePath;
  1632              }
- 1633  </code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Services/FrameRecorder.cs:310</summary><pre><code>  309  
+ 1633  </code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Services/FrameRecorder.cs:310</summary><pre><code>  309
   310              var tempPath = filePath + &quot;.tmp&quot;;
   311              if (File.Exists(tempPath))
   312              {
@@ -565,13 +565,13 @@
   695              ReportSnapshotSaveCounts(progressForm);
   696              try
   697              {
-  698                  progressForm.Report(5, &quot;Saving image...&quot;);</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>部分記錄與自動存圖消費的是節流預覽影格</h3><span>程式路徑可確認；吞吐影響需實測</span></div><p>CameraService 的 FrameReady 有 200ms 預覽節流；相機表單在 FrameReady 回呼中更新 recorder、rolling 與相關存圖工作，而完整 ImageAcquired 是另一通路。</p><p><strong>觸發／影響：</strong>預覽更新間隔內的影格不會進入此記錄通路。若設備期望每次取像都保存，可能缺張；這與主檢測入口刻意忙碌略過的策略不同。</p><p><strong>建議：</strong>預覽節流只作用於顯示，記錄／保存改訂閱完整影格事件；為每路加入收到／保存／略過計數。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:887</summary><pre><code>  886  
+  698                  progressForm.Report(5, &quot;Saving image...&quot;);</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>部分記錄與自動存圖消費的是節流預覽影格</h3><span>程式路徑可確認；吞吐影響需實測</span></div><p>CameraService 的 FrameReady 有 200ms 預覽節流；相機表單在 FrameReady 回呼中更新 recorder、rolling 與相關存圖工作，而完整 ImageAcquired 是另一通路。</p><p><strong>觸發／影響：</strong>預覽更新間隔內的影格不會進入此記錄通路。若設備期望每次取像都保存，可能缺張；這與主檢測入口刻意忙碌略過的策略不同。</p><p><strong>建議：</strong>預覽節流只作用於顯示，記錄／保存改訂閱完整影格事件；為每路加入收到／保存／略過計數。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:887</summary><pre><code>  886
   887              lock (_frameSync)
   888              {
   889                  var elapsed = DateTime.UtcNow - _lastPreviewFrameUtc;
   890                  if (elapsed.TotalMilliseconds &lt; PreviewIntervalMilliseconds)
   891                  {
-  892                      return;</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:924</summary><pre><code>  923  
+  892                      return;</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:924</summary><pre><code>  923
   924              _frameRecorder.StoreLatest(e.Frame);
   925              if (_settings.RollingCaptureEnabled)
   926              {
@@ -583,7 +583,7 @@
   485                  catch (ObjectDisposedException)
   486                  {
   487                  }
-  488                  catch (InvalidOperationException)</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:529</summary><pre><code>  528  
+  488                  catch (InvalidOperationException)</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:529</summary><pre><code>  528
   529              using (var snapshot = _frameRecorder.SnapshotLatest())
   530              {
   531                  if (snapshot == null)
@@ -594,18 +594,18 @@
  1542              {
  1543                  throw new InvalidOperationException(&quot;No rolling image is available to save.&quot;);
  1544              }
- 1545  
+ 1545
  1546              return filePath;</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>相機顯示快取可在 UI 使用 Bitmap 時釋放它</h3><span>競態交錯可由來源推導</span></div><p>相機模組 LargeImageSource 在鎖內取得快取 Bitmap 後直接回傳同一物件；鎖外的 UI 執行 DrawImage。背景加入 tile 時可淘汰並 Dispose 同一 Bitmap。</p><p><strong>觸發／影響：</strong>快取壓力下，繪圖與淘汰交錯可能造成已釋放物件例外；這是相機模組自己的 LargeImageSource，與主程式同名類別必須分開修。</p><p><strong>建議：</strong>回傳具引用計數的 tile lease 或鎖內快照，繪圖完成前不能淘汰該 tile；統一兩套大圖來源的所有權規則。</p><details><summary>CameraCaptureModule/Controls/LargeImageSource.cs:183</summary><pre><code>  182                      TouchKey(key);
   183                      tile = cached;
   184                      return true;
   185                  }
   186              }
-  187  
+  187
   188              tile = null;</code></pre><a href="../CameraCaptureModule/Controls/LargeImageSource.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Controls/LargeImageSource.cs:467</summary><pre><code>  466                  {
   467                      bitmap.Dispose();
   468                      _tileCache.Remove(last.Value);
   469                  }
-  470  
+  470
   471                  _tileOrder.RemoveLast();
   472              }</code></pre><a href="../CameraCaptureModule/Controls/LargeImageSource.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Controls/CameraDisplayControl.cs:535</summary><pre><code>  534                      {
   535                          DrawTile(graphics, tile, tileRect, zoom, offset, _isPanning);
@@ -613,7 +613,7 @@
   537                      else if (!_isPanning)
   538                      {
   539                          RequestTile(source, tileRect);
-  540                      }</code></pre><a href="../CameraCaptureModule/Controls/CameraDisplayControl.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>按下停止後仍可能執行已排入的軟體觸發</h3><span>已排程工作的檢查缺口可確認</span></div><p>停止會取消 monitor 並重置旗標，但無法撤回先前 BeginInvoke 的委派。ExecuteSoftwareTriggerCapture 只檢查模式／關閉等狀態，沒有確認該委派所屬 session 是否已取消。</p><p><strong>觸發／影響：</strong>停止與 UI 排程剛好交錯時，仍可能再拍一張。設備上停止命令的語意因此不夠確定。</p><p><strong>建議：</strong>每次開始建立 CaptureSessionId，委派執行前檢查同一 session 仍在 Running；停止先使 session 失效再關閉硬體。</p><details><summary>CameraCaptureModule/Forms/MainForm.cs:1042</summary><pre><code> 1041  
+  540                      }</code></pre><a href="../CameraCaptureModule/Controls/CameraDisplayControl.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>按下停止後仍可能執行已排入的軟體觸發</h3><span>已排程工作的檢查缺口可確認</span></div><p>停止會取消 monitor 並重置旗標，但無法撤回先前 BeginInvoke 的委派。ExecuteSoftwareTriggerCapture 只檢查模式／關閉等狀態，沒有確認該委派所屬 session 是否已取消。</p><p><strong>觸發／影響：</strong>停止與 UI 排程剛好交錯時，仍可能再拍一張。設備上停止命令的語意因此不夠確定。</p><p><strong>建議：</strong>每次開始建立 CaptureSessionId，委派執行前檢查同一 session 仍在 Running；停止先使 session 失效再關閉硬體。</p><details><summary>CameraCaptureModule/Forms/MainForm.cs:1042</summary><pre><code> 1041
  1042              _softwareTriggerMonitorTokenSource.Cancel();
  1043              _softwareTriggerMonitorTokenSource.Dispose();
  1044              _softwareTriggerMonitorTokenSource = null;
@@ -630,20 +630,20 @@
  1142                  {
  1143                      return;
  1144                  }
- 1145  
+ 1145
  1146                  if (_cameraService.CaptureFrame())</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>TriggerSelector 設定失敗後仍改寫 Mode／Source</h3><span>條件式硬體設定缺口可確認</span></div><p>TrySetNotebookTriggerSelectors 先嘗試 selector，隨後不論 selectorApplied 是否成功，都寫 TriggerMode 和 TriggerSource。</p><p><strong>觸發／影響：</strong>當相機不支援某 selector 時，後續寫入會作用於前一個仍選中的 selector；可能改到不是本次打算設定的觸發來源。具體行為取決於相機 SDK 與型號。</p><p><strong>建議：</strong>selector 失敗立即跳過後續寫入，分步讀回驗證；一整組設定失敗時還原原狀並回報可判斷的錯誤。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:1792</summary><pre><code> 1791              {
  1792                  var selectorApplied = TrySetNotebookEnumFeatureValue(device, &quot;TriggerSelector&quot;, new[] { selector });
  1793                  var modeApplied = TrySetNotebookEnumFeatureValue(device, &quot;TriggerMode&quot;, new[] { enabled ? &quot;On&quot; : &quot;Off&quot; });
  1794                  var sourceApplied = !enabled || TrySetNotebookEnumFeatureValue(device, &quot;TriggerSource&quot;, sources);
- 1795  
+ 1795
  1796                  details.Add(
- 1797                      selector</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>保存佇列限制同時執行數，卻未限制等待影像的記憶體</h3><span>來源顯示無佇列容量限制</span></div><p>完整 snapshot 在進入保存 semaphore 前已建立，等待中的工作仍持有 Bitmap／rolling snapshot。五個並行工作限制只約束執行，不約束累積。</p><p><strong>觸發／影響：</strong>當取像率長期高於磁碟或壓縮速度，等待快照會持續吃 RAM，尤其大幅線掃描圖可能引起記憶體不足。</p><p><strong>建議：</strong>佇列以總 bytes 和工作數雙重設限，進入前才取得租約；明確選擇背壓、略過或停止取像並記錄告警。</p><details><summary>CameraCaptureModule/Forms/MainForm.cs:529</summary><pre><code>  528  
+ 1797                      selector</code></pre><a href="../CameraCaptureModule/Services/CameraService.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>保存佇列限制同時執行數，卻未限制等待影像的記憶體</h3><span>來源顯示無佇列容量限制</span></div><p>完整 snapshot 在進入保存 semaphore 前已建立，等待中的工作仍持有 Bitmap／rolling snapshot。五個並行工作限制只約束執行，不約束累積。</p><p><strong>觸發／影響：</strong>當取像率長期高於磁碟或壓縮速度，等待快照會持續吃 RAM，尤其大幅線掃描圖可能引起記憶體不足。</p><p><strong>建議：</strong>佇列以總 bytes 和工作數雙重設限，進入前才取得租約；明確選擇背壓、略過或停止取像並記錄告警。</p><details><summary>CameraCaptureModule/Forms/MainForm.cs:529</summary><pre><code>  528
   529              using (var snapshot = _frameRecorder.SnapshotLatest())
   530              {
   531                  if (snapshot == null)
   532                  {
   533                      return;
-  534                  }</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:597</summary><pre><code>  596  
+  534                  }</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:597</summary><pre><code>  596
   597              using (var snapshot = _frameRecorder.SnapshotLatest())
   598              {
   599                  if (snapshot == null)
@@ -655,7 +655,7 @@
   695              ReportSnapshotSaveCounts(progressForm);
   696              try
   697              {
-  698                  progressForm.Report(5, &quot;Saving image...&quot;);</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>離開總覽仍保留檢測旗標，但移除影格轉送訂閱</h3><span>狀態與轉送條件可確認</span></div><p>ExitInspectionOverviewMode 保留 inspectionModeRemainsActive／captureModeRemainsActive，卻關閉 OverviewCaptureForwardingEnabled、移除 OverviewImageCaptured；持續模式又令自動檢測轉送保持 suppress。</p><p><strong>觸發／影響：</strong>本機持續模式在特定切頁後可能顯示仍在運轉，影格卻沒有送往相同總覽處理入口。須連同其他相機轉送選項驗收，不能只看按鈕文字。</p><p><strong>建議：</strong>運轉模式與訂閱放在常駐 CaptureCoordinator；離開頁面僅移除呈現訂閱，不改變運轉資料通路。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs:223</summary><pre><code>  222  
+  698                  progressForm.Report(5, &quot;Saving image...&quot;);</code></pre><a href="../CameraCaptureModule/Forms/MainForm.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>離開總覽仍保留檢測旗標，但移除影格轉送訂閱</h3><span>狀態與轉送條件可確認</span></div><p>ExitInspectionOverviewMode 保留 inspectionModeRemainsActive／captureModeRemainsActive，卻關閉 OverviewCaptureForwardingEnabled、移除 OverviewImageCaptured；持續模式又令自動檢測轉送保持 suppress。</p><p><strong>觸發／影響：</strong>本機持續模式在特定切頁後可能顯示仍在運轉，影格卻沒有送往相同總覽處理入口。須連同其他相機轉送選項驗收，不能只看按鈕文字。</p><p><strong>建議：</strong>運轉模式與訂閱放在常駐 CaptureCoordinator；離開頁面僅移除呈現訂閱，不改變運轉資料通路。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs:223</summary><pre><code>  222
   223              bool inspectionModeRemainsActive = isInspectionOverviewInspectionModeActive;
   224              bool continuousCaptureRemainsActive = isInspectionOverviewContinuousCaptureActive;
   225              bool captureModeRemainsActive = inspectionModeRemainsActive ||
@@ -673,7 +673,7 @@
   261                      }
   262                      PeerConnection previous;
   263                      if (peers.TryGetValue(key, out previous))
-  264                      {</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs:528</summary><pre><code>  527  
+  264                      {</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs:528</summary><pre><code>  527
   528          private void RemovePeer(PeerConnection peer)
   529          {
   530              bool removed;
@@ -697,19 +697,19 @@
    41              roleSelectorComboBox.SelectedIndex = (int)selectedMainFormRole;
    42              roleSelectorComboBox.SelectedIndexChanged += RoleSelectorComboBox_SelectedIndexChanged;
    43              applyRoleButton.Click += ApplyRoleButton_Click;
-   44              UpdateCurrentRoleLabel();</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs:73</summary><pre><code>   72  
+   44              UpdateCurrentRoleLabel();</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs:73</summary><pre><code>   72
    73              bool requiresPassword = requestedRole != MainFormRole.Operator ||
    74                  selectedMainFormRole == MainFormRole.Monitoring;
    75              if (requiresPassword)
    76              {
    77                  string enteredPassword;
    78                  if (!ShowRolePasswordDialog(requestedRole, out enteredPassword))</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs">開啟原始檔</a></details></article><article class="finding" data-level="P1"><div class="cardhead"><span class="badge">P1</span><h3>TCP 可達的連入端可提交遠端拍照／檢測命令</h3><span>命令處理缺少身分驗證機制</span></div><p>command 訊息直接轉交 HandleRemoteInspectionCommandAsync；站點 ID 比對不等於密碼或加密認證，這條流程沒有使用 UI 角色密碼。</p><p><strong>觸發／影響：</strong>允許 listener 且網路上可連到該埠時，非預期來源可嘗試啟動或停止擷取／檢測。是否對外暴露取決於部署網路。</p><p><strong>建議：</strong>限制網路範圍與授權 peer，加入具防重播的連線認證或 TLS；遠端命令獨立授權並記錄來源。</p><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs:394</summary><pre><code>  393          }
-  394  
+  394
   395          private async Task AcceptLoopAsync(TcpListener currentListener, CancellationToken cancellationToken)
   396          {
   397              while (!cancellationToken.IsCancellationRequested)
   398              {
-  399                  TcpClient client = null;</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs:1193</summary><pre><code> 1192  
+  399                  TcpClient client = null;</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs:1193</summary><pre><code> 1192
  1193              if (string.Equals(message.MessageType, &quot;command&quot;, StringComparison.OrdinalIgnoreCase))
  1194              {
  1195                  _ = HandleRemoteInspectionCommandAsync(e, message);
@@ -721,7 +721,7 @@
  1328              string response;
  1329              switch (command)
  1330              {
- 1331                  case &quot;start-capture&quot;:</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>工作 INI 與總控 XML 尚有直接截斷寫入路徑</h3><span>寫檔方式可確認</span></div><p>SystemParameterIniService 使用 StreamWriter(filePath,false)，ConnectionControllerSettingsService 使用 File.Create。相較之下 device-settings 已有 flush 與 File.Replace。</p><p><strong>觸發／影響：</strong>寫入途中斷電、磁碟滿或程序終止，主要設定檔可能不完整；總控 XML 載入失敗亦需明確復原策略。</p><p><strong>建議：</strong>統一 ConfigStore：唯一暫存、flush、重新解析驗證、原子替換、上一版備份。保留原檔，避免錯誤時靜默用預設值覆蓋。</p><details><summary>IntegratedImageProcessingApp/Services/SystemParameterIniService.cs:945</summary><pre><code>  944  
+ 1331                  case &quot;start-capture&quot;:</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>工作 INI 與總控 XML 尚有直接截斷寫入路徑</h3><span>寫檔方式可確認</span></div><p>SystemParameterIniService 使用 StreamWriter(filePath,false)，ConnectionControllerSettingsService 使用 File.Create。相較之下 device-settings 已有 flush 與 File.Replace。</p><p><strong>觸發／影響：</strong>寫入途中斷電、磁碟滿或程序終止，主要設定檔可能不完整；總控 XML 載入失敗亦需明確復原策略。</p><p><strong>建議：</strong>統一 ConfigStore：唯一暫存、flush、重新解析驗證、原子替換、上一版備份。保留原檔，避免錯誤時靜默用預設值覆蓋。</p><details><summary>IntegratedImageProcessingApp/Services/SystemParameterIniService.cs:945</summary><pre><code>  944
   945              using (var writer = new StreamWriter(filePath, false))
   946              {
   947                  writer.WriteLine(&quot;[System]&quot;);
@@ -751,19 +751,19 @@
   102              {
   103                  new SystemParameterIniService(temporaryPath).Save(settings);
   104                  SystemParameterSettings normalized = new SystemParameterIniService(temporaryPath).Load();
-  105                  normalized.LastImagePath = string.Empty;</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionHistoryStore.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs:830</summary><pre><code>  829  
+  105                  normalized.LastImagePath = string.Empty;</code></pre><a href="../IntegratedImageProcessingApp/Services/InspectionHistoryStore.cs">開啟原始檔</a></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs:830</summary><pre><code>  829
   830                  var record = new InspectionHistoryBatchRecord
   831                  {
   832                      BatchId = Guid.NewGuid().ToString(&quot;N&quot;),
   833                      InspectedAt = inspectedAt,
   834                      CameraSequence = sequenceNumber,
-  835                      ParameterId = snapshot.ParameterId,</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>米輪設定失敗後 Initialized 仍可能保持 true</h3><span>初始化失敗收尾缺口可確認</span></div><p>Lsi8181MeterWheelService 在讀卡資訊與寫硬體設定完成前就把 _initialized 設成 true，後續步驟出錯沒有完整回滾。</p><p><strong>觸發／影響：</strong>重試或自動連線可能看到已初始化而略過必要步驟，軟體觸發則可能在卡片配置不完整時啟動。</p><p><strong>建議：</strong>全部初始化成功後才提交 ready 狀態；任一步失敗關卡／釋放資源並還原 flags，保存失敗步驟。</p><details><summary>CameraCaptureModule/Services/Lsi8181MeterWheelService.cs:47</summary><pre><code>   46  
+  835                      ParameterId = snapshot.ParameterId,</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>米輪設定失敗後 Initialized 仍可能保持 true</h3><span>初始化失敗收尾缺口可確認</span></div><p>Lsi8181MeterWheelService 在讀卡資訊與寫硬體設定完成前就把 _initialized 設成 true，後續步驟出錯沒有完整回滾。</p><p><strong>觸發／影響：</strong>重試或自動連線可能看到已初始化而略過必要步驟，軟體觸發則可能在卡片配置不完整時啟動。</p><p><strong>建議：</strong>全部初始化成功後才提交 ready 狀態；任一步失敗關卡／釋放資源並還原 flags，保存失敗步驟。</p><details><summary>CameraCaptureModule/Services/Lsi8181MeterWheelService.cs:47</summary><pre><code>   46
    47              _initialized = true;
    48              _cardId = cardId;
-   49  
+   49
    50              ulong ioAddress = 0;
    51              ulong tcAddress = 0;
-   52              status = Lsi8181Native.LSI8181_info(cardId, ref ioAddress, ref tcAddress);</code></pre><a href="../CameraCaptureModule/Services/Lsi8181MeterWheelService.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>Snap 啟動後才設忙碌，完成回呼可能先跑完</h3><span>條件式旗標競態待實機重現</span></div><p>CameraService Capture 路徑先呼叫 Snap，再設 IsCaptureInProgress；回呼會清除此旗標。此順序沒有共同同步保護。</p><p><strong>觸發／影響：</strong>極快完成的回呼若先清 false，呼叫端再寫 true，便留下已完成卻仍忙碌的狀態。實際是否出現取決於 SDK 回呼時序。</p><p><strong>建議：</strong>先進入 Capturing 狀態再啟動 Snap；啟動失敗立即回滾，回呼以同一 capture generation 完成。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:302</summary><pre><code>  301  
+   52              status = Lsi8181Native.LSI8181_info(cardId, ref ioAddress, ref tcAddress);</code></pre><a href="../CameraCaptureModule/Services/Lsi8181MeterWheelService.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>Snap 啟動後才設忙碌，完成回呼可能先跑完</h3><span>條件式旗標競態待實機重現</span></div><p>CameraService Capture 路徑先呼叫 Snap，再設 IsCaptureInProgress；回呼會清除此旗標。此順序沒有共同同步保護。</p><p><strong>觸發／影響：</strong>極快完成的回呼若先清 false，呼叫端再寫 true，便留下已完成卻仍忙碌的狀態。實際是否出現取決於 SDK 回呼時序。</p><p><strong>建議：</strong>先進入 Capturing 狀態再啟動 Snap；啟動失敗立即回滾，回呼以同一 capture generation 完成。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:302</summary><pre><code>  301
   302              if (_transfer.Snap())
   303              {
   304                  _status.IsCaptureInProgress = true;
@@ -793,7 +793,7 @@
  2298                          },
  2299                          scanRoi);
  2300                  }
- 2301                  catch</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>完整視窗不越界，並不代表任意 MASK 內每個像素都會被掃描</h3><span>幾何限制可確認；覆蓋缺口依 MASK 而定</span></div><p>TryCalculateObjectDetectionFrequencyEnergy 會先呼叫 IsWindowInsideMask；不完整落入 MASK 的格子被拒絕。對不規則／狹窄範圍，往上或往左補最後一格仍不一定能放進完整視窗。</p><p><strong>觸發／影響：</strong>使用者可能誤認整個框／MASK 都已檢查；若缺陷位於沒有完整合法窗格的位置，沒有格子可判。</p><p><strong>建議：</strong>輸出有效掃描覆蓋 MASK、未覆蓋像素數與原因；明確設計邊界處理，不用黑色補邊後仍套相同能量門檻。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2874</summary><pre><code> 2873  
+ 2301                  catch</code></pre><a href="../IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs">開啟原始檔</a></details></article><article class="finding" data-level="P2"><div class="cardhead"><span class="badge">P2</span><h3>完整視窗不越界，並不代表任意 MASK 內每個像素都會被掃描</h3><span>幾何限制可確認；覆蓋缺口依 MASK 而定</span></div><p>TryCalculateObjectDetectionFrequencyEnergy 會先呼叫 IsWindowInsideMask；不完整落入 MASK 的格子被拒絕。對不規則／狹窄範圍，往上或往左補最後一格仍不一定能放進完整視窗。</p><p><strong>觸發／影響：</strong>使用者可能誤認整個框／MASK 都已檢查；若缺陷位於沒有完整合法窗格的位置，沒有格子可判。</p><p><strong>建議：</strong>輸出有效掃描覆蓋 MASK、未覆蓋像素數與原因；明確設計邊界處理，不用黑色補邊後仍套相同能量門檻。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2874</summary><pre><code> 2873
  2874              byte* image = (byte*)workspace.ImageData.ToPointer();
  2875              byte* hannBytes = (byte*)workspace.HannData.ToPointer();
  2876              if (!workspace.IsWindowInsideMask(startX, startY))

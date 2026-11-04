@@ -48,4 +48,3 @@ verify_documents.py 的輸出可重現連結與文字檢查；它不能代替人
 執行 `node docs/tools/write_current_review.cjs` 會完整掃描自有來源、重算 SHA-256／符號索引及 Compile 對照，並產出 `docs/CODE_DEEP_REVIEW_CURRENT.html` 和 `docs/audit-2026-11-04-current` 的 JSON。資料夾名稱是本次掃描起始日期；本次審查於 2026-11-05 完成。評分與發現由維護者人工核對，不能把自動文字掃描視為逐行正確性證明。
 
 `refresh_code_audit.cjs --inventory` 可單獨重建盤點。修改來源後需重新核對 `write_current_review.cjs` 中的判讀與證據，不能只重算檔案指紋而沿用評分。舊 Python 報告和 HTML 保留作歷史快照。
-

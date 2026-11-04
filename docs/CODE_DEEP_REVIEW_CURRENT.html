@@ -1,6 +1,6 @@
-<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>最新程式深度審查 · 57/100</title><style>body{margin:0;background:#f2f5fa;color:#193047;font:16px/1.8 'Microsoft JhengHei',sans-serif}header{background:#14304c;color:white;padding:36px max(24px,calc((100% - 1180px)/2))}main{max-width:1180px;margin:auto;padding:24px}h1{font-size:36px}h2{margin-top:36px}nav{padding:14px;background:white;display:flex;gap:20px;flex-wrap:wrap}a{color:#1768ae}article,.panel{background:white;border:1px solid #d6e1ec;border-radius:10px;padding:22px;margin:16px 0}.score{font-size:60px;font-weight:bold}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.grid article{margin:0}b{color:#175d96}pre{background:#122b42;color:#dfecfa;padding:14px;font:12px/1.7 Consolas,monospace;overflow:auto}summary{cursor:pointer;overflow-wrap:anywhere;color:#1768ae}table{border-collapse:collapse;width:100%;font-size:13px;background:white}th,td{padding:10px;text-align:left;border:1px solid #dce4ed;overflow-wrap:anywhere}th{background:#e5edf6}.scroll{overflow:auto}.finding{border-left:5px solid #df9131}.P1{border-left-color:#c94c4c}.note{padding:18px;background:#fff2d9}input,select,button{font:inherit;padding:8px;border:1px solid #aebfd0;margin:6px}code{font-size:12px}progress{width:100%;height:12px}section{scroll-margin-top:20px}@media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:28px}}@media print{nav,input,select,button{display:none}body{background:white}article{break-inside:avoid}details pre{white-space:pre-wrap}.grid{display:block}}</style><header><div>2026-11-04 掃描開始 · 2026-11-05 完成審查</div><h1>全部自有程式碼掃描與 20 面向評分</h1><div class="score">57 / 100</div><p>檢測主流程成形，可靠度防護進步；仍需獨立執行引擎與設備驗收</p><p>父基準 9aa7c8cd54598b8c388e43ede5487d07f4c4f925；本報告依本次待提交來源快照，精確版本以附錄 SHA-256 為準。</p></header><nav><a href="#method">方法與範圍</a><a href="#scores">20 面向</a><a href="#fixed">已修正覆核</a><a href="#findings">目前問題</a><a href="#roadmap">拆分與順序</a><a href="#files">全檔清單</a><button onclick="print()">列印／存 PDF</button></nav><main><section class="panel"><h2>評估結論</h2><p>這套程式符合單相機逐片檢測的產品方向，已具有實際判定、追溯與多站通訊流程。近期修補增加了持久結果交付、命令驗證、原子保存、歷史精度快照和工作上限。主要不足已轉為跨頁持續執行、保存排程／關閉生命週期、ACK 信任邊界、統一執行快照與 UI 耦合。當前分數衡量來源中的工程成熟度，不是漏檢率、設備可用率或產線認證。</p><p class="note">這是來源靜態成熟度的主觀工程評分，每面向 0–5 分，共 100 分。不是檢出率、吞吐、現場可用率或第三方認證。成功編譯不能證明硬體與演算法驗收通過。</p></section><section id="method" class="panel"><h2>範圍與證據層級</h2><p>此次讀取並自動掃描 111 個 C# 檔，共 87,457 行（含 Designer），連同專案／設定與工具共 130 檔。逐檔產生 hash、符號清單及非同步／平行／例外處理指標，所有 C# Compile 項目 41＋70 均對應，無漏列或不存在的檔案。原廠閉源 SDK、NuGet packages、bin/obj 產物不列為自有程式。</p><p><strong>全檔掃描：</strong>所有範圍內檔案都由工具讀取完整文字；<strong>人工深讀：</strong>集中在取像→記憶體→結果確認、尺寸／一般缺陷／頻域、歷史重跑、TCP／HMAC／ACK、平行預算、導覽與關閉保存的跨檔呼叫鏈。本報告不宣稱已人工逐行證明 8 萬多行全部正確，也不把 hash 或空 catch 計數當作驗收。</p><p>本次沿用既有 Debug 建置方式並重新建置，結果見隨附 build-result.txt；未執行硬體控制、公司影像檢出率、速度基準或自動化測試。依專案指示本次不新增測試。舊報告只作差異索引，每個本次結論以附錄來源重新定位。</p><p>分數定義：0 缺少機制；1 僅入口；2 有實作但有重大邊界缺口；3 主要機制存在但待跨情境驗收；4 防護和職責較完整；5 另有充分、可重複驗證證據。各項相同權重，風險可能跨項相關，並非獨立統計機率。</p><p>掃描／評分資料：<a href="audit-2026-11-04-current/source-inventory.json">完整 inventory</a> · <a href="audit-2026-11-04-current/review.json">詳細評分 JSON</a>。掃描與報告產出工具亦隨原始碼提交。</p></section><section id="scores"><h2>20 面向逐項評分</h2><div class="scroll"><table><tr><th>面向</th><th>得分</th><th>改善重點</th></tr><tr><td><a href="#d0">1. 檢測流程完整度</a></td><td>4/5</td><td>以同一 FrameId 串接接納、運算、存圖、歷史及傳送狀態；先驗收跨頁持續運轉。</td></tr><tr><td><a href="#d1">2. 架構分層與責任隔離</a></td><td>2/5</td><td>先抽 InspectionRequest／InspectionResult 與 InspectionRunner，手動、相機、歷史使用共同入口。保持原演算法、逐步替換呼叫。</td></tr><tr><td><a href="#d2">3. 模組規模與維護成本</a></td><td>2/5</td><td>優先按純計算、資料儲存及排程責任抽類別，不以再次切 partial 或任意行數門檻視為架構改善。</td></tr><tr><td><a href="#d3">4. Recipe 與參數一致性</a></td><td>3/5</td><td>每次接納影格時固定 Recipe／設備設定版本；使計算只讀該快照，避免執行中修改造成混用。</td></tr><tr><td><a href="#d4">5. 尺寸量測與逐片分級</a></td><td>3/5</td><td>抽出 MeasurementEngine、共用公式 parser 和規格 evaluator；先保持現有缺測與 A/B/NG 語意，再比較已知幾何。</td></tr><tr><td><a href="#d5">6. ROI／MASK 幾何安全</a></td><td>3/5</td><td>增加有效覆蓋比例與未掃描區顯示；用旋轉、不規則、狹窄及重疊 ROI 確認運算與圖框一致。</td></tr><tr><td><a href="#d6">7. 一般缺陷判定與整合</a></td><td>3/5</td><td>各核心輸出獨立結果 DTO，整合只接受同一影格及參數版本；用已標註良／不良樣本確認候選與最終等級。</td></tr><tr><td><a href="#d7">8. 掃描異常演算法可解釋性</a></td><td>3/5</td><td>保留公式、實際縮放尺寸與有效格統計；以目標淡線和背景反例建立 ROC／誤報資料，不靠單張示意圖保證檢出。</td></tr><tr><td><a href="#d8">9. 效能與資源預算</a></td><td>3/5</td><td>先補單項工作也取得 worker 名額，加入主存圖有界排程；量測牆鐘、P95、峰值 RAM，再調整預設上限。</td></tr><tr><td><a href="#d9">10. 非同步與狀態機可靠度</a></td><td>2/5</td><td>把相機運行狀態獨立於 PageVisible；頁面只訂閱顯示。明確區分停止接納、等待目前工作完成和關閉資源。</td></tr><tr><td><a href="#d10">11. 影像記憶體與生命週期</a></td><td>3/5</td><td>引入明確 lease 與唯讀 frame 契約，區分 view／clone；集中釋放與記憶體指標，減少完整圖副本。</td></tr><tr><td><a href="#d11">12. UI 狀態與互動一致性</a></td><td>3/5</td><td>按頁抽 UserControl／ViewState，將執行引擎與畫面建立分離，固定 100／125／150% DPI 驗收基準。</td></tr><tr><td><a href="#d12">13. 相機／米輪整合</a></td><td>3/5</td><td>保留原廠呼叫契約；建立每台設備 feature／設定結果紀錄，依序驗收接線、原點、觸發、斷線及停止。</td></tr><tr><td><a href="#d13">14. 影格與保存影像一致性</a></td><td>4/5</td><td>將 FrameId、存圖 Pending／Saved／Failed 狀態寫入歷史，保留一個主保存責任，驗收慢碟與關閉時的影格對應。</td></tr><tr><td><a href="#d14">15. TCP 結果交付可靠度</a></td><td>3/5</td><td>定義每目的端交付狀態，認證 ACK，背景分批排空 outbox，並處理損壞／毒訊息與保留期限。</td></tr><tr><td><a href="#d15">16. 權限與連線安全</a></td><td>3/5</td><td>先針對設備網路明確威脅模型，限制端點、啟用命令驗證，再加入互認／TLS 與結果 ACK 保護。</td></tr><tr><td><a href="#d16">17. 歷史／設定持久化</a></td><td>3/5</td><td>記錄保存狀態與失敗原因；集中 HistoryWriter，建立關閉排空、磁碟滿、跨日與備份復原流程。</td></tr><tr><td><a href="#d17">18. 判定追溯與重跑一致性</a></td><td>3/5</td><td>於接納影格建立 ExecutionContext，保存原始數值、單位、參數 hash 和程式 build ID，讓 UI 只格式化顯示。</td></tr><tr><td><a href="#d18">19. 錯誤處理與可觀測性</a></td><td>2/5</td><td>集中結構化 log，串 FrameId／RunId／ResultId，記錄拒收、取消、保存、ACK 延遲和資源峰值；不可把空 catch 數直接當 bug 數。</td></tr><tr><td><a href="#d19">20. 驗證／建置／交付可重現性</a></td><td>2/5</td><td>建立可在現場重播的匿名測例清單與部署 manifest，記錄原圖／Recipe hash、build ID 和預期逐片結果；分別驗收演算法與設備控制。</td></tr></table></div><br><div class="grid"><article id="d0"><h3>1. 檢測流程完整度 <b>4/5</b></h3><progress max="5" value="4"></progress><p><b>現有基礎：</b>相機 Mono8 記憶體影格、找物件、平場、尺寸、一般缺陷、兩組掃描異常、整合、逐片結果與歷史都有可追蹤的執行路徑。忙碌略過新影格符合現有需求。</p><p><b>限制與扣分：</b>完整入口仍依賴 UI 控制項存在；切頁、拒收、停止及例外恢復未有這次實機證據。完整流程不能直接推論產線可用率。</p><p><b>改善與完成方向：</b>以同一 FrameId 串接接納、運算、存圖、歷史及傳送狀態；先驗收跨頁持續運轉。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs:66</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs#L66">GitHub 程式位置</a><pre>63:             }
+<!doctype html><html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>最新程式深度審查 · 57/100</title><style>body{margin:0;background:#f2f5fa;color:#193047;font:16px/1.8 'Microsoft JhengHei',sans-serif}header{background:#14304c;color:white;padding:36px max(24px,calc((100% - 1180px)/2))}main{max-width:1180px;margin:auto;padding:24px}h1{font-size:36px}h2{margin-top:36px}nav{padding:14px;background:white;display:flex;gap:20px;flex-wrap:wrap}a{color:#1768ae}article,.panel{background:white;border:1px solid #d6e1ec;border-radius:10px;padding:22px;margin:16px 0}.score{font-size:60px;font-weight:bold}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.grid article{margin:0}b{color:#175d96}pre{background:#122b42;color:#dfecfa;padding:14px;font:12px/1.7 Consolas,monospace;overflow:auto}summary{cursor:pointer;overflow-wrap:anywhere;color:#1768ae}table{border-collapse:collapse;width:100%;font-size:13px;background:white}th,td{padding:10px;text-align:left;border:1px solid #dce4ed;overflow-wrap:anywhere}th{background:#e5edf6}.scroll{overflow:auto}.finding{border-left:5px solid #df9131}.P1{border-left-color:#c94c4c}.note{padding:18px;background:#fff2d9}input,select,button{font:inherit;padding:8px;border:1px solid #aebfd0;margin:6px}code{font-size:12px}progress{width:100%;height:12px}section{scroll-margin-top:20px}@media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:28px}}@media print{nav,input,select,button{display:none}body{background:white}article{break-inside:avoid}details pre{white-space:pre-wrap}.grid{display:block}}</style><header><div>2026-11-04 掃描開始 · 2026-11-05 完成審查</div><h1>全部自有程式碼掃描與 20 面向評分</h1><div class="score">57 / 100</div><p>檢測主流程成形，可靠度防護進步；仍需獨立執行引擎與設備驗收</p><p>父基準 599c5c916171f4bb7a82a56e9d1733676ba924b5；本報告依本次待提交來源快照，精確版本以附錄 SHA-256 為準。</p></header><nav><a href="#method">方法與範圍</a><a href="#scores">20 面向</a><a href="#fixed">已修正覆核</a><a href="#findings">目前問題</a><a href="#roadmap">拆分與順序</a><a href="#files">全檔清單</a><button onclick="print()">列印／存 PDF</button></nav><main><section class="panel"><h2>評估結論</h2><p>這套程式符合單相機逐片檢測的產品方向，已具有實際判定、追溯與多站通訊流程。近期修補增加了持久結果交付、命令驗證、原子保存、歷史精度快照和工作上限。主要不足已轉為跨頁持續執行、保存排程／關閉生命週期、ACK 信任邊界、統一執行快照與 UI 耦合。當前分數衡量來源中的工程成熟度，不是漏檢率、設備可用率或產線認證。</p><p class="note">這是來源靜態成熟度的主觀工程評分，每面向 0–5 分，共 100 分。不是檢出率、吞吐、現場可用率或第三方認證。成功編譯不能證明硬體與演算法驗收通過。</p></section><section id="method" class="panel"><h2>範圍與證據層級</h2><p>此次讀取並自動掃描 111 個 C# 檔，共 87,457 行（含 Designer），連同專案／設定與工具共 130 檔。逐檔產生 hash、符號清單及非同步／平行／例外處理指標，所有 C# Compile 項目 41＋70 均對應，無漏列或不存在的檔案。原廠閉源 SDK、NuGet packages、bin/obj 產物不列為自有程式。</p><p><strong>全檔掃描：</strong>所有範圍內檔案都由工具讀取完整文字；<strong>人工深讀：</strong>集中在取像→記憶體→結果確認、尺寸／一般缺陷／頻域、歷史重跑、TCP／HMAC／ACK、平行預算、導覽與關閉保存的跨檔呼叫鏈。本報告不宣稱已人工逐行證明 8 萬多行全部正確，也不把 hash 或空 catch 計數當作驗收。</p><p>本次沿用既有 Debug 建置方式並重新建置，結果見隨附 build-result.txt；未執行硬體控制、公司影像檢出率、速度基準或自動化測試。依專案指示本次不新增測試。舊報告只作差異索引，每個本次結論以附錄來源重新定位。</p><p>分數定義：0 缺少機制；1 僅入口；2 有實作但有重大邊界缺口；3 主要機制存在但待跨情境驗收；4 防護和職責較完整；5 另有充分、可重複驗證證據。各項相同權重，風險可能跨項相關，並非獨立統計機率。</p><p>掃描／評分資料：<a href="audit-2026-11-04-current/source-inventory.json">完整 inventory</a> · <a href="audit-2026-11-04-current/review.json">詳細評分 JSON</a>。掃描與報告產出工具亦隨原始碼提交。</p></section><section id="scores"><h2>20 面向逐項評分</h2><div class="scroll"><table><tr><th>面向</th><th>得分</th><th>改善重點</th></tr><tr><td><a href="#d0">1. 檢測流程完整度</a></td><td>4/5</td><td>以同一 FrameId 串接接納、運算、存圖、歷史及傳送狀態；先驗收跨頁持續運轉。</td></tr><tr><td><a href="#d1">2. 架構分層與責任隔離</a></td><td>2/5</td><td>先抽 InspectionRequest／InspectionResult 與 InspectionRunner，手動、相機、歷史使用共同入口。保持原演算法、逐步替換呼叫。</td></tr><tr><td><a href="#d2">3. 模組規模與維護成本</a></td><td>2/5</td><td>優先按純計算、資料儲存及排程責任抽類別，不以再次切 partial 或任意行數門檻視為架構改善。</td></tr><tr><td><a href="#d3">4. Recipe 與參數一致性</a></td><td>3/5</td><td>每次接納影格時固定 Recipe／設備設定版本；使計算只讀該快照，避免執行中修改造成混用。</td></tr><tr><td><a href="#d4">5. 尺寸量測與逐片分級</a></td><td>3/5</td><td>抽出 MeasurementEngine、共用公式 parser 和規格 evaluator；先保持現有缺測與 A/B/NG 語意，再比較已知幾何。</td></tr><tr><td><a href="#d5">6. ROI／MASK 幾何安全</a></td><td>3/5</td><td>增加有效覆蓋比例與未掃描區顯示；用旋轉、不規則、狹窄及重疊 ROI 確認運算與圖框一致。</td></tr><tr><td><a href="#d6">7. 一般缺陷判定與整合</a></td><td>3/5</td><td>各核心輸出獨立結果 DTO，整合只接受同一影格及參數版本；用已標註良／不良樣本確認候選與最終等級。</td></tr><tr><td><a href="#d7">8. 掃描異常演算法可解釋性</a></td><td>3/5</td><td>保留公式、實際縮放尺寸與有效格統計；以目標淡線和背景反例建立 ROC／誤報資料，不靠單張示意圖保證檢出。</td></tr><tr><td><a href="#d8">9. 效能與資源預算</a></td><td>3/5</td><td>先補單項工作也取得 worker 名額，加入主存圖有界排程；量測牆鐘、P95、峰值 RAM，再調整預設上限。</td></tr><tr><td><a href="#d9">10. 非同步與狀態機可靠度</a></td><td>2/5</td><td>把相機運行狀態獨立於 PageVisible；頁面只訂閱顯示。明確區分停止接納、等待目前工作完成和關閉資源。</td></tr><tr><td><a href="#d10">11. 影像記憶體與生命週期</a></td><td>3/5</td><td>引入明確 lease 與唯讀 frame 契約，區分 view／clone；集中釋放與記憶體指標，減少完整圖副本。</td></tr><tr><td><a href="#d11">12. UI 狀態與互動一致性</a></td><td>3/5</td><td>按頁抽 UserControl／ViewState，將執行引擎與畫面建立分離，固定 100／125／150% DPI 驗收基準。</td></tr><tr><td><a href="#d12">13. 相機／米輪整合</a></td><td>3/5</td><td>保留原廠呼叫契約；建立每台設備 feature／設定結果紀錄，依序驗收接線、原點、觸發、斷線及停止。</td></tr><tr><td><a href="#d13">14. 影格與保存影像一致性</a></td><td>4/5</td><td>將 FrameId、存圖 Pending／Saved／Failed 狀態寫入歷史，保留一個主保存責任，驗收慢碟與關閉時的影格對應。</td></tr><tr><td><a href="#d14">15. TCP 結果交付可靠度</a></td><td>3/5</td><td>定義每目的端交付狀態，認證 ACK，背景分批排空 outbox，並處理損壞／毒訊息與保留期限。</td></tr><tr><td><a href="#d15">16. 權限與連線安全</a></td><td>3/5</td><td>先針對設備網路明確威脅模型，限制端點、啟用命令驗證，再加入互認／TLS 與結果 ACK 保護。</td></tr><tr><td><a href="#d16">17. 歷史／設定持久化</a></td><td>3/5</td><td>記錄保存狀態與失敗原因；集中 HistoryWriter，建立關閉排空、磁碟滿、跨日與備份復原流程。</td></tr><tr><td><a href="#d17">18. 判定追溯與重跑一致性</a></td><td>3/5</td><td>於接納影格建立 ExecutionContext，保存原始數值、單位、參數 hash 和程式 build ID，讓 UI 只格式化顯示。</td></tr><tr><td><a href="#d18">19. 錯誤處理與可觀測性</a></td><td>2/5</td><td>集中結構化 log，串 FrameId／RunId／ResultId，記錄拒收、取消、保存、ACK 延遲和資源峰值；不可把空 catch 數直接當 bug 數。</td></tr><tr><td><a href="#d19">20. 驗證／建置／交付可重現性</a></td><td>2/5</td><td>建立可在現場重播的匿名測例清單與部署 manifest，記錄原圖／Recipe hash、build ID 和預期逐片結果；分別驗收演算法與設備控制。</td></tr></table></div><br><div class="grid"><article id="d0"><h3>1. 檢測流程完整度 <b>4/5</b></h3><progress max="5" value="4"></progress><p><b>現有基礎：</b>相機 Mono8 記憶體影格、找物件、平場、尺寸、一般缺陷、兩組掃描異常、整合、逐片結果與歷史都有可追蹤的執行路徑。忙碌略過新影格符合現有需求。</p><p><b>限制與扣分：</b>完整入口仍依賴 UI 控制項存在；切頁、拒收、停止及例外恢復未有這次實機證據。完整流程不能直接推論產線可用率。</p><p><b>改善與完成方向：</b>以同一 FrameId 串接接納、運算、存圖、歷史及傳送狀態；先驗收跨頁持續運轉。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs:66</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs#L66">GitHub 程式位置</a><pre>63:             }
 64:         }
-65: 
+65:
 66:         private async Task ProcessCameraAcquiredImageAsync(CameraGrayscaleFrame frame, long sequenceNumber)
 67:         {
 68:             string imageIdentity = null;
@@ -8,7 +8,7 @@
 70:             LargeImageSource memorySource = null;
 71:             bool returnToInspectionOverview = isInspectionOverviewActive;
 72:             ResultReviewParameterChoice selectedChoice = null;
-73: 
+73:
 74:             try
 75:             {</pre></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs:1264</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs#L1264">GitHub 程式位置</a><pre>1261:                     objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];
 1262:                 objectDetectionResultReviewConcurrentComputationStopwatch = Stopwatch.StartNew();
@@ -22,7 +22,7 @@
 1270:                         cancellationToken,
 1271:                         capturedRecipeGeneration,
 1272:                         capturedImageGeneration));
-1273:                 bool includeFrequency = parameter.DefectFrequencyEnabled &amp;&amp;</pre></details></article><article id="d1"><h3>2. 架構分層與責任隔離 <b>2/5</b></h3><progress max="5" value="2"></progress><p><b>現有基礎：</b>相機為獨立專案，TCP、設定、每日 DB、結果佇列及部分 OpenCV 已抽 Service。</p><p><b>限制與扣分：</b>主要 orchestration 和數值結果仍是 MainForm private 型別；相機會初始化結果確認頁。partial 不能隔離共享可變狀態。</p><p><b>改善與完成方向：</b>先抽 InspectionRequest／InspectionResult 與 InspectionRunner，手動、相機、歷史使用共同入口。保持原演算法、逐步替換呼叫。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs:105</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs#L105">GitHub 程式位置</a><pre>102: 
+1273:                 bool includeFrequency = parameter.DefectFrequencyEnabled &amp;&amp;</pre></details></article><article id="d1"><h3>2. 架構分層與責任隔離 <b>2/5</b></h3><progress max="5" value="2"></progress><p><b>現有基礎：</b>相機為獨立專案，TCP、設定、每日 DB、結果佇列及部分 OpenCV 已抽 Service。</p><p><b>限制與扣分：</b>主要 orchestration 和數值結果仍是 MainForm private 型別；相機會初始化結果確認頁。partial 不能隔離共享可變狀態。</p><p><b>改善與完成方向：</b>先抽 InspectionRequest／InspectionResult 與 InspectionRunner，手動、相機、歷史使用共同入口。保持原演算法、逐步替換呼叫。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs:105</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs#L105">GitHub 程式位置</a><pre>102:
 103:                     // First-time result-review initialization is an internal page setup,
 104:                     // not an operator request to stop the latched overview inspection mode.
 105:                     ShowObjectDetectionResultReviewPanel();
@@ -36,7 +36,7 @@
 113:                     SetCameraInspectionStatus(&quot;相機影像已取得，但結果確認頁面尚未就緒。&quot;);
 114:                     return;</pre></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs:74</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs#L74">GitHub 程式位置</a><pre>71:             public long CalculationMilliseconds { get; set; }
 72:         }
-73: 
+73:
 74:         private sealed class ObjectDetectionResultReviewSnapshot : IDisposable
 75:         {
 76:             public string ParameterId { get; set; }
@@ -48,7 +48,7 @@
 82:             public ObjectDetectionParameterSettings Parameter { get; set; }
 83:             public ObjectDefinitionSettings Definition { get; set; }</pre></details></article><article id="d2"><h3>3. 模組規模與維護成本 <b>2/5</b></h3><progress max="5" value="2"></progress><p><b>現有基礎：</b>檔名大致依量測、ROI、一般缺陷、頻域、歷史分責任，可定位功能。</p><p><b>限制與扣分：</b>CameraService、ResultReview、DefectFrequency 等大檔混合生命週期、模型、計算與呈現；跨 partial 方法相依使單一修改難以估計影響。</p><p><b>改善與完成方向：</b>優先按純計算、資料儲存及排程責任抽類別，不以再次切 partial 或任意行數門檻視為架構改善。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:161</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs#L161">GitHub 程式位置</a><pre>158:             public List&lt;ObjectDetectionFrequencyCell&gt; Cells { get; set; }
 159:         }
-160: 
+160:
 161:         private sealed class ObjectDetectionFrequencyWorkspace : IDisposable
 162:         {
 163:             private const int MaximumMaskLookupBytes = 8 * 1024 * 1024;
@@ -58,13 +58,13 @@
 167:             private int maskLookupTop;
 168:             private int maskLookupRows;
 169:             private int maskLookupWordsPerRow;
-170:             private bool maskIsFull;</pre></details><details><summary>CameraCaptureModule/Services/CameraService.cs:15</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/CameraService.cs#L15">GitHub 程式位置</a><pre>12: 
+170:             private bool maskIsFull;</pre></details><details><summary>CameraCaptureModule/Services/CameraService.cs:15</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/CameraService.cs#L15">GitHub 程式位置</a><pre>12:
 13: namespace CameraCaptureApp.Services
 14: {
 15:     public class CameraService : ICameraService
 16:     {
 17:         private const int PreviewIntervalMilliseconds = 200;
-18: 
+18:
 19:         private readonly CameraStatus _status;
 20:         private readonly object _frameSync = new object();
 21:         private CameraSettings _settings;
@@ -72,7 +72,7 @@
 23:         private string _configFileName;
 24:         private SapAcqDevice _acqDevice;</pre></details></article><article id="d3"><h3>4. Recipe 與參數一致性 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>穩定 ID、Recipe catalog、取消世代及原子工作 INI 寫入已有實作。上游失效與簽章也已有近期修補。</p><p><b>限制與扣分：</b>執行流程仍讀 MainForm 中的可變設定；結果快照在流程結尾才建立。設備設定、Recipe 與影像 generation 的一致快照尚未成為統一輸入合約。</p><p><b>改善與完成方向：</b>每次接納影格時固定 Recipe／設備設定版本；使計算只讀該快照，避免執行中修改造成混用。</p><details><summary>IntegratedImageProcessingApp/Services/SystemParameterIniService.cs:946</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/SystemParameterIniService.cs#L946">GitHub 程式位置</a><pre>943:                 Directory.CreateDirectory(directory);
 944:             }
-945: 
+945:
 946:             AtomicFileWriter.Write(filePath, delegate(TextWriter writer)
 947:             {
 948:                 writer.WriteLine(&quot;[System]&quot;);
@@ -96,7 +96,7 @@
 1554:                 objectDetectionResultReviewLastSuccessfulParameterId = parameter.Id;
 1555:                 objectDetectionResultReviewLastSuccessfulImageGeneration = imageContentGeneration;</pre></details></article><article id="d4"><h3>5. 尺寸量測與逐片分級 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>量測依指定 MASK，支援平行物件量測、X/Y 精度、A 不符再判 B 與逐物件等級。</p><p><b>限制與扣分：</b>設定驗證與實際求值 parser 仍分開；缺值、斜線重複取樣與公式邊界需固定資料驗收。不能由編譯證明量測精度。</p><p><b>改善與完成方向：</b>抽出 MeasurementEngine、共用公式 parser 和規格 evaluator；先保持現有缺測與 A/B/NG 語意，再比較已知幾何。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.GoodCondition.cs:919</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.GoodCondition.cs#L919">GitHub 程式位置</a><pre>916:             return true;
 917:         }
-918: 
+918:
 919:         private static bool ValidateObjectDetectionGoodJudgementExpression(
 920:             string expression,
 921:             ObjectDetectionParameterSettings parameter,
@@ -108,60 +108,60 @@
 927:                 return false;
 928:             }</pre></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs:214</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs#L214">GitHub 程式位置</a><pre>211:                     result.Conditions.Add(condition);
 212:                 }
-213: 
+213:
 214:                 int configuredACount = result.Conditions.Count(condition =&gt;
 215:                     condition.Rule.Enabled &amp;&amp; condition.HasA);
 216:                 bool hasAFailure = result.Conditions.Any(condition =&gt;
 217:                     condition.AState == ResultReviewGoodJudgementConditionState.Failed);
 218:                 bool hasAUnknown = result.Conditions.Any(condition =&gt;
 219:                     condition.AState == ResultReviewGoodJudgementConditionState.Unknown);
-220: 
+220:
 221:                 if (configuredACount &gt; 0 &amp;&amp; !hasAFailure &amp;&amp; !hasAUnknown)
 222:                 {
-223:                     result.Grade = ResultReviewGoodJudgementGrade.A;</pre></details></article><article id="d5"><h3>6. ROI／MASK 幾何安全 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>共用 ROI、穩定 ID 群組、重疊聯集及有效視窗檢查存在。掃描會要求完整格子落在有效 MASK。</p><p><b>限制與扣分：</b>任意形狀或小於掃描窗的邊界可能沒有完整有效格；不越界不代表所有像素都會被分析。需讓使用者知道未覆蓋範圍。</p><p><b>改善與完成方向：</b>增加有效覆蓋比例與未掃描區顯示；用旋轉、不規則、狹窄及重疊 ROI 確認運算與圖框一致。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2876</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs#L2876">GitHub 程式位置</a><pre>2873: 
+223:                     result.Grade = ResultReviewGoodJudgementGrade.A;</pre></details></article><article id="d5"><h3>6. ROI／MASK 幾何安全 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>共用 ROI、穩定 ID 群組、重疊聯集及有效視窗檢查存在。掃描會要求完整格子落在有效 MASK。</p><p><b>限制與扣分：</b>任意形狀或小於掃描窗的邊界可能沒有完整有效格；不越界不代表所有像素都會被分析。需讓使用者知道未覆蓋範圍。</p><p><b>改善與完成方向：</b>增加有效覆蓋比例與未掃描區顯示；用旋轉、不規則、狹窄及重疊 ROI 確認運算與圖框一致。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2876</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs#L2876">GitHub 程式位置</a><pre>2873:
 2874:             byte* image = (byte*)workspace.ImageData.ToPointer();
 2875:             byte* hannBytes = (byte*)workspace.HannData.ToPointer();
 2876:             if (!workspace.IsWindowInsideMask(startX, startY))
 2877:             {
 2878:                 return false;
 2879:             }
-2880: 
+2880:
 2881:             Cv.Mat sourceWindow = null;
 2882:             try
 2883:             {
 2884:                 byte* energyImage = image + (long)startY * workspace.ImageStep + startX;
 2885:                 long energyImageStep = workspace.ImageStep;</pre></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectRegion.cs:70</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectRegion.cs#L70">GitHub 程式位置</a><pre>67:             }
 68:         }
-69: 
+69:
 70:         private sealed class ObjectDetectionInspectionRegionWorkItem
 71:         {
 72:             public string GroupId { get; set; }
-73: 
+73:
 74:             public ObjectDefinitionDetectedObject DetectedObject { get; set; }
-75: 
+75:
 76:             public List&lt;ObjectDetectionInspectionRegionSettings&gt; Regions { get; set; }
-77: 
+77:
 78:             public List&lt;RectangleF&gt; NormalizedRegions { get; set; }
 79:         }</pre></details></article><article id="d6"><h3>7. 一般缺陷判定與整合 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>平場加條件一至六、前處理、暗亮門檻、形態處理、大小篩選與候選合併都有程式。</p><p><b>限制與扣分：</b>多個條件／頻域共享快取和可變結果；公司樣本的誤報、漏報與整合去重沒有這次量測證據。</p><p><b>改善與完成方向：</b>各核心輸出獨立結果 DTO，整合只接受同一影格及參數版本；用已標註良／不良樣本確認候選與最終等級。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs:36</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs#L36">GitHub 程式位置</a><pre>33:             public RectangleF Bounds { get; set; }
 34:         }
-35: 
+35:
 36:         private sealed class ObjectDetectionDefectCoreResult
 37:         {
 38:             public string Signature { get; set; }
-39: 
+39:
 40:             public long ElapsedMilliseconds { get; set; }
-41: 
+41:
 42:             public long TotalElapsedMilliseconds { get; set; }
-43: 
+43:
 44:             public long RoiPreparationElapsedMilliseconds { get; set; }
 45: </pre></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectIntegration.cs:548</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectIntegration.cs#L548">GitHub 程式位置</a><pre>545:                 1);
-546: 
+546:
 547:             List&lt;ObjectDetectionDefectIntegrationGroup&gt; groups =
 548:                 MergeObjectDetectionDefectIntegrationCandidates(parameter, candidates);
 549:             objectDetectionDefectIntegrationCache[parameter.Id] = groups;
 550:             return groups;
 551:         }
-552: 
+552:
 553:         private static void AddObjectDetectionFrequencyCandidates(
 554:             List&lt;ObjectDetectionDefectIntegrationCandidate&gt; candidates,
 555:             ObjectDetectionFrequencyResult result,
@@ -173,7 +173,7 @@
 2966:                         squaredEnergySum += windowed * windowed;
 2967:                     }
 2968:                 }
-2969: 
+2969:
 2970:                 energy = squaredEnergySum / validPixels;
 2971:                 workspace.EnergyElapsedTicks += Stopwatch.GetTimestamp() - energyStarted;
 2972:                 return true;
@@ -190,7 +190,7 @@
 2907:                     energyHeight = workspace.WindowHeight;
 2908:                     validPixels = energyWidth * energyHeight;
 2909:                     workspace.ResizeElapsedTicks += Stopwatch.GetTimestamp() - resizeStarted;
-2910:                 }</pre></details></article><article id="d8"><h3>9. 效能與資源預算 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>應用程式 Parallel.For 已集中到共用 worker 上限，巢狀工作 inline；相機模組部分自動存圖有容量限制。</p><p><b>限制與扣分：</b>單次迴圈長度 ≤1 的捷徑未登記 activeWorkers；OpenCV 原生執行緒、主程式 TIFF 保存和其他 Task 不計入此上限。不是程序級資源預算。</p><p><b>改善與完成方向：</b>先補單項工作也取得 worker 名額，加入主存圖有界排程；量測牆鐘、P95、峰值 RAM，再調整預設上限。</p><details><summary>IntegratedImageProcessingApp/Services/InspectionParallelism.cs:52</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionParallelism.cs#L52">GitHub 程式位置</a><pre>49: 
+2910:                 }</pre></details></article><article id="d8"><h3>9. 效能與資源預算 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>應用程式 Parallel.For 已集中到共用 worker 上限，巢狀工作 inline；相機模組部分自動存圖有容量限制。</p><p><b>限制與扣分：</b>單次迴圈長度 ≤1 的捷徑未登記 activeWorkers；OpenCV 原生執行緒、主程式 TIFF 保存和其他 Task 不計入此上限。不是程序級資源預算。</p><p><b>改善與完成方向：</b>先補單項工作也取得 worker 名額，加入主存圖有界排程；量測牆鐘、P95、峰值 RAM，再調整預設上限。</p><details><summary>IntegratedImageProcessingApp/Services/InspectionParallelism.cs:52</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionParallelism.cs#L52">GitHub 程式位置</a><pre>49:
 50:             // If a processing worker enters another parallel stage, run that stage on
 51:             // the current worker. This avoids nested worker multiplication and deadlocks.
 52:             if (WorkerDepth.Value &gt; 0 || toExclusive - fromInclusive &lt;= 1)
@@ -204,7 +204,7 @@
 60:             }
 61: </pre></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs:428</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs#L428">GitHub 程式位置</a><pre>425:             return Path.Combine(directory, fileName);
 426:         }
-427: 
+427:
 428:         private void StartCameraInspectionImageSave(
 429:             LargeImageSource source,
 430:             string imagePath,
@@ -216,19 +216,19 @@
 436:             {
 437:                 try</pre></details></article><article id="d9"><h3>10. 非同步與狀態機可靠度 <b>2/5</b></h3><progress max="5" value="2"></progress><p><b>現有基礎：</b>有取消 token、generation 檢查、影格 in-flight 門閂及多處 finally 清理。</p><p><b>限制與扣分：</b>本機總覽離頁會關閉 overview forwarding 並移除訂閱，而活動旗標仍保留；自動轉送又受 suppress 限制。是否繼續判定取決於其他遠端旗標和訂閱。</p><p><b>改善與完成方向：</b>把相機運行狀態獨立於 PageVisible；頁面只訂閱顯示。明確區分停止接納、等待目前工作完成和關閉資源。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs:216</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs#L216">GitHub 程式位置</a><pre>213:             inspectionOverviewCameraTimer.Start();
 214:         }
-215: 
+215:
 216:         private void ExitInspectionOverviewMode()
 217:         {
 218:             if (!isInspectionOverviewActive)
 219:             {
 220:                 return;
 221:             }
-222: 
+222:
 223:             bool inspectionModeRemainsActive = isInspectionOverviewInspectionModeActive;
 224:             bool continuousCaptureRemainsActive = isInspectionOverviewContinuousCaptureActive;
 225:             bool captureModeRemainsActive = inspectionModeRemainsActive ||</pre></details><details><summary>IntegratedImageProcessingApp/Controls/CameraCaptureHostControl.cs:346</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Controls/CameraCaptureHostControl.cs#L346">GitHub 程式位置</a><pre>343:                 return;
 344:             }
-345: 
+345:
 346:             bool shouldSubscribe = !disposing &amp;&amp;
 347:                 ((overviewCaptureForwardingEnabled &amp;&amp; overviewImageCapturedHandlers != null) ||
 348:                     (remoteCaptureForwardingEnabled &amp;&amp; remoteImageCapturedHandlers != null) ||
@@ -240,15 +240,15 @@
 354:             }
 355: </pre></details></article><article id="d10"><h3>11. 影像記憶體與生命週期 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>Mono8 buffer 可 pinned 並以 Mat view 使用；來源有參照計數，保存路徑取得額外參照並 finally 釋放。</p><p><b>限制與扣分：</b>CameraGrayscaleFrame.Pixels 是可變 byte[]，唯讀約定由註解維持。多來源、預覽、處理 patch、MASK 和存圖可能共同持有大圖，沒有總量預算。</p><p><b>改善與完成方向：</b>引入明確 lease 與唯讀 frame 契約，區分 view／clone；集中釋放與記憶體指標，減少完整圖副本。</p><details><summary>CameraCaptureModule/Services/CameraImageAcquiredEventArgs.cs:66</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/CameraImageAcquiredEventArgs.cs#L66">GitHub 程式位置</a><pre>63:             Stride = stride;
 64:         }
-65: 
+65:
 66:         public byte[] Pixels { get; private set; }
-67: 
+67:
 68:         public int Width { get; private set; }
-69: 
+69:
 70:         public int Height { get; private set; }
-71: 
+71:
 72:         public int Stride { get; private set; }
-73: 
+73:
 74:         public Bitmap CreateBitmapCopy()
 75:         {</pre></details><details><summary>IntegratedImageProcessingApp/Controls/LargeImageSource.cs:98</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Controls/LargeImageSource.cs#L98">GitHub 程式位置</a><pre>95:             _previewLevels = new List&lt;PreviewLevel&gt;();
 96:             try
@@ -264,14 +264,14 @@
 106:                 Height = height;
 107:                 SourceIsGrayscale = true;</pre></details></article><article id="d11"><h3>12. UI 狀態與互動一致性 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>有角色選單過濾、視角保存、結果快照、單雙擊聚焦與同項選取抑制。</p><p><b>限制與扣分：</b>大量固定 GroupBox 高度／像素座標與重建控制項仍需 DPI 驗收；計算和顯示互相影響的路徑尚多。</p><p><b>改善與完成方向：</b>按頁抽 UserControl／ViewState，將執行引擎與畫面建立分離，固定 100／125／150% DPI 驗收基準。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs:846</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs#L846">GitHub 程式位置</a><pre>843:             return container;
 844:         }
-845: 
+845:
 846:         private Control CreateConnectionControllerSettingsPanel()
 847:         {
 848:             if (connectionControllerSettings == null)
 849:             {
 850:                 connectionControllerSettings = new ConnectionControllerSettings();
 851:             }
-852: 
+852:
 853:             var container = new Panel { Dock = DockStyle.Top, Height = 660 };
 854:             var descriptionLabel = new Label
 855:             {</pre></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs:442</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs#L442">GitHub 程式位置</a><pre>439:             if (objectDetectionResultReviewSnapshot != null &amp;&amp; !imageSourceChanged &amp;&amp;
@@ -288,7 +288,7 @@
 450:             }
 451:             UpdateObjectDetectionResultReviewTimingMemo();</pre></details></article><article id="d12"><h3>13. 相機／米輪整合 <b>3/5</b></h3><progress max="5" value="3"></progress><p><b>現有基礎：</b>Sapera、software／external trigger、米輪原點及裝置 feature 處理皆有實作；TriggerSelector 失敗後已有阻止後續 Mode／Source 寫入防護。</p><p><b>限制與扣分：</b>原廠 feature 差異、時序與機械狀態無法靠來源掃描證實；CameraService 大量容錯路徑的 fallback 必須以實機驗收。</p><p><b>改善與完成方向：</b>保留原廠呼叫契約；建立每台設備 feature／設定結果紀錄，依序驗收接線、原點、觸發、斷線及停止。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:3243</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/CameraService.cs#L3243">GitHub 程式位置</a><pre>3240:             return false;
 3241:         }
-3242: 
+3242:
 3243:         private bool TryConfigureTriggerSelector(string selector, bool enabled, string source)
 3244:         {
 3245:             var selectorApplied = TrySetDeviceFeature(new[] { &quot;TriggerSelector&quot; }, selector);
@@ -296,21 +296,21 @@
 3247:             {
 3248:                 return false;
 3249:             }
-3250: 
+3250:
 3251:             var modeApplied = TrySetDeviceFeature(new[] { &quot;TriggerMode&quot; }, enabled ? &quot;On&quot; : &quot;Off&quot;);
-3252:             if (!modeApplied)</pre></details><details><summary>CameraCaptureModule/Services/Lsi8181MeterWheelService.cs:6</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/Lsi8181MeterWheelService.cs#L6">GitHub 程式位置</a><pre>3: 
+3252:             if (!modeApplied)</pre></details><details><summary>CameraCaptureModule/Services/Lsi8181MeterWheelService.cs:6</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/Lsi8181MeterWheelService.cs#L6">GitHub 程式位置</a><pre>3:
 4: namespace CameraCaptureApp.Services
 5: {
 6:     internal sealed class Lsi8181MeterWheelService : IDisposable
 7:     {
 8:         private bool _initialized;
 9:         private byte _cardId;
-10: 
+10:
 11:         public byte CardId
 12:         {
 13:             get { return _cardId; }
 14:         }
-15: </pre></details></article><article id="d13"><h3>14. 影格與保存影像一致性 <b>4/5</b></h3><progress max="5" value="4"></progress><p><b>現有基礎：</b>完整 Mono8 frame event 與 frame 序號已建立；灰階自動保存使用該次 frame，而主檢測直接以記憶體處理，避免延後讀最新預覽當原圖。</p><p><b>限制與扣分：</b>主程式另一路 TIFF 與相機模組自動保存仍為不同工作；DB 記下路徑不代表檔案已完成，無跨檔交易。</p><p><b>改善與完成方向：</b>將 FrameId、存圖 Pending／Saved／Failed 狀態寫入歷史，保留一個主保存責任，驗收慢碟與關閉時的影格對應。</p><details><summary>CameraCaptureModule/Forms/MainForm.cs:1112</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Forms/MainForm.cs#L1112">GitHub 程式位置</a><pre>1109: 
+15: </pre></details></article><article id="d13"><h3>14. 影格與保存影像一致性 <b>4/5</b></h3><progress max="5" value="4"></progress><p><b>現有基礎：</b>完整 Mono8 frame event 與 frame 序號已建立；灰階自動保存使用該次 frame，而主檢測直接以記憶體處理，避免延後讀最新預覽當原圖。</p><p><b>限制與扣分：</b>主程式另一路 TIFF 與相機模組自動保存仍為不同工作；DB 記下路徑不代表檔案已完成，無跨檔交易。</p><p><b>改善與完成方向：</b>將 FrameId、存圖 Pending／Saved／Failed 狀態寫入歷史，保留一個主保存責任，驗收慢碟與關閉時的影格對應。</p><details><summary>CameraCaptureModule/Forms/MainForm.cs:1112</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Forms/MainForm.cs#L1112">GitHub 程式位置</a><pre>1109:
 1110:             try
 1111:             {
 1112:                 QueueGrayscaleAutoSave(e.GrayscaleFrame, _settings.Clone());
@@ -321,7 +321,7 @@
 1117:                 SetFooterMessageFromAnyThread(&quot;Captured image save failed: &quot; + ex.Message);
 1118:             }
 1119:         }
-1120: 
+1120:
 1121:         private void CameraService_ExternalTriggerReceived(object sender, EventArgs e)</pre></details><details><summary>IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs:152</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs#L152">GitHub 程式位置</a><pre>149:                     latestCameraInspectionFramePath = imageSavePath;
 150:                     latestCameraInspectionFrameIdentity = imageIdentity;
 151:                     Interlocked.Exchange(ref latestCameraInspectionSequenceForTcp, sequenceNumber);
@@ -348,7 +348,7 @@
 1355:                 return;
 1356:             }</pre></details><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs:46</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs#L46">GitHub 程式位置</a><pre>43:             }
 44:         }
-45: 
+45:
 46:         public IList&lt;InspectionTcpMessage&gt; LoadPending()
 47:         {
 48:             lock (sync)
@@ -365,12 +365,12 @@
 57:                 Shown += MainForm_AuthenticatePersistedRole;
 58:             }
 59:         }
-60: 
+60:
 61:         private void MainForm_AuthenticatePersistedRole(object sender, EventArgs e)
 62:         {
 63:             Shown -= MainForm_AuthenticatePersistedRole;
 64:             if (!startupRoleRequiresAuthentication.HasValue || IsDisposed) return;
-65: </pre></details><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpCommandSecurity.cs:26</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionTcpCommandSecurity.cs#L26">GitHub 程式位置</a><pre>23: 
+65: </pre></details><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpCommandSecurity.cs:26</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionTcpCommandSecurity.cs#L26">GitHub 程式位置</a><pre>23:
 24:             string canonical = CreateCanonicalCommand(
 25:                 commandId, command, senderStationId, targetStationId, sentAtUtc);
 26:             using (var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret)))
@@ -378,7 +378,7 @@
 28:                 return Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(canonical)));
 29:             }
 30:         }
-31: 
+31:
 32:         public static bool VerifySignature(
 33:             string secret,
 34:             string commandId,
@@ -394,7 +394,7 @@
 168:                         record.InspectedAt.ToString(&quot;yyyy-MM-dd HH:mm:ss.fff&quot;, CultureInfo.InvariantCulture),
 169:                         record.CameraSequence,
 170:                         record.RecipeId,
-171:                         record.RecipeName,</pre></details><details><summary>IntegratedImageProcessingApp/Services/AtomicFileWriter.cs:46</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/AtomicFileWriter.cs#L46">GitHub 程式位置</a><pre>43: 
+171:                         record.RecipeName,</pre></details><details><summary>IntegratedImageProcessingApp/Services/AtomicFileWriter.cs:46</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/AtomicFileWriter.cs#L46">GitHub 程式位置</a><pre>43:
 44:                 if (File.Exists(fullPath))
 45:                 {
 46:                     File.Replace(temporaryPath, fullPath, null);
@@ -430,13 +430,13 @@
 906:                             Title = Convert.ToString(row.Cells[2].Value) + &quot; (#&quot; + Convert.ToString(row.Cells[1].Value) + &quot;)&quot;,
 907:                             Measured = measured,
 908:                             Condition = Convert.ToString(row.Cells[10].Value),
-909:                             Result = string.Empty,</pre></details></article><article id="d18"><h3>19. 錯誤處理與可觀測性 <b>2/5</b></h3><progress max="5" value="2"></progress><p><b>現有基礎：</b>相機有 AppLogger，主要流程有狀態文字、細項計時與部分例外提示。</p><p><b>限制與扣分：</b>部分錯誤僅 Debug.WriteLine／空 catch；保存工作、幀、Recipe 與網路 ResultId 缺統一結構化事件。單看 Memo 難追完整失敗路徑。</p><p><b>改善與完成方向：</b>集中結構化 log，串 FrameId／RunId／ResultId，記錄拒收、取消、保存、ACK 延遲和資源峰值；不可把空 catch 數直接當 bug 數。</p><details><summary>CameraCaptureModule/Services/AppLogger.cs:7</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/AppLogger.cs#L7">GitHub 程式位置</a><pre>4: 
+909:                             Result = string.Empty,</pre></details></article><article id="d18"><h3>19. 錯誤處理與可觀測性 <b>2/5</b></h3><progress max="5" value="2"></progress><p><b>現有基礎：</b>相機有 AppLogger，主要流程有狀態文字、細項計時與部分例外提示。</p><p><b>限制與扣分：</b>部分錯誤僅 Debug.WriteLine／空 catch；保存工作、幀、Recipe 與網路 ResultId 缺統一結構化事件。單看 Memo 難追完整失敗路徑。</p><p><b>改善與完成方向：</b>集中結構化 log，串 FrameId／RunId／ResultId，記錄拒收、取消、保存、ACK 延遲和資源峰值；不可把空 catch 數直接當 bug 數。</p><details><summary>CameraCaptureModule/Services/AppLogger.cs:7</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/AppLogger.cs#L7">GitHub 程式位置</a><pre>4:
 5: namespace CameraCaptureApp.Services
 6: {
 7:     internal static class AppLogger
 8:     {
 9:         private static readonly object SyncRoot = new object();
-10: 
+10:
 11:         public static void Log(string title, Exception ex = null)
 12:         {
 13:             try
@@ -451,7 +451,7 @@
 68:                 return messages.OrderBy(GetResultTime).ToList();
 69:             }
 70:         }
-71: 
+71:
 72:         public void Acknowledge(string resultId)
 73:         {
 74:             if (string.IsNullOrWhiteSpace(resultId)) return;</pre></details></article><article id="d19"><h3>20. 驗證／建置／交付可重現性 <b>2/5</b></h3><progress max="5" value="2"></progress><p><b>現有基礎：</b>有明確 csproj Compile 清單、x64 組態與可覆寫 SDK 路徑；目前 41＋70 檔無漏列。已有 Debug 建置成功證據。</p><p><b>限制與扣分：</b>沒有自動化測試專案；公司影像、相機／米輪、多站斷線、Release 長時間效能與部署復原尚無此次證據。Word／PDF 與部分舊審查文件落後來源。</p><p><b>改善與完成方向：</b>建立可在現場重播的匿名測例清單與部署 manifest，記錄原圖／Recipe hash、build ID 和預期逐片結果；分別驗收演算法與設備控制。</p><details><summary>IntegratedImageProcessingApp/IntegratedImageProcessingApp.csproj:18</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/IntegratedImageProcessingApp.csproj#L18">GitHub 程式位置</a><pre>15:     &lt;Deterministic&gt;true&lt;/Deterministic&gt;
@@ -500,7 +500,7 @@
 90:             {
 91:                 throw new InvalidDataException(&quot;收到的檢測結果缺少 Result ID，不能確認接收。&quot;);
 92:             }
-93: 
+93:
 94:             DateTime resultTime = GetResultTime(message);
 95:             string dateDirectory = Path.Combine(</pre></details></article><article><h3>角色重啟驗證</h3><p>高權限持久角色會在啟動時要求驗證。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs:56</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs#L56">GitHub 程式位置</a><pre>53:             }
 54:             if (persistedRole != MainFormRole.Operator)
@@ -509,14 +509,14 @@
 57:                 Shown += MainForm_AuthenticatePersistedRole;
 58:             }
 59:         }
-60: 
+60:
 61:         private void MainForm_AuthenticatePersistedRole(object sender, EventArgs e)
 62:         {
 63:             Shown -= MainForm_AuthenticatePersistedRole;
 64:             if (!startupRoleRequiresAuthentication.HasValue || IsDisposed) return;
 65: </pre></details></article><article><h3>工作 INI 原子寫入</h3><p>已使用 AtomicFileWriter。</p><details><summary>IntegratedImageProcessingApp/Services/SystemParameterIniService.cs:946</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/SystemParameterIniService.cs#L946">GitHub 程式位置</a><pre>943:                 Directory.CreateDirectory(directory);
 944:             }
-945: 
+945:
 946:             AtomicFileWriter.Write(filePath, delegate(TextWriter writer)
 947:             {
 948:                 writer.WriteLine(&quot;[System]&quot;);
@@ -545,26 +545,26 @@
 95:     {
 96:         private readonly object sync = new object();
 97:         private readonly string rootDirectory;
-98: 
+98:
 99:         public InspectionTcpCommandReplayGuard(string applicationRoot)
 100:         {
 101:             rootDirectory = Path.Combine(
 102:                 Path.GetFullPath(applicationRoot ?? AppDomain.CurrentDomain.BaseDirectory),
 103:                 &quot;tcp-results&quot;, &quot;accepted-commands&quot;);</pre></details></article><article><h3>TCP 長行限制</h3><p>已在讀取每個 byte 時限制大小，非完整讀完才檢查。</p><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs:138</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs#L138">GitHub 程式位置</a><pre>135:                         return CompleteLine();
 136:                     }
-137: 
+137:
 138:                     if (lineBuffer.Length &gt;= maximumBytes)
 139:                     {
 140:                         throw new InvalidDataException(
 141:                             &quot;Inspection TCP message exceeded the configured line limit.&quot;);
 142:                     }
-143: 
+143:
 144:                     lineBuffer.WriteByte(value);
 145:                 }
 146:             }
 147: </pre></details></article><article><h3>TriggerSelector</h3><p>失敗後 return false，避免誤寫 Mode／Source。</p><details><summary>CameraCaptureModule/Services/CameraService.cs:3243</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Services/CameraService.cs#L3243">GitHub 程式位置</a><pre>3240:             return false;
 3241:         }
-3242: 
+3242:
 3243:         private bool TryConfigureTriggerSelector(string selector, bool enabled, string source)
 3244:         {
 3245:             var selectorApplied = TrySetDeviceFeature(new[] { &quot;TriggerSelector&quot; }, selector);
@@ -572,7 +572,7 @@
 3247:             {
 3248:                 return false;
 3249:             }
-3250: 
+3250:
 3251:             var modeApplied = TrySetDeviceFeature(new[] { &quot;TriggerMode&quot; }, enabled ? &quot;On&quot; : &quot;Off&quot;);
 3252:             if (!modeApplied)</pre></details></article></section><section id="findings"><h2>10 項目前問題與待驗證邊界</h2><select id="priority"><option value="">全部優先度</option><option>P1</option><option>P2</option><option>P3</option></select><article class="finding P1" data-priority="P1"><h3>P1 · 離開總覽可能讓活動旗標與影格轉送脫節</h3><p><b>證據層級：</b>來源分支可確認；現場重現待驗收</p><p>ExitInspectionOverviewMode 保留連續模式旗標，卻關閉 overview forwarding、移除訂閱及停止 timer；同時 suppressAutomaticInspectionForwarding 在活動模式為 true。Host 的 shouldSubscribe 沒有直接以本機活動模式維持背景判定入口。</p><p><b>觸發／影響：</b>本機模式下切換主頁可能持續取像但不判定，返回後才恢復。遠端旗標啟用時可能呈現不同結果，因此必須分情境確認。</p><p><b>修正方向：</b>讓常駐 StationRuntime 持有接收訂閱，PageVisible 只影響顯示；以影格序號驗收切頁。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs:230</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs#L230">GitHub 程式位置</a><pre>227:             isInspectionOverviewActive = false;
 228:             if (cameraCaptureHostControl != null)
@@ -588,7 +588,7 @@
 238:                     inspectionOverviewCameraImageCapturedSubscribed = false;
 239:                 }</pre></details><details><summary>IntegratedImageProcessingApp/Controls/CameraCaptureHostControl.cs:346</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Controls/CameraCaptureHostControl.cs#L346">GitHub 程式位置</a><pre>343:                 return;
 344:             }
-345: 
+345:
 346:             bool shouldSubscribe = !disposing &amp;&amp;
 347:                 ((overviewCaptureForwardingEnabled &amp;&amp; overviewImageCapturedHandlers != null) ||
 348:                     (remoteCaptureForwardingEnabled &amp;&amp; remoteImageCapturedHandlers != null) ||
@@ -616,7 +616,7 @@
 78:                 if (File.Exists(path)) File.Delete(path);
 79:             }
 80:         }
-81: 
+81:
 82:         /// &lt;summary&gt;
 83:         /// Persists the received result before the caller sends its ACK. Repeated IDs
 84:         /// map to the same file, so retransmission is idempotent.
@@ -636,7 +636,7 @@
 442:                 {
 443:                     TryDeleteCameraInspectionImage(imagePath);</pre></details><details><summary>CameraCaptureModule/Forms/MainForm.cs:961</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/CameraCaptureModule/Forms/MainForm.cs#L961">GitHub 程式位置</a><pre>958:             }
 959:         }
-960: 
+960:
 961:         protected override void OnFormClosing(FormClosingEventArgs e)
 962:         {
 963:             _isClosing = true;
@@ -646,7 +646,7 @@
 967:             CancelPendingImageLoad();
 968:             CancelPendingPreviewFrame();
 969:             base.OnFormClosing(e);
-970:         }</pre></details></article><article class="finding P2" data-priority="P2"><h3>P2 · 單項平行迴圈可繞過共同工作名額</h3><p><b>證據層級：</b>來源可確認</p><p>InspectionParallelism.For 把 WorkerDepth&gt;0 與迴圈長度≤1 放在同一 inline 捷徑。外部根工作若只有一項，body 不取得 EnterWorker，也未增加 WorkerDepth。</p><p><b>觸發／影響：</b>多個獨立單項任務可同時超過設定上限，或在其內再次啟動根平行迴圈；因此設定不是所有 body 的嚴格上限。</p><p><b>修正方向：</b>只讓真正已持有名額的巢狀迴圈 inline；根單項也取得／釋放名額，保持取消與 finally 語意。</p><details><summary>IntegratedImageProcessingApp/Services/InspectionParallelism.cs:52</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionParallelism.cs#L52">GitHub 程式位置</a><pre>49: 
+970:         }</pre></details></article><article class="finding P2" data-priority="P2"><h3>P2 · 單項平行迴圈可繞過共同工作名額</h3><p><b>證據層級：</b>來源可確認</p><p>InspectionParallelism.For 把 WorkerDepth&gt;0 與迴圈長度≤1 放在同一 inline 捷徑。外部根工作若只有一項，body 不取得 EnterWorker，也未增加 WorkerDepth。</p><p><b>觸發／影響：</b>多個獨立單項任務可同時超過設定上限，或在其內再次啟動根平行迴圈；因此設定不是所有 body 的嚴格上限。</p><p><b>修正方向：</b>只讓真正已持有名額的巢狀迴圈 inline；根單項也取得／釋放名額，保持取消與 finally 語意。</p><details><summary>IntegratedImageProcessingApp/Services/InspectionParallelism.cs:52</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionParallelism.cs#L52">GitHub 程式位置</a><pre>49:
 50:             // If a processing worker enters another parallel stage, run that stage on
 51:             // the current worker. This avoids nested worker multiplication and deadlocks.
 52:             if (WorkerDepth.Value &gt; 0 || toExclusive - fromInclusive &lt;= 1)
@@ -660,7 +660,7 @@
 60:             }
 61: </pre></details></article><article class="finding P2" data-priority="P2"><h3>P2 · TCP 待送佇列在 UI 路徑完整重讀</h3><p><b>證據層級：</b>來源可確認；卡頓程度待量測</p><p>PublishPendingInspectionTcpResults 同步呼叫 LoadPending，後者讀取、解碼、排序所有 JSON，然後對各 peer 逐筆發起傳送；節流紀錄不會避免檔案反覆讀取。</p><p><b>觸發／影響：</b>離線累積大量結果後可能讓 UI 心跳處理、重連與操作延遲；啟動時 inbox 最新結果載入亦會遍歷全部歷史 JSON。</p><p><b>修正方向：</b>改背景分批讀取、單一有界 sender queue、索引最新結果；設定損壞檔隔離和保留政策。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs:2023</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs#L2023">GitHub 程式位置</a><pre>2020:                 return;
 2021:             }
-2022: 
+2022:
 2023:             IList&lt;InspectionTcpMessage&gt; pending = inspectionTcpResultStore.LoadPending();
 2024:             DateTime now = DateTime.UtcNow;
 2025:             foreach (string peerKey in inspectionTcpReliableResultPeers.ToList())
@@ -672,7 +672,7 @@
 2031:                     if (inspectionTcpResultLastSentUtcByPeerAndId.TryGetValue(throttleKey, out lastSent) &amp;&amp;
 2032:                         (now - lastSent).TotalSeconds &lt; 2.0)</pre></details><details><summary>IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs:107</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs#L107">GitHub 程式位置</a><pre>104:             }
 105:         }
-106: 
+106:
 107:         public IList&lt;InspectionTcpMessage&gt; LoadLatestReceivedByStation()
 108:         {
 109:             lock (sync)
@@ -718,14 +718,14 @@
 1270:                         cancellationToken,
 1271:                         capturedRecipeGeneration,
 1272:                         capturedImageGeneration));
-1273:                 bool includeFrequency = parameter.DefectFrequencyEnabled &amp;&amp;</pre></details></article><article class="finding P2" data-priority="P2"><h3>P2 · 完整掃描窗無法保證任意 MASK 全覆蓋</h3><p><b>證據層級：</b>來源可確認；不是越界判定</p><p>掃描要求完整 windowSize×windowSize 落於影像和 MASK。邊界、凹角、狹長範圍或小於窗格的區域可能全部被拒絕。</p><p><b>觸發／影響：</b>避免把外部黑背景納入判定是正確保護，但使用者若以為整個 ROI 都已分析，會誤解未檢出結果。</p><p><b>修正方向：</b>顯示有效格覆蓋圖和未覆蓋比例；另行定義小範圍策略，不能靜默補黑或伸出 ROI。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2876</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs#L2876">GitHub 程式位置</a><pre>2873: 
+1273:                 bool includeFrequency = parameter.DefectFrequencyEnabled &amp;&amp;</pre></details></article><article class="finding P2" data-priority="P2"><h3>P2 · 完整掃描窗無法保證任意 MASK 全覆蓋</h3><p><b>證據層級：</b>來源可確認；不是越界判定</p><p>掃描要求完整 windowSize×windowSize 落於影像和 MASK。邊界、凹角、狹長範圍或小於窗格的區域可能全部被拒絕。</p><p><b>觸發／影響：</b>避免把外部黑背景納入判定是正確保護，但使用者若以為整個 ROI 都已分析，會誤解未檢出結果。</p><p><b>修正方向：</b>顯示有效格覆蓋圖和未覆蓋比例；另行定義小範圍策略，不能靜默補黑或伸出 ROI。</p><details><summary>IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs:2876</summary><a href="https://github.com/falcomu-lang/my-app-4/blob/main/IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs#L2876">GitHub 程式位置</a><pre>2873:
 2874:             byte* image = (byte*)workspace.ImageData.ToPointer();
 2875:             byte* hannBytes = (byte*)workspace.HannData.ToPointer();
 2876:             if (!workspace.IsWindowInsideMask(startX, startY))
 2877:             {
 2878:                 return false;
 2879:             }
-2880: 
+2880:
 2881:             Cv.Mat sourceWindow = null;
 2882:             try
 2883:             {
@@ -3065,4 +3065,4 @@
 21: d(&#39;TCP 結果交付可靠度&#39;,3,&#39;有落盤 outbox、接收 inbox、ResultId 去重、ACK 與重送；peer 清理已比對實例，舊結果不覆蓋較新結果。&#39;,&#39;outbox 未按接收端分帳；任一 ACK 都可刪除結果。ACK 無簽章或可靠 peer 授權檢查。UI timer 還會同步全讀待送 JSON。&#39;,&#39;定義每目的端交付狀態，認證 ACK，背景分批排空 outbox，並處理損壞／毒訊息與保留期限。&#39;,[ref(F+&#39;MainForm.ConnectionController.cs&#39;,&#39;inspectionTcpResultStore.Acknowledge(message.AcknowledgedResultId);&#39;),ref(S+&#39;InspectionTcpResultStore.cs&#39;,&#39;public IList&lt;InspectionTcpMessage&gt; LoadPending()&#39;)]),
 25: d(&#39;錯誤處理與可觀測性&#39;,2,&#39;相機有 AppLogger，主要流程有狀態文字、細項計時與部分例外提示。&#39;,&#39;部分錯誤僅 Debug.WriteLine／空 catch；保存工作、幀、Recipe 與網路 ResultId 缺統一結構化事件。單看 Memo 難追完整失敗路徑。&#39;,&#39;集中結構化 log，串 FrameId／RunId／ResultId，記錄拒收、取消、保存、ACK 延遲和資源峰值；不可把空 catch 數直接當 bug 數。&#39;,[ref(C+&#39;Services/AppLogger.cs&#39;,&#39;internal static class AppLogger&#39;),ref(S+&#39;InspectionTcpResultStore.cs&#39;,&#39;Unable to read pending inspection result&#39;)]),
 34: finding(&#39;P2&#39;,&#39;TCP 待送佇列在 UI 路徑完整重讀&#39;,&#39;來源可確認；卡頓程度待量測&#39;,&#39;PublishPendingInspectionTcpResults 同步呼叫 LoadPending，後者讀取、解碼、排序所有 JSON，然後對各 peer 逐筆發起傳送；節流紀錄不會避免檔案反覆讀取。&#39;,&#39;離線累積大量結果後可能讓 UI 心跳處理、重連與操作延遲；啟動時 inbox 最新結果載入亦會遍歷全部歷史 JSON。&#39;,&#39;改背景分批讀取、單一有界 sender queue、索引最新結果；設定損壞檔隔離和保留政策。&#39;,[ref(F+&#39;MainForm.ConnectionController.cs&#39;,&#39;IList&lt;InspectionTcpMessage&gt; pending = inspectionTcpResultStore.LoadPending();&#39;),ref(S+&#39;InspectionTcpResultStore.cs&#39;,&#39;public IList&lt;InspectionTcpMessage&gt; LoadLatestReceivedByStation()&#39;)]),
-47: [&#39;遠端命令認證&#39;,&#39;HMAC 與持久命令 ID 防重播已加入，為可選設定。&#39;,ref(S+&#39;InspectionTcpCommandSecurity.cs&#39;,&#39;public sealed class InspectionTcpCommandReplayGuard&#39;)],</pre></details></td><td>59</td><td><code>e641bf31dcbed2dbd2b01c8938a209557ab9182178e97a023aa1b003e6cc761f</code></td></tr></tbody></table></div></section></main><script>document.querySelector('#filter').oninput=e=>{let n=0;document.querySelectorAll('#rows tr').forEach(r=>{r.hidden=!r.textContent.toLowerCase().includes(e.target.value.toLowerCase());if(!r.hidden)n++});document.querySelector('#count').textContent=n+' 檔'};document.querySelector('#priority').onchange=e=>document.querySelectorAll('.finding').forEach(r=>r.hidden=!!e.target.value&&r.dataset.priority!==e.target.value);</script></html>
+47: [&#39;遠端命令認證&#39;,&#39;HMAC 與持久命令 ID 防重播已加入，為可選設定。&#39;,ref(S+&#39;InspectionTcpCommandSecurity.cs&#39;,&#39;public sealed class InspectionTcpCommandReplayGuard&#39;)],</pre></details></td><td>59</td><td><code>d4e1f00494d76de9158480baaafcc9c34a3374219362301044f3b1bf3a9eb34c</code></td></tr></tbody></table></div></section></main><script>document.querySelector('#filter').oninput=e=>{let n=0;document.querySelectorAll('#rows tr').forEach(r=>{r.hidden=!r.textContent.toLowerCase().includes(e.target.value.toLowerCase());if(!r.hidden)n++});document.querySelector('#count').textContent=n+' 檔'};document.querySelector('#priority').onchange=e=>document.querySelectorAll('.finding').forEach(r=>r.hidden=!!e.target.value&&r.dataset.priority!==e.target.value);</script></html>
