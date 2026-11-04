@@ -90,10 +90,14 @@
     <Compile Include="Controls\LargeImageSource.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Services\SystemParameterIniService.cs" />
+    <Compile Include="Services\AtomicFileWriter.cs" />
     <Compile Include="Services\InspectionHistoryStore.cs" />
     <Compile Include="Services\CameraDeviceSettingsIniService.cs" />
     <Compile Include="Services\ConnectionControllerSettingsService.cs" />
     <Compile Include="Services\InspectionTcpTransport.cs" />
+    <Compile Include="Services\InspectionTcpResultStore.cs" />
+    <Compile Include="Services\InspectionTcpCommandSecurity.cs" />
+    <Compile Include="Services\InspectionParallelism.cs" />
     <Compile Include="Services\SystemParameterSettings.cs" />
     <Compile Include="Services\DetectionRecipeCatalogService.cs" />
     <Compile Include="Services\OpenCvThresholdService.cs" />

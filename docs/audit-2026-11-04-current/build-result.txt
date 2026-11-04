@@ -1,0 +1,6 @@
+Microsoft (R) Build Engine for .NET Framework 16.11.6+a918ceb31 版
+Copyright (C) Microsoft Corporation. 著作權所有，並保留一切權利。
+
+  CameraCaptureModule -> C:\Users\falcomu\Documents\Codex\程式撰寫 專案資料夾\整合式影像處理軟件\my-app-4\CameraCaptureModule\bin\Debug\CameraCaptureModule.dll
+  IntegratedImageProcessingApp -> C:\Users\falcomu\Documents\Codex\程式撰寫 專案資料夾\整合式影像處理軟件\my-app-4\IntegratedImageProcessingApp\bin\Debug\IntegratedImageProcessingApp.exe
+ExitCode=0

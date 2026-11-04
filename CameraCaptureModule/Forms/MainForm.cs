@@ -14,6 +14,7 @@ namespace CameraCaptureApp.Forms
     public partial class MainForm : Form, ICameraImageSource
     {
         private const int MaxConcurrentSnapshotSaves = 5;
+        private const int MaxQueuedAutoSaveFrames = 2;
         private readonly ICameraService _cameraService;
         private readonly ISettingsService _settingsService;
         private readonly Controls.CameraDisplayControl _cameraDisplayControl;
@@ -30,10 +31,12 @@ namespace CameraCaptureApp.Forms
         private readonly object _snapshotProgressLock = new object();
         private bool _autoConnectAttempted;
         private int _pendingSnapshotSaveCount;
+        private int _queuedAutoSaveFrameCount;
         private int _snapshotSaveQueueCount;
         private int _snapshotSaveActiveCount;
         private int _snapshotSaveCompletedCount;
         private int _snapshotSaveFailedCount;
+        private int _rollingBufferLimitWarningShown;
         private SaveProgressForm _snapshotProgressForm;
         private MeterWheelControlForm _meterWheelControlForm;
         private Bitmap _pendingPreviewFrame;
@@ -42,7 +45,8 @@ namespace CameraCaptureApp.Forms
         private readonly object _softwareTriggerMonitorLock = new object();
         private CancellationTokenSource _softwareTriggerMonitorTokenSource;
         private Task _softwareTriggerMonitorTask;
-        private int _softwareTriggerCaptureQueued;
+        private int _softwareTriggerMonitorGeneration;
+        private int _softwareTriggerCaptureQueuedGeneration;
         private EventHandler<CameraImageAcquiredEventArgs> _imageAcquiredHandlers;
 
         public event EventHandler ImageProcessingEnabledChanged;
@@ -216,6 +220,7 @@ namespace CameraCaptureApp.Forms
             panelViewerHost.Controls.Add(_cameraDisplayControl);
 
             _cameraService.FrameReady += CameraService_FrameReady;
+            _cameraService.ImageAcquired += CameraService_ImageAcquiredForAutoSave;
             _cameraService.ExternalTriggerReceived += CameraService_ExternalTriggerReceived;
 
             ApplySettingsToUi();
@@ -469,87 +474,183 @@ namespace CameraCaptureApp.Forms
             UpdateStatus();
         }
 
-        private async void SaveLatestRecordedFrameIfRequestedAsync()
+        private void SaveLatestRecordedFrameIfRequestedAsync()
         {
-            if (IsDisposed || !IsHandleCreated)
+            if (IsDisposed || !IsHandleCreated || !_settings.RollingCaptureEnabled)
             {
                 return;
             }
 
-            if (InvokeRequired)
-            {
-                try
-                {
-                    BeginInvoke(new Action(SaveLatestRecordedFrameIfRequestedAsync));
-                }
-                catch (ObjectDisposedException)
-                {
-                }
-                catch (InvalidOperationException)
-                {
-                }
-
-                return;
-            }
-
-            if (Interlocked.CompareExchange(ref _pendingSnapshotSaveCount, 0, 0) <= 0)
+            if (!TryConsumePendingSnapshotSaveRequest())
             {
                 return;
             }
 
-            if (Interlocked.Decrement(ref _pendingSnapshotSaveCount) < 0)
+            if (!TryReserveAutoSaveFrame())
             {
-                Interlocked.Exchange(ref _pendingSnapshotSaveCount, 0);
+                SetFooterMessageFromAnyThread("Auto-save skipped: save queue is full.");
                 return;
             }
 
-            if (_settings.RollingCaptureEnabled)
+            FrameRecorder.RollingFrameSnapshot snapshot;
+            try
             {
-                try
-                {
-                    var progressForm = EnsureSaveProgressForm();
-                    var settings = _settings.Clone();
-                    var savedPath = await RunQueuedSnapshotSaveAsync(
-                        progressForm,
-                        () => SaveRollingCaptureSnapshot(settings));
-                    SetFooterMessage("Captured image saved: " + Path.GetFileName(savedPath));
-                }
-                catch (Exception ex)
-                {
-                    SetFooterMessage("Captured image save failed: " + ex.Message);
-                }
-                finally
-                {
-                    CompleteQueuedSnapshotSave();
-                }
-
+                snapshot = _frameRecorder.SnapshotRollingFrames();
+            }
+            catch (Exception ex)
+            {
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+                AppLogger.Log("Failed to capture rolling auto-save frame snapshot.", ex);
+                SetFooterMessageFromAnyThread("Captured image save failed: " + ex.Message);
                 return;
             }
 
-            using (var snapshot = _frameRecorder.SnapshotLatest())
+            if (snapshot == null)
             {
-                if (snapshot == null)
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+                return;
+            }
+
+            CameraSettings settings;
+            try
+            {
+                settings = _settings.Clone();
+            }
+            catch (Exception ex)
+            {
+                snapshot.Dispose();
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+                AppLogger.Log("Failed to copy camera settings for rolling auto-save.", ex);
+                SetFooterMessageFromAnyThread("Captured image save failed: " + ex.Message);
+                return;
+            }
+
+            QueueRollingAutoSave(snapshot, settings);
+        }
+
+        private bool TryConsumePendingSnapshotSaveRequest()
+        {
+            while (true)
+            {
+                int pending = Interlocked.CompareExchange(ref _pendingSnapshotSaveCount, 0, 0);
+                if (pending <= 0)
                 {
-                    return;
+                    return false;
                 }
 
-                try
+                if (Interlocked.CompareExchange(ref _pendingSnapshotSaveCount, pending - 1, pending) == pending)
                 {
-                    var progressForm = EnsureSaveProgressForm();
-                    var settings = _settings.Clone();
-                    var savedPath = await RunQueuedSnapshotSaveAsync(
-                        progressForm,
-                        () => SaveSnapshotBitmap(snapshot, settings));
-                    SetFooterMessage("Captured image saved: " + Path.GetFileName(savedPath));
+                    return true;
                 }
-                catch (Exception ex)
+            }
+        }
+
+        private bool TryReserveAutoSaveFrame()
+        {
+            while (true)
+            {
+                int queued = Interlocked.CompareExchange(ref _queuedAutoSaveFrameCount, 0, 0);
+                if (queued >= MaxQueuedAutoSaveFrames)
                 {
-                    SetFooterMessage("Captured image save failed: " + ex.Message);
+                    return false;
                 }
-                finally
+
+                if (Interlocked.CompareExchange(ref _queuedAutoSaveFrameCount, queued + 1, queued) == queued)
                 {
-                    CompleteQueuedSnapshotSave();
+                    return true;
                 }
+            }
+        }
+
+        private void QueueRollingAutoSave(FrameRecorder.RollingFrameSnapshot snapshot, CameraSettings settings)
+        {
+            if (_isClosing || IsDisposed || !IsHandleCreated)
+            {
+                snapshot.Dispose();
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+                return;
+            }
+
+            try
+            {
+                BeginInvoke(new Action(async delegate
+                {
+                    try
+                    {
+                        var progressForm = EnsureSaveProgressForm();
+                        var savedPath = await RunQueuedSnapshotSaveAsync(
+                            progressForm,
+                            () => SaveRollingCaptureSnapshot(snapshot, settings));
+                        SetFooterMessage("Captured image saved: " + Path.GetFileName(savedPath));
+                    }
+                    catch (Exception ex)
+                    {
+                        SetFooterMessage("Captured image save failed: " + ex.Message);
+                    }
+                    finally
+                    {
+                        snapshot.Dispose();
+                        Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+                        CompleteQueuedSnapshotSave();
+                    }
+                }));
+            }
+            catch (ObjectDisposedException)
+            {
+                snapshot.Dispose();
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+            }
+            catch (InvalidOperationException)
+            {
+                snapshot.Dispose();
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+            }
+        }
+
+        private void QueueGrayscaleAutoSave(CameraGrayscaleFrame frame, CameraSettings settings)
+        {
+            if (frame == null || !TryReserveAutoSaveFrame())
+            {
+                SetFooterMessageFromAnyThread("Auto-save skipped: save queue is full.");
+                return;
+            }
+
+            if (_isClosing || IsDisposed || !IsHandleCreated)
+            {
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+                return;
+            }
+
+            try
+            {
+                BeginInvoke(new Action(async delegate
+                {
+                    try
+                    {
+                        var progressForm = EnsureSaveProgressForm();
+                        var savedPath = await RunQueuedSnapshotSaveAsync(
+                            progressForm,
+                            () => SaveGrayscaleSnapshot(frame, settings));
+                        SetFooterMessage("Captured image saved: " + Path.GetFileName(savedPath));
+                    }
+                    catch (Exception ex)
+                    {
+                        SetFooterMessage("Captured image save failed: " + ex.Message);
+                    }
+                    finally
+                    {
+                        Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+                        CompleteQueuedSnapshotSave();
+                    }
+                }));
+            }
+            catch (ObjectDisposedException)
+            {
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
+            }
+            catch (InvalidOperationException)
+            {
+                Interlocked.Decrement(ref _queuedAutoSaveFrameCount);
             }
         }
 
@@ -872,6 +973,7 @@ namespace CameraCaptureApp.Forms
         {
             _isClosing = true;
             _cameraService.FrameReady -= CameraService_FrameReady;
+            _cameraService.ImageAcquired -= CameraService_ImageAcquiredForAutoSave;
             _cameraService.ExternalTriggerReceived -= CameraService_ExternalTriggerReceived;
             _cameraService.ImageAcquired -= CameraService_ImageAcquired;
             _cameraDisplayControl.SaveSnapshotRequested -= CameraDisplayControl_SaveSnapshotRequested;
@@ -922,17 +1024,17 @@ namespace CameraCaptureApp.Forms
             }
 
             _frameRecorder.StoreLatest(e.Frame);
-            if (_settings.RollingCaptureEnabled)
-            {
-                _frameRecorder.StoreRolling(e.Frame, _settings.RollingCaptureFrameCount);
-            }
-            else
+            if (!_settings.RollingCaptureEnabled)
             {
                 _frameRecorder.ClearRolling();
+                Interlocked.Exchange(ref _rollingBufferLimitWarningShown, 0);
             }
 
-            QueueSoftwareTriggerAutoSave();
-            SaveLatestRecordedFrameIfRequestedAsync();
+            if (_settings.RollingCaptureEnabled)
+            {
+                QueueSoftwareTriggerAutoSave();
+                SaveLatestRecordedFrameIfRequestedAsync();
+            }
             if (!_settings.ShowCameraImage)
             {
                 e.Frame.Dispose();
@@ -968,6 +1070,51 @@ namespace CameraCaptureApp.Forms
             if (handler != null)
             {
                 handler(this, e);
+            }
+        }
+
+        private void CameraService_ImageAcquiredForAutoSave(object sender, CameraImageAcquiredEventArgs e)
+        {
+            if (e == null || _settings == null)
+            {
+                return;
+            }
+
+            if (_settings.RollingCaptureEnabled)
+            {
+                _frameRecorder.StoreRolling(e.GrayscaleFrame, _settings.RollingCaptureFrameCount);
+                if (_frameRecorder.IsRollingBufferMemoryLimited &&
+                    Interlocked.Exchange(ref _rollingBufferLimitWarningShown, 1) == 0)
+                {
+                    SetFooterMessageFromAnyThread(
+                        "Rolling image buffer reached 512 MiB; older frames are discarded, so fewer than configured may be saved.");
+                }
+                return;
+            }
+
+            bool shouldSave = _settings.TriggerMode == TriggerMode.SoftwareTrigger &&
+                _settings.AutoSaveOnSoftwareTriggerFrame;
+
+            if (_settings.TriggerMode == TriggerMode.ExternalTrigger &&
+                _settings.ExternalFrameTriggerOneFrame &&
+                _settings.AutoSaveOnExternalTriggerOneFrame)
+            {
+                shouldSave = TryConsumePendingSnapshotSaveRequest();
+            }
+
+            if (!shouldSave)
+            {
+                return;
+            }
+
+            try
+            {
+                QueueGrayscaleAutoSave(e.GrayscaleFrame, _settings.Clone());
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Log("Failed to queue acquired grayscale frame for saving.", ex);
+                SetFooterMessageFromAnyThread("Captured image save failed: " + ex.Message);
             }
         }
 
@@ -1015,10 +1162,13 @@ namespace CameraCaptureApp.Forms
             {
                 StopSoftwareTriggerMeterWheelMonitorLocked();
 
+                int generation = Interlocked.Increment(ref _softwareTriggerMonitorGeneration);
                 _softwareTriggerMonitorTokenSource = new CancellationTokenSource();
                 var token = _softwareTriggerMonitorTokenSource.Token;
                 var compareValue = _settings.MeterWheelCompareValue;
-                _softwareTriggerMonitorTask = Task.Run(() => RunSoftwareTriggerMeterWheelMonitor(compareValue, token), token);
+                _softwareTriggerMonitorTask = Task.Run(
+                    () => RunSoftwareTriggerMeterWheelMonitor(compareValue, token, generation),
+                    token);
             }
 
             SetFooterMessageFromAnyThread("Software trigger monitor started. Waiting for meter wheel compare crossing.");
@@ -1034,6 +1184,8 @@ namespace CameraCaptureApp.Forms
 
         private void StopSoftwareTriggerMeterWheelMonitorLocked()
         {
+            Interlocked.Increment(ref _softwareTriggerMonitorGeneration);
+            Interlocked.Exchange(ref _softwareTriggerCaptureQueuedGeneration, 0);
             if (_softwareTriggerMonitorTokenSource == null)
             {
                 return;
@@ -1043,7 +1195,6 @@ namespace CameraCaptureApp.Forms
             _softwareTriggerMonitorTokenSource.Dispose();
             _softwareTriggerMonitorTokenSource = null;
             _softwareTriggerMonitorTask = null;
-            Interlocked.Exchange(ref _softwareTriggerCaptureQueued, 0);
         }
 
         private bool IsSoftwareTriggerMeterWheelMonitorRunning()
@@ -1054,16 +1205,23 @@ namespace CameraCaptureApp.Forms
             }
         }
 
-        private async Task RunSoftwareTriggerMeterWheelMonitor(int compareValue, CancellationToken token)
+        private async Task RunSoftwareTriggerMeterWheelMonitor(
+            int compareValue,
+            CancellationToken token,
+            int generation)
         {
             var waitingForBelowCompare = true;
             try
             {
                 var encoderValue = _meterWheelService.ReadEncoder();
+                if (token.IsCancellationRequested || !IsSoftwareTriggerGenerationCurrent(generation))
+                {
+                    return;
+                }
                 if (encoderValue < compareValue)
                 {
                     _meterWheelService.SetCompare(compareValue);
-                    QueueSoftwareTriggerCapture(compareValue, encoderValue);
+                    QueueSoftwareTriggerCapture(compareValue, encoderValue, generation);
                     waitingForBelowCompare = false;
                     SetFooterMessageFromAnyThread("Software trigger armed Compare Set: " + compareValue + ", Encoder: " + encoderValue);
                 }
@@ -1076,13 +1234,17 @@ namespace CameraCaptureApp.Forms
                 {
                     await Task.Delay(50, token);
                     encoderValue = _meterWheelService.ReadEncoder();
+                    if (token.IsCancellationRequested || !IsSoftwareTriggerGenerationCurrent(generation))
+                    {
+                        break;
+                    }
 
                     if (waitingForBelowCompare)
                     {
                         if (encoderValue < compareValue)
                         {
                             _meterWheelService.SetCompare(compareValue);
-                            QueueSoftwareTriggerCapture(compareValue, encoderValue);
+                            QueueSoftwareTriggerCapture(compareValue, encoderValue, generation);
                             waitingForBelowCompare = false;
                             SetFooterMessageFromAnyThread("Software trigger armed Compare Set: " + compareValue + ", Encoder: " + encoderValue);
                         }
@@ -1107,38 +1269,64 @@ namespace CameraCaptureApp.Forms
             }
         }
 
-        private void QueueSoftwareTriggerCapture(int compareValue, int encoderValue)
+        private bool IsSoftwareTriggerGenerationCurrent(int generation)
         {
-            if (Interlocked.Exchange(ref _softwareTriggerCaptureQueued, 1) == 1)
+            return generation == Interlocked.CompareExchange(
+                ref _softwareTriggerMonitorGeneration,
+                0,
+                0);
+        }
+
+        private void QueueSoftwareTriggerCapture(int compareValue, int encoderValue, int generation)
+        {
+            if (!IsSoftwareTriggerGenerationCurrent(generation) ||
+                Interlocked.CompareExchange(
+                    ref _softwareTriggerCaptureQueuedGeneration,
+                    generation,
+                    0) != 0)
             {
                 return;
             }
 
             if (_isClosing || IsDisposed || !IsHandleCreated)
             {
-                Interlocked.Exchange(ref _softwareTriggerCaptureQueued, 0);
+                Interlocked.CompareExchange(
+                    ref _softwareTriggerCaptureQueuedGeneration,
+                    0,
+                    generation);
                 return;
             }
 
             try
             {
-                BeginInvoke(new Action(() => ExecuteSoftwareTriggerCapture(compareValue, encoderValue)));
+                BeginInvoke(new Action(() => ExecuteSoftwareTriggerCapture(
+                    compareValue,
+                    encoderValue,
+                    generation)));
             }
             catch (ObjectDisposedException)
             {
-                Interlocked.Exchange(ref _softwareTriggerCaptureQueued, 0);
+                Interlocked.CompareExchange(
+                    ref _softwareTriggerCaptureQueuedGeneration,
+                    0,
+                    generation);
             }
             catch (InvalidOperationException)
             {
-                Interlocked.Exchange(ref _softwareTriggerCaptureQueued, 0);
+                Interlocked.CompareExchange(
+                    ref _softwareTriggerCaptureQueuedGeneration,
+                    0,
+                    generation);
             }
         }
 
-        private void ExecuteSoftwareTriggerCapture(int compareValue, int encoderValue)
+        private void ExecuteSoftwareTriggerCapture(int compareValue, int encoderValue, int generation)
         {
             try
             {
-                if (_isClosing || IsDisposed || _settings == null || _settings.TriggerMode != TriggerMode.SoftwareTrigger)
+                if (!IsSoftwareTriggerGenerationCurrent(generation) ||
+                    _isClosing || IsDisposed || _settings == null ||
+                    _settings.TriggerMode != TriggerMode.SoftwareTrigger)
                 {
                     return;
                 }
@@ -1159,7 +1347,10 @@ namespace CameraCaptureApp.Forms
             }
             finally
             {
-                Interlocked.Exchange(ref _softwareTriggerCaptureQueued, 0);
+                Interlocked.CompareExchange(
+                    ref _softwareTriggerCaptureQueuedGeneration,
+                    0,
+                    generation);
             }
         }
 
@@ -1199,7 +1390,7 @@ namespace CameraCaptureApp.Forms
                 return;
             }
 
-            Interlocked.Increment(ref _pendingSnapshotSaveCount);
+            QueuePendingSnapshotSaveRequest();
         }
 
         private void QueueSoftwareTriggerAutoSave()
@@ -1211,7 +1402,25 @@ namespace CameraCaptureApp.Forms
                 return;
             }
 
-            Interlocked.Increment(ref _pendingSnapshotSaveCount);
+            QueuePendingSnapshotSaveRequest();
+        }
+
+        private void QueuePendingSnapshotSaveRequest()
+        {
+            while (true)
+            {
+                int pending = Interlocked.CompareExchange(ref _pendingSnapshotSaveCount, 0, 0);
+                if (pending >= MaxQueuedAutoSaveFrames)
+                {
+                    SetFooterMessageFromAnyThread("Auto-save request skipped: save queue is full.");
+                    return;
+                }
+
+                if (Interlocked.CompareExchange(ref _pendingSnapshotSaveCount, pending + 1, pending) == pending)
+                {
+                    return;
+                }
+            }
         }
 
         private void ApplyMeterWheelActionsOnExternalTrigger()
@@ -1528,22 +1737,42 @@ namespace CameraCaptureApp.Forms
             Directory.CreateDirectory(outputFolder);
 
             var filePath = BuildSnapshotPath(outputFolder, settings);
-            FrameRecorder.SaveBitmapImage(bitmap, filePath, settings.ImageSaveFormat, null);
-            return filePath;
+            try
+            {
+                FrameRecorder.SaveBitmapImage(bitmap, filePath, settings.ImageSaveFormat, null);
+                return filePath;
+            }
+            finally
+            {
+                ReleaseSnapshotPath(filePath);
+            }
         }
 
-        private string SaveRollingCaptureSnapshot(CameraSettings settings)
+        private static string SaveGrayscaleSnapshot(CameraGrayscaleFrame frame, CameraSettings settings)
+        {
+            using (var bitmap = frame.CreateBitmapCopy())
+            {
+                return SaveSnapshotBitmap(bitmap, settings);
+            }
+        }
+
+        private static string SaveRollingCaptureSnapshot(
+            FrameRecorder.RollingFrameSnapshot snapshot,
+            CameraSettings settings)
         {
             var outputFolder = ResolveSnapshotFolder();
             Directory.CreateDirectory(outputFolder);
 
             var filePath = BuildSnapshotPath(outputFolder, settings);
-            if (!_frameRecorder.SaveRollingImage(filePath, settings.ImageSaveFormat, settings.RollingCaptureDirection, null, null))
+            try
             {
-                throw new InvalidOperationException("No rolling image is available to save.");
+                snapshot.SaveImage(filePath, settings.ImageSaveFormat, settings.RollingCaptureDirection, null, null);
+                return filePath;
             }
-
-            return filePath;
+            finally
+            {
+                ReleaseSnapshotPath(filePath);
+            }
         }
 
         private string SaveManualRollingSnapshot(
@@ -1557,14 +1786,21 @@ namespace CameraCaptureApp.Forms
 
             var baseName = "rolling_" + DateTime.Now.ToString("yyyy_MM_dd_HH_mm_ss_fff");
             var filePath = BuildManualSnapshotPath(outputFolder, baseName, saveFormat);
-            rollingSnapshot.SaveImage(filePath, saveFormat, direction, reportProgress, null);
-
-            if (!File.Exists(filePath))
+            try
             {
-                throw new IOException("Snapshot file was not created: " + filePath);
-            }
+                rollingSnapshot.SaveImage(filePath, saveFormat, direction, reportProgress, null);
 
-            return filePath;
+                if (!File.Exists(filePath))
+                {
+                    throw new IOException("Snapshot file was not created: " + filePath);
+                }
+
+                return filePath;
+            }
+            finally
+            {
+                ReleaseSnapshotPath(filePath);
+            }
         }
 
         private static string SaveManualSnapshotBitmap(Bitmap bitmap, ImageSaveFormat saveFormat)
@@ -1574,35 +1810,26 @@ namespace CameraCaptureApp.Forms
 
             var baseName = DateTime.Now.ToString("yyyy_MM_dd_HH_mm_ss_fff");
             var filePath = BuildManualSnapshotPath(outputFolder, baseName, saveFormat);
-            FrameRecorder.SaveBitmapImage(bitmap, filePath, saveFormat, null);
-            if (!File.Exists(filePath))
+            try
             {
-                throw new IOException("Snapshot file was not created: " + filePath);
-            }
+                FrameRecorder.SaveBitmapImage(bitmap, filePath, saveFormat, null);
+                if (!File.Exists(filePath))
+                {
+                    throw new IOException("Snapshot file was not created: " + filePath);
+                }
 
-            return filePath;
+                return filePath;
+            }
+            finally
+            {
+                ReleaseSnapshotPath(filePath);
+            }
         }
 
         private static string BuildManualSnapshotPath(string outputFolder, string baseName, ImageSaveFormat saveFormat)
         {
             var extension = GetImageExtension(saveFormat);
-            var candidatePath = Path.Combine(outputFolder, baseName + extension);
-            if (!File.Exists(candidatePath))
-            {
-                return candidatePath;
-            }
-
-            var suffix = 1;
-            while (true)
-            {
-                var nextPath = Path.Combine(outputFolder, baseName + "_" + suffix.ToString("000") + extension);
-                if (!File.Exists(nextPath))
-                {
-                    return nextPath;
-                }
-
-                suffix++;
-            }
+            return ReserveSnapshotPath(outputFolder, baseName, extension);
         }
 
         private static string ResolveSnapshotFolder()
@@ -1625,22 +1852,66 @@ namespace CameraCaptureApp.Forms
 
             baseName = SanitizeFileName(baseName);
             var extension = GetImageExtension(settings.ImageSaveFormat);
-            var candidatePath = Path.Combine(outputFolder, baseName + extension);
-            if (!File.Exists(candidatePath))
-            {
-                return candidatePath;
-            }
+            return ReserveSnapshotPath(outputFolder, baseName, extension);
+        }
 
-            var suffix = 1;
+        private static string ReserveSnapshotPath(string outputFolder, string baseName, string extension)
+        {
+            var suffix = 0;
             while (true)
             {
-                var nextPath = Path.Combine(outputFolder, baseName + "_" + suffix.ToString("000") + extension);
-                if (!File.Exists(nextPath))
+                string candidateName = suffix == 0
+                    ? baseName
+                    : baseName + "_" + suffix.ToString("000");
+                string candidatePath = Path.Combine(outputFolder, candidateName + extension);
+                string reservationPath = candidatePath + ".reserve";
+                try
                 {
-                    return nextPath;
+                    using (new FileStream(
+                        reservationPath,
+                        FileMode.CreateNew,
+                        FileAccess.Write,
+                        FileShare.None))
+                    {
+                    }
+                }
+                catch (IOException)
+                {
+                    if (File.Exists(reservationPath))
+                    {
+                        suffix++;
+                        continue;
+                    }
+
+                    throw;
                 }
 
+                if (!File.Exists(candidatePath) && !File.Exists(candidatePath + ".tmp"))
+                {
+                    return candidatePath;
+                }
+
+                ReleaseSnapshotPath(candidatePath);
+
                 suffix++;
+            }
+        }
+
+        private static void ReleaseSnapshotPath(string filePath)
+        {
+            string reservationPath = filePath + ".reserve";
+            try
+            {
+                if (File.Exists(reservationPath))
+                {
+                    File.Delete(reservationPath);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
             }
         }
 

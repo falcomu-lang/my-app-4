@@ -1047,6 +1047,7 @@ namespace IntegratedImageProcessingApp.Forms
                 delegate
                 {
                     Bitmap overview = null;
+                    Bitmap overviewForUi = null;
                     try
                     {
                         using (overviewMask)
@@ -1057,28 +1058,46 @@ namespace IntegratedImageProcessingApp.Forms
                                 Math.Max(1, (int)Math.Round(overviewMask.Width * scale)),
                                 Math.Max(1, (int)Math.Round(overviewMask.Height * scale)));
                         }
+                        overviewForUi = overview;
+                        overview = null;
 
                         BeginInvoke(
                             new Action(
                                 delegate
                                 {
-                                    pendingLargeProcessedOverviewOverlays.Remove(cacheKey);
-                                    if (!largeImageMaskCache.IsBinaryMaskCurrent(maskKey, generation))
+                                    Bitmap callbackOverview = overviewForUi;
+                                    overviewForUi = null;
+                                    try
                                     {
-                                        overview.Dispose();
-                                        return;
-                                    }
+                                        pendingLargeProcessedOverviewOverlays.Remove(cacheKey);
+                                        if (!largeImageMaskCache.IsBinaryMaskCurrent(maskKey, generation))
+                                        {
+                                            return;
+                                        }
 
-                                    TrimLargeProcessedOverlayCache();
-                                    largeProcessedOverlayCache[cacheKey] = overview;
-                                    overview = null;
-                                    leftProcessedDisplayControl.InvalidateImageView();
-                                    rightProcessedDisplayControl.InvalidateImageView();
+                                        TrimLargeProcessedOverlayCache();
+                                        largeProcessedOverlayCache[cacheKey] = callbackOverview;
+                                        callbackOverview = null;
+                                        leftProcessedDisplayControl.InvalidateImageView();
+                                        rightProcessedDisplayControl.InvalidateImageView();
+                                    }
+                                    finally
+                                    {
+                                        if (callbackOverview != null)
+                                        {
+                                            callbackOverview.Dispose();
+                                        }
+                                    }
                                 }));
                     }
                     catch (Exception ex)
                     {
                         Debug.WriteLine(ex);
+                        if (overviewForUi != null)
+                        {
+                            overviewForUi.Dispose();
+                            overviewForUi = null;
+                        }
                         try
                         {
                             BeginInvoke(new Action(delegate { pendingLargeProcessedOverviewOverlays.Remove(cacheKey); }));

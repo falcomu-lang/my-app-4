@@ -1,13 +1,15 @@
 # Project Handoff：整合式影像處理軟體
 
-文件更新日：2026-11-02
-程式碼基準：main；本次角色驗證修改以 8760dcd 為起點
+文件更新日：2026-11-04
+程式碼基準：2026-11-04 工作目錄（包含未提交修改，沒有對應 commit）
 Solution：MyApp4.sln
 工作目錄：此文件所在專案根目錄
 
-本次從 main 的 8760dcd 開始，加入角色套用密碼驗證、`SystemParameters.ini` 密碼欄位保存及本文件更新。既有完整文件入口為 [docs/README.md](docs/README.md)，包含操作手冊、功能規格、目前／目標架構、驗收及來源對照；Word／PDF 位於 docs/exports。
+本次核對目前工作目錄，加入遠端命令選擇性 HMAC 驗證與應用程式平行迴圈共同工作上限，並同步 TCP 結果可靠傳遞現況及文件。程式和文件均未提交。既有完整文件入口為 [docs/README.md](docs/README.md)，Word／PDF 匯出仍以各自匯出日期為準；修改 Markdown 後需重新產出，避免匯出版落後。
 
 ## 1. 專案定位與目前結論
+
+2026-11-04 最新全檔靜態掃描與重點呼叫鏈審查見 [CODE_DEEP_REVIEW_CURRENT.html](docs/CODE_DEEP_REVIEW_CURRENT.html)，20 面向合計 57／100，涵蓋 111 個 C# 檔。歷史精度快照、INI 原子寫入、角色啟動驗證、TCP 持久結果及命令 HMAC 已在目前來源中覆核；部分較早文件仍有過期敘述，當前實作以這次來源證據為準。優先風險為跨頁影格轉送、ACK 信任邊界、主程式無界存圖、單項 worker 上限捷徑與執行快照固定時機。評分不是實機或影像驗收。
 
 這是一套以單台線掃描攝影機為本機取像來源的 Windows 灰階影像檢測程式。單一執行個體控制一台本機攝影機；總控頁可連接多個被控站點，收集各站的相機狀態與逐物件判定。
 
@@ -86,7 +88,9 @@ CameraCaptureModule / Sapera
 
 主程式依全域設定啟動本機 TCP listener，也可在「連線總控角色」連接多個被控站。設定可指定本機站點 ID、監聽 IPv4／Port、允許連線、站點 ID／名稱／IP／Port、重連、心跳逾時及進入總控頁自動連線。
 
-目前的訊息以換行分隔 JSON 傳輸，包含 hello、station-status、command、command-ack 等類型。總控端能傳送連續取像開始／停止及檢測命令；被控端回傳連線、取像、Recipe 名稱、判定時間、逐物件格位及尺寸／缺陷／綜合等級。TCP 不傳影像本身。程式尚未提供 TLS、訊息驗證或明確的協定版本欄位，跨電腦、斷線重連及多站同時操作仍需驗收。
+目前以換行分隔 JSON 傳輸，包含 hello、station-status、command、command-ack、inspection-result、result-ack 等類型。總控端可傳送取像／檢測命令；被控端回傳狀態與逐物件等級，不傳影像本身。檢測結果會先寫入 `tcp-results/outbox`，相容總控端接收後先將結果寫入 `tcp-results/inbox/yyyyMMdd` 再回 ACK；發送端收到 ACK 後才刪除待送檔，斷線期間保留並於相容 peer 連線後重送。接收端依 ResultId 去重，較舊重送仍封存並 ACK，但不覆蓋總控畫面較新的結果。此機制仍需多機斷線／重啟驗收；目前沒有保留期限管理，且共享 outbox 不代表多個總控 peer 各自獨立確認。
+
+被控端可選擇要求命令驗證。啟用時，被控端的 `RequireAuthenticatedCommands=true` 與總控端相對應站點的 `CommandSecret` 必須使用相同金鑰（至少 16 字元、不含空白）；命令以 HMAC-SHA256 簽章，綁定命令 ID、命令、來源／目標站點與 UTC 時間，接受時間偏差為 ±2 分鐘。接受過的命令 ID 會以日資料夾持久化在 `tcp-results/accepted-commands/yyyyMMdd`，防止重播。舊設定預設不強制驗證以維持相容。金鑰以明文存在設定檔，TCP 沒有 TLS；驗證目前只保護 command，不保護狀態／結果來源，也不提供傳輸加密或完整設備安全認證。需確保兩端時間同步。
 
 ### 2.6 角色切換與密碼
 
@@ -99,7 +103,7 @@ CameraCaptureModule / Sapera
 | 切換至管理者 | `[Password] Admin`，預設 `admin0000`。 |
 | 切換至總監控模式 | `[Password] Monitor`，預設 `monitor0000`。 |
 
-密碼保存於主程式執行目錄的 `SystemParameters.ini`，檔案以明文保存。根目錄同名檔只在輸出目錄尚無設定檔時作為初始檔複製；設定服務重寫主要參數、建立空白參數、載入 Recipe 時都會保留 `[Password]`。這是本機角色切換門檻，不提供個人帳號、登入紀錄或 TCP/IP 認證。
+密碼保存於主程式執行目錄的 `SystemParameters.ini`，檔案以明文保存。根目錄同名檔只在輸出目錄尚無設定檔時作為初始檔複製；設定服務重寫主要參數、建立空白參數、載入 Recipe 時都會保留 `[Password]`。這是本機角色切換門檻，不提供個人帳號或操作紀錄；TCP 命令驗證另由設備設定的共享金鑰控制。
 
 ## 3. 功能進度與待驗收項目
 
@@ -118,7 +122,7 @@ CameraCaptureModule / Sapera
 | 參數結果確認 | 影像與處理結果在主功能切換後以記憶體快照保留；支援尺寸／缺陷平行及結果顯示。 | 大圖記憶體生命週期、切頁／改參數／換圖失效流程與全 UI 驗收。 |
 | 檢測總覽 | 原始影像、物件格位、尺寸／缺陷／綜合結果、篩選、選取聚焦、回復全圖及相機操作已接入。 | 真正相機觸發、持續檢測壓力、缺件／無效參數與現場顯示。 |
 | 相機模組 | 嵌入主程式，保留相機原本設定、波形、米輪彈出視窗；具備 Mono8 frame event。 | Sapera 驅動、相機、米輪、Software／External Trigger 的實機完整驗收。 |
-| TCP/IP | 本機 listener、總控多站卡片、心跳、重連、狀態和命令程式碼存在。 | 防火牆、多機、多站 ID、掉線恢復與長時間連線驗收。 |
+| TCP/IP | 本機 listener、總控多站卡片、心跳、重連、狀態／命令、結果持久 outbox／inbox／ACK／重送及 ResultId 去重已接入；命令 HMAC 可選啟用。 | 防火牆、多機、多站 ID、斷線／重啟恢復、舊版相容、命令驗證及長時間連線驗收；無 TLS，狀態／結果不驗簽。 |
 | 歷史資料 | 已有日期、Recipe、判定狀態查詢、摘要卡、檢測清單、尺寸／缺陷明細及右鍵歷史重跑；相機紀錄自動保存，手動結果確認可獨立設定是否記錄及是否另存圖片。 | 驗收每日 DB、兩種記錄路徑、圖片保存失敗、舊 schema 遷移、長期容量與備份。未保留圖片時仍保存判定明細，但該筆無法用歷史原圖重新檢測。歷史重跑依批次 ParameterId 精確選擇 Recipe 快照中的參數；舊資料含多參數而無 ID 時拒絕猜測。 |
 
 ## 4. 平行運算與效能解讀
@@ -126,7 +130,9 @@ CameraCaptureModule / Sapera
 - 結果確認會把尺寸量測工作和缺陷工作同時啟動；尺寸量測可按物件平行。
 - 開啟缺陷平行選項時，一般條件與啟用且需要運算的頻域一／二可一同排程；共用來源準備和鄰格比較相依仍需遵守。
 - 一般缺陷、頻域及量測內部也能按物件／ROI 平行。這些是 Task Parallel Library 的工作，不等於固定建立「物件數 × 核心數」條 OS 執行緒。
-- 巢狀平行可能讓 CPU、RAM、影像副本及預覽 patch 同時增加。現行程式沒有統一的全流程 CPU／記憶體預算；最大吞吐與最長等待時間需用實際設備量測。
+- 一般缺陷、頻域、前處理及量測使用 `InspectionParallelism.For` 管理應用程式自有的平行迴圈；巢狀迴圈在現有工作內依序執行。全域設定的「最大並行工作數」1–32 可調整上限，0 為自動：不高於邏輯處理器數，最多 8。
+- 此上限限制的是這些迴圈同時執行的工作 body，不是整個程序的 CPU／RAM 上限。OpenCV 原生執行緒、背景 TIFF 存檔、UI 與其他非 `InspectionParallelism` 工作不在此計數；影像副本與預覽快取也沒有因此取得記憶體預算。
+- 目前沒有本次硬體的效能基準；提高上限不保證縮短牆鐘時間，需以固定大圖、Recipe 和機器量測中位數／P95、CPU 與峰值 RAM。
 - 頻域每格以 OpenCV 建立的加窗影像能量為基礎，直接遍歷影像資料計算；名稱中的「頻域」不表示目前執行 DFT。
 - 舊交接紀錄曾記載 2026-10-23 的合成影像比對與排程檢查。這些是當時版本的證據，不代表目前版本的公司產品影像或實機節拍已驗收。
 - 舊版曾有替代輸出目錄的建置成功紀錄，不能當作目前版本的證據。2026-10-30 的建置嘗試因環境無 dotnet CLI，改用 VS2019 MSBuild 後停在方案組態階段並中止，未取得成功編譯證據。本次文件核對未再進行相機／GUI 驗收。
@@ -140,13 +146,16 @@ CameraCaptureModule / Sapera
 | SystemParameters.ini | SystemParameterIniService 保存目前正在編輯的完整檢測設定及 `[Password]` 角色密碼。 | 新建參數會重設檢測設定但保留角色密碼；它與 recipe 目錄的快照分開。 |
 | recipe/parameterList.json | DetectionRecipeCatalogService 保存 Recipe ID、顯示名稱、說明與排序。 | 名稱可編輯，關聯以 ID 為主。 |
 | recipe/{ID}.ini | 每個 Recipe 的完整參數快照。 | 一次只有一組載入為作用中設定；套用 Recipe 會以快照更新目前流程。 |
-| config/device-settings.ini | CameraDeviceSettingsIniService 保存設備名稱／站點 ID、X/Y mm-per-pixel、換算開關、本機監聽 IP／Port、允許連線、手動結果確認歷史記錄及圖片保留開關。 | 缺檔預設精度 1、換算關閉、ID 1、0.0.0.0:5000、允許連線關閉；圖片保留預設開啟。程式只在輸出目錄缺少時複製初始檔。 |
-| config/connection-controller-settings.xml | ConnectionControllerSettingsService 保存總控監控、進入頁面自動連線、重連、timeout、heartbeat 與站點表。 | 目前模型 MonitorCamera 預設關閉，ConnectWhenOpened 亦關閉。 |
+| config/device-settings.ini | CameraDeviceSettingsIniService 保存設備名稱／站點 ID、X/Y mm-per-pixel、換算開關、本機監聽 IP／Port、允許連線、命令驗證開關／金鑰、最大並行工作數、手動結果確認歷史記錄及圖片保留開關。 | 缺檔預設精度 1、換算關閉、ID 1、0.0.0.0:5000、允許連線及命令驗證關閉；worker 上限 0（自動），圖片保留預設開啟。程式只在輸出目錄缺少時複製初始檔。 |
+| config/connection-controller-settings.xml | ConnectionControllerSettingsService 保存總控監控、進入頁面自動連線、重連、timeout、heartbeat、站點表及每站 command secret。 | MonitorCamera 預設關閉，ConnectWhenOpened 亦關閉。 |
 | captureSetting.ini | CameraCaptureModule 的 SettingsService 保存相機、觸發、預覽、自動存圖、格式與米輪欄位。 | 儲存於執行檔目錄；缺少時嘗試複製同目錄的 settings.ini 或 setting.ini。 |
 | CameraCapture/yyyyMMdd | 主程式相機檢測影格保存的原始灰階 TIFF；CameraCaptureModule 也會依其自動存圖設定保存影像。 | 主程式相機流程背景保存，演算法直接用記憶體 frame，不讀回 TIFF。 |
 | snapshot/yyyyMMdd | 手動載入圖片執行確認後，供歷史記錄連結與重跑的影像副本。 | 由歷史紀錄功能按需複製；若複製失敗會保留來源路徑並記錄診斷。 |
 | history/yyyyMMdd.db | 每日 SQLite 批次與逐物件明細。 | 使用 Windows winsqlite3.dll；啟用 WAL 與交易，schema 會補上 parameter_id 欄位以相容舊 DB。 |
 | history/recipe-snapshots/{SHA256}.ini | 歷史批次對應的完整 Recipe／參數快照。 | 正規化後以 SHA-256 去重；歷史重跑以批次保存的 ParameterId 找當時使用的參數。 |
+| tcp-results/outbox | 尚未收到結果 ACK 的逐筆檢測結果 JSON。 | 收到相容總控端的 result-ack 後刪除；沒有保留期限清理。 |
+| tcp-results/inbox/yyyyMMdd | 總控端已落盤的逐筆檢測結果 JSON。 | ResultId 去重；這是 TCP 接收封存，不是每日檢測歷史 DB。 |
+| tcp-results/accepted-commands/yyyyMMdd | 被控端已接受的簽章命令 ID。 | 僅在啟用命令驗證時使用，防止相同 ID 被重播。 |
 | logs/camera/app.log | CameraCaptureModule 的 AppLogger 記錄相機模組例外。 | 寫在執行檔目錄下 logs/camera。 |
 
 **存圖需求差異：** CameraSettings.SaveFolder 有模型欄位及 INI 讀寫，但目前程式存圖路徑沒有讀取該欄位。一般手動單張圖也沒有日期目錄。若現場要求所有影像固定依日期分流或指定根目錄，需另做程式修改。
@@ -199,8 +208,8 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 | IntegratedImageProcessingApp/Forms/MainForm.Designer.cs | 主視窗設計器產生的三欄版面與基本控制項。 |
 | IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs | 左側選單導覽、功能切換、角色權限篩選、角色套用與密碼視窗、鍵盤操作及重複選取處理。 |
 | IntegratedImageProcessingApp/Forms/MainForm.FunctionTree.cs | 找物件流程、影像處理步驟／群組及 ROI 清單的情境選單與清單操作。 |
-| IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs | 全域設定頁、CameraCaptureHostControl、設備精度／IP／Port／站點 ID、歷史紀錄／圖片保留及總控設定 UI。 |
-| IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs | TCP listener／station 連線、站點卡片、心跳狀態、遠端連續取像與檢測命令、逐物件結果發布。 |
+| IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs | 全域設定頁、CameraCaptureHostControl、設備精度／IP／Port／站點 ID、命令驗證金鑰、並行工作上限、歷史選項及總控設定 UI。 |
+| IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs | TCP listener／station 連線、站點卡片、心跳狀態、命令簽章／授權、遠端取像與檢測命令、逐物件結果發布及 ACK 協調。 |
 | IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs | 接收本機相機影格、忙碌丟棄、建立記憶體影像來源、背景保存原始 TIFF、安排結果確認流程及回報總覽／歷史資料。 |
 | IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs | 檢測總覽原圖、逐物件矩陣／選取／篩選、連線與連續取像／持續檢測按鈕。 |
 | IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs | 歷史頁 UI、查詢／摘要／明細、手動與相機紀錄建立、手動圖片副本保留控制、歷史參數快照重跑及返回前工作狀態還原。 |
@@ -249,9 +258,13 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 | IntegratedImageProcessingApp/Services/SystemParameterIniService.cs | SystemParameters.ini 與 Recipe INI 的欄位讀寫、預設值、正規化與舊欄位相容處理。 |
 | IntegratedImageProcessingApp/Services/DetectionRecipeCatalogService.cs | Recipe 清單 JSON、參數檔加入、名稱／說明／排序及 ID 對應。 |
 | IntegratedImageProcessingApp/Services/InspectionHistoryStore.cs | 每日 SQLite schema／遷移、批次與逐物件明細交易、Recipe 快照 SHA-256 去重、路徑轉換與舊資料讀取。 |
-| IntegratedImageProcessingApp/Services/CameraDeviceSettingsIniService.cs | 全域設備精度、站點 ID、本機網路、手動歷史記錄與圖片保留設定的 INI 讀寫／預設值。 |
-| IntegratedImageProcessingApp/Services/ConnectionControllerSettingsService.cs | 總控站點表、連線行為 XML 讀寫。 |
+| IntegratedImageProcessingApp/Services/CameraDeviceSettingsIniService.cs | 全域設備精度、站點 ID、本機網路、命令驗證、平行工作上限及歷史選項的 INI 讀寫／預設值。 |
+| IntegratedImageProcessingApp/Services/ConnectionControllerSettingsService.cs | 總控站點表、連線行為及每站 command secret 的 XML 讀寫。 |
 | IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs | TCP listener/client、JSON line 訊息、peer／heartbeat／連線事件與傳送。 |
+| IntegratedImageProcessingApp/Services/InspectionTcpCommandSecurity.cs | HMAC-SHA256 command 簽章、常數時間比對與持久命令 ID 防重播。 |
+| IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs | TCP 結果持久 outbox／inbox、ACK 清除、ResultId 去重與重送資料載入。 |
+| IntegratedImageProcessingApp/Services/InspectionParallelism.cs | 應用程式自有 Parallel.For 的共同 worker 上限；巢狀工作 inline 執行。 |
+| IntegratedImageProcessingApp/Services/AtomicFileWriter.cs | 以暫存檔與替換／移動方式寫入，降低設定及歷史快照被中途寫入破壞的風險。 |
 | IntegratedImageProcessingApp/Services/OpenCvImageProcessingService.cs | 通用 OpenCV 影像處理函式。 |
 | IntegratedImageProcessingApp/Services/OpenCvThresholdService.cs | OpenCV 門檻與二值影像處理函式。 |
 | IntegratedImageProcessingApp/Services/OpenCvEdgeDetectionService.cs | OpenCV 邊緣偵測函式。 |
@@ -311,12 +324,12 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 
 1. **主流程仍與 WinForms UI 緊密耦合。** MainForm partial 共享欄位和可變狀態。partial 只是分檔，尚未形成可單獨重用／測試的 pipeline。
 2. **少數檔案承載過多責任。** 目前有 107 個 C# 檔案；MainForm 有 44 個 partial 宣告。主要大檔約為 ResultReview 3,372 行、CameraService 3,303 行、DefectFrequency 3,216 行、DefectRegion 2,877 行、SystemParameterIniService 2,763 行、MainForm 2,658 行。這些行數是 2026-10-28 檢視值；拆分應按責任界線，不設硬性行數門檻。
-3. **巢狀平行沒有全域資源預算。** 外層條件、ROI、物件和量測可能同時建立工作；需要用現場影像量測 CPU、記憶體峰值及 UI 延遲，再設全域最大併發。
+3. **平行工作只有應用程式迴圈上限，沒有程序級資源預算。** `InspectionParallelism` 已限制自有迴圈，仍未控制 OpenCV 原生平行化、存圖工作、影像快取及程序總 RAM；需量測 CPU、記憶體峰值及 UI 延遲。
 4. **相機忙碌策略會丟影格。** 目前沒有等待佇列；這符合「忙碌時跳過新影像」的需求，但要驗收設備訊號頻率和略過計數。
 5. **相機檢測路徑仍依賴結果確認頁狀態。** MainForm.CameraCapture 目前直接安排結果確認頁的物件／尺寸／缺陷流程，再將結果交給總覽與歷史紀錄。影像演算法輸入已是記憶體 frame，另在背景保存 CameraCapture/yyyyMMdd 原圖。後續應逐步抽出接受不可變 frame 與 Recipe／Parameter snapshot、回傳 InspectionResult 的共用服務，避免把 UI 頁面當成執行引擎。
 6. **設定檔缺少明確 schema 版本。** SystemParameterIniService 手動維護許多鍵；Recipe 欄位新增時要檢查舊檔預設、遷移及往返讀寫。
 7. **歷史功能已接入，但仍需營運級驗收。** 每日 SQLite、逐物件明細、Recipe 快照、圖片路徑及 ParameterId 重跑已存在；尚需驗收 DB 損毀復原、硬碟滿、圖片遺失、跨日切檔、保留期限、備份與多個程式同時存取。
-8. **TCP 尚缺部署級協定保護。** 現有 line-delimited JSON 沒有 TLS、身分驗證、協定版本和重複訊息持久化策略；需依整合程式規格決定。
+8. **TCP 尚缺部署級協定保護。** 遠端命令可選擇 HMAC 驗證，結果有持久 ACK／重送；但無 TLS、狀態／結果訊息認證、協定版本和佇列保留期限管理。共享金鑰明文保存，需依整合程式規格評估。
 9. **存圖設定與實作有差異。** CameraSettings.SaveFolder 會讀寫但目前存圖路徑不使用它；一般手動單張存圖也沒有日期目錄。
 10. **測試與硬體證據不足。** Solution 沒有測試專案。離線合成資料不能代表公司影像；成功編譯也不代表相機、米輪、TCP 或算法品質已驗收。
 
@@ -327,7 +340,7 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 3. 用兩台以上實際執行個體驗收 TCP 站點 ID、listener IP／port、命令 ack、重連、心跳與每站逐物件資料。
 4. 驗收已實作的歷史資料流程：相機成功／待確認紀錄、手動結果確認勾選保存、每日資料庫、圖片路徑、Recipe 快照、ParameterId 遷移及多參數歷史重跑。
 5. 先建立明確的檢測輸入／輸出資料契約，再抽離相機、手動載圖共用的 InspectionPipeline；禁止讓頁面切換決定檢測是否執行。
-6. 設定全流程併發與影像副本上限；以真實大圖測量每張牆鐘時間、CPU、RAM、落後／丟棄影格數。
+6. 擴充目前應用程式平行迴圈上限到程序級 CPU／RAM 預算（含 OpenCV 原生執行緒與存圖）；以真實大圖測量每張牆鐘時間、CPU、RAM、落後／丟棄影格數。
 7. 逐步拆出純計算／序列化元件，並為 Recipe 舊檔、尺寸公式、ROI 群組、缺陷結果和歷史重跑建立可重複驗證。
 8. 確認相機 SaveFolder 實際使用方式、影像保存失敗行為、歷史圖片保留期限及現場 config 更新策略。
 
@@ -346,6 +359,8 @@ WinForms 的 `.resx` 資源檔保存對應表單／控制項的字串、圖示�
 msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:CameraSdkDirectory="C:\path\to\Sapera" /p:LsiNativeDirectory="C:\path\to\LSI\x64"
 ~~~
 
+2026-11-04 已以 VS2019 MSBuild 對 `IntegratedImageProcessingApp\IntegratedImageProcessingApp.csproj` 執行 Debug Build，CameraCaptureModule 與主程式均成功輸出。這只證明編譯通過；本次未執行自動化測試、GUI、相機／米輪、公司影像、TCP 斷線重連或效能驗收。2026-10-30 的舊建置失敗紀錄只反映當日環境，不代表目前這次建置。
+
 維護注意事項：
 
 - 修改 SystemParameterSettings 時，同步檢查 SystemParameterIniService、Recipe 序列化、預設值、舊檔相容及 UI 綁定。
@@ -353,7 +368,7 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 - OpenCV Mat、Bitmap、大型影像來源和外部 pinned buffer 必須明確釋放；勿讓預覽、overlay 或快取長期持有不必要的大圖。
 - 套用 Recipe、切換圖片或修改 ROI 後，確認相關 generation／signature／結果快照確實失效。
 - 設備 config 位於執行檔旁；部署更新要避免覆蓋現場值。缺少精度時 1 mm/pixel 是預設值，不是實際校正值。
-- 建置／檢視文件不等同現場驗收。此次文件核對未執行 GUI、相機或影像測試；目前版本尚無此次環境的成功建置證據。
+- 建置／檢視文件不等同現場驗收。本次 Debug 建置已成功；未執行 GUI、相機、米輪、公司影像、TCP 網路或效能驗收。
 
 ## 10. 大檔案拆分評估與建議
 
@@ -399,8 +414,8 @@ msbuild .\MyApp4.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Ca
 - 操作手冊及功能規格以 b512791 為準，對應 58 個來源錨點；完整檔案職責仍沿用本文件與 ARCHITECTURE_REVIEW 的 107 檔盤點。
 - 全域 Y 高度限制目前僅在相機入口；手動結果確認依參數參考寬高拒絕不符圖，且不保證拒收歷史。應列為後續入口一致性工作。
 - 尺寸 mm 開關只控制尺寸換算，缺陷 X/Y mm 篩選直接使用全域精度。歷史快照未保存當時精度，重跑可能改值。
-- TCP heartbeat 主要確認存活；最新狀態事件發布與 hello 不構成逐筆結果可靠重送。
-- 目前總覽切頁轉送、TCP peer 清理等風險未於本次修正。改善順序與 48 個待執行案例見 docs/VALIDATION_AND_LIMITATIONS.md。
+- TCP inspection-result 已採持久 outbox／inbox、ACK、重送與 ResultId 去重；這不等同 TLS 或每個總控 peer 的獨立送達保證。TCP 同站 peer 清理已依連線實例比對，仍需重疊重連實測。
+- 總覽持續取像／檢測跨頁的生命週期、歷史標定快照、TCP 加密與處理效能仍需驗收。驗收狀態見 docs/VALIDATION_AND_LIMITATIONS.md；其中案例是待執行計畫，不是測試通過紀錄。
 
 ### 圖文版文件 1.1
 

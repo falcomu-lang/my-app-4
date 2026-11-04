@@ -712,10 +712,15 @@ namespace IntegratedImageProcessingApp.Forms
 
             string cacheKey = (relation.SourceType ?? string.Empty) + "|" +
                 (relation.SourceId ?? string.Empty);
+            int sourceGeneration = System.Threading.Interlocked.CompareExchange(
+                ref imageSourceGeneration, 0, 0);
 
             lock (largeRelationSourceCacheLock)
             {
-                if (largeRelationSourceCacheGeneration == imageSourceGeneration)
+                int currentGeneration = System.Threading.Interlocked.CompareExchange(
+                    ref imageSourceGeneration, 0, 0);
+                if (sourceGeneration == currentGeneration &&
+                    largeRelationSourceCacheGeneration == sourceGeneration)
                 {
                     LargeImageSource cached;
                     if (largeRelationSourceCache.TryGetValue(cacheKey, out cached) && cached != null)
@@ -723,10 +728,10 @@ namespace IntegratedImageProcessingApp.Forms
                         return cached.AddReference();
                     }
                 }
-                else
+                else if (sourceGeneration == currentGeneration)
                 {
                     ClearLargeRelationSourceCacheLocked();
-                    largeRelationSourceCacheGeneration = imageSourceGeneration;
+                    largeRelationSourceCacheGeneration = sourceGeneration;
                 }
             }
 
@@ -746,10 +751,19 @@ namespace IntegratedImageProcessingApp.Forms
 
                 lock (largeRelationSourceCacheLock)
                 {
-                    if (largeRelationSourceCacheGeneration != imageSourceGeneration)
+                    int currentGeneration = System.Threading.Interlocked.CompareExchange(
+                        ref imageSourceGeneration, 0, 0);
+                    if (sourceGeneration != currentGeneration)
+                    {
+                        // Return this result only to the request that created it.
+                        // An older request must never publish into the current generation's cache.
+                        return created;
+                    }
+
+                    if (largeRelationSourceCacheGeneration != sourceGeneration)
                     {
                         ClearLargeRelationSourceCacheLocked();
-                        largeRelationSourceCacheGeneration = imageSourceGeneration;
+                        largeRelationSourceCacheGeneration = sourceGeneration;
                     }
 
                     LargeImageSource existing;

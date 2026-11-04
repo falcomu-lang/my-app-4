@@ -405,74 +405,70 @@ namespace CameraCaptureApp.Controls
             e.Graphics.PixelOffsetMode = PixelOffsetMode.Default;
             e.Graphics.SmoothingMode = SmoothingMode.HighSpeed;
 
-            Bitmap bitmap;
-            LargeImageSource largeImageSource;
-            IGrayPixelSource waveformSource;
-            float zoom;
-            PointF offset;
-            Point? selectionStart;
-            Point? selectionEnd;
-            bool selectionActive;
             lock (_imageLock)
             {
-                bitmap = _sourceBitmap;
-                largeImageSource = _largeImageSource;
-                waveformSource = _grayWaveformSelectionSource;
-                zoom = _zoom;
-                offset = _imageOffset;
-                selectionStart = _grayWaveformSelectionStart;
-                selectionEnd = _grayWaveformSelectionEnd;
-                selectionActive = _grayWaveformSelectionActive;
-            }
-
-            if (zoom <= 0f)
-            {
-                return;
-            }
-
-            if (bitmap != null)
-            {
-                var drawWidth = bitmap.Width * zoom;
-                var drawHeight = bitmap.Height * zoom;
-                e.Graphics.InterpolationMode = InterpolationMode.Low;
-                e.Graphics.DrawImage(bitmap, offset.X, offset.Y, drawWidth, drawHeight);
-            }
-
-            if (_rollingPreviewFrames.Count > 0)
-            {
-                e.Graphics.InterpolationMode = InterpolationMode.Low;
-                for (var index = 0; index < _rollingPreviewFrames.Count; index++)
+                if (_zoom <= 0f)
                 {
-                    var rollingFrame = _rollingPreviewFrames[index];
-                    var frameSlot = _rollingPreviewDirection == RollingCaptureDirection.BottomToTop
-                        ? _rollingPreviewFrameCount - index - 1
-                        : index;
-                    var drawLeft = (float)Math.Round(offset.X);
-                    var drawTop = (float)Math.Round(offset.Y + (_rollingPreviewFrameHeight * frameSlot * zoom));
-                    var drawRight = (float)Math.Round(offset.X + (_rollingPreviewFrameWidth * zoom));
-                    var drawBottom = (float)Math.Round(offset.Y + (_rollingPreviewFrameHeight * (frameSlot + 1) * zoom));
-                    if (drawRight <= drawLeft)
-                    {
-                        drawRight = drawLeft + 1f;
-                    }
-
-                    if (drawBottom <= drawTop)
-                    {
-                        drawBottom = drawTop + 1f;
-                    }
-
-                    e.Graphics.DrawImage(rollingFrame, RectangleF.FromLTRB(drawLeft, drawTop, drawRight, drawBottom));
+                    return;
                 }
-            }
 
-            if (largeImageSource != null)
-            {
-                DrawLargeImage(e.Graphics, largeImageSource, zoom, offset);
-            }
+                if (_sourceBitmap != null)
+                {
+                    var drawWidth = _sourceBitmap.Width * _zoom;
+                    var drawHeight = _sourceBitmap.Height * _zoom;
+                    e.Graphics.InterpolationMode = InterpolationMode.Low;
+                    e.Graphics.DrawImage(
+                        _sourceBitmap,
+                        _imageOffset.X,
+                        _imageOffset.Y,
+                        drawWidth,
+                        drawHeight);
+                }
 
-            if (selectionActive && waveformSource != null)
-            {
-                DrawGrayWaveformSelectionOverlay(e.Graphics, selectionStart, selectionEnd);
+                if (_rollingPreviewFrames.Count > 0)
+                {
+                    e.Graphics.InterpolationMode = InterpolationMode.Low;
+                    for (var index = 0; index < _rollingPreviewFrames.Count; index++)
+                    {
+                        var rollingFrame = _rollingPreviewFrames[index];
+                        var frameSlot = _rollingPreviewDirection == RollingCaptureDirection.BottomToTop
+                            ? _rollingPreviewFrameCount - index - 1
+                            : index;
+                        var drawLeft = (float)Math.Round(_imageOffset.X);
+                        var drawTop = (float)Math.Round(
+                            _imageOffset.Y + (_rollingPreviewFrameHeight * frameSlot * _zoom));
+                        var drawRight = (float)Math.Round(
+                            _imageOffset.X + (_rollingPreviewFrameWidth * _zoom));
+                        var drawBottom = (float)Math.Round(
+                            _imageOffset.Y + (_rollingPreviewFrameHeight * (frameSlot + 1) * _zoom));
+                        if (drawRight <= drawLeft)
+                        {
+                            drawRight = drawLeft + 1f;
+                        }
+
+                        if (drawBottom <= drawTop)
+                        {
+                            drawBottom = drawTop + 1f;
+                        }
+
+                        e.Graphics.DrawImage(
+                            rollingFrame,
+                            RectangleF.FromLTRB(drawLeft, drawTop, drawRight, drawBottom));
+                    }
+                }
+
+                if (_largeImageSource != null)
+                {
+                    DrawLargeImage(e.Graphics, _largeImageSource, _zoom, _imageOffset);
+                }
+
+                if (_grayWaveformSelectionActive && _grayWaveformSelectionSource != null)
+                {
+                    DrawGrayWaveformSelectionOverlay(
+                        e.Graphics,
+                        _grayWaveformSelectionStart,
+                        _grayWaveformSelectionEnd);
+                }
             }
         }
 

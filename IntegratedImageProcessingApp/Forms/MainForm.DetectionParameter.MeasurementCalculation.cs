@@ -301,13 +301,40 @@ namespace IntegratedImageProcessingApp.Forms
             out ObjectDetectionMeasurementStatistics statistics,
             out string errorMessage)
         {
+            ObjectDetectionParameterSettings maskParameter =
+                CreateObjectDetectionMeasurementRecordMaskParameter(parameter, record);
             return TryCalculateObjectDetectionMeasurementRecord(
                 parameter,
                 record,
                 selectedObject,
-                parameter,
+                maskParameter,
                 out statistics,
                 out errorMessage);
+        }
+
+        private static ObjectDetectionParameterSettings CreateObjectDetectionMeasurementRecordMaskParameter(
+            ObjectDetectionParameterSettings parameter,
+            ObjectDetectionMeasurementRecordSettings record)
+        {
+            if (parameter == null || record == null ||
+                string.IsNullOrWhiteSpace(record.SourceMaskPrimaryType) ||
+                string.IsNullOrWhiteSpace(record.SourceMaskPrimaryId))
+            {
+                return parameter;
+            }
+
+            var maskParameter = (ObjectDetectionParameterSettings)
+                CloneObjectDetectionResultReviewModel(parameter);
+            maskParameter.MeasurementSourceMaskDisplayName = record.SourceMaskDisplayName;
+            maskParameter.SourceMaskMode = record.SourceMaskMode;
+            maskParameter.SourceMaskPrimaryType = record.SourceMaskPrimaryType;
+            maskParameter.SourceMaskPrimaryId = record.SourceMaskPrimaryId;
+            maskParameter.SourceMaskPrimaryNamespace = record.SourceMaskPrimaryNamespace;
+            maskParameter.SourceMaskOperation = record.SourceMaskOperation;
+            maskParameter.SourceMaskSecondaryType = record.SourceMaskSecondaryType;
+            maskParameter.SourceMaskSecondaryId = record.SourceMaskSecondaryId;
+            maskParameter.SourceMaskSecondaryNamespace = record.SourceMaskSecondaryNamespace;
+            return maskParameter;
         }
 
         private bool TryCalculateObjectDetectionMeasurementRecord(
@@ -501,7 +528,7 @@ namespace IntegratedImageProcessingApp.Forms
                         lineCount >= 32 && estimatedPixelSamples >= 100000d &&
                         Environment.ProcessorCount > 1)
                     {
-                        Parallel.For(
+                        InspectionParallelism.For(
                             0,
                             lineCount,
                             new ParallelOptions

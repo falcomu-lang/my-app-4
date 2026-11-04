@@ -736,53 +736,76 @@ namespace IntegratedImageProcessingApp.Forms
             Task.Run(delegate
             {
                 Bitmap result = null;
+                Bitmap resultForUi = null;
                 try
                 {
                     Stopwatch processingStopwatch = Stopwatch.StartNew();
                     result = CreateObjectJudgementImage(original, objectJudgement, processingSteps);
                     processingStopwatch.Stop();
                     long processingElapsedMilliseconds = processingStopwatch.ElapsedMilliseconds;
+                    resultForUi = result;
+                    result = null;
                     BeginInvoke(new Action(delegate
                     {
-                        if (!IsObjectJudgementProcessingCurrent(objectJudgement.Id, generation))
-                        {
-                            result.Dispose();
-                            result = null;
-                            return;
-                        }
-
-                        if (latestObjectJudgementImage != null)
-                        {
-                            latestObjectJudgementImage.Dispose();
-                        }
-
-                        latestObjectJudgementImage = result;
-                        result = null;
-                        completedObjectJudgementProcessingSignature =
-                            activeObjectJudgementProcessingSignature;
-                        isSyncingImageView = true;
+                        Bitmap callbackResult = resultForUi;
+                        resultForUi = null;
                         try
                         {
-                            leftBlockProcessingDisplayControl.SetDisplayImage(
-                                new Bitmap(latestObjectJudgementImage), true);
-                            rightBlockProcessingDisplayControl.SetDisplayImage(
-                                new Bitmap(latestObjectJudgementImage), true);
+                            if (!IsObjectJudgementProcessingCurrent(objectJudgement.Id, generation))
+                            {
+                                return;
+                            }
+
+                            if (latestObjectJudgementImage != null)
+                            {
+                                latestObjectJudgementImage.Dispose();
+                            }
+
+                            latestObjectJudgementImage = callbackResult;
+                            callbackResult = null;
+                            completedObjectJudgementProcessingSignature =
+                                activeObjectJudgementProcessingSignature;
+                            isSyncingImageView = true;
+                            try
+                            {
+                                leftBlockProcessingDisplayControl.SetDisplayImage(
+                                    new Bitmap(latestObjectJudgementImage), true);
+                                rightBlockProcessingDisplayControl.SetDisplayImage(
+                                    new Bitmap(latestObjectJudgementImage), true);
+                            }
+                            finally
+                            {
+                                isSyncingImageView = false;
+                            }
+
+                            statusLabel.Text = "區塊處理完成，已使用 OpenCV";
+                            ApplySharedImageViewStateToVisibleControls();
+                            long previewElapsedMilliseconds = RefreshVisibleObjectJudgementDisplays();
+                            CompleteObjectJudgementParameterApplyStatus(
+                                processingElapsedMilliseconds,
+                                previewElapsedMilliseconds);
                         }
                         finally
                         {
-                            isSyncingImageView = false;
+                            if (callbackResult != null)
+                            {
+                                callbackResult.Dispose();
+                            }
                         }
-
-                        statusLabel.Text = "區塊處理完成，已使用 OpenCV";
-                        ApplySharedImageViewStateToVisibleControls();
-                        long previewElapsedMilliseconds = RefreshVisibleObjectJudgementDisplays();
-                        CompleteObjectJudgementParameterApplyStatus(
-                            processingElapsedMilliseconds,
-                            previewElapsedMilliseconds);
                     }));
                 }
                 catch (Exception ex)
                 {
+                    if (result != null)
+                    {
+                        result.Dispose();
+                        result = null;
+                    }
+                    if (resultForUi != null)
+                    {
+                        resultForUi.Dispose();
+                        resultForUi = null;
+                    }
                     BeginInvoke(new Action(delegate
                     {
                         if (IsObjectJudgementProcessingCurrent(objectJudgement.Id, generation))

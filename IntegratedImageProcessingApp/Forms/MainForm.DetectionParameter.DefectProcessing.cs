@@ -706,7 +706,7 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             if (runParallel && roiWorkItems.Count > 1)
                             {
-                                Parallel.For(
+                                InspectionParallelism.For(
                                     0,
                                     roiWorkItems.Count,
                                     new ParallelOptions
@@ -1323,7 +1323,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                     if (runParallel && cores.Count > 1)
                     {
-                        Parallel.For(
+                        InspectionParallelism.For(
                             0,
                             cores.Count,
                             new ParallelOptions
@@ -1727,7 +1727,7 @@ namespace IntegratedImageProcessingApp.Forms
 
                                 foreach (Cv.Point[] contour in foundContours)
                                 {
-                                    if (contour == null || contour.Length < 3)
+                                    if (contour == null || contour.Length == 0)
                                     {
                                         continue;
                                     }
@@ -1984,7 +1984,7 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     foreach (ObjectDetectionDefectContour contour in result.Contours)
                     {
-                        if (contour.Points == null || contour.Points.Length < 3 ||
+                        if (contour.Points == null || contour.Points.Length == 0 ||
                             !contour.Bounds.IntersectsWith(visibleBounds))
                         {
                             continue;
@@ -1994,9 +1994,39 @@ namespace IntegratedImageProcessingApp.Forms
                             contour.Points,
                             zoom,
                             offset);
-                        graphics.FillPolygon(
-                            contour.IsBright ? brightMaskFill : darkMaskFill,
-                            screenPoints);
+                        if (screenPoints.Length >= 3)
+                        {
+                            graphics.FillPolygon(
+                                contour.IsBright ? brightMaskFill : darkMaskFill,
+                                screenPoints);
+                        }
+                        else if (screenPoints.Length == 2)
+                        {
+                            using (var linePen = new Pen(
+                                contour.IsBright
+                                    ? Color.FromArgb(112, Color.Yellow)
+                                    : Color.FromArgb(112, Color.HotPink),
+                                Math.Max(1f, zoom)))
+                            {
+                                graphics.DrawLine(linePen, screenPoints[0], screenPoints[1]);
+                            }
+                        }
+                        else
+                        {
+                            float pixelSize = Math.Max(1f, zoom);
+                            using (var pointFill = new SolidBrush(
+                                contour.IsBright
+                                    ? Color.FromArgb(112, Color.Yellow)
+                                    : Color.FromArgb(112, Color.HotPink)))
+                            {
+                                graphics.FillRectangle(
+                                    pointFill,
+                                    screenPoints[0].X - pixelSize / 2f,
+                                    screenPoints[0].Y - pixelSize / 2f,
+                                    pixelSize,
+                                    pixelSize);
+                            }
+                        }
                     }
                 }
             }

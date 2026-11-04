@@ -12,9 +12,17 @@ namespace CameraCaptureApp.Services
 {
     public sealed class FrameRecorder : IDisposable
     {
+        private const long MaxRollingBufferBytes = 512L * 1024L * 1024L;
         private readonly object _sync = new object();
-        private readonly List<Bitmap> _rollingFrames = new List<Bitmap>();
+        private readonly List<RollingFrameBuffer> _rollingFrames = new List<RollingFrameBuffer>();
         private Bitmap _latestFrame;
+        private long _rollingFrameBytes;
+        private bool _rollingBufferMemoryLimited;
+
+        public bool IsRollingBufferMemoryLimited
+        {
+            get { lock (_sync) return _rollingBufferMemoryLimited; }
+        }
 
         public void StoreLatest(Bitmap frame)
         {
@@ -35,25 +43,57 @@ namespace CameraCaptureApp.Services
             }
         }
 
-        public void StoreRolling(Bitmap frame, int frameCount)
+        public bool StoreRolling(Bitmap frame, int frameCount)
         {
             if (frame == null)
             {
-                return;
+                return false;
             }
 
             frameCount = Math.Max(1, frameCount);
-            var copy = (Bitmap)frame.Clone();
+            Bitmap copy = (Bitmap)frame.Clone();
+            return StoreRollingOwned(new RollingFrameBuffer(copy), frameCount);
+        }
+
+        public bool StoreRolling(CameraGrayscaleFrame frame, int frameCount)
+        {
+            if (frame == null)
+            {
+                return false;
+            }
+
+            frameCount = Math.Max(1, frameCount);
+            return StoreRollingOwned(new RollingFrameBuffer(frame), frameCount);
+        }
+
+        private bool StoreRollingOwned(RollingFrameBuffer frame, int frameCount)
+        {
+            if (frame.SizeBytes > MaxRollingBufferBytes)
+            {
+                frame.Dispose();
+                lock (_sync) _rollingBufferMemoryLimited = true;
+                return false;
+            }
+
             lock (_sync)
             {
-                _rollingFrames.Insert(0, copy);
-                while (_rollingFrames.Count > frameCount)
+                _rollingFrames.Insert(0, frame);
+                _rollingFrameBytes += frame.SizeBytes;
+                while (_rollingFrames.Count > frameCount || _rollingFrameBytes > MaxRollingBufferBytes)
                 {
                     var lastIndex = _rollingFrames.Count - 1;
-                    _rollingFrames[lastIndex].Dispose();
+                    RollingFrameBuffer removed = _rollingFrames[lastIndex];
+                    if (_rollingFrameBytes > MaxRollingBufferBytes)
+                    {
+                        _rollingBufferMemoryLimited = true;
+                    }
+                    _rollingFrameBytes -= removed.SizeBytes;
+                    removed.Dispose();
                     _rollingFrames.RemoveAt(lastIndex);
                 }
             }
+
+            return true;
         }
 
         public void ClearRolling()
@@ -83,9 +123,9 @@ namespace CameraCaptureApp.Services
                 }
 
                 frames = new List<Bitmap>(_rollingFrames.Count);
-                foreach (var frame in _rollingFrames)
+                foreach (RollingFrameBuffer frame in _rollingFrames)
                 {
-                    frames.Add((Bitmap)frame.Clone());
+                    frames.Add(frame.CreateBitmapCopy());
                 }
             }
 
@@ -112,9 +152,9 @@ namespace CameraCaptureApp.Services
                 }
 
                 var frames = new List<Bitmap>(_rollingFrames.Count);
-                foreach (var frame in _rollingFrames)
+                foreach (RollingFrameBuffer frame in _rollingFrames)
                 {
-                    frames.Add((Bitmap)frame.Clone());
+                    frames.Add(frame.CreateBitmapCopy());
                 }
 
                 return new RollingFrameSnapshot(frames);
@@ -199,12 +239,52 @@ namespace CameraCaptureApp.Services
 
         private void DisposeRollingFramesUnsafe()
         {
-            foreach (var frame in _rollingFrames)
+            foreach (RollingFrameBuffer frame in _rollingFrames)
             {
                 frame.Dispose();
             }
 
             _rollingFrames.Clear();
+            _rollingFrameBytes = 0;
+            _rollingBufferMemoryLimited = false;
+        }
+
+        private sealed class RollingFrameBuffer : IDisposable
+        {
+            private readonly Bitmap bitmap;
+            private readonly CameraGrayscaleFrame grayscaleFrame;
+
+            public RollingFrameBuffer(Bitmap ownedBitmap)
+            {
+                bitmap = ownedBitmap ?? throw new ArgumentNullException("ownedBitmap");
+                SizeBytes = EstimateBitmapBytes(ownedBitmap);
+            }
+
+            public RollingFrameBuffer(CameraGrayscaleFrame frame)
+            {
+                grayscaleFrame = frame ?? throw new ArgumentNullException("frame");
+                SizeBytes = Math.Max((long)frame.Stride * frame.Height, frame.Pixels.LongLength);
+            }
+
+            public long SizeBytes { get; private set; }
+
+            public Bitmap CreateBitmapCopy()
+            {
+                return bitmap != null ? (Bitmap)bitmap.Clone() : grayscaleFrame.CreateBitmapCopy();
+            }
+
+            public void Dispose()
+            {
+                if (bitmap != null) bitmap.Dispose();
+            }
+
+            private static long EstimateBitmapBytes(Bitmap source)
+            {
+                int bitsPerPixel = Math.Max(1, Image.GetPixelFormatSize(source.PixelFormat));
+                long rowBytes = ((long)source.Width * bitsPerPixel + 7L) / 8L;
+                long alignedRowBytes = (rowBytes + 3L) & ~3L;
+                return alignedRowBytes * source.Height;
+            }
         }
 
         private static Bitmap CombineVertical(IList<Bitmap> frames)

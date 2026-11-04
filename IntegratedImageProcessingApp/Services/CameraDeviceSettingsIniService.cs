@@ -17,6 +17,9 @@ namespace IntegratedImageProcessingApp.Services
             ListenIpAddress = "0.0.0.0";
             ListenPort = 5000;
             AllowConnections = false;
+            MaxProcessingWorkers = 0;
+            RequireAuthenticatedCommands = false;
+            RemoteCommandSecret = string.Empty;
             RecordResultReviewRuns = false;
             KeepResultReviewImages = true;
             LimitImageYHeightEnabled = false;
@@ -39,6 +42,12 @@ namespace IntegratedImageProcessingApp.Services
         public int ListenPort { get; set; }
 
         public bool AllowConnections { get; set; }
+
+        public int MaxProcessingWorkers { get; set; }
+
+        public bool RequireAuthenticatedCommands { get; set; }
+
+        public string RemoteCommandSecret { get; set; }
 
         public bool RecordResultReviewRuns { get; set; }
 
@@ -71,6 +80,7 @@ namespace IntegratedImageProcessingApp.Services
             bool inCameraSection = false;
             bool inApplicationSection = false;
             bool inNetworkSection = false;
+            bool inProcessingSection = false;
             bool inHistorySection = false;
             bool inImageSpecificationSection = false;
             bool inAccessControlSection = false;
@@ -93,6 +103,8 @@ namespace IntegratedImageProcessingApp.Services
                         sectionName, "Application", StringComparison.OrdinalIgnoreCase);
                     inNetworkSection = string.Equals(
                         sectionName, "Network", StringComparison.OrdinalIgnoreCase);
+                    inProcessingSection = string.Equals(
+                        sectionName, "Processing", StringComparison.OrdinalIgnoreCase);
                     inHistorySection = string.Equals(
                         sectionName, "History", StringComparison.OrdinalIgnoreCase);
                     inImageSpecificationSection = string.Equals(
@@ -149,6 +161,21 @@ namespace IntegratedImageProcessingApp.Services
                     key, "AllowConnections", StringComparison.OrdinalIgnoreCase))
                 {
                     settings.AllowConnections = ParseBoolean(value, false);
+                }
+                else if (inNetworkSection && string.Equals(
+                    key, "RequireAuthenticatedCommands", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.RequireAuthenticatedCommands = ParseBoolean(value, false);
+                }
+                else if (inNetworkSection && string.Equals(
+                    key, "RemoteCommandSecret", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.RemoteCommandSecret = value;
+                }
+                else if ((inNetworkSection || inProcessingSection) && string.Equals(
+                    key, "MaxProcessingWorkers", StringComparison.OrdinalIgnoreCase))
+                {
+                    settings.MaxProcessingWorkers = ParseIntegerInRange(value, 0, 0, 32);
                 }
                 else if (inHistorySection && string.Equals(
                     key, "RecordResultReviewRuns", StringComparison.OrdinalIgnoreCase))
@@ -210,6 +237,12 @@ namespace IntegratedImageProcessingApp.Services
                 : settings.ListenIpAddress.Trim());
             content.Append("ListenPort=").AppendLine(Math.Max(1024, Math.Min(65535, settings.ListenPort)).ToString(CultureInfo.InvariantCulture));
             content.Append("AllowConnections=").AppendLine(settings.AllowConnections ? "true" : "false");
+            content.Append("RequireAuthenticatedCommands=")
+                .AppendLine(settings.RequireAuthenticatedCommands ? "true" : "false");
+            content.Append("RemoteCommandSecret=").AppendLine(settings.RemoteCommandSecret ?? string.Empty);
+            content.AppendLine("[Processing]");
+            content.Append("MaxProcessingWorkers=").AppendLine(
+                Math.Max(0, Math.Min(32, settings.MaxProcessingWorkers)).ToString(CultureInfo.InvariantCulture));
             content.AppendLine("[History]");
             content.Append("RecordResultReviewRuns=")
                 .AppendLine(settings.RecordResultReviewRuns ? "true" : "false");
@@ -223,7 +256,7 @@ namespace IntegratedImageProcessingApp.Services
             content.AppendLine("[AccessControl]");
             content.Append("LastSelectedRole=")
                 .AppendLine(NormalizeRole(settings.LastSelectedRole));
-            string temporaryPath = filePath + ".tmp";
+            string temporaryPath = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
                 using (var stream = new FileStream(temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None))

@@ -47,43 +47,58 @@ namespace CameraCaptureApp.Services
             _initialized = true;
             _cardId = cardId;
 
-            ulong ioAddress = 0;
-            ulong tcAddress = 0;
-            status = Lsi8181Native.LSI8181_info(cardId, ref ioAddress, ref tcAddress);
-            EnsureSuccess(status, "Read LSI8181 card info");
-
-            status = Lsi8181Native.LSI8181_CI_mode_set(
-                cardId,
-                Lsi8181Native.QuadratureMode,
-                Lsi8181Native.DebounceTime1Us,
-                multipleRate);
-            EnsureSuccess(status, "Set encoder input mode");
-
-            SetReverseDirection(reverseDirection);
-
-            status = Lsi8181Native.LSI8181_compare_mode_set(cardId, Lsi8181Native.CompareAutoIncrement);
-            EnsureSuccess(status, "Set compare mode to auto increment");
-
-            status = Lsi8181Native.LSI8181_compare_increment_set(cardId, compareIncrement);
-            EnsureSuccess(status, "Set compare auto increment value");
-
-            status = Lsi8181Native.LSI8181_compare_CMP_OUT_set(
-                cardId,
-                Lsi8181Native.CmpOutNormalPolarity,
-                Lsi8181Native.CmpOutPulse,
-                cmpOutWidth);
-            EnsureSuccess(status, "Set CMP OUT pulse output mode");
-
-            status = Lsi8181Native.LSI8181_toggle_preset(cardId, Lsi8181Native.CmpOutEnabled);
-            EnsureSuccess(status, "Enable CMP OUT");
-
-            if (extensionCompareChannels != null)
+            try
             {
-                ApplyExtensionCompareChannels(extensionCompareChannels);
-            }
+                ulong ioAddress = 0;
+                ulong tcAddress = 0;
+                status = Lsi8181Native.LSI8181_info(cardId, ref ioAddress, ref tcAddress);
+                EnsureSuccess(status, "Read LSI8181 card info");
 
-            status = Lsi8181Native.LSI8181_counter_start(cardId, Lsi8181Native.CounterCompare);
-            EnsureSuccess(status, "Start encoder counter with compare output");
+                status = Lsi8181Native.LSI8181_CI_mode_set(
+                    cardId,
+                    Lsi8181Native.QuadratureMode,
+                    Lsi8181Native.DebounceTime1Us,
+                    multipleRate);
+                EnsureSuccess(status, "Set encoder input mode");
+
+                SetReverseDirection(reverseDirection);
+
+                status = Lsi8181Native.LSI8181_compare_mode_set(cardId, Lsi8181Native.CompareAutoIncrement);
+                EnsureSuccess(status, "Set compare mode to auto increment");
+
+                status = Lsi8181Native.LSI8181_compare_increment_set(cardId, compareIncrement);
+                EnsureSuccess(status, "Set compare auto increment value");
+
+                status = Lsi8181Native.LSI8181_compare_CMP_OUT_set(
+                    cardId,
+                    Lsi8181Native.CmpOutNormalPolarity,
+                    Lsi8181Native.CmpOutPulse,
+                    cmpOutWidth);
+                EnsureSuccess(status, "Set CMP OUT pulse output mode");
+
+                status = Lsi8181Native.LSI8181_toggle_preset(cardId, Lsi8181Native.CmpOutEnabled);
+                EnsureSuccess(status, "Enable CMP OUT");
+
+                if (extensionCompareChannels != null)
+                {
+                    ApplyExtensionCompareChannels(extensionCompareChannels);
+                }
+
+                status = Lsi8181Native.LSI8181_counter_start(cardId, Lsi8181Native.CounterCompare);
+                EnsureSuccess(status, "Start encoder counter with compare output");
+            }
+            catch
+            {
+                try
+                {
+                    Close();
+                }
+                catch
+                {
+                    _initialized = false;
+                }
+                throw;
+            }
         }
 
         public int ReadEncoder()
@@ -267,8 +282,14 @@ namespace CameraCaptureApp.Services
             }
             finally
             {
-                Lsi8181Native.LSI8181_close();
-                _initialized = false;
+                try
+                {
+                    Lsi8181Native.LSI8181_close();
+                }
+                finally
+                {
+                    _initialized = false;
+                }
             }
         }
 

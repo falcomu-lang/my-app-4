@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-04",
+  "dimensions": 20,
+  "findings": 40,
+  "score": 49,
+  "links_checked": 162,
+  "unchanged_source_files": 121,
+  "html_bytes": 167163,
+  "errors": [],
+  "validation": "Static HTML parsing, local links, score sum and source SHA-256; no application/hardware execution.",
+  "visual_render": "Headless Chrome failed to start successfully; no screenshot validation claimed."
+}

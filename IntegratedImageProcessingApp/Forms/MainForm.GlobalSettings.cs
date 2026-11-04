@@ -26,21 +26,29 @@ namespace IntegratedImageProcessingApp.Forms
 
         private double GetCameraXMillimetersPerPixel()
         {
-            return cameraDeviceSettings == null || cameraDeviceSettings.XMillimetersPerPixel <= 0.0
+            double value = inspectionHistoryCalibrationOverride != null
+                ? inspectionHistoryCalibrationOverride.XMillimetersPerPixel
+                : (cameraDeviceSettings == null ? 1.0 : cameraDeviceSettings.XMillimetersPerPixel);
+            return value <= 0.0 || double.IsNaN(value) || double.IsInfinity(value)
                 ? 1.0
-                : cameraDeviceSettings.XMillimetersPerPixel;
+                : value;
         }
 
         private double GetCameraYMillimetersPerPixel()
         {
-            return cameraDeviceSettings == null || cameraDeviceSettings.YMillimetersPerPixel <= 0.0
+            double value = inspectionHistoryCalibrationOverride != null
+                ? inspectionHistoryCalibrationOverride.YMillimetersPerPixel
+                : (cameraDeviceSettings == null ? 1.0 : cameraDeviceSettings.YMillimetersPerPixel);
+            return value <= 0.0 || double.IsNaN(value) || double.IsInfinity(value)
                 ? 1.0
-                : cameraDeviceSettings.YMillimetersPerPixel;
+                : value;
         }
 
         private bool IsCameraMillimeterConversionEnabled()
         {
-            return cameraDeviceSettings != null && cameraDeviceSettings.MillimeterConversionEnabled;
+            return inspectionHistoryCalibrationOverride != null
+                ? inspectionHistoryCalibrationOverride.MillimeterConversionEnabled
+                : cameraDeviceSettings != null && cameraDeviceSettings.MillimeterConversionEnabled;
         }
 
         private void ShowGlobalSettingsPanel()
@@ -271,7 +279,7 @@ namespace IntegratedImageProcessingApp.Forms
                 Left = 0,
                 Top = 352,
                 Width = 480,
-                Height = 196,
+                Height = 248,
                 Text = "連線設定",
                 Padding = new Padding(10)
             };
@@ -279,7 +287,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 5,
+                RowCount = 7,
                 Padding = new Padding(4)
             };
             localConnectionLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 35F));
@@ -289,6 +297,8 @@ namespace IntegratedImageProcessingApp.Forms
             localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
             localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            localConnectionLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             var listenIpComboBox = new ComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDown,
@@ -331,6 +341,28 @@ namespace IntegratedImageProcessingApp.Forms
                 Checked = cameraDeviceSettings != null && cameraDeviceSettings.AllowConnections,
                 Anchor = AnchorStyles.Left
             };
+            var requireCommandAuthenticationCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "要求遠端命令驗證（與總控站點金鑰相同）",
+                Checked = cameraDeviceSettings != null &&
+                    cameraDeviceSettings.RequireAuthenticatedCommands,
+                Anchor = AnchorStyles.Left
+            };
+            var remoteCommandSecretTextBox = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                MaxLength = 256,
+                UseSystemPasswordChar = true,
+                Text = cameraDeviceSettings == null
+                    ? string.Empty
+                    : cameraDeviceSettings.RemoteCommandSecret ?? string.Empty,
+                Enabled = requireCommandAuthenticationCheckBox.Checked
+            };
+            requireCommandAuthenticationCheckBox.CheckedChanged += delegate
+            {
+                remoteCommandSecretTextBox.Enabled = requireCommandAuthenticationCheckBox.Checked;
+            };
             localConnectionLayout.Controls.Add(CreateCameraPrecisionLabel("本機監聽 IP"), 0, 0);
             localConnectionLayout.Controls.Add(listenIpComboBox, 1, 0);
             localConnectionLayout.Controls.Add(CreateCameraPrecisionLabel("監聽埠"), 0, 1);
@@ -340,12 +372,16 @@ namespace IntegratedImageProcessingApp.Forms
             localConnectionLayout.SetColumnSpan(localConnectionNote, 2);
             localConnectionLayout.Controls.Add(allowConnectionsCheckBox, 0, 4);
             localConnectionLayout.SetColumnSpan(allowConnectionsCheckBox, 2);
+            localConnectionLayout.Controls.Add(requireCommandAuthenticationCheckBox, 0, 5);
+            localConnectionLayout.SetColumnSpan(requireCommandAuthenticationCheckBox, 2);
+            localConnectionLayout.Controls.Add(CreateCameraPrecisionLabel("命令驗證金鑰"), 0, 6);
+            localConnectionLayout.Controls.Add(remoteCommandSecretTextBox, 1, 6);
             connectionSettingsGroup.Controls.Add(localConnectionLayout);
             var stationIdentityGroup = new GroupBox
             {
                 Anchor = AnchorStyles.Top | AnchorStyles.Left,
                 Left = 0,
-                Top = 556,
+                Top = 608,
                 Width = 480,
                 Height = 94,
                 Text = "站點識別",
@@ -504,6 +540,60 @@ namespace IntegratedImageProcessingApp.Forms
                 requiredImageYHeightTextBox.Enabled = limitImageYHeightCheckBox.Checked;
             };
 
+            var processingResourcesGroup = new GroupBox
+            {
+                Anchor = AnchorStyles.Top | AnchorStyles.Left,
+                Left = 496,
+                Top = 296,
+                Width = 480,
+                Height = 126,
+                Text = "影像處理資源",
+                Padding = new Padding(10)
+            };
+            var processingResourcesLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 3,
+                Padding = new Padding(4)
+            };
+            processingResourcesLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56F));
+            processingResourcesLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44F));
+            processingResourcesLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            processingResourcesLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            processingResourcesLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            var maxProcessingWorkersBox = new NumericUpDown
+            {
+                Minimum = 0,
+                Maximum = 32,
+                Value = cameraDeviceSettings == null
+                    ? 0
+                    : Math.Max(0, Math.Min(32, cameraDeviceSettings.MaxProcessingWorkers)),
+                Width = 110,
+                Anchor = AnchorStyles.Left
+            };
+            var processingResourcesNote = new Label
+            {
+                AutoSize = true,
+                Text = "0 = 自動（最多 8 個工作）；增加上限會提高記憶體使用量。",
+                ForeColor = Color.FromArgb(92, 101, 116),
+                Anchor = AnchorStyles.Left
+            };
+            var processingResourcesApplyButton = new Button
+            {
+                Text = "套用",
+                Width = 84,
+                Height = 28,
+                Anchor = AnchorStyles.Right
+            };
+            processingResourcesLayout.Controls.Add(
+                CreateCameraPrecisionLabel("最大並行工作數 (0-32)"), 0, 0);
+            processingResourcesLayout.Controls.Add(maxProcessingWorkersBox, 1, 0);
+            processingResourcesLayout.Controls.Add(processingResourcesNote, 0, 1);
+            processingResourcesLayout.SetColumnSpan(processingResourcesNote, 2);
+            processingResourcesLayout.Controls.Add(processingResourcesApplyButton, 1, 2);
+            processingResourcesGroup.Controls.Add(processingResourcesLayout);
+
             var pathLabel = new Label
             {
                 AutoSize = true,
@@ -518,6 +608,7 @@ namespace IntegratedImageProcessingApp.Forms
             container.Controls.Add(stationIdentityGroup);
             container.Controls.Add(historyRecordGroup);
             container.Controls.Add(imageSpecificationGroup);
+            container.Controls.Add(processingResourcesGroup);
             container.Controls.Add(pathLabel);
             Action updateGroupWidth = delegate
             {
@@ -531,8 +622,10 @@ namespace IntegratedImageProcessingApp.Forms
                     stationIdentityGroup.Width = groupWidth;
                     historyRecordGroup.Width = groupWidth;
                     imageSpecificationGroup.Width = groupWidth;
+                    processingResourcesGroup.Width = groupWidth;
                     historyRecordGroup.Left = groupWidth + 16;
                     imageSpecificationGroup.Left = groupWidth + 16;
+                    processingResourcesGroup.Left = groupWidth + 16;
                 }
                 pathLabel.Location = new Point(4,
                     Math.Max(stationIdentityGroup.Bottom, imageSpecificationGroup.Bottom) + 2);
@@ -586,6 +679,18 @@ namespace IntegratedImageProcessingApp.Forms
                 updated.ListenIpAddress = parsedAddress.ToString();
                 updated.ListenPort = Decimal.ToInt32(listenPortBox.Value);
                 updated.AllowConnections = allowConnectionsCheckBox.Checked;
+                updated.RequireAuthenticatedCommands =
+                    requireCommandAuthenticationCheckBox.Checked;
+                updated.RemoteCommandSecret = remoteCommandSecretTextBox.Text.Trim();
+                if (updated.RequireAuthenticatedCommands &&
+                    (updated.RemoteCommandSecret.Length < 16 ||
+                     updated.RemoteCommandSecret.Any(char.IsWhiteSpace)))
+                {
+                    MessageBox.Show(this,
+                        "啟用命令驗證時，請設定至少 16 個字元且不含空白的金鑰，並在總控端對應站點輸入相同金鑰。",
+                        "本機連線設定", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
                 try
                 {
                     SaveCameraDeviceSettings(updated);
@@ -718,6 +823,23 @@ namespace IntegratedImageProcessingApp.Forms
                         MessageBoxIcon.Error);
                 }
             };
+            processingResourcesApplyButton.Click += delegate
+            {
+                CameraDeviceSettings updated = CreateCameraDeviceSettingsCopy();
+                updated.MaxProcessingWorkers = Decimal.ToInt32(maxProcessingWorkersBox.Value);
+                try
+                {
+                    SaveCameraDeviceSettings(updated);
+                    statusLabel.Text = "已套用影像處理併發上限：" +
+                        InspectionParallelism.WorkerLimit.ToString(CultureInfo.InvariantCulture) +
+                        " 個工作；變更會套用於後續運算。";
+                }
+                catch (Exception exception)
+                {
+                    MessageBox.Show(this, "無法保存影像處理資源設定：" + exception.Message,
+                        "全域設定", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
             return container;
         }
 
@@ -728,7 +850,7 @@ namespace IntegratedImageProcessingApp.Forms
                 connectionControllerSettings = new ConnectionControllerSettings();
             }
 
-            var container = new Panel { Dock = DockStyle.Top, Height = 610 };
+            var container = new Panel { Dock = DockStyle.Top, Height = 660 };
             var descriptionLabel = new Label
             {
                 AutoSize = false,
@@ -816,7 +938,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Text = "被控站點 (最多 10 個；ID 不可重複)",
                 Location = new Point(0, 240),
-                Size = new Size(900, 314),
+                Size = new Size(900, 354),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Padding = new Padding(8)
             };
@@ -824,11 +946,12 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 1,
-                RowCount = 2,
+                RowCount = 3,
                 Padding = new Padding(2)
             };
             stationContentLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
             stationContentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+            stationContentLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
             var stationGrid = new DataGridView
             {
                 Dock = DockStyle.Fill,
@@ -901,23 +1024,84 @@ namespace IntegratedImageProcessingApp.Forms
             };
             var addStationButton = new Button { Text = "新增站點", Width = 100, Height = 28 };
             var removeStationButton = new Button { Text = "移除站點", Width = 100, Height = 28 };
+            var stationSecretEditor = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                Padding = new Padding(2, 4, 2, 0)
+            };
+            stationSecretEditor.Controls.Add(new Label
+            {
+                AutoSize = true,
+                Text = "選取站點金鑰（須與被控端相同）",
+                Padding = new Padding(0, 5, 4, 0)
+            });
+            var stationCommandSecretTextBox = new TextBox
+            {
+                Width = 260,
+                MaxLength = 256,
+                UseSystemPasswordChar = true
+            };
+            var showStationCommandSecretCheckBox = new CheckBox
+            {
+                AutoSize = true,
+                Text = "顯示",
+                Padding = new Padding(4, 5, 0, 0)
+            };
+            stationSecretEditor.Controls.Add(stationCommandSecretTextBox);
+            stationSecretEditor.Controls.Add(showStationCommandSecretCheckBox);
+            bool loadingStationCommandSecret = false;
+            int selectedSecretRowIndex = -1;
+            stationCommandSecretTextBox.TextChanged += delegate
+            {
+                if (loadingStationCommandSecret || selectedSecretRowIndex < 0 ||
+                    selectedSecretRowIndex >= stationGrid.Rows.Count)
+                {
+                    return;
+                }
+                stationGrid.Rows[selectedSecretRowIndex].Tag = stationCommandSecretTextBox.Text;
+            };
+            stationGrid.SelectionChanged += delegate
+            {
+                if (selectedSecretRowIndex >= 0 && selectedSecretRowIndex < stationGrid.Rows.Count)
+                {
+                    stationGrid.Rows[selectedSecretRowIndex].Tag = stationCommandSecretTextBox.Text;
+                }
+                selectedSecretRowIndex = stationGrid.SelectedRows.Count == 0
+                    ? -1
+                    : stationGrid.SelectedRows[0].Index;
+                loadingStationCommandSecret = true;
+                stationCommandSecretTextBox.Text = selectedSecretRowIndex < 0
+                    ? string.Empty
+                    : Convert.ToString(stationGrid.Rows[selectedSecretRowIndex].Tag) ?? string.Empty;
+                stationCommandSecretTextBox.Enabled = selectedSecretRowIndex >= 0;
+                loadingStationCommandSecret = false;
+            };
+            showStationCommandSecretCheckBox.CheckedChanged += delegate
+            {
+                stationCommandSecretTextBox.UseSystemPasswordChar =
+                    !showStationCommandSecretCheckBox.Checked;
+            };
+            stationCommandSecretTextBox.Enabled = false;
             stationActions.Controls.Add(removeStationButton);
             stationActions.Controls.Add(addStationButton);
             stationContentLayout.Controls.Add(stationGrid, 0, 0);
             stationContentLayout.Controls.Add(stationActions, 0, 1);
+            stationContentLayout.Controls.Add(stationSecretEditor, 0, 2);
             stationsGroup.Controls.Add(stationContentLayout);
 
             var settingsStatusLabel = new Label
             {
                 AutoSize = false,
-                Location = new Point(4, 568),
+                Location = new Point(4, 608),
                 Size = new Size(560, 30),
                 Anchor = AnchorStyles.Left | AnchorStyles.Bottom
             };
             var saveControllerSettingsButton = new Button
             {
                 Text = "保存連線總控參數",
-                Location = new Point(680, 566),
+                Location = new Point(680, 606),
                 Size = new Size(180, 30),
                 Anchor = AnchorStyles.Right | AnchorStyles.Bottom
             };
@@ -955,18 +1139,34 @@ namespace IntegratedImageProcessingApp.Forms
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
-                stationGrid.Rows.Add(false, nextId, "站點 " + nextId, string.Empty, "5000");
+                int rowIndex = stationGrid.Rows.Add(false, nextId, "站點 " + nextId, string.Empty, "5000");
+                stationGrid.Rows[rowIndex].Tag = string.Empty;
+                stationGrid.ClearSelection();
+                stationGrid.Rows[rowIndex].Selected = true;
             };
             removeStationButton.Click += delegate
             {
                 if (stationGrid.SelectedRows.Count > 0)
                 {
+                    if (selectedSecretRowIndex >= 0 && selectedSecretRowIndex < stationGrid.Rows.Count)
+                    {
+                        stationGrid.Rows[selectedSecretRowIndex].Tag = stationCommandSecretTextBox.Text;
+                    }
+                    selectedSecretRowIndex = -1;
+                    loadingStationCommandSecret = true;
+                    stationCommandSecretTextBox.Text = string.Empty;
+                    stationCommandSecretTextBox.Enabled = false;
+                    loadingStationCommandSecret = false;
                     stationGrid.Rows.Remove(stationGrid.SelectedRows[0]);
                 }
             };
             saveControllerSettingsButton.Click += delegate
             {
                 stationGrid.EndEdit();
+                if (selectedSecretRowIndex >= 0 && selectedSecretRowIndex < stationGrid.Rows.Count)
+                {
+                    stationGrid.Rows[selectedSecretRowIndex].Tag = stationCommandSecretTextBox.Text;
+                }
                 if (stationGrid.Rows.Count > 10)
                 {
                     ShowControllerSettingsValidationError("最多只能設定 10 個被控站點。");
@@ -1010,6 +1210,14 @@ namespace IntegratedImageProcessingApp.Forms
                         ShowControllerSettingsValidationError("站點「" + id + "」的通訊埠必須是數字。");
                         return;
                     }
+                    string commandSecret = (Convert.ToString(row.Tag) ?? string.Empty).Trim();
+                    if (enabled && commandSecret.Length > 0 &&
+                        (commandSecret.Length < 16 || commandSecret.Any(char.IsWhiteSpace)))
+                    {
+                        ShowControllerSettingsValidationError(
+                            "站點「" + id + "」的命令驗證金鑰若有設定，至少需要 16 個字元且不可含空白。");
+                        return;
+                    }
                     if (port < 1024 || port > 65535)
                     {
                         ShowControllerSettingsValidationError("站點「" + id + "」的通訊埠需介於 1024-65535。");
@@ -1042,7 +1250,8 @@ namespace IntegratedImageProcessingApp.Forms
                         SoftwareId = id,
                         Name = name.Trim(),
                         IpAddress = ipText,
-                        Port = port
+                        Port = port,
+                        CommandSecret = commandSecret
                     });
                 }
 
@@ -1169,6 +1378,7 @@ namespace IntegratedImageProcessingApp.Forms
                 station.Name ?? string.Empty,
                 station.IpAddress ?? string.Empty,
                 port.ToString(CultureInfo.InvariantCulture));
+            stationGrid.Rows[stationGrid.Rows.Count - 1].Tag = station.CommandSecret ?? string.Empty;
         }
 
         private static NumericUpDown CreateControllerIntegerInput(int value, int minimum, int maximum)
@@ -1232,6 +1442,14 @@ namespace IntegratedImageProcessingApp.Forms
                     ? 5000
                     : cameraDeviceSettings.ListenPort,
                 AllowConnections = cameraDeviceSettings != null && cameraDeviceSettings.AllowConnections,
+                MaxProcessingWorkers = cameraDeviceSettings == null
+                    ? 0
+                    : cameraDeviceSettings.MaxProcessingWorkers,
+                RequireAuthenticatedCommands = cameraDeviceSettings != null &&
+                    cameraDeviceSettings.RequireAuthenticatedCommands,
+                RemoteCommandSecret = cameraDeviceSettings == null
+                    ? string.Empty
+                    : cameraDeviceSettings.RemoteCommandSecret ?? string.Empty,
                 RecordResultReviewRuns = cameraDeviceSettings != null && cameraDeviceSettings.RecordResultReviewRuns,
                 KeepResultReviewImages = cameraDeviceSettings == null || cameraDeviceSettings.KeepResultReviewImages,
                 LimitImageYHeightEnabled = cameraDeviceSettings != null && cameraDeviceSettings.LimitImageYHeightEnabled,
@@ -1247,6 +1465,7 @@ namespace IntegratedImageProcessingApp.Forms
         {
             cameraDeviceSettingsIniService.Save(settings);
             cameraDeviceSettings = settings;
+            InspectionParallelism.Configure(settings.MaxProcessingWorkers);
             ConfigureInspectionTcpListener(settings);
             UpdateProgramNameHeader();
         }

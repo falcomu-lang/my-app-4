@@ -883,6 +883,10 @@ namespace IntegratedImageProcessingApp.Forms
                         HeaderText = "ID",
                         FillWeight = 27
                     });
+                foreach (DataGridViewColumn column in objectDetectionMeasurementRecordsGrid.Columns)
+                {
+                    column.SortMode = DataGridViewColumnSortMode.NotSortable;
+                }
                 objectDetectionMeasurementRecordsGrid.CellMouseDown += delegate(
                     object sender,
                     DataGridViewCellMouseEventArgs e)

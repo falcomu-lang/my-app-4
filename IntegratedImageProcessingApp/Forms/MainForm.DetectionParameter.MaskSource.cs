@@ -75,7 +75,8 @@ namespace IntegratedImageProcessingApp.Forms
                     parameter,
                     objectNumber,
                     objectBounds,
-                    reviewSnapshot.ImageSourceGeneration);
+                    reviewSnapshot.ImageSourceGeneration,
+                    reviewSnapshot.ObjectDefinitionGeneration);
                 Cv.Mat savedMask;
                 if (reviewSnapshot.MeasurementMasks.TryGetValue(reviewMaskKey, out savedMask) &&
                     savedMask != null && !savedMask.Empty() &&
@@ -291,14 +292,16 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter,
                 objectNumber,
                 objectBounds,
-                System.Threading.Interlocked.CompareExchange(ref imageSourceGeneration, 0, 0));
+                System.Threading.Interlocked.CompareExchange(ref imageSourceGeneration, 0, 0),
+                System.Threading.Interlocked.CompareExchange(ref objectDefinitionResultGeneration, 0, 0));
         }
 
         private string CreateObjectDetectionMeasurementMaskCacheKey(
             ObjectDetectionParameterSettings parameter,
             int objectNumber,
             Rectangle objectBounds,
-            int imageGeneration)
+            int imageGeneration,
+            int objectDefinitionGeneration)
         {
             return string.Join(
                 "|",
@@ -316,7 +319,8 @@ namespace IntegratedImageProcessingApp.Forms
                 parameter.SourceMaskOperation ?? string.Empty,
                 parameter.SourceMaskSecondaryType ?? string.Empty,
                 parameter.SourceMaskSecondaryId ?? string.Empty,
-                parameter.SourceMaskSecondaryNamespace ?? string.Empty);
+                parameter.SourceMaskSecondaryNamespace ?? string.Empty,
+                objectDefinitionGeneration.ToString(CultureInfo.InvariantCulture));
         }
 
         private bool TryCreateObjectDetectionSourceMask(

@@ -1,5 +1,19 @@
 # 文件產出與檢查
 
+## 單檔交接 HTML
+
+`docs/PROJECT_HANDOFF.html` 為獨立的五圖交接文件，圖表以 SVG 內嵌，可離線開啟、放大、匯出單圖與列印。只需轉交這個 HTML；原始碼與延伸文件連結則須保留專案相對目錄才能使用。
+
+維護原稿為 `build_handoff_html.js`，只使用 Node.js 內建模組。在專案根目錄執行：
+
+~~~powershell
+node docs/tools/build_handoff_html.js
+~~~
+
+產出前核對原始碼與圖表內容，更新原稿中的 `verifiedDate`；程式基準自動取目前 Git HEAD。重新產出後，檢查桌面／手機版面、五張圖表、放大與 SVG 匯出，以及瀏覽器列印預覽。這份 HTML 的版本與核對日期獨立於下列 Word／PDF。
+
+## Word 與 PDF
+
 Markdown 是維護原稿，Word 與 PDF 是對外閱讀版本。程式基準改變或內容調整後，請同步產出，避免只改其中一個版本。
 
 ## 產出順序
@@ -29,3 +43,9 @@ PDF 光柵化圖片僅用於排版檢查；交付的 18 張操作圖解與 2 張
 verify_documents.py 的輸出可重現連結與文字檢查；它不能代替人工版面檢查或應用程式的設備驗收。PDF 與 Word 的總頁數需在重建後重新確認。
 
 本次圖解版為操作手冊 27 頁、功能規格書 18 頁。已檢查全部 45 頁與 20 張圖解、58 個程式來源錨點，以及本地連結及 Markdown／Word 文字一致性；連結數與文件雜湊記錄在 docs/DOCUMENTATION_VERIFICATION.json。未發現文字或框線遮擋。48 個軟體驗收案例仍標為待執行。
+# 最新深度審查產出
+
+執行 `node docs/tools/write_current_review.cjs` 會完整掃描自有來源、重算 SHA-256／符號索引及 Compile 對照，並產出 `docs/CODE_DEEP_REVIEW_CURRENT.html` 和 `docs/audit-2026-11-04-current` 的 JSON。資料夾名稱是本次掃描起始日期；本次審查於 2026-11-05 完成。評分與發現由維護者人工核對，不能把自動文字掃描視為逐行正確性證明。
+
+`refresh_code_audit.cjs --inventory` 可單獨重建盤點。修改來源後需重新核對 `write_current_review.cjs` 中的判讀與證據，不能只重算檔案指紋而沿用評分。舊 Python 報告和 HTML 保留作歷史快照。
+

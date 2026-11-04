@@ -2288,7 +2288,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 try
                 {
-                    Parallel.For(
+                    InspectionParallelism.For(
                         0,
                         roiWorkItems.Count,
                         new ParallelOptions

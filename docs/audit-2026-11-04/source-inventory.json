@@ -1,0 +1,2485 @@
+{
+  "date": "2026-11-04",
+  "commit": "9aa7c8cd54598b8c388e43ede5487d07f4c4f925",
+  "scope": "First-party C#, project/config files and docs/tools code; excludes third-party packages and bin/obj generated outputs.",
+  "totals": {
+    "files": 121,
+    "cs_files": 107,
+    "lines": 87267,
+    "cs_lines": 85254,
+    "mainform_lines": 58619,
+    "async_void": 16,
+    "empty_catch": 100,
+    "task_run": 50
+  },
+  "projects": [
+    {
+      "path": "IntegratedImageProcessingApp/IntegratedImageProcessingApp.csproj",
+      "compile_count": 66,
+      "missing": [],
+      "unlisted": []
+    },
+    {
+      "path": "CameraCaptureModule/CameraCaptureModule.csproj",
+      "compile_count": 41,
+      "missing": [],
+      "unlisted": []
+    }
+  ],
+  "files": [
+    {
+      "path": "CameraCaptureModule/CameraCaptureModule.csproj",
+      "lines": 164,
+      "bytes": 7367,
+      "sha256": "8ef8c2b7fbdb6eaa47ed5a912920c52be63afbab57232dd7bad11d9161b49dda",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Controls/BufferedRenderPanel.cs",
+      "lines": 13,
+      "bytes": 251,
+      "sha256": "d90943af71eaf38abc5cfe94fa4cf3fe84298c2cd261c50e815b1330d0a06db2",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+      "lines": 1416,
+      "bytes": 49181,
+      "sha256": "14926f32ae8cf7409d51cc8bccb73ee0055f795096fa14cfc5cfd69782207dbd",
+      "designer": false,
+      "branches": 108,
+      "task_run": 2,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 2
+    },
+    {
+      "path": "CameraCaptureModule/Controls/CameraDisplayControl.Designer.cs",
+      "lines": 174,
+      "bytes": 9512,
+      "sha256": "677808f27ce1313f06d6486aed98ef9d829f460ede8cbdd3879661235798206b",
+      "designer": true,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Controls/LargeImageSource.cs",
+      "lines": 673,
+      "bytes": 22457,
+      "sha256": "87420c9532029dca75c5a6d6656575e2f17f80da520ecc029a7c3830355963b7",
+      "designer": false,
+      "branches": 51,
+      "task_run": 2,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/CameraSettingsForm.cs",
+      "lines": 544,
+      "bytes": 22572,
+      "sha256": "a01bcdd599146b81b79eb774672c36e91347ca058740e31a71d6dd73327b388e",
+      "designer": false,
+      "branches": 40,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/CameraSettingsForm.Designer.cs",
+      "lines": 655,
+      "bytes": 40075,
+      "sha256": "7620b0d7416b67e399e4f58b92baf925fcca2b3a68b7c8606de7aa66358268fc",
+      "designer": true,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/GrayScaleWaveformForm.cs",
+      "lines": 384,
+      "bytes": 13192,
+      "sha256": "e61e190d086d18ad14aba6accf3a8a2ae1f5afa368a1a9327f8802dd80646e29",
+      "designer": false,
+      "branches": 23,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/GrayScaleWaveformForm.Designer.cs",
+      "lines": 106,
+      "bytes": 5038,
+      "sha256": "77dca8d17eb72d1f09a4077f1c086dbd502c21f985475f0a988b58db05e481d9",
+      "designer": true,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+      "lines": 236,
+      "bytes": 7660,
+      "sha256": "1c5aac1a446b2eb98f4cdb865bd88dc42ada0f648e17fe3d4493ad4db81d425d",
+      "designer": false,
+      "branches": 19,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.Designer.cs",
+      "lines": 117,
+      "bytes": 5622,
+      "sha256": "4d4d5adab089e22ea3a2310a6bf5a6dbbd2441487910e0a76fb139397c748d53",
+      "designer": true,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/GrayWaveformConfirmForm.cs",
+      "lines": 38,
+      "bytes": 1035,
+      "sha256": "6b6ffaedcd8a4877eb708d63c1ce33f3113fd9898f48c67620a65fad8f34f63d",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/GrayWaveformConfirmForm.Designer.cs",
+      "lines": 102,
+      "bytes": 4740,
+      "sha256": "3ebc5805f8774f139e62887fd1648331e48f4b22e9c47891bd870700578910ad",
+      "designer": true,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/MainForm.cs",
+      "lines": 1705,
+      "bytes": 60387,
+      "sha256": "c2cb98f449b4228fa3898cbc3f6d4eddcced4f533b3c68e59b4f3a2b50cb7ede",
+      "designer": false,
+      "branches": 160,
+      "task_run": 3,
+      "parallel": 0,
+      "async_void": 5,
+      "empty_catch": 10
+    },
+    {
+      "path": "CameraCaptureModule/Forms/MainForm.Designer.cs",
+      "lines": 338,
+      "bytes": 22215,
+      "sha256": "f818d9936f0ceab4ba5e45334ce3aa5fc1e9bea79f116c793f34597cef3ec6c3",
+      "designer": true,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/MeterWheelControlForm.cs",
+      "lines": 493,
+      "bytes": 16182,
+      "sha256": "6a8be2a62e49e55e828f879a76436b99c940f7d57c750472c8daec6f48fd7ddd",
+      "designer": false,
+      "branches": 33,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/MeterWheelControlForm.Designer.cs",
+      "lines": 466,
+      "bytes": 25968,
+      "sha256": "88fa93769c13b5ebb0a310699f9c7a5a5e40d55e3aee50a226805f93cce40cc7",
+      "designer": true,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/MeterWheelExtensionCompareForm.cs",
+      "lines": 221,
+      "bytes": 7057,
+      "sha256": "e1bd5c17b2a13a69052b86b981fcd92140c334d52ff70b6e413bcc092310b960",
+      "designer": false,
+      "branches": 11,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/MeterWheelExtensionCompareForm.Designer.cs",
+      "lines": 398,
+      "bytes": 27620,
+      "sha256": "4f527c195c3bfad6e6fa585dc65d3817c45bd5829ff3a90de4c6e4f7eb0611b6",
+      "designer": true,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Forms/SaveProgressForm.cs",
+      "lines": 109,
+      "bytes": 3263,
+      "sha256": "d7d4e9037809ab115a268d258b18e9074e3a8967013de22ddd7ca22f05363823",
+      "designer": false,
+      "branches": 6,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 2
+    },
+    {
+      "path": "CameraCaptureModule/Models/CameraSettings.cs",
+      "lines": 146,
+      "bytes": 4877,
+      "sha256": "b91300fa9301c17d929ae1b3fe884f2742830b49972bd02c1aac4b5d93653686",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Models/CameraStatus.cs",
+      "lines": 29,
+      "bytes": 664,
+      "sha256": "10a6c7e71bb55d9625bdf6f456c736114ae45703454d22803e3bfb833ab771d5",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Models/ImageSaveFormat.cs",
+      "lines": 9,
+      "bytes": 144,
+      "sha256": "7e2a54c920413ac7de9e228857c3fe266cc7e0396afc10df06480890168fdb3a",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Models/RollingCaptureDirection.cs",
+      "lines": 8,
+      "bytes": 139,
+      "sha256": "6e910dddf292276534bffae0bded36320e71860903ad8013c78c71378b54f7a9",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Models/TriggerMode.cs",
+      "lines": 10,
+      "bytes": 168,
+      "sha256": "85bde1d6a42dfb68d0dc24fbe03d046ae0b5822a37f59a917c9ca7cb3e23b91a",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Native/Lsi8181Native.cs",
+      "lines": 99,
+      "bytes": 5828,
+      "sha256": "043468418972b71152269cd5999c550e1c1a33584ce5cf761332fb52d4348d32",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Properties/AssemblyInfo.cs",
+      "lines": 15,
+      "bytes": 598,
+      "sha256": "928705be6333693c81843815484490f0e7fb254abd783ac223cc0e344a2aff43",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Sapera/AcqConfigDlg.cs",
+      "lines": 449,
+      "bytes": 16769,
+      "sha256": "1e12e1487bac7ce20da855161ef67e819029b0ca5dc07b05bf0f613c4678141b",
+      "designer": false,
+      "branches": 37,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Sapera/AcqConfigDlg.Designer.cs",
+      "lines": 269,
+      "bytes": 13016,
+      "sha256": "3341b6a7571476eeb9674eec3f2c54fdbb649532be4c0b82cc2d6f06f30871b9",
+      "designer": true,
+      "branches": 5,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/AppLogger.cs",
+      "lines": 44,
+      "bytes": 1221,
+      "sha256": "04a99ddd191ca735b9f2f203fa1c489e2ee546a8842a872ca668302916d7ce99",
+      "designer": false,
+      "branches": 2,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 1
+    },
+    {
+      "path": "CameraCaptureModule/Services/CameraFrameEventArgs.cs",
+      "lines": 15,
+      "bytes": 294,
+      "sha256": "3f679befe49a62815df1307f8d45a903df9bf33979a538fb1d7a2acc720167ac",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/CameraImageAcquiredEventArgs.cs",
+      "lines": 117,
+      "bytes": 3615,
+      "sha256": "27046b7d8df3d8b43ca6114ac72aa0e5cf9dacf5d6634d12e613386d9db653fc",
+      "designer": false,
+      "branches": 6,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/CameraService.cs",
+      "lines": 3736,
+      "bytes": 149209,
+      "sha256": "dc592309bb17e932e43db4f75ac38ababdfa2b69461460927bcc614a0fd67aa8",
+      "designer": false,
+      "branches": 412,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 37
+    },
+    {
+      "path": "CameraCaptureModule/Services/FrameRecorder.cs",
+      "lines": 464,
+      "bytes": 16099,
+      "sha256": "1d959b20904b96e41d6aa89f2e93e27356fd01d0e7639afab0507e3baed0c2c2",
+      "designer": false,
+      "branches": 35,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/GrayWaveformSelectionEventArgs.cs",
+      "lines": 25,
+      "bytes": 733,
+      "sha256": "375f44acf059888c8e33dab2947af913c001a90117644c52b3f52c09ddd3927b",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/ICameraImageSource.cs",
+      "lines": 17,
+      "bytes": 631,
+      "sha256": "2170489add4e772e7fac226c92f103ae51baed5fbc209ba47184f9828c2ceed5",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/ICameraService.cs",
+      "lines": 39,
+      "bytes": 917,
+      "sha256": "6f534b8cb633c94e63f3262daaac783e5e9800f7d889d93a2cf16af2058578d1",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/IGrayPixelSource.cs",
+      "lines": 16,
+      "bytes": 299,
+      "sha256": "26ffe77fa03824a9846ef5ff8815ac9398483dc5fc2ca976cbc6c966ad4a8e14",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/ISettingsService.cs",
+      "lines": 11,
+      "bytes": 198,
+      "sha256": "958233403c1e5008716375621c5420f673451f306c66c8b5c8984511771590a6",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/Lsi8181MeterWheelService.cs",
+      "lines": 312,
+      "bytes": 10774,
+      "sha256": "476cec65849553b5c821920be1041dcab12fda39417b9b518a6d37a832abd5de",
+      "designer": false,
+      "branches": 9,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/SettingsService.cs",
+      "lines": 239,
+      "bytes": 13971,
+      "sha256": "c43968bea8196d4ddf6a99fb47e4a19d9f73f0343c4c1303854e11768af768a4",
+      "designer": false,
+      "branches": 8,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "CameraCaptureModule/Services/UiExceptionHandler.cs",
+      "lines": 45,
+      "bytes": 1417,
+      "sha256": "12cba378b54aee5ffe9e94258dc5138d11dfec3089f1eabb2865c7482f1e577f",
+      "designer": false,
+      "branches": 1,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 1
+    },
+    {
+      "path": "docs/tools/build_documents.py",
+      "lines": 298,
+      "bytes": 12998,
+      "sha256": "5328e28495cb337df79d60aa55416b017e513e92a73ddd8f70fd26cced7178c8",
+      "designer": false,
+      "branches": 60,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "docs/tools/build_handoff_html.js",
+      "lines": 277,
+      "bytes": 44338,
+      "sha256": "6ac6c5a291e04aae61af46b46760ae86f94bae8a3a71f2f4c7f7715227777a79",
+      "designer": false,
+      "branches": 9,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "docs/tools/build_illustrations.py",
+      "lines": 586,
+      "bytes": 33692,
+      "sha256": "c772013f4b6393dbb6175fb8daa9274e6ed9f8548fdf9e5a8e2cac14fb82513a",
+      "designer": false,
+      "branches": 84,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "docs/tools/export_word_pdf.ps1",
+      "lines": 31,
+      "bytes": 1340,
+      "sha256": "d81d75f6d68db851f7261f3a2a60fb546311afb3e81134acb580b61047dac7f4",
+      "designer": false,
+      "branches": 3,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "docs/tools/sync_illustrations.py",
+      "lines": 89,
+      "bytes": 4274,
+      "sha256": "88909a8b764e0a152aba188a1d689ded54172735406804ea8266629d505cb954",
+      "designer": false,
+      "branches": 8,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "docs/tools/update_source_trace.py",
+      "lines": 89,
+      "bytes": 8789,
+      "sha256": "986d91a6097dd555fdf855b87274c558c7c18e55fcbb4be7521a3f2cdd197046",
+      "designer": false,
+      "branches": 7,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "docs/tools/verify_documents.py",
+      "lines": 86,
+      "bytes": 3961,
+      "sha256": "5b6c714a292bf3904cbe2041f8e519b5e5f4d3fc5f2071c35cc07bcac6770c61",
+      "designer": false,
+      "branches": 26,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/App.config",
+      "lines": 6,
+      "bytes": 172,
+      "sha256": "ad0733bd815916fe74432802aa739d78d0c649b76416b42ecb0a3ad604a2a2bb",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/config/device-settings.ini",
+      "lines": 20,
+      "bytes": 315,
+      "sha256": "18c4269036ccbbd7de45adb45d779f8253ea6d8582e1dd90d564dad6d5ac30d5",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Controls/BufferedRenderPanel.cs",
+      "lines": 13,
+      "bytes": 263,
+      "sha256": "a37c700543ca71ad0bf220028dda6c827741e7f7151c8e0b1884d3ccd44a1285",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Controls/CameraCaptureHostControl.cs",
+      "lines": 395,
+      "bytes": 12673,
+      "sha256": "b7c35aa8bfcc65e6bd9658f90d9ed91cc8a7527e7e1603bb10773f7182fe4875",
+      "designer": false,
+      "branches": 37,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 1
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Controls/ImageDisplayControl.cs",
+      "lines": 2409,
+      "bytes": 81371,
+      "sha256": "c5aa29f5821a0978bb417a17478b5bebd2d5093c106d0c010917e47415a3e897",
+      "designer": false,
+      "branches": 185,
+      "task_run": 5,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 4
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Controls/ImageDisplayControl.Designer.cs",
+      "lines": 147,
+      "bytes": 7857,
+      "sha256": "0168ae21b18d11e4c344738af92c2292caf9972edd9105b2b1de23101f7799cb",
+      "designer": true,
+      "branches": 2,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+      "lines": 1580,
+      "bytes": 59650,
+      "sha256": "b08b03efe9d68a50b5606d99e19b803c960fbbc87d22a11d9471564073088baf",
+      "designer": false,
+      "branches": 128,
+      "task_run": 2,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/DetectionRecipeDialogs.cs",
+      "lines": 516,
+      "bytes": 21128,
+      "sha256": "36c09aac28302416ff4b002bd3d31ce54d6024e41c1a11bb57213774c55291b0",
+      "designer": false,
+      "branches": 20,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs",
+      "lines": 599,
+      "bytes": 27592,
+      "sha256": "79d920ffff5ee4cf1196d5dce074890a650a4a2bda579bb74bc9bab711c74341",
+      "designer": false,
+      "branches": 50,
+      "task_run": 2,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 6
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs",
+      "lines": 1847,
+      "bytes": 85239,
+      "sha256": "a4541a9e50039c9fad21bf81955275539b6ae0689a97631f9063cd3019ed0c5d",
+      "designer": false,
+      "branches": 171,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 3,
+      "empty_catch": 3
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.cs",
+      "lines": 2799,
+      "bytes": 126712,
+      "sha256": "bc3a3db8aa92f1cfdca9583f000020c2e206528121c48d2d0f33563252b4093d",
+      "designer": false,
+      "branches": 236,
+      "task_run": 7,
+      "parallel": 0,
+      "async_void": 1,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.Designer.cs",
+      "lines": 1582,
+      "bytes": 110564,
+      "sha256": "0678437d501881254e6c43856b6155fc02fb730e7743efb35b899ab7d8108017",
+      "designer": true,
+      "branches": 3,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.cs",
+      "lines": 1390,
+      "bytes": 56125,
+      "sha256": "33d2625a8d63e8308ce9e23304c17c5d8cee6da3635852753772e28ca81fc768",
+      "designer": false,
+      "branches": 76,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectCores.cs",
+      "lines": 1291,
+      "bytes": 55575,
+      "sha256": "29f35a186e51c6a576a5cfee8f03114071e50593166c9bea2beca4d98c41e597",
+      "designer": false,
+      "branches": 51,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectDisplay.cs",
+      "lines": 533,
+      "bytes": 23739,
+      "sha256": "213ce5d384ed84e5003246025e4a6c95e4662f931b1bb5060253f18b058de05a",
+      "designer": false,
+      "branches": 57,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 1,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs",
+      "lines": 3399,
+      "bytes": 170846,
+      "sha256": "66ae966b5667be29f6112cec120b0f8b7a32401dc0caf7d92d801fbef8e20b4f",
+      "designer": false,
+      "branches": 229,
+      "task_run": 1,
+      "parallel": 1,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectIntegration.cs",
+      "lines": 887,
+      "bytes": 40659,
+      "sha256": "a706e548e24896a2aec1387ce0fee0fda165ad9ea259b0d124a68680385fb91a",
+      "designer": false,
+      "branches": 48,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs",
+      "lines": 2130,
+      "bytes": 100661,
+      "sha256": "e6ed055c1443f1a5d070fd815eb3749e021bdea1c79f1ff4f42887120753c856",
+      "designer": false,
+      "branches": 166,
+      "task_run": 1,
+      "parallel": 2,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectRegion.cs",
+      "lines": 3044,
+      "bytes": 137663,
+      "sha256": "23edf6d42db985b116d506cc3b52e73f09189faa5f707b779c5d187857f43835",
+      "designer": false,
+      "branches": 220,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.GoodCondition.cs",
+      "lines": 1052,
+      "bytes": 46684,
+      "sha256": "9d0121cfe27b487067af984e1e8d3cdfab65453aaba06d1b71b12e0044d21a12",
+      "designer": false,
+      "branches": 66,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.Management.cs",
+      "lines": 872,
+      "bytes": 39766,
+      "sha256": "7e740f7c9e49575db691e927c996f378db44883f185372d1d85721c67113d5dd",
+      "designer": false,
+      "branches": 64,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MaskSource.cs",
+      "lines": 2270,
+      "bytes": 91491,
+      "sha256": "dcf5267d453f66e7345358f9c71062727be472e47f829b42a78dff527b6b3bc9",
+      "designer": false,
+      "branches": 177,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.Measurement.cs",
+      "lines": 1038,
+      "bytes": 49428,
+      "sha256": "c6f5d5fe2d34edebb6ee7b7a63d13ef2ffd7a37f0bf5f4900f94322286d3c84e",
+      "designer": false,
+      "branches": 32,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MeasurementCalculation.cs",
+      "lines": 834,
+      "bytes": 34300,
+      "sha256": "e60c4d73adc3bb759962bd5fe97c1ab0601c12ea27a03bafc74747d66d3125af",
+      "designer": false,
+      "branches": 53,
+      "task_run": 0,
+      "parallel": 1,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MeasurementDrawing.cs",
+      "lines": 1547,
+      "bytes": 64625,
+      "sha256": "32b1f9ed2f128a8a787e1bbe1a6fb57a0a5b2392767d4181c72718febb1da055",
+      "designer": false,
+      "branches": 107,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.MeasurementRecords.cs",
+      "lines": 617,
+      "bytes": 27604,
+      "sha256": "c743d84fca9165a08195c1a2edbe2a44d56e2ad6fdbc818b97c63da57d10def5",
+      "designer": false,
+      "branches": 45,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.Recipes.cs",
+      "lines": 827,
+      "bytes": 37677,
+      "sha256": "bb94e62b1c0da20cc1e77a482de298231e7a8d1b720a6cccaafab21d640e24dd",
+      "designer": false,
+      "branches": 69,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 1,
+      "empty_catch": 2
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs",
+      "lines": 3559,
+      "bytes": 181183,
+      "sha256": "383cf1dc587a710a8372521da260e0bdd7229be351f079c97ebe6dc9fbfbd37b",
+      "designer": false,
+      "branches": 282,
+      "task_run": 3,
+      "parallel": 1,
+      "async_void": 0,
+      "empty_catch": 1
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs",
+      "lines": 853,
+      "bytes": 40253,
+      "sha256": "18a62bab6bf6941504ba0bf2291467cf8943e1170386693d4d5906d02c95fb14",
+      "designer": false,
+      "branches": 66,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.FlatFieldCalibration.Correction.cs",
+      "lines": 631,
+      "bytes": 28252,
+      "sha256": "200dd551f3016dacbe2f3fb577d4f2b92f1822b970f364219f5d8fa00d0c174a",
+      "designer": false,
+      "branches": 50,
+      "task_run": 1,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.FlatFieldCalibration.cs",
+      "lines": 1367,
+      "bytes": 65877,
+      "sha256": "da4a3a3c628e1ca80edd6d6ea27377f6d3167ca1e2b310c457a53df322198acf",
+      "designer": false,
+      "branches": 76,
+      "task_run": 1,
+      "parallel": 0,
+      "async_void": 1,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.FlatFieldCalibration.Masks.cs",
+      "lines": 908,
+      "bytes": 40366,
+      "sha256": "23273dc2e284ba3535a43b5175f3eafdb771e329c6085df37a60c7d2376b58a4",
+      "designer": false,
+      "branches": 84,
+      "task_run": 1,
+      "parallel": 0,
+      "async_void": 1,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.FlatFieldCalibration.Profile.cs",
+      "lines": 496,
+      "bytes": 21399,
+      "sha256": "b98818ea96506448471ab5205802ae870eada6f391e08a5f28ef78b1cc9f5b87",
+      "designer": false,
+      "branches": 41,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.FunctionTree.cs",
+      "lines": 1086,
+      "bytes": 41698,
+      "sha256": "03d5b7d77b4d029d2a6f5a5ef9270602ad56c77289e51ece979836c4f05fd389",
+      "designer": false,
+      "branches": 103,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs",
+      "lines": 1301,
+      "bytes": 60922,
+      "sha256": "d529de9c780d08a07d41e34630016b428b65067b5aab5bb108884625bac25ef4",
+      "designer": false,
+      "branches": 60,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 1
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ImageProcessing.cs",
+      "lines": 906,
+      "bytes": 35966,
+      "sha256": "e919e74ea0e855e115a918a17034398c015bbad81541d4f44df1dddf9dbeb1a5",
+      "designer": false,
+      "branches": 72,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ImageRelations.cs",
+      "lines": 487,
+      "bytes": 22721,
+      "sha256": "449c736819a6fd32213329f52c24c0b23ce6b8e7fdb1e2b8463868e4c241df81",
+      "designer": false,
+      "branches": 59,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ImageView.cs",
+      "lines": 734,
+      "bytes": 25853,
+      "sha256": "3ff9f0182c98f8a60b806ab435d677af7fbc4a48cfb9ebc894cf43f01892ad04",
+      "designer": false,
+      "branches": 83,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs",
+      "lines": 1411,
+      "bytes": 71537,
+      "sha256": "51492cd948b66d271fde137f03b58fa5d148bfadbbae171b45bfd9b710b2aeca",
+      "designer": false,
+      "branches": 100,
+      "task_run": 2,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 1
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs",
+      "lines": 1848,
+      "bytes": 86292,
+      "sha256": "2ad33d84a452f0c2e8b0c598159d224155c76cffbd0fd2e9d068383507bc4807",
+      "designer": false,
+      "branches": 129,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 1,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.LargeImageProcessing.cs",
+      "lines": 1689,
+      "bytes": 74426,
+      "sha256": "cb653cb37938a6c34b7e7b57383944e3a8253cdfde9f39b65f1c4fa7e31789bc",
+      "designer": false,
+      "branches": 139,
+      "task_run": 4,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 13
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs",
+      "lines": 1701,
+      "bytes": 69297,
+      "sha256": "c12edeea6ce58ffc4b669b64d1de96b0363dd31796dee2878e9af3526ea1e0a9",
+      "designer": false,
+      "branches": 233,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 1,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ObjectDefinition.cs",
+      "lines": 1156,
+      "bytes": 46455,
+      "sha256": "e0dce0df58fb22c9759d0a89eadca09bd365a3e70dfb82cecfe8529ec81fcf17",
+      "designer": false,
+      "branches": 66,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ObjectDefinitionComponents.cs",
+      "lines": 676,
+      "bytes": 26810,
+      "sha256": "27f87adbcce2084eb00448806844e963bb2a2fe4b1965dd713584b7a61a01181",
+      "designer": false,
+      "branches": 54,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ObjectDefinitionDisplay.cs",
+      "lines": 551,
+      "bytes": 23744,
+      "sha256": "c5e3954f13315978ad7969afa2dd1bef469b5142936006837d677e37547cb236",
+      "designer": false,
+      "branches": 43,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ObjectDefinitionMaskSources.cs",
+      "lines": 1426,
+      "bytes": 52150,
+      "sha256": "a9ba86d041b5b8d15b1860fefce8264c732cdd2552650048701aabee05695098",
+      "designer": false,
+      "branches": 133,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ObjectDefinitionProcessing.cs",
+      "lines": 1127,
+      "bytes": 58666,
+      "sha256": "733362029d2bb443291a10b13a594f4850f046a7ecbf4f0c403d73f72af8e499",
+      "designer": false,
+      "branches": 71,
+      "task_run": 2,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ObjectJudgement.cs",
+      "lines": 1424,
+      "bytes": 57846,
+      "sha256": "ebf15331749326055d50905aa0e326f0eb9f015977dd7281ba173dddd79e2343",
+      "designer": false,
+      "branches": 126,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.ObjectJudgementProcessing.cs",
+      "lines": 2315,
+      "bytes": 98416,
+      "sha256": "19505d5a155221860eede32c8069fa5b434a0d4b9483a5044ba0fc1a6e1fbc45",
+      "designer": false,
+      "branches": 169,
+      "task_run": 4,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.Preprocessing.cs",
+      "lines": 1408,
+      "bytes": 69267,
+      "sha256": "56344de595a48d8a1e8fe0212504e0a567dab66465f5362fb379a4d295e9c674",
+      "designer": false,
+      "branches": 167,
+      "task_run": 2,
+      "parallel": 1,
+      "async_void": 1,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.Relation.cs",
+      "lines": 859,
+      "bytes": 33410,
+      "sha256": "1861a6253caacf189425277a936a76816dcaec61c4a38f9d5a38a9a3306bb2b2",
+      "designer": false,
+      "branches": 83,
+      "task_run": 1,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Forms/MainForm.RoiEditing.cs",
+      "lines": 142,
+      "bytes": 4743,
+      "sha256": "7a3290c4bb7e037279605fd261164f3b32a2808295bbdb849686c30d7b16791f",
+      "designer": false,
+      "branches": 12,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/IntegratedImageProcessingApp.csproj",
+      "lines": 326,
+      "bytes": 14831,
+      "sha256": "3442f1760371219439b8e75606342efe5bf0be25cd86208df51abb1be178f60f",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/packages.config",
+      "lines": 9,
+      "bytes": 572,
+      "sha256": "8a6011ad0d73a6a06a34a59f301909ad89819c6baa5181d349f057a4d5b65335",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Program.cs",
+      "lines": 17,
+      "bytes": 406,
+      "sha256": "27a6fd4e41e6fd5de892e1d3ad00a7fa65aecb7511463be8bcf3ce05f3b1d017",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/CameraDeviceSettingsIniService.cs",
+      "lines": 316,
+      "bytes": 13083,
+      "sha256": "4329d0393ef8fafb7d81eaa004dc8936a32fc00db9421bbca01a1359698d4f07",
+      "designer": false,
+      "branches": 28,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/ConnectionControllerSettingsService.cs",
+      "lines": 113,
+      "bytes": 3226,
+      "sha256": "b9f2a5158586069bb113d1f038609f07ce3ac6c470cdc21087822f9254661b75",
+      "designer": false,
+      "branches": 5,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/DetectionRecipeCatalogService.cs",
+      "lines": 516,
+      "bytes": 20555,
+      "sha256": "310585061bafc2984bbc77896d457c33704998f5f2831d80df61e518006a320c",
+      "designer": false,
+      "branches": 49,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 6
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/InspectionHistoryStore.cs",
+      "lines": 543,
+      "bytes": 30903,
+      "sha256": "e74234924865bf452c8a90e304d80eaea3ac49f1975caf2a8900459f5a7e7e08",
+      "designer": false,
+      "branches": 47,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 2
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs",
+      "lines": 588,
+      "bytes": 20785,
+      "sha256": "cef1d260a13c019cad89b11d09dca26642362a57d5bbc75652360141afa63430",
+      "designer": false,
+      "branches": 52,
+      "task_run": 4,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 7
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/LargeImageGrayscaleDecoder.cs",
+      "lines": 96,
+      "bytes": 3452,
+      "sha256": "800ec505ae7293de90b62637701663d51c0ea002e4b2ee97dfa4d695f3b1a3ff",
+      "designer": false,
+      "branches": 7,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/LargeImageMaskCache.cs",
+      "lines": 258,
+      "bytes": 7502,
+      "sha256": "bd9328143f0c89e7fd84c5aa03d2287893993f4742dc1797fece5fa18b4e0fa7",
+      "designer": false,
+      "branches": 18,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/LargeRoiGrayscaleCache.cs",
+      "lines": 141,
+      "bytes": 3947,
+      "sha256": "6c0ae80fa85a0ef6690ac5c1e0a015c7fa303acd2e8d496ea83e817e27c26190",
+      "designer": false,
+      "branches": 12,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/LargeRoiMaskBuilder.cs",
+      "lines": 210,
+      "bytes": 7921,
+      "sha256": "2b058dd3d20fd0ac061b26518475e2e0eec72a1c0ff2519c898eec70ebe658c7",
+      "designer": false,
+      "branches": 20,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/OpenCvEdgeDetectionService.cs",
+      "lines": 195,
+      "bytes": 7234,
+      "sha256": "b75620ec3710a323e2a282570273761031a329258f92b1044c0476ac0fc9028c",
+      "designer": false,
+      "branches": 15,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/OpenCvImageProcessingService.cs",
+      "lines": 129,
+      "bytes": 6114,
+      "sha256": "d3ec7ab68d3042975852d98ae80e89cbd04dfbceef71765efc5410950c1d22cf",
+      "designer": false,
+      "branches": 5,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/OpenCvThresholdService.cs",
+      "lines": 137,
+      "bytes": 4509,
+      "sha256": "d6a70f2241c78501e0f0bcf499355f38225c9993c11af85631fb5f631196e51b",
+      "designer": false,
+      "branches": 6,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/ProcessedBinaryMaskCache.cs",
+      "lines": 114,
+      "bytes": 3038,
+      "sha256": "f1a28e95372412fde84f88b6217c1fb3458aedc96972bda370dc4152a706c931",
+      "designer": false,
+      "branches": 11,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/SystemParameterIniService.cs",
+      "lines": 2925,
+      "bytes": 167937,
+      "sha256": "f26f233bbfa70ad8e8c77da5086e2a96eaef065150670648c547d766a8abb98f",
+      "designer": false,
+      "branches": 165,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "IntegratedImageProcessingApp/Services/SystemParameterSettings.cs",
+      "lines": 975,
+      "bytes": 33364,
+      "sha256": "74d2e295f600200545033d47398385c900b3f0486d3c32011c55cddfb945bd09",
+      "designer": false,
+      "branches": 2,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "MyApp4.sln",
+      "lines": 27,
+      "bytes": 1539,
+      "sha256": "08fba93ea44571c7a95927679df246cdaa1266450f167125a4721699a9ec4a06",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    },
+    {
+      "path": "SystemParameters.ini",
+      "lines": 5,
+      "bytes": 85,
+      "sha256": "622fa3a8714d0154c862c42edee002236608cbe7265b45a783c2255f94304fc9",
+      "designer": false,
+      "branches": 0,
+      "task_run": 0,
+      "parallel": 0,
+      "async_void": 0,
+      "empty_catch": 0
+    }
+  ],
+  "duplication_candidates": [
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1213
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        153
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1214
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        154
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1215
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        155
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1216
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        156
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1217
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        157
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1218
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        158
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1219
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        159
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1220
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        160
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1221
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        161
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1223
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        163
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/CameraDisplayControl.cs",
+        1224
+      ],
+      [
+        "CameraCaptureModule/Forms/GrayScaleWaveformSelectForm.cs",
+        164
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        56
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        523
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        58
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        525
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        59
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        526
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        60
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        527
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        61
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        528
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        62
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        529
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        63
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        530
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        64
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        531
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        65
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        532
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        105
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        576
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        107
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        578
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        108
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        579
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        109
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        580
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        110
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        581
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        133
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        606
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        134
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        607
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        135
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        608
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        136
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        609
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        137
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        610
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        138
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        611
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        140
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        613
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        141
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        614
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        142
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        615
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        143
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        616
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        144
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        617
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        145
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        618
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        147
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        620
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        205
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        712
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        207
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        714
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        208
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        715
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        241
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        755
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        242
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        756
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        243
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        757
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        245
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        759
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        246
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        760
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        247
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        761
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        248
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        762
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        249
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        763
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        275
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        837
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        276
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        838
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        277
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        839
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        301
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        885
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        302
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        886
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        304
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        888
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        305
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        889
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        306
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        890
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        307
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        891
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        308
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        892
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        309
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        893
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        310
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        894
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        311
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        895
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        313
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        897
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        314
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        898
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        315
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        899
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        316
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        900
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        317
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        901
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        318
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        902
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        319
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        903
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        320
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        904
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        321
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        905
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        323
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        907
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        324
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        908
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        325
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        909
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        326
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        910
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        327
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        911
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        328
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        912
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        355
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        951
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        356
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        952
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        357
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        953
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        358
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        954
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        359
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        955
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        360
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        956
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        361
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        957
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        362
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        958
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        363
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        959
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        365
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        961
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        366
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        962
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        367
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        963
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        368
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        964
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        369
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        965
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        370
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        966
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        371
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        967
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        372
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        968
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        373
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        969
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        374
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        970
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        376
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        972
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        377
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        973
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        379
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        975
+      ]
+    ],
+    [
+      [
+        "CameraCaptureModule/Controls/LargeImageSource.cs",
+        380
+      ],
+      [
+        "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+        976
+      ]
+    ]
+  ]
+}

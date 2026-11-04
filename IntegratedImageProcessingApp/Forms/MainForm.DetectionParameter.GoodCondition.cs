@@ -458,6 +458,10 @@ namespace IntegratedImageProcessingApp.Forms
                 HeaderText = "B 規規格",
                 FillWeight = 17
             });
+            foreach (DataGridViewColumn column in grid.Columns)
+            {
+                column.SortMode = DataGridViewColumnSortMode.NotSortable;
+            }
             grid.ContextMenuStrip = BuildObjectDetectionGoodJudgementContextMenu(parameter);
             grid.CellMouseDown += ObjectDetectionGoodJudgementRulesGrid_CellMouseDown;
             grid.SelectionChanged += delegate { UpdateObjectDetectionGoodJudgementMoveButtons(); };
@@ -1045,7 +1049,7 @@ namespace IntegratedImageProcessingApp.Forms
             string normalized = (specification ?? string.Empty).Replace(" ", string.Empty);
             return System.Text.RegularExpressions.Regex.IsMatch(
                 normalized,
-                @"^(?:x(?:<=|>=|<|>)-?\d+(?:\.\d+)?|-?\d+(?:\.\d+)?(?:<=|>=|<|>)x|-?\d+(?:\.\d+)?(?:<=|<)x(?:<=|<)-?\d+(?:\.\d+)?|-?\d+(?:>=|>)x(?:>=|>)-?\d+(?:\.\d+)?)$");
+                @"^(?:x(?:<=|>=|<|>)-?\d+(?:\.\d+)?|-?\d+(?:\.\d+)?(?:<=|>=|<|>)x|-?\d+(?:\.\d+)?(?:<=|<)x(?:<=|<)-?\d+(?:\.\d+)?|-?\d+(?:\.\d+)?(?:>=|>)x(?:>=|>)-?\d+(?:\.\d+)?)$");
         }
 
     }

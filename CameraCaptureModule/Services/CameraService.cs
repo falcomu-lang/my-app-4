@@ -299,14 +299,40 @@ namespace CameraCaptureApp.Services
                 return false;
             }
 
-            if (_transfer.Snap())
+            // Publish the busy state before asking Sapera to start. Some devices
+            // can deliver the completion callback immediately after Snap().
+            string previousScanState = _status.ScanStateText;
+            _status.IsCaptureInProgress = true;
+            _status.ScanStateText = "Snap";
+            bool snapStarted;
+            try
             {
-                _status.IsCaptureInProgress = true;
-                _status.ScanStateText = "Snap";
-                _status.LastMessage = "Single frame capture requested.";
+                snapStarted = _transfer.Snap();
+            }
+            catch
+            {
+                if (_status.IsCaptureInProgress)
+                {
+                    _status.IsCaptureInProgress = false;
+                    _status.ScanStateText = previousScanState;
+                }
+                throw;
+            }
+
+            if (snapStarted)
+            {
+                if (_status.IsCaptureInProgress)
+                {
+                    _status.LastMessage = "Single frame capture requested.";
+                }
                 return true;
             }
 
+            if (_status.IsCaptureInProgress)
+            {
+                _status.IsCaptureInProgress = false;
+                _status.ScanStateText = previousScanState;
+            }
             _status.LastMessage = "Single frame capture could not be started.";
             return false;
         }
@@ -1790,7 +1816,22 @@ namespace CameraCaptureApp.Services
             foreach (var selector in selectors)
             {
                 var selectorApplied = TrySetNotebookEnumFeatureValue(device, "TriggerSelector", new[] { selector });
+                if (!selectorApplied)
+                {
+                    details.Add(selector + ":selector=" + FormatApplyResult(false, selector) +
+                        " mode=skipped" + (enabled ? " source=skipped" : string.Empty));
+                    continue;
+                }
+
                 var modeApplied = TrySetNotebookEnumFeatureValue(device, "TriggerMode", new[] { enabled ? "On" : "Off" });
+                if (!modeApplied)
+                {
+                    details.Add(selector + ":selector=" + FormatApplyResult(true, selector) +
+                        " mode=" + FormatApplyResult(false, enabled ? "On" : "Off") +
+                        (enabled ? " source=skipped" : string.Empty));
+                    continue;
+                }
+
                 var sourceApplied = !enabled || TrySetNotebookEnumFeatureValue(device, "TriggerSource", sources);
 
                 details.Add(
@@ -3202,9 +3243,19 @@ namespace CameraCaptureApp.Services
         private bool TryConfigureTriggerSelector(string selector, bool enabled, string source)
         {
             var selectorApplied = TrySetDeviceFeature(new[] { "TriggerSelector" }, selector);
+            if (!selectorApplied)
+            {
+                return false;
+            }
+
             var modeApplied = TrySetDeviceFeature(new[] { "TriggerMode" }, enabled ? "On" : "Off");
+            if (!modeApplied)
+            {
+                return false;
+            }
+
             var sourceApplied = !enabled || string.IsNullOrWhiteSpace(source) || TrySetDeviceFeature(new[] { "TriggerSource" }, source);
-            return selectorApplied && modeApplied && sourceApplied;
+            return sourceApplied;
         }
 
         private bool TrySetDeviceFeature(string[] featureNames, double value, out string appliedFeature)

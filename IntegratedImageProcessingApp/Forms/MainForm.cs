@@ -188,6 +188,7 @@ namespace IntegratedImageProcessingApp.Forms
             cameraDeviceSettingsIniService = new CameraDeviceSettingsIniService(
                 Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config", "device-settings.ini"));
             cameraDeviceSettings = cameraDeviceSettingsIniService.Load();
+            InspectionParallelism.Configure(cameraDeviceSettings.MaxProcessingWorkers);
             LoadSavedObjectDetectionFlatFieldProfiles();
 
             InitializeComponent();

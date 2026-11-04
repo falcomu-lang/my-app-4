@@ -1,6 +1,6 @@
 # 整合式影像處理軟體目標架構與遷移計畫
 
-文件版本 1.1　核對日期 2026-10-30　程式基準 b512791
+文件版本 1.2　核對日期 2026-11-04　程式基準：目前工作目錄，含未提交修改
 
 建議保持現有 WinForms 與單攝影機部署方式，逐步讓檢測流程獨立於頁面，再讓計算、存檔與通訊使用明確資料。以下類別是建議設計，尚未實作。拆分的目的為縮小修改範圍；效能提升需要另外量測。
 
@@ -62,7 +62,7 @@ StationInspectionRuntime 應擁有 Idle、ContinuousCapture、ContinuousInspecti
 
 共用前段完成後，尺寸、一般缺陷、頻域可依同一資源預算平行。鄰格最終比較等待一般缺陷排除資訊。取消與過期結果由 Request 的 generation／revision 判定，不能寫入新工作階段。
 
-建議單一 CPU 工作預算避免巢狀 Parallel 不斷擴張。圖片保存採有容量上限的 worker，記錄 Pending、Saved、Failed 狀態；滿載策略需由設備節拍與追溯需求決定。檢測忙碌略過影格與圖片保存策略是兩件不同的規則。
+應用程式自有 `Parallel.For` 已有共同 worker 上限，且巢狀迴圈 inline。目標架構仍需把 OpenCV 原生平行化、背景存圖、影像副本／快取和關閉排空納入程序級資源預算；圖片保存應有容量上限並記錄 Pending、Saved、Failed，滿載策略由設備節拍與追溯需求決定。檢測忙碌略過影格與圖片保存策略是兩件不同的規則。
 
 影像來源 lease 明確表達擁有權，唯讀 MASK view 和可修改 clone 使用不同 API。結束工作階段時集中釋放，關閉程式需等待或明確報告未完成保存，避免靜默遺失。
 
@@ -70,7 +70,7 @@ StationInspectionRuntime 應擁有 Idle、ContinuousCapture、ContinuousInspecti
 
 | 階段 | 工作 | 完成條件 |
 |---|---|---|
-| 0 | 修正總覽轉送與 TCP peer 清理 | 切頁仍連續檢測；快速重連不移除新連線 |
+| 0 | 驗證總覽跨頁轉送，確認 TCP peer 實例清理 | 切頁仍連續檢測；同站快速重連不移除新連線（程式防護已加入，需實機驗收） |
 | 1 | 抽出尺寸統計、運算式 parser、規格 evaluator | 設定驗證與執行使用同一 parser；舊語法結果一致 |
 | 2 | 抽出 ROI resolver、ObjectCoordinateFrame | 旋轉、比例、邊界與群組聯集和原版一致 |
 | 3 | 抽出一般缺陷與頻域 analyzer／workspace／result | 固定測例的候選、能量、MASK 與框位一致 |

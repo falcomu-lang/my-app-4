@@ -41,6 +41,7 @@ namespace IntegratedImageProcessingApp.Forms
 
         private InspectionTcpTransport inspectionTcpTransport;
         private System.Windows.Forms.Timer connectionControllerReconnectTimer;
+        private System.Windows.Forms.Timer inspectionTcpResultRetryTimer;
         private Panel connectionControllerPanel;
         private Label connectionControllerSummaryLabel;
         private Label connectionControllerNetworkStatusLabel;
@@ -63,6 +64,10 @@ namespace IntegratedImageProcessingApp.Forms
                 new Dictionary<string, ConnectionControllerPendingCommand>();
         private readonly Dictionary<int, string> connectionControllerLatestModeCommandIds =
             new Dictionary<int, string>();
+        private readonly HashSet<string> inspectionTcpReliableResultPeers =
+            new HashSet<string>(StringComparer.Ordinal);
+        private readonly Dictionary<string, DateTime> inspectionTcpResultLastSentUtcByPeerAndId =
+            new Dictionary<string, DateTime>(StringComparer.Ordinal);
         private readonly HashSet<int> connectionControllerCaptureStations = new HashSet<int>();
         private readonly HashSet<int> connectionControllerInspectionStations = new HashSet<int>();
         private bool remoteContinuousCaptureActive;
@@ -81,6 +86,13 @@ namespace IntegratedImageProcessingApp.Forms
         private IPAddress inspectionTcpListenerAddress;
         private int inspectionTcpListenerPort;
         private bool inspectionTcpListenerActive;
+        private InspectionTcpResultStore inspectionTcpResultStore;
+        private InspectionTcpCommandReplayGuard inspectionTcpCommandReplayGuard;
+        private readonly Dictionary<int, InspectionTcpMessage> inspectionTcpLatestReceivedResultByStation =
+            new Dictionary<int, InspectionTcpMessage>();
+        private bool inspectionTcpLatestReceivedResultsLoaded;
+        private long latestCameraInspectionSequenceForTcp;
+        private string parameterResultReviewTcpResultId;
 
         private void EnsureConnectionControllerSettingsLoaded()
         {
@@ -117,6 +129,9 @@ namespace IntegratedImageProcessingApp.Forms
         private void InitializeInspectionTcpTransport()
         {
             EnsureConnectionControllerSettingsLoaded();
+            inspectionTcpResultStore = new InspectionTcpResultStore(AppDomain.CurrentDomain.BaseDirectory);
+            inspectionTcpCommandReplayGuard = new InspectionTcpCommandReplayGuard(
+                AppDomain.CurrentDomain.BaseDirectory);
             inspectionTcpTransport = new InspectionTcpTransport();
             inspectionTcpTransport.MessageReceived += InspectionTcpTransport_MessageReceived;
             inspectionTcpTransport.PeerStateChanged += InspectionTcpTransport_PeerStateChanged;
@@ -127,9 +142,13 @@ namespace IntegratedImageProcessingApp.Forms
                 Interval = Math.Max(1000, connectionControllerSettings.ReconnectIntervalSeconds * 1000)
             };
             connectionControllerReconnectTimer.Tick += ConnectionControllerReconnectTimer_Tick;
+            inspectionTcpResultRetryTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+            inspectionTcpResultRetryTimer.Tick += InspectionTcpResultRetryTimer_Tick;
+            inspectionTcpResultRetryTimer.Start();
             if (components != null)
             {
                 components.Add(connectionControllerReconnectTimer);
+                components.Add(inspectionTcpResultRetryTimer);
             }
             FormClosed += MainForm_ConnectionControllerFormClosed;
             ConfigureInspectionTcpListener(cameraDeviceSettings);
@@ -145,6 +164,11 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 inspectionTcpTransport.Dispose();
                 inspectionTcpTransport = null;
+            }
+            if (inspectionTcpResultRetryTimer != null)
+            {
+                inspectionTcpResultRetryTimer.Stop();
+                inspectionTcpResultRetryTimer = null;
             }
         }
 
@@ -220,6 +244,7 @@ namespace IntegratedImageProcessingApp.Forms
         private void ShowConnectionControllerPanel()
         {
             EnsureConnectionControllerSettingsLoaded();
+            EnsurePersistedConnectionControllerResultsLoaded();
             if (isInspectionOverviewActive)
             {
                 ExitInspectionOverviewMode();
@@ -269,11 +294,18 @@ namespace IntegratedImageProcessingApp.Forms
             if (connectionControllerSettings.ConnectWhenOpened)
             {
                 connectionControllerConnectRequested = true;
+                _ = ConnectConfiguredStationsAsync();
             }
             if (connectionControllerReconnectTimer != null)
             {
-                connectionControllerReconnectTimer.Start();
-                ConnectionControllerReconnectTimer_Tick(this, EventArgs.Empty);
+                if (connectionControllerSettings.AutoReconnect)
+                {
+                    connectionControllerReconnectTimer.Start();
+                }
+                else
+                {
+                    connectionControllerReconnectTimer.Stop();
+                }
             }
         }
 
@@ -470,7 +502,7 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 var previousStates = new Dictionary<int, ConnectionControllerStationViewState>(
                     connectionControllerStationViews);
-                connectionControllerCardsHost.Controls.Clear();
+                ClearAndDisposeConnectionControllerControls(connectionControllerCardsHost);
                 connectionControllerStationViews.Clear();
                 List<ConnectionControllerStation> configuredStations =
                     connectionControllerSettings == null || connectionControllerSettings.Stations == null
@@ -485,6 +517,27 @@ namespace IntegratedImageProcessingApp.Forms
                         {
                             Status = station.Enabled ? "等待連線" : "未啟用"
                         };
+                        InspectionTcpMessage persistedResult;
+                        if (inspectionTcpLatestReceivedResultByStation.TryGetValue(
+                            station.SoftwareId, out persistedResult))
+                        {
+                            state.CameraConnected = false;
+                            state.IsCapturing = false;
+                            state.IsInspecting = false;
+                            state.JudgementComplete = persistedResult.JudgementComplete;
+                            state.Status = "上次結果（目前離線）" +
+                                (string.IsNullOrWhiteSpace(persistedResult.Status)
+                                    ? string.Empty : "；" + persistedResult.Status);
+                            state.RecipeName = string.IsNullOrWhiteSpace(persistedResult.RecipeName)
+                                ? persistedResult.RecipeId : persistedResult.RecipeName;
+                            state.Objects = persistedResult.Objects ?? new List<InspectionTcpObjectResult>();
+                            DateTime resultAt;
+                            if (DateTime.TryParse(persistedResult.ResultAtUtc, null,
+                                System.Globalization.DateTimeStyles.RoundtripKind, out resultAt))
+                            {
+                                state.ResultAtUtc = resultAt;
+                            }
+                        }
                     }
                     state.Configuration = station;
                     state.TcpConnected = inspectionTcpTransport != null &&
@@ -515,6 +568,46 @@ namespace IntegratedImageProcessingApp.Forms
                 connectionControllerCardsHost.ResumeLayout(true);
             }
             UpdateConnectionControllerSummary();
+        }
+
+        private static void ClearAndDisposeConnectionControllerControls(Control parent)
+        {
+            if (parent == null || parent.Controls.Count == 0)
+            {
+                return;
+            }
+
+            Control[] children = parent.Controls.Cast<Control>().ToArray();
+            parent.Controls.Clear();
+            foreach (Control child in children)
+            {
+                child.Dispose();
+            }
+        }
+
+        private void EnsurePersistedConnectionControllerResultsLoaded()
+        {
+            if (inspectionTcpLatestReceivedResultsLoaded) return;
+            inspectionTcpLatestReceivedResultsLoaded = true;
+            if (inspectionTcpResultStore == null)
+            {
+                inspectionTcpResultStore = new InspectionTcpResultStore(AppDomain.CurrentDomain.BaseDirectory);
+            }
+            try
+            {
+                foreach (InspectionTcpMessage message in inspectionTcpResultStore.LoadLatestReceivedByStation())
+                {
+                    if (message != null && message.StationId > 0)
+                    {
+                        inspectionTcpLatestReceivedResultByStation[message.StationId] = message;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "Unable to restore persisted controller results: " + exception);
+            }
         }
 
         private Panel CreateConnectionControllerStationCard(ConnectionControllerStationViewState state)
@@ -670,7 +763,7 @@ namespace IntegratedImageProcessingApp.Forms
             host.SuspendLayout();
             try
             {
-                host.Controls.Clear();
+                ClearAndDisposeConnectionControllerControls(host);
                 if (state.Objects == null || state.Objects.Count == 0)
                 {
                     host.Controls.Add(new Label
@@ -976,14 +1069,7 @@ namespace IntegratedImageProcessingApp.Forms
                     };
                 connectionControllerLatestModeCommandIds[station.SoftwareId] = commandId;
                 bool success = await inspectionTcpTransport.SendToStationAsync(station.SoftwareId,
-                    new InspectionTcpMessage
-                    {
-                        MessageType = "command",
-                        Command = command,
-                        CommandId = commandId,
-                        StationId = cameraDeviceSettings == null ? 1 : cameraDeviceSettings.SoftwareId,
-                        StationName = GetLocalStationName()
-                    });
+                    CreateSignedRemoteCommandMessage(command, commandId, station));
                 if (success)
                 {
                     sent++;
@@ -1016,6 +1102,35 @@ namespace IntegratedImageProcessingApp.Forms
                 }
             }
             return sent;
+        }
+
+        private InspectionTcpMessage CreateSignedRemoteCommandMessage(
+            string command,
+            string commandId,
+            ConnectionControllerStation station)
+        {
+            int senderStationId = cameraDeviceSettings == null ? 1 : cameraDeviceSettings.SoftwareId;
+            var message = new InspectionTcpMessage
+            {
+                MessageType = "command",
+                Command = command,
+                CommandId = commandId,
+                StationId = senderStationId,
+                TargetStationId = station.SoftwareId,
+                StationName = GetLocalStationName(),
+                SentAtUtc = DateTime.UtcNow.ToString("o")
+            };
+            if (!string.IsNullOrWhiteSpace(station.CommandSecret))
+            {
+                message.CommandSignature = InspectionTcpCommandSecurity.CreateSignature(
+                    station.CommandSecret,
+                    message.CommandId,
+                    message.Command,
+                    message.StationId,
+                    message.TargetStationId,
+                    message.SentAtUtc);
+            }
+            return message;
         }
 
         private void ReconcileConnectionControllerMode(string command)
@@ -1099,6 +1214,11 @@ namespace IntegratedImageProcessingApp.Forms
             _ = ConnectConfiguredStationsAsync();
         }
 
+        private void InspectionTcpResultRetryTimer_Tick(object sender, EventArgs e)
+        {
+            PublishPendingInspectionTcpResults();
+        }
+
         private void InspectionTcpTransport_PeerStateChanged(object sender, InspectionTcpPeerEventArgs e)
         {
             if (IsDisposed || !IsHandleCreated)
@@ -1109,6 +1229,15 @@ namespace IntegratedImageProcessingApp.Forms
             {
                 BeginInvoke(new Action(delegate
                 {
+                    if (!e.Connected)
+                    {
+                        inspectionTcpReliableResultPeers.Remove(e.PeerKey);
+                        foreach (string key in inspectionTcpResultLastSentUtcByPeerAndId.Keys
+                            .Where(key => key.StartsWith(e.PeerKey + "|", StringComparison.Ordinal)).ToList())
+                        {
+                            inspectionTcpResultLastSentUtcByPeerAndId.Remove(key);
+                        }
+                    }
                     if (e.StationId.HasValue)
                     {
                         ConnectionControllerStationViewState state;
@@ -1197,7 +1326,32 @@ namespace IntegratedImageProcessingApp.Forms
             }
             if (string.Equals(message.MessageType, "hello", StringComparison.OrdinalIgnoreCase))
             {
+                if (message.SupportsReliableResults)
+                {
+                    inspectionTcpReliableResultPeers.Add(e.PeerKey);
+                    PublishPendingInspectionTcpResults();
+                }
                 SendLocalStationStatusToPeer(e.PeerKey, "已連線至總控端");
+                return;
+            }
+            if (string.Equals(message.MessageType, "inspection-result", StringComparison.OrdinalIgnoreCase))
+            {
+                _ = PersistReceivedInspectionTcpResultAsync(e, message);
+                return;
+            }
+            if (string.Equals(message.MessageType, "result-ack", StringComparison.OrdinalIgnoreCase))
+            {
+                if (inspectionTcpResultStore != null &&
+                    !string.IsNullOrWhiteSpace(message.AcknowledgedResultId))
+                {
+                    inspectionTcpResultStore.Acknowledge(message.AcknowledgedResultId);
+                    string suffix = "|" + message.AcknowledgedResultId;
+                    foreach (string key in inspectionTcpResultLastSentUtcByPeerAndId.Keys
+                        .Where(key => key.EndsWith(suffix, StringComparison.Ordinal)).ToList())
+                    {
+                        inspectionTcpResultLastSentUtcByPeerAndId.Remove(key);
+                    }
+                }
                 return;
             }
             if (string.Equals(message.MessageType, "command-ack", StringComparison.OrdinalIgnoreCase))
@@ -1247,8 +1401,116 @@ namespace IntegratedImageProcessingApp.Forms
             }
             if (string.Equals(message.MessageType, "station-status", StringComparison.OrdinalIgnoreCase))
             {
-                UpdateConnectionControllerStationFromMessage(e, message);
+                if (connectionControllerCardsHost != null && !connectionControllerCardsHost.IsDisposed)
+                {
+                    UpdateConnectionControllerStationFromMessage(e, message);
+                }
             }
+        }
+
+        private async Task PersistReceivedInspectionTcpResultAsync(
+            InspectionTcpMessageEventArgs eventArgs,
+            InspectionTcpMessage message)
+        {
+            try
+            {
+                if (inspectionTcpResultStore == null)
+                {
+                    inspectionTcpResultStore = new InspectionTcpResultStore(AppDomain.CurrentDomain.BaseDirectory);
+                }
+                await Task.Run(() => inspectionTcpResultStore.PersistReceived(message));
+                if (IsDisposed || !IsHandleCreated) return;
+                BeginInvoke(new Action(delegate
+                {
+                    int stationId = eventArgs.ConfiguredStationId ?? message.StationId;
+                    bool shouldUpdateStationView = true;
+                    if (stationId > 0)
+                    {
+                        InspectionTcpMessage currentResult;
+                        if (inspectionTcpLatestReceivedResultByStation.TryGetValue(stationId, out currentResult) &&
+                            CompareInspectionTcpResultOrder(message, currentResult) < 0)
+                        {
+                            // Persist and ACK delayed results, but do not let an older retry
+                            // replace the newer result currently shown for this station.
+                            shouldUpdateStationView = false;
+                        }
+                        else
+                        {
+                            inspectionTcpLatestReceivedResultByStation[stationId] = message;
+                        }
+                    }
+                    if (shouldUpdateStationView && connectionControllerCardsHost != null &&
+                        !connectionControllerCardsHost.IsDisposed)
+                    {
+                        UpdateConnectionControllerStationFromMessage(eventArgs, message);
+                    }
+                    _ = inspectionTcpTransport.SendToPeerAsync(eventArgs.PeerKey,
+                        new InspectionTcpMessage
+                        {
+                            MessageType = "result-ack",
+                            AcknowledgedResultId = message.ResultId,
+                            StationId = cameraDeviceSettings == null ? 1 : cameraDeviceSettings.SoftwareId,
+                            StationName = GetLocalStationName()
+                        });
+                }));
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "Inspection TCP result persistence or acknowledgement failed: " + exception);
+                if (IsDisposed || !IsHandleCreated) return;
+                try
+                {
+                    BeginInvoke(new Action(delegate
+                    {
+                        SetConnectionControllerStatus(
+                            "收到站點結果，但落盤失敗，未回覆 ACK：" + exception.Message);
+                    }));
+                }
+                catch (InvalidOperationException) { }
+            }
+        }
+
+        private static int CompareInspectionTcpResultOrder(
+            InspectionTcpMessage left,
+            InspectionTcpMessage right)
+        {
+            DateTime leftTime = GetInspectionTcpResultTimestamp(left);
+            DateTime rightTime = GetInspectionTcpResultTimestamp(right);
+            int timeComparison = leftTime.CompareTo(rightTime);
+            if (timeComparison != 0)
+            {
+                return timeComparison;
+            }
+
+            int sequenceComparison = Math.Max(0, left == null ? 0 : left.CameraSequence)
+                .CompareTo(Math.Max(0, right == null ? 0 : right.CameraSequence));
+            if (sequenceComparison != 0)
+            {
+                return sequenceComparison;
+            }
+
+            return string.Compare(
+                left == null ? null : left.ResultId,
+                right == null ? null : right.ResultId,
+                StringComparison.Ordinal);
+        }
+
+        private static DateTime GetInspectionTcpResultTimestamp(InspectionTcpMessage message)
+        {
+            if (message == null)
+            {
+                return DateTime.MinValue;
+            }
+
+            DateTime resultAt;
+            string timestamp = string.IsNullOrWhiteSpace(message.ResultAtUtc)
+                ? message.SentAtUtc
+                : message.ResultAtUtc;
+            return DateTime.TryParse(timestamp, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out resultAt)
+                ? resultAt.ToUniversalTime()
+                : DateTime.MinValue;
         }
 
         private void UpdateConnectionControllerStationFromMessage(
@@ -1314,6 +1576,10 @@ namespace IntegratedImageProcessingApp.Forms
                 state.ResultAtUtc = resultAt;
             }
             state.Objects = message.Objects ?? new List<InspectionTcpObjectResult>();
+            if (string.Equals(message.MessageType, "inspection-result", StringComparison.OrdinalIgnoreCase))
+            {
+                inspectionTcpLatestReceivedResultByStation[stationId] = message;
+            }
             UpdateConnectionControllerStationCard(state);
             UpdateConnectionControllerSummary();
             UpdateConnectionControllerNetworkStatus();
@@ -1324,6 +1590,22 @@ namespace IntegratedImageProcessingApp.Forms
             InspectionTcpMessage message)
         {
             string command = (message.Command ?? string.Empty).Trim().ToLowerInvariant();
+            string authorizationFailure;
+            if (!TryAuthorizeRemoteCommand(message, out authorizationFailure))
+            {
+                await inspectionTcpTransport.SendToPeerAsync(e.PeerKey, new InspectionTcpMessage
+                {
+                    MessageType = "command-ack",
+                    Command = command,
+                    CommandId = message.CommandId,
+                    StationId = cameraDeviceSettings == null ? 1 : cameraDeviceSettings.SoftwareId,
+                    StationName = GetLocalStationName(),
+                    Accepted = false,
+                    Status = authorizationFailure
+                });
+                return;
+            }
+
             bool accepted = false;
             string response;
             switch (command)
@@ -1358,6 +1640,79 @@ namespace IntegratedImageProcessingApp.Forms
                 Status = response
             });
             QueueStationStatusPublish(true);
+        }
+
+        private bool TryAuthorizeRemoteCommand(InspectionTcpMessage message, out string failureReason)
+        {
+            failureReason = null;
+            if (cameraDeviceSettings == null || !cameraDeviceSettings.RequireAuthenticatedCommands)
+            {
+                return true;
+            }
+
+            int localStationId = cameraDeviceSettings.SoftwareId;
+            if (string.IsNullOrWhiteSpace(cameraDeviceSettings.RemoteCommandSecret) ||
+                cameraDeviceSettings.RemoteCommandSecret.Trim().Length < 16)
+            {
+                failureReason = "遠端命令未接受：本機命令驗證金鑰未正確設定。";
+                return false;
+            }
+            if (message.TargetStationId != localStationId)
+            {
+                failureReason = "遠端命令未接受：目標站點 ID 不符。";
+                return false;
+            }
+            if (message.StationId < 1 || message.StationId > 10 ||
+                string.IsNullOrWhiteSpace(message.CommandId))
+            {
+                failureReason = "遠端命令未接受：來源站點或命令 ID 無效。";
+                return false;
+            }
+
+            DateTime sentAtUtc;
+            if (!DateTime.TryParse(message.SentAtUtc, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out sentAtUtc) ||
+                Math.Abs((DateTime.UtcNow - sentAtUtc.ToUniversalTime()).TotalMinutes) > 2.0)
+            {
+                failureReason = "遠端命令未接受：命令時間戳記無效或已過期。";
+                return false;
+            }
+
+            if (!InspectionTcpCommandSecurity.VerifySignature(
+                cameraDeviceSettings.RemoteCommandSecret.Trim(),
+                message.CommandId,
+                message.Command,
+                message.StationId,
+                message.TargetStationId,
+                message.SentAtUtc,
+                message.CommandSignature))
+            {
+                failureReason = "遠端命令未接受：驗證金鑰不符或訊息簽章無效。";
+                return false;
+            }
+
+            if (inspectionTcpCommandReplayGuard == null)
+            {
+                inspectionTcpCommandReplayGuard = new InspectionTcpCommandReplayGuard(
+                    AppDomain.CurrentDomain.BaseDirectory);
+            }
+            bool commandIdRegistered;
+            try
+            {
+                commandIdRegistered = inspectionTcpCommandReplayGuard.TryRegister(
+                    message.CommandId, DateTime.UtcNow);
+            }
+            catch (Exception exception)
+            {
+                failureReason = "遠端命令未接受：無法保存防重播資料。" + exception.Message;
+                return false;
+            }
+            if (!commandIdRegistered)
+            {
+                failureReason = "遠端命令未接受：命令 ID 已執行過，或防重播資料無法保存。";
+                return false;
+            }
+            return true;
         }
 
         private string StartRemoteContinuousCapture(out bool accepted)
@@ -1604,13 +1959,22 @@ namespace IntegratedImageProcessingApp.Forms
 
         private void QueueStationStatusPublish(bool force)
         {
+            QueueStationStatusPublish(force, false);
+        }
+
+        private void QueueStationStatusPublish(bool force, bool publishInspectionResult)
+        {
             if (inspectionTcpTransport == null || IsDisposed || !IsHandleCreated)
             {
                 return;
             }
             if (InvokeRequired)
             {
-                try { BeginInvoke(new Action<bool>(QueueStationStatusPublish), force); }
+                try
+                {
+                    BeginInvoke(new Action<bool, bool>(QueueStationStatusPublish),
+                        force, publishInspectionResult);
+                }
                 catch (InvalidOperationException) { }
                 return;
             }
@@ -1622,7 +1986,57 @@ namespace IntegratedImageProcessingApp.Forms
             }
             Interlocked.Exchange(ref lastStationStatusPublishUtcTicks, nowTicks);
             InspectionTcpMessage message = CreateLocalStationStatusMessage("station-status");
+            if (publishInspectionResult && cameraDeviceSettings != null &&
+                cameraDeviceSettings.AllowConnections)
+            {
+                InspectionTcpMessage resultMessage = CreateLocalStationStatusMessage("inspection-result");
+                if (!string.IsNullOrWhiteSpace(resultMessage.ResultId))
+                {
+                    try
+                    {
+                        if (inspectionTcpResultStore == null)
+                        {
+                            inspectionTcpResultStore = new InspectionTcpResultStore(
+                                AppDomain.CurrentDomain.BaseDirectory);
+                        }
+                        inspectionTcpResultStore.Enqueue(resultMessage);
+                    }
+                    catch (Exception exception)
+                    {
+                        SetCameraInspectionStatus(
+                            "檢測已完成，但 TCP 結果待送資料保存失敗：" + exception.Message);
+                    }
+                }
+            }
             _ = inspectionTcpTransport.BroadcastAsync(message);
+            PublishPendingInspectionTcpResults();
+        }
+
+        private void PublishPendingInspectionTcpResults()
+        {
+            if (inspectionTcpTransport == null || inspectionTcpResultStore == null ||
+                inspectionTcpReliableResultPeers.Count == 0)
+            {
+                return;
+            }
+
+            IList<InspectionTcpMessage> pending = inspectionTcpResultStore.LoadPending();
+            DateTime now = DateTime.UtcNow;
+            foreach (string peerKey in inspectionTcpReliableResultPeers.ToList())
+            {
+                foreach (InspectionTcpMessage message in pending)
+                {
+                    string throttleKey = peerKey + "|" + message.ResultId;
+                    DateTime lastSent;
+                    if (inspectionTcpResultLastSentUtcByPeerAndId.TryGetValue(throttleKey, out lastSent) &&
+                        (now - lastSent).TotalSeconds < 2.0)
+                    {
+                        continue;
+                    }
+                    inspectionTcpResultLastSentUtcByPeerAndId[throttleKey] = now;
+                    _ = inspectionTcpTransport.SendToPeerAsync(peerKey, message);
+                }
+            }
         }
 
         private void UpdateConnectionControllerMonitoringControls()
@@ -1685,8 +2099,9 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             isParameterResultReviewSnapshotForTcp = true;
+            parameterResultReviewTcpResultId = Guid.NewGuid().ToString("N");
             parameterResultReviewTcpResultAtUtc = DateTime.UtcNow;
-            QueueStationStatusPublish(true);
+            QueueStationStatusPublish(true, true);
         }
 
         private void SendLocalStationStatusToPeer(string peerKey, string status)
@@ -1721,6 +2136,7 @@ namespace IntegratedImageProcessingApp.Forms
                 CameraConnected = cameraCaptureHostControl != null && cameraCaptureHostControl.IsCameraConnected,
                 IsCapturing = remoteContinuousCaptureActive || isInspectionOverviewContinuousCaptureActive,
                 IsInspecting = remoteContinuousInspectionActive,
+                SupportsReliableResults = true,
                 JudgementComplete = currentSnapshot && snapshot.JudgementComplete,
                 RecipeId = string.IsNullOrWhiteSpace(connectionControllerRecipeMetadataId)
                     ? null
@@ -1733,6 +2149,13 @@ namespace IntegratedImageProcessingApp.Forms
 
             if (currentSnapshot)
             {
+                message.ResultId = isParameterResultReviewSnapshotForTcp &&
+                    !string.IsNullOrWhiteSpace(parameterResultReviewTcpResultId)
+                    ? parameterResultReviewTcpResultId
+                    : snapshot.ImagePath;
+                message.CameraSequence = isParameterResultReviewSnapshotForTcp
+                    ? 0L
+                    : Interlocked.Read(ref latestCameraInspectionSequenceForTcp);
                 if (snapshot.JudgementComplete)
                 {
                     DateTime resultAt = isParameterResultReviewSnapshotForTcp &&

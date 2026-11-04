@@ -44,6 +44,7 @@ namespace IntegratedImageProcessingApp.Services
             Name = string.Empty;
             IpAddress = string.Empty;
             Port = 5000;
+            CommandSecret = string.Empty;
         }
 
         public bool Enabled { get; set; }
@@ -55,6 +56,8 @@ namespace IntegratedImageProcessingApp.Services
         public string IpAddress { get; set; }
 
         public int Port { get; set; }
+
+        public string CommandSecret { get; set; }
     }
 
     public sealed class ConnectionControllerSettingsService
@@ -104,10 +107,10 @@ namespace IntegratedImageProcessingApp.Services
             }
 
             var serializer = new XmlSerializer(typeof(ConnectionControllerSettings));
-            using (var stream = File.Create(filePath))
+            AtomicFileWriter.Write(filePath, delegate(TextWriter writer)
             {
-                serializer.Serialize(stream, settings);
-            }
+                serializer.Serialize(writer, settings);
+            });
         }
     }
 }

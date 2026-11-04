@@ -78,6 +78,7 @@ namespace IntegratedImageProcessingApp.Forms
             public string SettingsSignature { get; set; }
             public int ImageContentGeneration { get; set; }
             public int ImageSourceGeneration { get; set; }
+            public int ObjectDefinitionGeneration { get; set; }
             public ObjectDetectionParameterSettings Parameter { get; set; }
             public ObjectDefinitionSettings Definition { get; set; }
             public List<ObjectDefinitionDetectedObject> Objects { get; set; }
@@ -1803,7 +1804,7 @@ namespace IntegratedImageProcessingApp.Forms
                 MaxDegreeOfParallelism = maxDegreeOfParallelism
             };
             Stopwatch calculationStopwatch = Stopwatch.StartNew();
-            Parallel.For(0, objects.Count, parallelOptions, objectIndex =>
+            InspectionParallelism.For(0, objects.Count, parallelOptions, objectIndex =>
             {
                 ObjectDefinitionDetectedObject detectedObject = objects[objectIndex];
                 EnsureDetectionRecipeGenerationIsCurrent(recipeGeneration, cancellationToken);
@@ -2388,6 +2389,15 @@ namespace IntegratedImageProcessingApp.Forms
                     continue;
                 }
 
+                if (!core.DarkThresholdEnabled && !core.BrightThresholdEnabled)
+                {
+                    allRequiredResultsReady = false;
+                    objectDetectionResultReviewDefectsGrid.Rows.Add(
+                        GetObjectDetectionDefectCoreLabel(GetObjectDetectionDefectCoreIndex(core.CoreKey)),
+                        "-", "-", "待設定", "至少啟用暗部或亮部門檻後，才能將此條件判為良品");
+                    continue;
+                }
+
                 ObjectDetectionDefectCoreResult result;
                 if (!TryGetObjectDetectionDefectCoreResult(parameter, core.CoreKey, out result))
                 {
@@ -2514,6 +2524,17 @@ namespace IntegratedImageProcessingApp.Forms
                             "頻域異常二", "-", "-", "未完成", "目前影像的第二組頻域分析尚未完成或已過期");
                     }
                 }
+            }
+
+            bool hasClassifiableAnalysis = parameter.DefectDetectionCores
+                .Take(ObjectDetectionDefectCoreKeys.Length)
+                .Any(core => core != null && core.Enabled &&
+                    (core.DarkThresholdEnabled || core.BrightThresholdEnabled)) ||
+                IsObjectDetectionDefectFrequencyIntegrationRequired(parameter, 0) ||
+                IsObjectDetectionDefectFrequencyIntegrationRequired(parameter, 1);
+            if (!hasClassifiableAnalysis)
+            {
+                allRequiredResultsReady = false;
             }
 
             if (allRequiredResultsReady)
@@ -2722,6 +2743,8 @@ namespace IntegratedImageProcessingApp.Forms
             AppendObjectDetectionResultReviewSignatureValue(builder, parameter, new HashSet<object>());
             builder.Append('|');
             AppendObjectDetectionResultReviewSignatureValue(builder, definition, new HashSet<object>());
+            builder.Append("|relation-dependencies:")
+                .Append(CreateObjectDefinitionRelationDependencySignature(definition));
             builder.Append("|camera:")
                 .Append(GetCameraXMillimetersPerPixel().ToString("R", CultureInfo.InvariantCulture))
                 .Append('|')
@@ -2896,6 +2919,8 @@ namespace IntegratedImageProcessingApp.Forms
                 ImageContentGeneration = imageContentGeneration,
                 ImageSourceGeneration = System.Threading.Interlocked.CompareExchange(
                     ref imageSourceGeneration, 0, 0),
+                ObjectDefinitionGeneration = System.Threading.Interlocked.CompareExchange(
+                    ref objectDefinitionResultGeneration, 0, 0),
                 Parameter = (ObjectDetectionParameterSettings)
                     CloneObjectDetectionResultReviewModel(parameter),
                 Definition = (ObjectDefinitionSettings)
@@ -3050,7 +3075,9 @@ namespace IntegratedImageProcessingApp.Forms
                 UndeterminedReason = reason,
                 ImageContentGeneration = imageContentGeneration,
                 ImageSourceGeneration = System.Threading.Interlocked.CompareExchange(
-                    ref imageSourceGeneration, 0, 0)
+                    ref imageSourceGeneration, 0, 0),
+                ObjectDefinitionGeneration = System.Threading.Interlocked.CompareExchange(
+                    ref objectDefinitionResultGeneration, 0, 0)
             };
 
             try
@@ -3142,7 +3169,8 @@ namespace IntegratedImageProcessingApp.Forms
                     context.MaskParameter,
                     context.ObjectNumber,
                     bounds,
-                    snapshot.ImageSourceGeneration);
+                    snapshot.ImageSourceGeneration,
+                    snapshot.ObjectDefinitionGeneration);
                 if (snapshot.MeasurementMasks.ContainsKey(key))
                 {
                     continue;
@@ -3270,6 +3298,7 @@ namespace IntegratedImageProcessingApp.Forms
             ObjectDetectionResultReviewSnapshot snapshot = objectDetectionResultReviewSnapshot;
             objectDetectionResultReviewSnapshot = null;
             isParameterResultReviewSnapshotForTcp = false;
+            parameterResultReviewTcpResultId = null;
             parameterResultReviewTcpResultAtUtc = null;
             if (snapshot != null)
             {

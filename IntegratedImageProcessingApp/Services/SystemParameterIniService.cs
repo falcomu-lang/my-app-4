@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
+using System.Text;
 using System.IO;
 using System.Linq;
 
@@ -942,7 +943,7 @@ namespace IntegratedImageProcessingApp.Services
                 Directory.CreateDirectory(directory);
             }
 
-            using (var writer = new StreamWriter(filePath, false))
+            AtomicFileWriter.Write(filePath, delegate(TextWriter writer)
             {
                 writer.WriteLine("[System]");
                 writer.WriteLine("LastImagePath={0}", Escape(settings.LastImagePath));
@@ -1424,7 +1425,7 @@ namespace IntegratedImageProcessingApp.Services
                 writer.WriteLine("Engineer={0}", Escape(engineerPassword));
                 writer.WriteLine("Admin={0}", Escape(adminPassword));
                 writer.WriteLine("Monitor={0}", Escape(monitorPassword));
-            }
+            });
         }
 
         private static void EnsureAllEntityIds(SystemParameterSettings settings)
@@ -2315,7 +2316,7 @@ namespace IntegratedImageProcessingApp.Services
         }
 
         private static void WriteObjectDetectionInspectionRegions(
-            StreamWriter writer,
+            TextWriter writer,
             string parameterPrefix,
             List<ObjectDetectionInspectionRegionSettings> regions)
         {
@@ -2482,7 +2483,7 @@ namespace IntegratedImageProcessingApp.Services
         }
 
         private static void WriteObjectDetectionRoiGroups(
-            StreamWriter writer,
+            TextWriter writer,
             string parameterPrefix,
             List<ObjectDetectionRoiGroupSettings> groups)
         {
@@ -2597,7 +2598,7 @@ namespace IntegratedImageProcessingApp.Services
         }
 
         private static void WriteObjectDetectionFrequencySettings(
-            StreamWriter writer,
+            TextWriter writer,
             string prefix,
             ObjectDetectionFrequencySettings settings)
         {
@@ -2919,7 +2920,38 @@ namespace IntegratedImageProcessingApp.Services
 
         private static string Unescape(string value)
         {
-            return (value ?? string.Empty).Replace("\\n", "\n").Replace("\\r", "\r").Replace("\\\\", "\\");
+            string text = value ?? string.Empty;
+            var decoded = new StringBuilder(text.Length);
+            for (int index = 0; index < text.Length; index++)
+            {
+                char current = text[index];
+                if (current == '\\' && index + 1 < text.Length)
+                {
+                    char escaped = text[index + 1];
+                    if (escaped == '\\')
+                    {
+                        decoded.Append('\\');
+                        index++;
+                        continue;
+                    }
+                    if (escaped == 'n')
+                    {
+                        decoded.Append('\n');
+                        index++;
+                        continue;
+                    }
+                    if (escaped == 'r')
+                    {
+                        decoded.Append('\r');
+                        index++;
+                        continue;
+                    }
+                }
+
+                decoded.Append(current);
+            }
+
+            return decoded.ToString();
         }
     }
 }

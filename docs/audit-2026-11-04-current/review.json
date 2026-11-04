@@ -1,0 +1,735 @@
+{
+  "date": "2026-11-04",
+  "completedDate": "2026-11-05",
+  "verdict": "檢測主流程成形，可靠度防護進步；仍需獨立執行引擎與設備驗收",
+  "summary": "這套程式符合單相機逐片檢測的產品方向，已具有實際判定、追溯與多站通訊流程。近期修補增加了持久結果交付、命令驗證、原子保存、歷史精度快照和工作上限。主要不足已轉為跨頁持續執行、保存排程／關閉生命週期、ACK 信任邊界、統一執行快照與 UI 耦合。當前分數衡量來源中的工程成熟度，不是漏檢率、設備可用率或產線認證。",
+  "dimensions": [
+    {
+      "name": "檢測流程完整度",
+      "score": 4,
+      "strength": "相機 Mono8 記憶體影格、找物件、平場、尺寸、一般缺陷、兩組掃描異常、整合、逐片結果與歷史都有可追蹤的執行路徑。忙碌略過新影格符合現有需求。",
+      "risk": "完整入口仍依賴 UI 控制項存在；切頁、拒收、停止及例外恢復未有這次實機證據。完整流程不能直接推論產線可用率。",
+      "action": "以同一 FrameId 串接接納、運算、存圖、歷史及傳送狀態；先驗收跨頁持續運轉。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs",
+          "line": 66,
+          "anchor": "private async Task ProcessCameraAcquiredImageAsync",
+          "snippet": "63:             }\n64:         }\n65: \n66:         private async Task ProcessCameraAcquiredImageAsync(CameraGrayscaleFrame frame, long sequenceNumber)\n67:         {\n68:             string imageIdentity = null;\n69:             string imageSavePath = null;\n70:             LargeImageSource memorySource = null;\n71:             bool returnToInspectionOverview = isInspectionOverviewActive;\n72:             ResultReviewParameterChoice selectedChoice = null;\n73: \n74:             try\n75:             {"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs",
+          "line": 1264,
+          "anchor": "measurementTask = Task.Run",
+          "snippet": "1261:                     objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];\n1262:                 objectDetectionResultReviewConcurrentComputationStopwatch = Stopwatch.StartNew();\n1263:                 StartObjectDetectionResultReviewTimingStage(\"尺寸量測與缺陷檢測並行運算\");\n1264:                 measurementTask = Task.Run(\n1265:                     () => CalculateObjectDetectionResultReviewMeasurements(\n1266:                         parameter,\n1267:                         objects,\n1268:                         measurementLargeSource,\n1269:                         measurementOriginalImage,\n1270:                         cancellationToken,\n1271:                         capturedRecipeGeneration,\n1272:                         capturedImageGeneration));\n1273:                 bool includeFrequency = parameter.DefectFrequencyEnabled &&"
+        }
+      ]
+    },
+    {
+      "name": "架構分層與責任隔離",
+      "score": 2,
+      "strength": "相機為獨立專案，TCP、設定、每日 DB、結果佇列及部分 OpenCV 已抽 Service。",
+      "risk": "主要 orchestration 和數值結果仍是 MainForm private 型別；相機會初始化結果確認頁。partial 不能隔離共享可變狀態。",
+      "action": "先抽 InspectionRequest／InspectionResult 與 InspectionRunner，手動、相機、歷史使用共同入口。保持原演算法、逐步替換呼叫。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs",
+          "line": 105,
+          "anchor": "ShowObjectDetectionResultReviewPanel();",
+          "snippet": "102: \n103:                     // First-time result-review initialization is an internal page setup,\n104:                     // not an operator request to stop the latched overview inspection mode.\n105:                     ShowObjectDetectionResultReviewPanel();\n106:                     if (restoreOverview)\n107:                     {\n108:                         ShowInspectionOverviewPanel();\n109:                     }\n110:                 }\n111:                 if (!IsObjectDetectionResultReviewUiAvailable())\n112:                 {\n113:                     SetCameraInspectionStatus(\"相機影像已取得，但結果確認頁面尚未就緒。\");\n114:                     return;"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs",
+          "line": 74,
+          "anchor": "private sealed class ObjectDetectionResultReviewSnapshot",
+          "snippet": "71:             public long CalculationMilliseconds { get; set; }\n72:         }\n73: \n74:         private sealed class ObjectDetectionResultReviewSnapshot : IDisposable\n75:         {\n76:             public string ParameterId { get; set; }\n77:             public string ImagePath { get; set; }\n78:             public string SettingsSignature { get; set; }\n79:             public int ImageContentGeneration { get; set; }\n80:             public int ImageSourceGeneration { get; set; }\n81:             public int ObjectDefinitionGeneration { get; set; }\n82:             public ObjectDetectionParameterSettings Parameter { get; set; }\n83:             public ObjectDefinitionSettings Definition { get; set; }"
+        }
+      ]
+    },
+    {
+      "name": "模組規模與維護成本",
+      "score": 2,
+      "strength": "檔名大致依量測、ROI、一般缺陷、頻域、歷史分責任，可定位功能。",
+      "risk": "CameraService、ResultReview、DefectFrequency 等大檔混合生命週期、模型、計算與呈現；跨 partial 方法相依使單一修改難以估計影響。",
+      "action": "優先按純計算、資料儲存及排程責任抽類別，不以再次切 partial 或任意行數門檻視為架構改善。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs",
+          "line": 161,
+          "anchor": "private sealed class ObjectDetectionFrequencyWorkspace",
+          "snippet": "158:             public List<ObjectDetectionFrequencyCell> Cells { get; set; }\n159:         }\n160: \n161:         private sealed class ObjectDetectionFrequencyWorkspace : IDisposable\n162:         {\n163:             private const int MaximumMaskLookupBytes = 8 * 1024 * 1024;\n164:             private int[] invalidMaskCounts;\n165:             private ulong[] validMaskWindows;\n166:             private int maskCountTop = -1;\n167:             private int maskLookupTop;\n168:             private int maskLookupRows;\n169:             private int maskLookupWordsPerRow;\n170:             private bool maskIsFull;"
+        },
+        {
+          "path": "CameraCaptureModule/Services/CameraService.cs",
+          "line": 15,
+          "anchor": "public class CameraService",
+          "snippet": "12: \n13: namespace CameraCaptureApp.Services\n14: {\n15:     public class CameraService : ICameraService\n16:     {\n17:         private const int PreviewIntervalMilliseconds = 200;\n18: \n19:         private readonly CameraStatus _status;\n20:         private readonly object _frameSync = new object();\n21:         private CameraSettings _settings;\n22:         private SapLocation _serverLocation;\n23:         private string _configFileName;\n24:         private SapAcqDevice _acqDevice;"
+        }
+      ]
+    },
+    {
+      "name": "Recipe 與參數一致性",
+      "score": 3,
+      "strength": "穩定 ID、Recipe catalog、取消世代及原子工作 INI 寫入已有實作。上游失效與簽章也已有近期修補。",
+      "risk": "執行流程仍讀 MainForm 中的可變設定；結果快照在流程結尾才建立。設備設定、Recipe 與影像 generation 的一致快照尚未成為統一輸入合約。",
+      "action": "每次接納影格時固定 Recipe／設備設定版本；使計算只讀該快照，避免執行中修改造成混用。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Services/SystemParameterIniService.cs",
+          "line": 946,
+          "anchor": "AtomicFileWriter.Write(filePath",
+          "snippet": "943:                 Directory.CreateDirectory(directory);\n944:             }\n945: \n946:             AtomicFileWriter.Write(filePath, delegate(TextWriter writer)\n947:             {\n948:                 writer.WriteLine(\"[System]\");\n949:                 writer.WriteLine(\"LastImagePath={0}\", Escape(settings.LastImagePath));\n950:                 writer.WriteLine(\"ActiveDetectionRecipeId={0}\", Escape(settings.ActiveDetectionRecipeId));\n951:                 writer.WriteLine();\n952:                 writer.WriteLine(\"[ROI]\");\n953:                 writer.WriteLine(\"Enabled={0}\", settings.RoiEnabled ? \"true\" : \"false\");\n954:                 writer.WriteLine(\"X={0}\", settings.Roi.X.ToString(CultureInfo.InvariantCulture));\n955:                 writer.WriteLine(\"Y={0}\", settings.Roi.Y.ToString(CultureInfo.InvariantCulture));"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs",
+          "line": 1546,
+          "anchor": "CaptureObjectDetectionResultReviewSnapshot(parameter",
+          "snippet": "1543:                 objectDetectionResultReviewStatusLabel.Text =\n1544:                     BuildObjectDetectionResultReviewSummary(parameter, objects.Count);\n1545:                 objectDetectionResultReviewImageGeneration = imageContentGeneration;\n1546:                 CaptureObjectDetectionResultReviewSnapshot(parameter, definition, objects);\n1547:                 if (recordHistory)\n1548:                 {\n1549:                     SaveManualObjectDetectionResultReviewHistory();\n1550:                 }\n1551:                 RestoreObjectDetectionResultReviewSnapshotDisplays();\n1552:                 objectDetectionResultReviewLastSuccessfulSettingsSignature =\n1553:                     currentSettingsSignature;\n1554:                 objectDetectionResultReviewLastSuccessfulParameterId = parameter.Id;\n1555:                 objectDetectionResultReviewLastSuccessfulImageGeneration = imageContentGeneration;"
+        }
+      ]
+    },
+    {
+      "name": "尺寸量測與逐片分級",
+      "score": 3,
+      "strength": "量測依指定 MASK，支援平行物件量測、X/Y 精度、A 不符再判 B 與逐物件等級。",
+      "risk": "設定驗證與實際求值 parser 仍分開；缺值、斜線重複取樣與公式邊界需固定資料驗收。不能由編譯證明量測精度。",
+      "action": "抽出 MeasurementEngine、共用公式 parser 和規格 evaluator；先保持現有缺測與 A/B/NG 語意，再比較已知幾何。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.GoodCondition.cs",
+          "line": 919,
+          "anchor": "private static bool ValidateObjectDetectionGoodJudgementExpression",
+          "snippet": "916:             return true;\n917:         }\n918: \n919:         private static bool ValidateObjectDetectionGoodJudgementExpression(\n920:             string expression,\n921:             ObjectDetectionParameterSettings parameter,\n922:             out string message)\n923:         {\n924:             message = \"請使用量測編號、四則運算、舊版 min/max 語法，或平行量測的 MIN(n)、AVG(n)、MAX(n)\";\n925:             if (string.IsNullOrWhiteSpace(expression))\n926:             {\n927:                 return false;\n928:             }"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.GoodJudgement.cs",
+          "line": 214,
+          "anchor": "int configuredACount",
+          "snippet": "211:                     result.Conditions.Add(condition);\n212:                 }\n213: \n214:                 int configuredACount = result.Conditions.Count(condition =>\n215:                     condition.Rule.Enabled && condition.HasA);\n216:                 bool hasAFailure = result.Conditions.Any(condition =>\n217:                     condition.AState == ResultReviewGoodJudgementConditionState.Failed);\n218:                 bool hasAUnknown = result.Conditions.Any(condition =>\n219:                     condition.AState == ResultReviewGoodJudgementConditionState.Unknown);\n220: \n221:                 if (configuredACount > 0 && !hasAFailure && !hasAUnknown)\n222:                 {\n223:                     result.Grade = ResultReviewGoodJudgementGrade.A;"
+        }
+      ]
+    },
+    {
+      "name": "ROI／MASK 幾何安全",
+      "score": 3,
+      "strength": "共用 ROI、穩定 ID 群組、重疊聯集及有效視窗檢查存在。掃描會要求完整格子落在有效 MASK。",
+      "risk": "任意形狀或小於掃描窗的邊界可能沒有完整有效格；不越界不代表所有像素都會被分析。需讓使用者知道未覆蓋範圍。",
+      "action": "增加有效覆蓋比例與未掃描區顯示；用旋轉、不規則、狹窄及重疊 ROI 確認運算與圖框一致。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs",
+          "line": 2876,
+          "anchor": "if (!workspace.IsWindowInsideMask(startX, startY))",
+          "snippet": "2873: \n2874:             byte* image = (byte*)workspace.ImageData.ToPointer();\n2875:             byte* hannBytes = (byte*)workspace.HannData.ToPointer();\n2876:             if (!workspace.IsWindowInsideMask(startX, startY))\n2877:             {\n2878:                 return false;\n2879:             }\n2880: \n2881:             Cv.Mat sourceWindow = null;\n2882:             try\n2883:             {\n2884:                 byte* energyImage = image + (long)startY * workspace.ImageStep + startX;\n2885:                 long energyImageStep = workspace.ImageStep;"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectRegion.cs",
+          "line": 70,
+          "anchor": "private sealed class ObjectDetectionInspectionRegionWorkItem",
+          "snippet": "67:             }\n68:         }\n69: \n70:         private sealed class ObjectDetectionInspectionRegionWorkItem\n71:         {\n72:             public string GroupId { get; set; }\n73: \n74:             public ObjectDefinitionDetectedObject DetectedObject { get; set; }\n75: \n76:             public List<ObjectDetectionInspectionRegionSettings> Regions { get; set; }\n77: \n78:             public List<RectangleF> NormalizedRegions { get; set; }\n79:         }"
+        }
+      ]
+    },
+    {
+      "name": "一般缺陷判定與整合",
+      "score": 3,
+      "strength": "平場加條件一至六、前處理、暗亮門檻、形態處理、大小篩選與候選合併都有程式。",
+      "risk": "多個條件／頻域共享快取和可變結果；公司樣本的誤報、漏報與整合去重沒有這次量測證據。",
+      "action": "各核心輸出獨立結果 DTO，整合只接受同一影格及參數版本；用已標註良／不良樣本確認候選與最終等級。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectProcessing.cs",
+          "line": 36,
+          "anchor": "private sealed class ObjectDetectionDefectCoreResult",
+          "snippet": "33:             public RectangleF Bounds { get; set; }\n34:         }\n35: \n36:         private sealed class ObjectDetectionDefectCoreResult\n37:         {\n38:             public string Signature { get; set; }\n39: \n40:             public long ElapsedMilliseconds { get; set; }\n41: \n42:             public long TotalElapsedMilliseconds { get; set; }\n43: \n44:             public long RoiPreparationElapsedMilliseconds { get; set; }\n45: "
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectIntegration.cs",
+          "line": 548,
+          "anchor": "MergeObjectDetectionDefectIntegrationCandidates",
+          "snippet": "545:                 1);\n546: \n547:             List<ObjectDetectionDefectIntegrationGroup> groups =\n548:                 MergeObjectDetectionDefectIntegrationCandidates(parameter, candidates);\n549:             objectDetectionDefectIntegrationCache[parameter.Id] = groups;\n550:             return groups;\n551:         }\n552: \n553:         private static void AddObjectDetectionFrequencyCandidates(\n554:             List<ObjectDetectionDefectIntegrationCandidate> candidates,\n555:             ObjectDetectionFrequencyResult result,\n556:             int frequencyIndex)\n557:         {"
+        }
+      ]
+    },
+    {
+      "name": "掃描異常演算法可解釋性",
+      "score": 3,
+      "strength": "程式清楚可追到去平均、Hann 加窗與平方能量，另有縮放、鄰格統計及細項計時。",
+      "risk": "不是 FFT／DFT；相似總能量但不同紋理可能無法區分，垂直縮放改變訊號與尺度，門檻須重校。",
+      "action": "保留公式、實際縮放尺寸與有效格統計；以目標淡線和背景反例建立 ROC／誤報資料，不靠單張示意圖保證檢出。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs",
+          "line": 2965,
+          "anchor": "float windowed = centered * hannRow[column];",
+          "snippet": "2962:                     for (int column = 0; column < energyWidth; column++)\n2963:                     {\n2964:                         float centered = imageRow[column] - mean;\n2965:                         float windowed = centered * hannRow[column];\n2966:                         squaredEnergySum += windowed * windowed;\n2967:                     }\n2968:                 }\n2969: \n2970:                 energy = squaredEnergySum / validPixels;\n2971:                 workspace.EnergyElapsedTicks += Stopwatch.GetTimestamp() - energyStarted;\n2972:                 return true;\n2973:             }\n2974:             finally"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs",
+          "line": 2901,
+          "anchor": "workspace.VerticalStretchPercent < 100",
+          "snippet": "2898:                         new Cv.Size(workspace.WindowWidth, workspace.WindowHeight),\n2899:                         0,\n2900:                         0,\n2901:                         workspace.VerticalStretchPercent < 100\n2902:                             ? Cv.InterpolationFlags.Area\n2903:                             : Cv.InterpolationFlags.Linear);\n2904:                     energyImage = (byte*)workspace.ResizedWindow.Data.ToPointer();\n2905:                     energyImageStep = workspace.ResizedWindow.Step();\n2906:                     energyWidth = workspace.WindowWidth;\n2907:                     energyHeight = workspace.WindowHeight;\n2908:                     validPixels = energyWidth * energyHeight;\n2909:                     workspace.ResizeElapsedTicks += Stopwatch.GetTimestamp() - resizeStarted;\n2910:                 }"
+        }
+      ]
+    },
+    {
+      "name": "效能與資源預算",
+      "score": 3,
+      "strength": "應用程式 Parallel.For 已集中到共用 worker 上限，巢狀工作 inline；相機模組部分自動存圖有容量限制。",
+      "risk": "單次迴圈長度 ≤1 的捷徑未登記 activeWorkers；OpenCV 原生執行緒、主程式 TIFF 保存和其他 Task 不計入此上限。不是程序級資源預算。",
+      "action": "先補單項工作也取得 worker 名額，加入主存圖有界排程；量測牆鐘、P95、峰值 RAM，再調整預設上限。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Services/InspectionParallelism.cs",
+          "line": 52,
+          "anchor": "if (WorkerDepth.Value > 0 || toExclusive - fromInclusive <= 1)",
+          "snippet": "49: \n50:             // If a processing worker enters another parallel stage, run that stage on\n51:             // the current worker. This avoids nested worker multiplication and deadlocks.\n52:             if (WorkerDepth.Value > 0 || toExclusive - fromInclusive <= 1)\n53:             {\n54:                 for (int index = fromInclusive; index < toExclusive; index++)\n55:                 {\n56:                     cancellationToken.ThrowIfCancellationRequested();\n57:                     body(index);\n58:                 }\n59:                 return;\n60:             }\n61: "
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs",
+          "line": 428,
+          "anchor": "private void StartCameraInspectionImageSave",
+          "snippet": "425:             return Path.Combine(directory, fileName);\n426:         }\n427: \n428:         private void StartCameraInspectionImageSave(\n429:             LargeImageSource source,\n430:             string imagePath,\n431:             string imageIdentity,\n432:             long sequenceNumber)\n433:         {\n434:             LargeImageSource saveSource = source.AddReference();\n435:             Task.Run(delegate\n436:             {\n437:                 try"
+        }
+      ]
+    },
+    {
+      "name": "非同步與狀態機可靠度",
+      "score": 2,
+      "strength": "有取消 token、generation 檢查、影格 in-flight 門閂及多處 finally 清理。",
+      "risk": "本機總覽離頁會關閉 overview forwarding 並移除訂閱，而活動旗標仍保留；自動轉送又受 suppress 限制。是否繼續判定取決於其他遠端旗標和訂閱。",
+      "action": "把相機運行狀態獨立於 PageVisible；頁面只訂閱顯示。明確區分停止接納、等待目前工作完成和關閉資源。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs",
+          "line": 216,
+          "anchor": "private void ExitInspectionOverviewMode()",
+          "snippet": "213:             inspectionOverviewCameraTimer.Start();\n214:         }\n215: \n216:         private void ExitInspectionOverviewMode()\n217:         {\n218:             if (!isInspectionOverviewActive)\n219:             {\n220:                 return;\n221:             }\n222: \n223:             bool inspectionModeRemainsActive = isInspectionOverviewInspectionModeActive;\n224:             bool continuousCaptureRemainsActive = isInspectionOverviewContinuousCaptureActive;\n225:             bool captureModeRemainsActive = inspectionModeRemainsActive ||"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Controls/CameraCaptureHostControl.cs",
+          "line": 346,
+          "anchor": "bool shouldSubscribe = !disposing",
+          "snippet": "343:                 return;\n344:             }\n345: \n346:             bool shouldSubscribe = !disposing &&\n347:                 ((overviewCaptureForwardingEnabled && overviewImageCapturedHandlers != null) ||\n348:                     (remoteCaptureForwardingEnabled && remoteImageCapturedHandlers != null) ||\n349:                     (imageAcquiredHandlers != null && cameraForm.IsImageProcessingEnabled &&\n350:                         !suppressAutomaticInspectionForwarding));\n351:             if (shouldSubscribe == cameraImageAcquiredSubscribed)\n352:             {\n353:                 return;\n354:             }\n355: "
+        }
+      ]
+    },
+    {
+      "name": "影像記憶體與生命週期",
+      "score": 3,
+      "strength": "Mono8 buffer 可 pinned 並以 Mat view 使用；來源有參照計數，保存路徑取得額外參照並 finally 釋放。",
+      "risk": "CameraGrayscaleFrame.Pixels 是可變 byte[]，唯讀約定由註解維持。多來源、預覽、處理 patch、MASK 和存圖可能共同持有大圖，沒有總量預算。",
+      "action": "引入明確 lease 與唯讀 frame 契約，區分 view／clone；集中釋放與記憶體指標，減少完整圖副本。",
+      "refs": [
+        {
+          "path": "CameraCaptureModule/Services/CameraImageAcquiredEventArgs.cs",
+          "line": 66,
+          "anchor": "public byte[] Pixels",
+          "snippet": "63:             Stride = stride;\n64:         }\n65: \n66:         public byte[] Pixels { get; private set; }\n67: \n68:         public int Width { get; private set; }\n69: \n70:         public int Height { get; private set; }\n71: \n72:         public int Stride { get; private set; }\n73: \n74:         public Bitmap CreateBitmapCopy()\n75:         {"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Controls/LargeImageSource.cs",
+          "line": 98,
+          "anchor": "_memoryBufferHandle = GCHandle.Alloc",
+          "snippet": "95:             _previewLevels = new List<PreviewLevel>();\n96:             try\n97:             {\n98:                 _memoryBufferHandle = GCHandle.Alloc(grayscaleBuffer, GCHandleType.Pinned);\n99:                 _memoryGray = Cv.Mat.FromPixelData(\n100:                     height,\n101:                     width,\n102:                     Cv.MatType.CV_8UC1,\n103:                     _memoryBufferHandle.AddrOfPinnedObject(),\n104:                     stride);\n105:                 Width = width;\n106:                 Height = height;\n107:                 SourceIsGrayscale = true;"
+        }
+      ]
+    },
+    {
+      "name": "UI 狀態與互動一致性",
+      "score": 3,
+      "strength": "有角色選單過濾、視角保存、結果快照、單雙擊聚焦與同項選取抑制。",
+      "risk": "大量固定 GroupBox 高度／像素座標與重建控制項仍需 DPI 驗收；計算和顯示互相影響的路徑尚多。",
+      "action": "按頁抽 UserControl／ViewState，將執行引擎與畫面建立分離，固定 100／125／150% DPI 驗收基準。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.GlobalSettings.cs",
+          "line": 846,
+          "anchor": "private Control CreateConnectionControllerSettingsPanel",
+          "snippet": "843:             return container;\n844:         }\n845: \n846:         private Control CreateConnectionControllerSettingsPanel()\n847:         {\n848:             if (connectionControllerSettings == null)\n849:             {\n850:                 connectionControllerSettings = new ConnectionControllerSettings();\n851:             }\n852: \n853:             var container = new Panel { Dock = DockStyle.Top, Height = 660 };\n854:             var descriptionLabel = new Label\n855:             {"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs",
+          "line": 442,
+          "anchor": "RestoreObjectDetectionResultReviewSnapshotDisplays",
+          "snippet": "439:             if (objectDetectionResultReviewSnapshot != null && !imageSourceChanged &&\n440:                 !parameterChangedWhileAway && !snapshotSettingsChanged)\n441:             {\n442:                 RestoreObjectDetectionResultReviewSnapshotDisplays();\n443:             }\n444:             else if (!isRestoringExistingReviewPanel || imageSourceChanged ||\n445:                 parameterChangedWhileAway || snapshotSettingsChanged)\n446:             {\n447:                 RefreshObjectDetectionFlatFieldDisplay();\n448:                 RefreshObjectDetectionMeasurementDisplay();\n449:                 RefreshObjectDetectionDefectDisplay();\n450:             }\n451:             UpdateObjectDetectionResultReviewTimingMemo();"
+        }
+      ]
+    },
+    {
+      "name": "相機／米輪整合",
+      "score": 3,
+      "strength": "Sapera、software／external trigger、米輪原點及裝置 feature 處理皆有實作；TriggerSelector 失敗後已有阻止後續 Mode／Source 寫入防護。",
+      "risk": "原廠 feature 差異、時序與機械狀態無法靠來源掃描證實；CameraService 大量容錯路徑的 fallback 必須以實機驗收。",
+      "action": "保留原廠呼叫契約；建立每台設備 feature／設定結果紀錄，依序驗收接線、原點、觸發、斷線及停止。",
+      "refs": [
+        {
+          "path": "CameraCaptureModule/Services/CameraService.cs",
+          "line": 3243,
+          "anchor": "private bool TryConfigureTriggerSelector",
+          "snippet": "3240:             return false;\n3241:         }\n3242: \n3243:         private bool TryConfigureTriggerSelector(string selector, bool enabled, string source)\n3244:         {\n3245:             var selectorApplied = TrySetDeviceFeature(new[] { \"TriggerSelector\" }, selector);\n3246:             if (!selectorApplied)\n3247:             {\n3248:                 return false;\n3249:             }\n3250: \n3251:             var modeApplied = TrySetDeviceFeature(new[] { \"TriggerMode\" }, enabled ? \"On\" : \"Off\");\n3252:             if (!modeApplied)"
+        },
+        {
+          "path": "CameraCaptureModule/Services/Lsi8181MeterWheelService.cs",
+          "line": 6,
+          "anchor": "internal sealed class Lsi8181MeterWheelService",
+          "snippet": "3: \n4: namespace CameraCaptureApp.Services\n5: {\n6:     internal sealed class Lsi8181MeterWheelService : IDisposable\n7:     {\n8:         private bool _initialized;\n9:         private byte _cardId;\n10: \n11:         public byte CardId\n12:         {\n13:             get { return _cardId; }\n14:         }\n15: "
+        }
+      ]
+    },
+    {
+      "name": "影格與保存影像一致性",
+      "score": 4,
+      "strength": "完整 Mono8 frame event 與 frame 序號已建立；灰階自動保存使用該次 frame，而主檢測直接以記憶體處理，避免延後讀最新預覽當原圖。",
+      "risk": "主程式另一路 TIFF 與相機模組自動保存仍為不同工作；DB 記下路徑不代表檔案已完成，無跨檔交易。",
+      "action": "將 FrameId、存圖 Pending／Saved／Failed 狀態寫入歷史，保留一個主保存責任，驗收慢碟與關閉時的影格對應。",
+      "refs": [
+        {
+          "path": "CameraCaptureModule/Forms/MainForm.cs",
+          "line": 1112,
+          "anchor": "QueueGrayscaleAutoSave(e.GrayscaleFrame",
+          "snippet": "1109: \n1110:             try\n1111:             {\n1112:                 QueueGrayscaleAutoSave(e.GrayscaleFrame, _settings.Clone());\n1113:             }\n1114:             catch (Exception ex)\n1115:             {\n1116:                 AppLogger.Log(\"Failed to queue acquired grayscale frame for saving.\", ex);\n1117:                 SetFooterMessageFromAnyThread(\"Captured image save failed: \" + ex.Message);\n1118:             }\n1119:         }\n1120: \n1121:         private void CameraService_ExternalTriggerReceived(object sender, EventArgs e)"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs",
+          "line": 152,
+          "anchor": "StartCameraInspectionImageSave(",
+          "snippet": "149:                     latestCameraInspectionFramePath = imageSavePath;\n150:                     latestCameraInspectionFrameIdentity = imageIdentity;\n151:                     Interlocked.Exchange(ref latestCameraInspectionSequenceForTcp, sequenceNumber);\n152:                     StartCameraInspectionImageSave(\n153:                         memorySource,\n154:                         imageSavePath,\n155:                         imageIdentity,\n156:                         sequenceNumber);\n157:                     LoadMemoryImageIntoOriginalDisplays(memorySource);\n158:                     if (objectDetectionResultReviewReferenceImageSize.IsEmpty && !imageYHeightMismatch)\n159:                     {\n160:                         objectDetectionResultReviewReferenceImageSize = imageSize;\n161:                     }"
+        }
+      ]
+    },
+    {
+      "name": "TCP 結果交付可靠度",
+      "score": 3,
+      "strength": "有落盤 outbox、接收 inbox、ResultId 去重、ACK 與重送；peer 清理已比對實例，舊結果不覆蓋較新結果。",
+      "risk": "outbox 未按接收端分帳；任一 ACK 都可刪除結果。ACK 無簽章或可靠 peer 授權檢查。UI timer 還會同步全讀待送 JSON。",
+      "action": "定義每目的端交付狀態，認證 ACK，背景分批排空 outbox，並處理損壞／毒訊息與保留期限。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs",
+          "line": 1347,
+          "anchor": "inspectionTcpResultStore.Acknowledge(message.AcknowledgedResultId);",
+          "snippet": "1344:                 if (inspectionTcpResultStore != null &&\n1345:                     !string.IsNullOrWhiteSpace(message.AcknowledgedResultId))\n1346:                 {\n1347:                     inspectionTcpResultStore.Acknowledge(message.AcknowledgedResultId);\n1348:                     string suffix = \"|\" + message.AcknowledgedResultId;\n1349:                     foreach (string key in inspectionTcpResultLastSentUtcByPeerAndId.Keys\n1350:                         .Where(key => key.EndsWith(suffix, StringComparison.Ordinal)).ToList())\n1351:                     {\n1352:                         inspectionTcpResultLastSentUtcByPeerAndId.Remove(key);\n1353:                     }\n1354:                 }\n1355:                 return;\n1356:             }"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs",
+          "line": 46,
+          "anchor": "public IList<InspectionTcpMessage> LoadPending()",
+          "snippet": "43:             }\n44:         }\n45: \n46:         public IList<InspectionTcpMessage> LoadPending()\n47:         {\n48:             lock (sync)\n49:             {\n50:                 if (!Directory.Exists(outboxDirectory)) return new List<InspectionTcpMessage>();\n51:                 var messages = new List<InspectionTcpMessage>();\n52:                 foreach (string path in Directory.GetFiles(outboxDirectory, \"*.json\", SearchOption.TopDirectoryOnly))\n53:                 {\n54:                     try\n55:                     {"
+        }
+      ]
+    },
+    {
+      "name": "權限與連線安全",
+      "score": 3,
+      "strength": "啟動高權限角色會重新驗證；遠端 command 可啟用 HMAC、時間戳、目標 ID 與持久防重播。",
+      "risk": "金鑰與角色密碼為本機明文，命令認證預設關閉；狀態、結果、ACK 無訊息驗證且沒有 TLS。角色不等於個人帳號稽核。",
+      "action": "先針對設備網路明確威脅模型，限制端點、啟用命令驗證，再加入互認／TLS 與結果 ACK 保護。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs",
+          "line": 56,
+          "anchor": "startupRoleRequiresAuthentication = persistedRole;",
+          "snippet": "53:             }\n54:             if (persistedRole != MainFormRole.Operator)\n55:             {\n56:                 startupRoleRequiresAuthentication = persistedRole;\n57:                 Shown += MainForm_AuthenticatePersistedRole;\n58:             }\n59:         }\n60: \n61:         private void MainForm_AuthenticatePersistedRole(object sender, EventArgs e)\n62:         {\n63:             Shown -= MainForm_AuthenticatePersistedRole;\n64:             if (!startupRoleRequiresAuthentication.HasValue || IsDisposed) return;\n65: "
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Services/InspectionTcpCommandSecurity.cs",
+          "line": 26,
+          "anchor": "using (var hmac = new HMACSHA256",
+          "snippet": "23: \n24:             string canonical = CreateCanonicalCommand(\n25:                 commandId, command, senderStationId, targetStationId, sentAtUtc);\n26:             using (var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret)))\n27:             {\n28:                 return Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(canonical)));\n29:             }\n30:         }\n31: \n32:         public static bool VerifySignature(\n33:             string secret,\n34:             string commandId,\n35:             string command,"
+        }
+      ]
+    },
+    {
+      "name": "歷史／設定持久化",
+      "score": 3,
+      "strength": "每日 SQLite、有 transaction／rollback、參數快照去重；工作 INI 與部分持久檔已使用 flush＋原子替換。",
+      "risk": "原圖、Recipe 快照、DB 及 TCP inbox 不是單一交易；背景歷史保存無完整關閉排空，容量與備份政策仍缺。",
+      "action": "記錄保存狀態與失敗原因；集中 HistoryWriter，建立關閉排空、磁碟滿、跨日與備份復原流程。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Services/InspectionHistoryStore.cs",
+          "line": 162,
+          "anchor": "BEGIN IMMEDIATE TRANSACTION",
+          "snippet": "159:             using (var database = new NativeSqliteDatabase(databasePath))\n160:             {\n161:                 EnsureSchema(database);\n162:                 database.Execute(\"BEGIN IMMEDIATE TRANSACTION\");\n163:                 try\n164:                 {\n165:                     database.Execute(\n166:                         \"INSERT OR REPLACE INTO batches (batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id, execution_snapshot_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)\",\n167:                         record.BatchId,\n168:                         record.InspectedAt.ToString(\"yyyy-MM-dd HH:mm:ss.fff\", CultureInfo.InvariantCulture),\n169:                         record.CameraSequence,\n170:                         record.RecipeId,\n171:                         record.RecipeName,"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Services/AtomicFileWriter.cs",
+          "line": 46,
+          "anchor": "File.Replace(temporaryPath, fullPath, null);",
+          "snippet": "43: \n44:                 if (File.Exists(fullPath))\n45:                 {\n46:                     File.Replace(temporaryPath, fullPath, null);\n47:                 }\n48:                 else\n49:                 {\n50:                     File.Move(temporaryPath, fullPath);\n51:                 }\n52:             }\n53:             finally\n54:             {\n55:                 if (File.Exists(temporaryPath))"
+        }
+      ]
+    },
+    {
+      "name": "判定追溯與重跑一致性",
+      "score": 3,
+      "strength": "歷史已有 X/Y 精度、mm 開關、站點、程式版號快照，重跑明確套用；ParameterId 不明確時拒絕猜選。",
+      "risk": "精度和版號是在保存歷史時取得，不是每次運算入口固定；歷史尺寸明細仍從 Grid 格子轉文字，缺少獨立數值結果契約。舊紀錄缺精度會拒絕重跑。",
+      "action": "於接納影格建立 ExecutionContext，保存原始數值、單位、參數 hash 和程式 build ID，讓 UI 只格式化顯示。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs",
+          "line": 866,
+          "anchor": "record.ExecutionSnapshot = new InspectionHistoryExecutionSnapshot",
+          "snippet": "863:                         : (string.IsNullOrWhiteSpace(snapshot.Parameter.DisplayName)\n864:                             ? snapshot.Parameter.Id : snapshot.Parameter.DisplayName)\n865:                 };\n866:                 record.ExecutionSnapshot = new InspectionHistoryExecutionSnapshot\n867:                 {\n868:                     XMillimetersPerPixel = GetCameraXMillimetersPerPixel(),\n869:                     YMillimetersPerPixel = GetCameraYMillimetersPerPixel(),\n870:                     MillimeterConversionEnabled = IsCameraMillimeterConversionEnabled(),\n871:                     SoftwareId = cameraDeviceSettings == null ? 0 : cameraDeviceSettings.SoftwareId,\n872:                     ProgramName = cameraDeviceSettings == null ? string.Empty : cameraDeviceSettings.ProgramName,\n873:                     ApplicationVersion = typeof(MainForm).Assembly.GetName().Version == null\n874:                         ? string.Empty\n875:                         : typeof(MainForm).Assembly.GetName().Version.ToString()"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs",
+          "line": 900,
+          "anchor": "string measured = \"最小 \"",
+          "snippet": "897:                             sizeByObject[objectNumber] = details;\n898:                         }\n899:                         string unit = Convert.ToString(row.Cells[9].Value);\n900:                         string measured = \"最小 \" + Convert.ToString(row.Cells[6].Value) +\n901:                             \"／平均 \" + Convert.ToString(row.Cells[7].Value) +\n902:                             \"／最大 \" + Convert.ToString(row.Cells[8].Value) +\n903:                             (string.IsNullOrWhiteSpace(unit) ? string.Empty : \" \" + unit);\n904:                         details.Add(new InspectionHistoryDetailRecord\n905:                         {\n906:                             Title = Convert.ToString(row.Cells[2].Value) + \" (#\" + Convert.ToString(row.Cells[1].Value) + \")\",\n907:                             Measured = measured,\n908:                             Condition = Convert.ToString(row.Cells[10].Value),\n909:                             Result = string.Empty,"
+        }
+      ]
+    },
+    {
+      "name": "錯誤處理與可觀測性",
+      "score": 2,
+      "strength": "相機有 AppLogger，主要流程有狀態文字、細項計時與部分例外提示。",
+      "risk": "部分錯誤僅 Debug.WriteLine／空 catch；保存工作、幀、Recipe 與網路 ResultId 缺統一結構化事件。單看 Memo 難追完整失敗路徑。",
+      "action": "集中結構化 log，串 FrameId／RunId／ResultId，記錄拒收、取消、保存、ACK 延遲和資源峰值；不可把空 catch 數直接當 bug 數。",
+      "refs": [
+        {
+          "path": "CameraCaptureModule/Services/AppLogger.cs",
+          "line": 7,
+          "anchor": "internal static class AppLogger",
+          "snippet": "4: \n5: namespace CameraCaptureApp.Services\n6: {\n7:     internal static class AppLogger\n8:     {\n9:         private static readonly object SyncRoot = new object();\n10: \n11:         public static void Log(string title, Exception ex = null)\n12:         {\n13:             try\n14:             {\n15:                 var logPath = GetLogPath();\n16:                 var builder = new StringBuilder();"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs",
+          "line": 65,
+          "anchor": "Unable to read pending inspection result",
+          "snippet": "62:                     catch (Exception exception)\n63:                     {\n64:                         System.Diagnostics.Debug.WriteLine(\n65:                             \"Unable to read pending inspection result \" + path + \": \" + exception.Message);\n66:                     }\n67:                 }\n68:                 return messages.OrderBy(GetResultTime).ToList();\n69:             }\n70:         }\n71: \n72:         public void Acknowledge(string resultId)\n73:         {\n74:             if (string.IsNullOrWhiteSpace(resultId)) return;"
+        }
+      ]
+    },
+    {
+      "name": "驗證／建置／交付可重現性",
+      "score": 2,
+      "strength": "有明確 csproj Compile 清單、x64 組態與可覆寫 SDK 路徑；目前 41＋70 檔無漏列。已有 Debug 建置成功證據。",
+      "risk": "沒有自動化測試專案；公司影像、相機／米輪、多站斷線、Release 長時間效能與部署復原尚無此次證據。Word／PDF 與部分舊審查文件落後來源。",
+      "action": "建立可在現場重播的匿名測例清單與部署 manifest，記錄原圖／Recipe hash、build ID 和預期逐片結果；分別驗收演算法與設備控制。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/IntegratedImageProcessingApp.csproj",
+          "line": 18,
+          "anchor": "<PlatformTarget>x64</PlatformTarget>",
+          "snippet": "15:     <Deterministic>true</Deterministic>\n16:   </PropertyGroup>\n17:   <PropertyGroup Condition=\" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' \">\n18:     <PlatformTarget>x64</PlatformTarget>\n19:     <Prefer32Bit>false</Prefer32Bit>\n20:     <DebugSymbols>true</DebugSymbols>\n21:     <DebugType>full</DebugType>\n22:     <Optimize>false</Optimize>\n23:     <OutputPath>bin\\Debug\\</OutputPath>\n24:     <DefineConstants>DEBUG;TRACE</DefineConstants>\n25:     <ErrorReport>prompt</ErrorReport>\n26:     <WarningLevel>4</WarningLevel>\n27:   </PropertyGroup>"
+        },
+        {
+          "path": "CameraCaptureModule/CameraCaptureModule.csproj",
+          "line": 11,
+          "anchor": "<TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>",
+          "snippet": "8:     <OutputType>Library</OutputType>\n9:     <RootNamespace>CameraCaptureApp</RootNamespace>\n10:     <AssemblyName>CameraCaptureModule</AssemblyName>\n11:     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>\n12:     <FileAlignment>512</FileAlignment>\n13:     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>\n14:     <Deterministic>true</Deterministic>\n15:   </PropertyGroup>\n16:   <PropertyGroup>\n17:     <CameraSdkDirectory Condition=\" '$(CameraSdkDirectory)' == '' \">$(MSBuildProjectDirectory)\\..\\..\\..\\攝影機影像擷取\\my-app-2\\CameraCaptureApp\\bin\\Debug</CameraSdkDirectory>\n18:   </PropertyGroup>\n19:   <PropertyGroup Condition=\" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' \">\n20:     <PlatformTarget>x64</PlatformTarget>"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "priority": "P1",
+      "title": "離開總覽可能讓活動旗標與影格轉送脫節",
+      "certainty": "來源分支可確認；現場重現待驗收",
+      "detail": "ExitInspectionOverviewMode 保留連續模式旗標，卻關閉 overview forwarding、移除訂閱及停止 timer；同時 suppressAutomaticInspectionForwarding 在活動模式為 true。Host 的 shouldSubscribe 沒有直接以本機活動模式維持背景判定入口。",
+      "impact": "本機模式下切換主頁可能持續取像但不判定，返回後才恢復。遠端旗標啟用時可能呈現不同結果，因此必須分情境確認。",
+      "fix": "讓常駐 StationRuntime 持有接收訂閱，PageVisible 只影響顯示；以影格序號驗收切頁。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionOverview.cs",
+          "line": 230,
+          "anchor": "cameraCaptureHostControl.OverviewCaptureForwardingEnabled = false;",
+          "snippet": "227:             isInspectionOverviewActive = false;\n228:             if (cameraCaptureHostControl != null)\n229:             {\n230:                 cameraCaptureHostControl.OverviewCaptureForwardingEnabled = false;\n231:                 cameraCaptureHostControl.SuppressAutomaticInspectionForwarding =\n232:                     captureModeRemainsActive || remoteContinuousCaptureActive ||\n233:                     Interlocked.CompareExchange(ref remoteInspectionRequested, 0, 0) != 0;\n234:                 if (inspectionOverviewCameraImageCapturedSubscribed)\n235:                 {\n236:                     cameraCaptureHostControl.OverviewImageCaptured -=\n237:                         CameraCaptureHostControl_OverviewImageCaptured;\n238:                     inspectionOverviewCameraImageCapturedSubscribed = false;\n239:                 }"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Controls/CameraCaptureHostControl.cs",
+          "line": 346,
+          "anchor": "bool shouldSubscribe = !disposing",
+          "snippet": "343:                 return;\n344:             }\n345: \n346:             bool shouldSubscribe = !disposing &&\n347:                 ((overviewCaptureForwardingEnabled && overviewImageCapturedHandlers != null) ||\n348:                     (remoteCaptureForwardingEnabled && remoteImageCapturedHandlers != null) ||\n349:                     (imageAcquiredHandlers != null && cameraForm.IsImageProcessingEnabled &&\n350:                         !suppressAutomaticInspectionForwarding));\n351:             if (shouldSubscribe == cameraImageAcquiredSubscribed)\n352:             {\n353:                 return;\n354:             }\n355: "
+        }
+      ]
+    },
+    {
+      "priority": "P1",
+      "title": "未驗證的結果 ACK 可移除待送結果",
+      "certainty": "來源可確認；需可達 TCP 及已知 ResultId",
+      "detail": "result-ack 分支收到 AcknowledgedResultId 後即呼叫 Acknowledge 刪檔，沒有檢查 ACK 簽章、已授權接收端或逐目的端交付狀態；HMAC 只套在 command。",
+      "impact": "TCP 可達端若取得 ResultId，可能使未可靠交付的結果從 outbox 刪除；多總控部署亦可能由第一個 ACK 提早清除。",
+      "fix": "對 ACK／結果做互認與完整性驗證，將 pending delivery 綁定目的端；保留舊版明確相容模式。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs",
+          "line": 1347,
+          "anchor": "inspectionTcpResultStore.Acknowledge(message.AcknowledgedResultId);",
+          "snippet": "1344:                 if (inspectionTcpResultStore != null &&\n1345:                     !string.IsNullOrWhiteSpace(message.AcknowledgedResultId))\n1346:                 {\n1347:                     inspectionTcpResultStore.Acknowledge(message.AcknowledgedResultId);\n1348:                     string suffix = \"|\" + message.AcknowledgedResultId;\n1349:                     foreach (string key in inspectionTcpResultLastSentUtcByPeerAndId.Keys\n1350:                         .Where(key => key.EndsWith(suffix, StringComparison.Ordinal)).ToList())\n1351:                     {\n1352:                         inspectionTcpResultLastSentUtcByPeerAndId.Remove(key);\n1353:                     }\n1354:                 }\n1355:                 return;\n1356:             }"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs",
+          "line": 78,
+          "anchor": "if (File.Exists(path)) File.Delete(path);",
+          "snippet": "75:             lock (sync)\n76:             {\n77:                 string path = Path.Combine(outboxDirectory, HashId(resultId) + \".json\");\n78:                 if (File.Exists(path)) File.Delete(path);\n79:             }\n80:         }\n81: \n82:         /// <summary>\n83:         /// Persists the received result before the caller sends its ACK. Repeated IDs\n84:         /// map to the same file, so retransmission is idempotent.\n85:         /// </summary>\n86:         public bool PersistReceived(InspectionTcpMessage message)\n87:         {"
+        }
+      ]
+    },
+    {
+      "priority": "P2",
+      "title": "主程式原圖保存仍是無界 Task",
+      "certainty": "來源可確認；是否堆積取決於磁碟速度",
+      "detail": "StartCameraInspectionImageSave 每次 AddReference 後直接 Task.Run，沒有容量上限或關閉時等待。相機模組的兩格自動保存限制不涵蓋此路徑。",
+      "impact": "磁碟長期慢於檢測時，多個大圖仍會 pinned／持有並等待保存；關閉程序時工作可能未完成。",
+      "fix": "建立有界主保存 worker、可見滿載策略與關閉排空；先確認設備追溯需求再決定是否略過保存。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs",
+          "line": 434,
+          "anchor": "LargeImageSource saveSource = source.AddReference();",
+          "snippet": "431:             string imageIdentity,\n432:             long sequenceNumber)\n433:         {\n434:             LargeImageSource saveSource = source.AddReference();\n435:             Task.Run(delegate\n436:             {\n437:                 try\n438:                 {\n439:                     SaveCameraInspectionImage(saveSource, imagePath);\n440:                 }\n441:                 catch (Exception exception)\n442:                 {\n443:                     TryDeleteCameraInspectionImage(imagePath);"
+        },
+        {
+          "path": "CameraCaptureModule/Forms/MainForm.cs",
+          "line": 961,
+          "anchor": "protected override void OnFormClosing",
+          "snippet": "958:             }\n959:         }\n960: \n961:         protected override void OnFormClosing(FormClosingEventArgs e)\n962:         {\n963:             _isClosing = true;\n964:             StopSoftwareTriggerMeterWheelMonitor();\n965:             _statusRefreshTimer.Stop();\n966:             _meterWheelAutoConnectTimer.Stop();\n967:             CancelPendingImageLoad();\n968:             CancelPendingPreviewFrame();\n969:             base.OnFormClosing(e);\n970:         }"
+        }
+      ]
+    },
+    {
+      "priority": "P2",
+      "title": "單項平行迴圈可繞過共同工作名額",
+      "certainty": "來源可確認",
+      "detail": "InspectionParallelism.For 把 WorkerDepth>0 與迴圈長度≤1 放在同一 inline 捷徑。外部根工作若只有一項，body 不取得 EnterWorker，也未增加 WorkerDepth。",
+      "impact": "多個獨立單項任務可同時超過設定上限，或在其內再次啟動根平行迴圈；因此設定不是所有 body 的嚴格上限。",
+      "fix": "只讓真正已持有名額的巢狀迴圈 inline；根單項也取得／釋放名額，保持取消與 finally 語意。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Services/InspectionParallelism.cs",
+          "line": 52,
+          "anchor": "if (WorkerDepth.Value > 0 || toExclusive - fromInclusive <= 1)",
+          "snippet": "49: \n50:             // If a processing worker enters another parallel stage, run that stage on\n51:             // the current worker. This avoids nested worker multiplication and deadlocks.\n52:             if (WorkerDepth.Value > 0 || toExclusive - fromInclusive <= 1)\n53:             {\n54:                 for (int index = fromInclusive; index < toExclusive; index++)\n55:                 {\n56:                     cancellationToken.ThrowIfCancellationRequested();\n57:                     body(index);\n58:                 }\n59:                 return;\n60:             }\n61: "
+        }
+      ]
+    },
+    {
+      "priority": "P2",
+      "title": "TCP 待送佇列在 UI 路徑完整重讀",
+      "certainty": "來源可確認；卡頓程度待量測",
+      "detail": "PublishPendingInspectionTcpResults 同步呼叫 LoadPending，後者讀取、解碼、排序所有 JSON，然後對各 peer 逐筆發起傳送；節流紀錄不會避免檔案反覆讀取。",
+      "impact": "離線累積大量結果後可能讓 UI 心跳處理、重連與操作延遲；啟動時 inbox 最新結果載入亦會遍歷全部歷史 JSON。",
+      "fix": "改背景分批讀取、單一有界 sender queue、索引最新結果；設定損壞檔隔離和保留政策。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs",
+          "line": 2023,
+          "anchor": "IList<InspectionTcpMessage> pending = inspectionTcpResultStore.LoadPending();",
+          "snippet": "2020:                 return;\n2021:             }\n2022: \n2023:             IList<InspectionTcpMessage> pending = inspectionTcpResultStore.LoadPending();\n2024:             DateTime now = DateTime.UtcNow;\n2025:             foreach (string peerKey in inspectionTcpReliableResultPeers.ToList())\n2026:             {\n2027:                 foreach (InspectionTcpMessage message in pending)\n2028:                 {\n2029:                     string throttleKey = peerKey + \"|\" + message.ResultId;\n2030:                     DateTime lastSent;\n2031:                     if (inspectionTcpResultLastSentUtcByPeerAndId.TryGetValue(throttleKey, out lastSent) &&\n2032:                         (now - lastSent).TotalSeconds < 2.0)"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs",
+          "line": 107,
+          "anchor": "public IList<InspectionTcpMessage> LoadLatestReceivedByStation()",
+          "snippet": "104:             }\n105:         }\n106: \n107:         public IList<InspectionTcpMessage> LoadLatestReceivedByStation()\n108:         {\n109:             lock (sync)\n110:             {\n111:                 if (!Directory.Exists(inboxDirectory)) return new List<InspectionTcpMessage>();\n112:                 var messages = new List<InspectionTcpMessage>();\n113:                 foreach (string path in Directory.GetFiles(inboxDirectory, \"*.json\", SearchOption.AllDirectories))\n114:                 {\n115:                     try\n116:                     {"
+        }
+      ]
+    },
+    {
+      "priority": "P2",
+      "title": "歷史明細仍從顯示表格取資料",
+      "certainty": "來源可確認",
+      "detail": "歷史尺寸明細以 row.Cells 索引和格式化文字建立。新增欄位、改語系、單位或顯示格式都會影響保存內容；不是穩定的數值儲存邊界。",
+      "impact": "後續匯出、統計與追溯可能依賴字串解析，也增加無 UI 檢測引擎拆分成本。",
+      "fix": "建立 MeasurementResult DTO，保存原始數值與單位，再由 UI 轉成目前表格文字。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs",
+          "line": 900,
+          "anchor": "string measured = \"最小 \"",
+          "snippet": "897:                             sizeByObject[objectNumber] = details;\n898:                         }\n899:                         string unit = Convert.ToString(row.Cells[9].Value);\n900:                         string measured = \"最小 \" + Convert.ToString(row.Cells[6].Value) +\n901:                             \"／平均 \" + Convert.ToString(row.Cells[7].Value) +\n902:                             \"／最大 \" + Convert.ToString(row.Cells[8].Value) +\n903:                             (string.IsNullOrWhiteSpace(unit) ? string.Empty : \" \" + unit);\n904:                         details.Add(new InspectionHistoryDetailRecord\n905:                         {\n906:                             Title = Convert.ToString(row.Cells[2].Value) + \" (#\" + Convert.ToString(row.Cells[1].Value) + \")\",\n907:                             Measured = measured,\n908:                             Condition = Convert.ToString(row.Cells[10].Value),\n909:                             Result = string.Empty,"
+        }
+      ]
+    },
+    {
+      "priority": "P2",
+      "title": "歷史精度快照已補，但擷取時機仍在保存端",
+      "certainty": "機制存在可確認；中途改設定影響待重現",
+      "detail": "目前保存歷史時呼叫 GetCameraX/YMillimetersPerPixel 並寫入 ExecutionSnapshot；運算入口未建立跨所有階段的統一不可變設備上下文。",
+      "impact": "若使用者在一次長運算期間改全域設定，保存的精度不必然等於每個計算階段實際使用的值。",
+      "fix": "接納影格時固定設備精度及 build／Recipe 版本，傳入尺寸、缺陷與歷史；避免在保存時重新讀全域。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs",
+          "line": 868,
+          "anchor": "XMillimetersPerPixel = GetCameraXMillimetersPerPixel(),",
+          "snippet": "865:                 };\n866:                 record.ExecutionSnapshot = new InspectionHistoryExecutionSnapshot\n867:                 {\n868:                     XMillimetersPerPixel = GetCameraXMillimetersPerPixel(),\n869:                     YMillimetersPerPixel = GetCameraYMillimetersPerPixel(),\n870:                     MillimeterConversionEnabled = IsCameraMillimeterConversionEnabled(),\n871:                     SoftwareId = cameraDeviceSettings == null ? 0 : cameraDeviceSettings.SoftwareId,\n872:                     ProgramName = cameraDeviceSettings == null ? string.Empty : cameraDeviceSettings.ProgramName,\n873:                     ApplicationVersion = typeof(MainForm).Assembly.GetName().Version == null\n874:                         ? string.Empty\n875:                         : typeof(MainForm).Assembly.GetName().Version.ToString()\n876:                 };\n877: "
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.ResultReview.cs",
+          "line": 1264,
+          "anchor": "measurementTask = Task.Run",
+          "snippet": "1261:                     objectDetectionDefectDisplayTabPages[ObjectDetectionDefectIntegratedDisplayIndex];\n1262:                 objectDetectionResultReviewConcurrentComputationStopwatch = Stopwatch.StartNew();\n1263:                 StartObjectDetectionResultReviewTimingStage(\"尺寸量測與缺陷檢測並行運算\");\n1264:                 measurementTask = Task.Run(\n1265:                     () => CalculateObjectDetectionResultReviewMeasurements(\n1266:                         parameter,\n1267:                         objects,\n1268:                         measurementLargeSource,\n1269:                         measurementOriginalImage,\n1270:                         cancellationToken,\n1271:                         capturedRecipeGeneration,\n1272:                         capturedImageGeneration));\n1273:                 bool includeFrequency = parameter.DefectFrequencyEnabled &&"
+        }
+      ]
+    },
+    {
+      "priority": "P2",
+      "title": "完整掃描窗無法保證任意 MASK 全覆蓋",
+      "certainty": "來源可確認；不是越界判定",
+      "detail": "掃描要求完整 windowSize×windowSize 落於影像和 MASK。邊界、凹角、狹長範圍或小於窗格的區域可能全部被拒絕。",
+      "impact": "避免把外部黑背景納入判定是正確保護，但使用者若以為整個 ROI 都已分析，會誤解未檢出結果。",
+      "fix": "顯示有效格覆蓋圖和未覆蓋比例；另行定義小範圍策略，不能靜默補黑或伸出 ROI。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.DetectionParameter.DefectFrequency.cs",
+          "line": 2876,
+          "anchor": "if (!workspace.IsWindowInsideMask(startX, startY))",
+          "snippet": "2873: \n2874:             byte* image = (byte*)workspace.ImageData.ToPointer();\n2875:             byte* hannBytes = (byte*)workspace.HannData.ToPointer();\n2876:             if (!workspace.IsWindowInsideMask(startX, startY))\n2877:             {\n2878:                 return false;\n2879:             }\n2880: \n2881:             Cv.Mat sourceWindow = null;\n2882:             try\n2883:             {\n2884:                 byte* energyImage = image + (long)startY * workspace.ImageStep + startX;\n2885:                 long energyImageStep = workspace.ImageStep;"
+        }
+      ]
+    },
+    {
+      "priority": "P2",
+      "title": "存圖／快照／DB 缺少共同完成狀態",
+      "certainty": "來源可確認",
+      "detail": "相機 TIFF、歷史背景 Task、Recipe 快照、每日 DB 和 TCP outbox 分別保存；判定完成與保存完成不同，沒有跨步驟可靠完成／補償模型。",
+      "impact": "磁碟滿、突然關閉或複製失敗後，可能留有結果但找不到原圖，或缺少某筆歷史；不能僅靠畫面綠色判斷已完整保存。",
+      "fix": "以 RunId 保存各階段 Pending／Saved／Failed，啟動時修復或提示，關閉時等待並可觀察剩餘工作。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs",
+          "line": 1026,
+          "anchor": "Task.Run(delegate",
+          "snippet": "1023:                 }\n1024:                 InspectionHistoryStore store = inspectionHistoryStore;\n1025:                 string fallbackRecipeName = record.RecipeName;\n1026:                 Task.Run(delegate\n1027:                 {\n1028:                     try\n1029:                     {\n1030:                         if (archiveSourceImage)\n1031:                         {\n1032:                             try\n1033:                             {\n1034:                                 string imageDirectory = Path.Combine(\n1035:                                     AppDomain.CurrentDomain.BaseDirectory,"
+        },
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.CameraCapture.cs",
+          "line": 439,
+          "anchor": "SaveCameraInspectionImage(saveSource, imagePath);",
+          "snippet": "436:             {\n437:                 try\n438:                 {\n439:                     SaveCameraInspectionImage(saveSource, imagePath);\n440:                 }\n441:                 catch (Exception exception)\n442:                 {\n443:                     TryDeleteCameraInspectionImage(imagePath);\n444:                     System.Diagnostics.Debug.WriteLine(\n445:                         \"Camera image save failed; live inspection continued: \" + exception);\n446:                     if (string.Equals(\n447:                         Interlocked.CompareExchange(ref latestCameraInspectionFrameIdentity, null, null),\n448:                         imageIdentity,"
+        }
+      ]
+    },
+    {
+      "priority": "P3",
+      "title": "舊文件仍有已修正事項的過期敘述",
+      "certainty": "來源與文件交叉核對可確認",
+      "detail": "目前已有歷史精度快照與重跑 override，但部分 README／架構／限制文件仍稱未保存當時精度；舊 HTML 與 JSON 報告也保留改版前發現。",
+      "impact": "後續 AI 或維護者可能重複修改已完成工作。",
+      "fix": "將舊審查標成快照，讓新報告列出已修正證據；每次以來源重查，避免以舊評分當待辦清單。",
+      "refs": [
+        {
+          "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs",
+          "line": 1197,
+          "anchor": "inspectionHistoryCalibrationOverride = executionSnapshot;",
+          "snippet": "1194:                 inspectionHistoryPreviousReviewParameterId = objectDetectionResultReviewSelectedParameterId;\n1195:                 inspectionHistoryPreviousReferenceImageSize = objectDetectionResultReviewReferenceImageSize;\n1196:                 isInspectionHistoryRerunActive = true;\n1197:                 inspectionHistoryCalibrationOverride = executionSnapshot;\n1198:                 historical.LastImagePath = imagePath;\n1199:                 historical.ActiveDetectionRecipeId = record.RecipeId ?? string.Empty;\n1200:                 systemParameters = historical;\n1201:                 activeObjectDetectionParameterId = historicalParameter.Id;\n1202:                 objectDetectionResultReviewSelectedParameterId = activeObjectDetectionParameterId;\n1203:                 objectDetectionResultReviewReferenceImageSize = Size.Empty;\n1204:                 objectDetectionResultReviewImagePath = string.Empty;\n1205:                 Interlocked.Increment(ref detectionRecipeGeneration);\n1206: "
+        }
+      ]
+    }
+  ],
+  "corrected": [
+    [
+      "TCP peer 清理",
+      "已加入 ReferenceEquals，不能繼續列為未修正。",
+      {
+        "path": "IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs",
+        "line": 609,
+        "anchor": "ReferenceEquals(current, peer)",
+        "snippet": "606:             {\n607:                 PeerConnection current;\n608:                 removed = peers.TryGetValue(peer.Key, out current) &&\n609:                     ReferenceEquals(current, peer);\n610:                 if (removed)\n611:                 {\n612:                     peers.Remove(peer.Key);\n613:                     if (peer.StationId.HasValue)\n614:                     {\n615:                         string outgoingKey;\n616:                         if (outgoingPeerKeys.TryGetValue(peer.StationId.Value, out outgoingKey) &&\n617:                             string.Equals(outgoingKey, peer.Key, StringComparison.Ordinal))\n618:                         {"
+      }
+    ],
+    [
+      "逐筆結果傳送",
+      "outbox／inbox／ACK／去重均存在；剩餘邊界見本次 TCP 發現。",
+      {
+        "path": "IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs",
+        "line": 86,
+        "anchor": "public bool PersistReceived",
+        "snippet": "83:         /// Persists the received result before the caller sends its ACK. Repeated IDs\n84:         /// map to the same file, so retransmission is idempotent.\n85:         /// </summary>\n86:         public bool PersistReceived(InspectionTcpMessage message)\n87:         {\n88:             if (message == null) throw new ArgumentNullException(\"message\");\n89:             if (string.IsNullOrWhiteSpace(message.ResultId))\n90:             {\n91:                 throw new InvalidDataException(\"收到的檢測結果缺少 Result ID，不能確認接收。\");\n92:             }\n93: \n94:             DateTime resultTime = GetResultTime(message);\n95:             string dateDirectory = Path.Combine("
+      }
+    ],
+    [
+      "角色重啟驗證",
+      "高權限持久角色會在啟動時要求驗證。",
+      {
+        "path": "IntegratedImageProcessingApp/Forms/MainForm.Navigation.cs",
+        "line": 56,
+        "anchor": "startupRoleRequiresAuthentication = persistedRole;",
+        "snippet": "53:             }\n54:             if (persistedRole != MainFormRole.Operator)\n55:             {\n56:                 startupRoleRequiresAuthentication = persistedRole;\n57:                 Shown += MainForm_AuthenticatePersistedRole;\n58:             }\n59:         }\n60: \n61:         private void MainForm_AuthenticatePersistedRole(object sender, EventArgs e)\n62:         {\n63:             Shown -= MainForm_AuthenticatePersistedRole;\n64:             if (!startupRoleRequiresAuthentication.HasValue || IsDisposed) return;\n65: "
+      }
+    ],
+    [
+      "工作 INI 原子寫入",
+      "已使用 AtomicFileWriter。",
+      {
+        "path": "IntegratedImageProcessingApp/Services/SystemParameterIniService.cs",
+        "line": 946,
+        "anchor": "AtomicFileWriter.Write(filePath",
+        "snippet": "943:                 Directory.CreateDirectory(directory);\n944:             }\n945: \n946:             AtomicFileWriter.Write(filePath, delegate(TextWriter writer)\n947:             {\n948:                 writer.WriteLine(\"[System]\");\n949:                 writer.WriteLine(\"LastImagePath={0}\", Escape(settings.LastImagePath));\n950:                 writer.WriteLine(\"ActiveDetectionRecipeId={0}\", Escape(settings.ActiveDetectionRecipeId));\n951:                 writer.WriteLine();\n952:                 writer.WriteLine(\"[ROI]\");\n953:                 writer.WriteLine(\"Enabled={0}\", settings.RoiEnabled ? \"true\" : \"false\");\n954:                 writer.WriteLine(\"X={0}\", settings.Roi.X.ToString(CultureInfo.InvariantCulture));\n955:                 writer.WriteLine(\"Y={0}\", settings.Roi.Y.ToString(CultureInfo.InvariantCulture));"
+      }
+    ],
+    [
+      "歷史精度快照",
+      "已保存 ExecutionSnapshot 並於重跑套用；舊紀錄缺值拒絕重跑。",
+      {
+        "path": "IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs",
+        "line": 1197,
+        "anchor": "inspectionHistoryCalibrationOverride = executionSnapshot;",
+        "snippet": "1194:                 inspectionHistoryPreviousReviewParameterId = objectDetectionResultReviewSelectedParameterId;\n1195:                 inspectionHistoryPreviousReferenceImageSize = objectDetectionResultReviewReferenceImageSize;\n1196:                 isInspectionHistoryRerunActive = true;\n1197:                 inspectionHistoryCalibrationOverride = executionSnapshot;\n1198:                 historical.LastImagePath = imagePath;\n1199:                 historical.ActiveDetectionRecipeId = record.RecipeId ?? string.Empty;\n1200:                 systemParameters = historical;\n1201:                 activeObjectDetectionParameterId = historicalParameter.Id;\n1202:                 objectDetectionResultReviewSelectedParameterId = activeObjectDetectionParameterId;\n1203:                 objectDetectionResultReviewReferenceImageSize = Size.Empty;\n1204:                 objectDetectionResultReviewImagePath = string.Empty;\n1205:                 Interlocked.Increment(ref detectionRecipeGeneration);\n1206: "
+      }
+    ],
+    [
+      "遠端命令認證",
+      "HMAC 與持久命令 ID 防重播已加入，為可選設定。",
+      {
+        "path": "IntegratedImageProcessingApp/Services/InspectionTcpCommandSecurity.cs",
+        "line": 94,
+        "anchor": "public sealed class InspectionTcpCommandReplayGuard",
+        "snippet": "91:     /// Durable replay protection for signed remote commands. A command ID is reserved\n92:     /// with CreateNew semantics before the command is executed.\n93:     /// </summary>\n94:     public sealed class InspectionTcpCommandReplayGuard\n95:     {\n96:         private readonly object sync = new object();\n97:         private readonly string rootDirectory;\n98: \n99:         public InspectionTcpCommandReplayGuard(string applicationRoot)\n100:         {\n101:             rootDirectory = Path.Combine(\n102:                 Path.GetFullPath(applicationRoot ?? AppDomain.CurrentDomain.BaseDirectory),\n103:                 \"tcp-results\", \"accepted-commands\");"
+      }
+    ],
+    [
+      "TCP 長行限制",
+      "已在讀取每個 byte 時限制大小，非完整讀完才檢查。",
+      {
+        "path": "IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs",
+        "line": 138,
+        "anchor": "if (lineBuffer.Length >= maximumBytes)",
+        "snippet": "135:                         return CompleteLine();\n136:                     }\n137: \n138:                     if (lineBuffer.Length >= maximumBytes)\n139:                     {\n140:                         throw new InvalidDataException(\n141:                             \"Inspection TCP message exceeded the configured line limit.\");\n142:                     }\n143: \n144:                     lineBuffer.WriteByte(value);\n145:                 }\n146:             }\n147: "
+      }
+    ],
+    [
+      "TriggerSelector",
+      "失敗後 return false，避免誤寫 Mode／Source。",
+      {
+        "path": "CameraCaptureModule/Services/CameraService.cs",
+        "line": 3243,
+        "anchor": "private bool TryConfigureTriggerSelector",
+        "snippet": "3240:             return false;\n3241:         }\n3242: \n3243:         private bool TryConfigureTriggerSelector(string selector, bool enabled, string source)\n3244:         {\n3245:             var selectorApplied = TrySetDeviceFeature(new[] { \"TriggerSelector\" }, selector);\n3246:             if (!selectorApplied)\n3247:             {\n3248:                 return false;\n3249:             }\n3250: \n3251:             var modeApplied = TrySetDeviceFeature(new[] { \"TriggerMode\" }, enabled ? \"On\" : \"Off\");\n3252:             if (!modeApplied)"
+      }
+    ]
+  ],
+  "roadmap": [
+    [
+      "優先處理持續運轉",
+      "把本機模式的 frame subscription 從頁面移到常駐 runtime；補保存佇列與關閉排空。",
+      "跨主頁仍接納符合策略的影格，保存工作有狀態與容量。"
+    ],
+    [
+      "收緊可靠交付邊界",
+      "ACK 與結果互認、目的端獨立狀態、背景分批排空。",
+      "斷線／重啟不遺失已接受結果，非授權 ACK 不清除 outbox。"
+    ],
+    [
+      "固定執行資料",
+      "接納影格時建立 ExecutionContext，結果與歷史用純數值 DTO。",
+      "中途改參數只影響下一次；各階段使用同一快照。"
+    ],
+    [
+      "按責任拆模組",
+      "尺寸 parser／統計先抽，再抽 ROI resolver、頻域 workspace／analyzer、HistoryWriter，最後 StationRuntime。",
+      "每次拆分保留同一影像與 Recipe 的輸出，避免大規模同時重寫。"
+    ],
+    [
+      "建立現場驗收證據",
+      "固定公司內部代表影像、Recipe hash、逐片預期結果及設備組態。",
+      "有誤報／漏報、P95、RAM、斷線恢復及長時間運轉記錄。"
+    ]
+  ]
+}

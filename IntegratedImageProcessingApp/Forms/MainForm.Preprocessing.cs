@@ -22,7 +22,7 @@ namespace IntegratedImageProcessingApp.Forms
             int width = gray.GetLength(0);
             int height = gray.GetLength(1);
             byte[] pixels = new byte[checked(width * height)];
-            Parallel.For(0, height, delegate(int y)
+            InspectionParallelism.For(0, height, null, delegate(int y)
             {
                 int rowOffset = y * width;
                 for (int x = 0; x < width; x++) pixels[rowOffset + x] = gray[x, y];

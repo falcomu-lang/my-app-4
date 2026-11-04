@@ -41,6 +41,17 @@ namespace IntegratedImageProcessingApp.Services
     }
 
     [DataContract]
+    public sealed class InspectionHistoryExecutionSnapshot
+    {
+        [DataMember(Order = 1)] public double XMillimetersPerPixel { get; set; }
+        [DataMember(Order = 2)] public double YMillimetersPerPixel { get; set; }
+        [DataMember(Order = 3)] public bool MillimeterConversionEnabled { get; set; }
+        [DataMember(Order = 4)] public int SoftwareId { get; set; }
+        [DataMember(Order = 5)] public string ProgramName { get; set; }
+        [DataMember(Order = 6)] public string ApplicationVersion { get; set; }
+    }
+
+    [DataContract]
     public sealed class InspectionHistoryBatchRecord
     {
         public InspectionHistoryBatchRecord()
@@ -73,6 +84,7 @@ namespace IntegratedImageProcessingApp.Services
         [DataMember(Order = 23)] public int CombinedPendingCount { get; set; }
         [DataMember(Order = 24)] public List<InspectionHistoryObjectRecord> Objects { get; set; }
         [DataMember(Order = 25)] public string ParameterId { get; set; }
+        [DataMember(Order = 26)] public InspectionHistoryExecutionSnapshot ExecutionSnapshot { get; set; }
     }
 
     /// <summary>
@@ -151,7 +163,7 @@ namespace IntegratedImageProcessingApp.Services
                 try
                 {
                     database.Execute(
-                        "INSERT OR REPLACE INTO batches (batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "INSERT OR REPLACE INTO batches (batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id, execution_snapshot_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         record.BatchId,
                         record.InspectedAt.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture),
                         record.CameraSequence,
@@ -175,7 +187,8 @@ namespace IntegratedImageProcessingApp.Services
                         record.CombinedBCount,
                         record.CombinedNgCount,
                         record.CombinedPendingCount,
-                        record.ParameterId);
+                        record.ParameterId,
+                        record.ExecutionSnapshot == null ? null : Serialize(record.ExecutionSnapshot));
                     database.Execute("DELETE FROM objects WHERE batch_id=?", record.BatchId);
                     foreach (InspectionHistoryObjectRecord item in record.Objects)
                     {
@@ -213,7 +226,7 @@ namespace IntegratedImageProcessingApp.Services
             {
                 EnsureSchema(database);
                 List<object[]> rows = database.Query(
-                    "SELECT batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id FROM batches ORDER BY inspected_at DESC");
+                    "SELECT batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id, execution_snapshot_json FROM batches ORDER BY inspected_at DESC");
                 return rows.Select(MapBatch).ToList();
             }
         }
@@ -227,7 +240,7 @@ namespace IntegratedImageProcessingApp.Services
             {
                 EnsureSchema(database);
                 List<object[]> rows = database.Query(
-                    "SELECT batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id FROM batches WHERE batch_id=? LIMIT 1",
+                    "SELECT batch_id, inspected_at, camera_sequence, recipe_id, recipe_name, recipe_snapshot_path, image_path, judgement_complete, undetermined_reason, image_width, image_height, object_count, size_a, size_b, size_ng, size_pending, defect_a, defect_ng, defect_pending, combined_a, combined_b, combined_ng, combined_pending, parameter_id, execution_snapshot_json FROM batches WHERE batch_id=? LIMIT 1",
                     batchId);
                 if (rows.Count == 0) return null;
                 InspectionHistoryBatchRecord record = MapBatch(rows[0]);
@@ -265,6 +278,13 @@ namespace IntegratedImageProcessingApp.Services
             {
                 database.Execute("ALTER TABLE batches ADD COLUMN parameter_id TEXT");
             }
+            bool hasExecutionSnapshot = database.Query("PRAGMA table_info(batches)")
+                .Any(row => row.Length > 1 && string.Equals(
+                    Text(row[1]), "execution_snapshot_json", StringComparison.OrdinalIgnoreCase));
+            if (!hasExecutionSnapshot)
+            {
+                database.Execute("ALTER TABLE batches ADD COLUMN execution_snapshot_json TEXT");
+            }
             database.Execute("CREATE TABLE IF NOT EXISTS objects (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL, object_number INTEGER NOT NULL, grid_row INTEGER NOT NULL, grid_column INTEGER NOT NULL, bounds_x INTEGER NOT NULL, bounds_y INTEGER NOT NULL, bounds_width INTEGER NOT NULL, bounds_height INTEGER NOT NULL, size_grade TEXT NOT NULL, defect_grade TEXT NOT NULL, combined_grade TEXT NOT NULL, size_details_json TEXT NOT NULL, defect_details_json TEXT NOT NULL, FOREIGN KEY(batch_id) REFERENCES batches(batch_id) ON DELETE CASCADE)");
             database.Execute("CREATE INDEX IF NOT EXISTS idx_batches_inspected_at ON batches(inspected_at)");
             database.Execute("CREATE INDEX IF NOT EXISTS idx_objects_batch ON objects(batch_id, object_number)");
@@ -283,7 +303,10 @@ namespace IntegratedImageProcessingApp.Services
                 SizeACount = Int(row[12]), SizeBCount = Int(row[13]), SizeNgCount = Int(row[14]), SizePendingCount = Int(row[15]),
                 DefectACount = Int(row[16]), DefectNgCount = Int(row[17]), DefectPendingCount = Int(row[18]),
                 CombinedACount = Int(row[19]), CombinedBCount = Int(row[20]), CombinedNgCount = Int(row[21]), CombinedPendingCount = Int(row[22]),
-                ParameterId = row.Length > 23 ? Text(row[23]) : string.Empty
+                ParameterId = row.Length > 23 ? Text(row[23]) : string.Empty,
+                ExecutionSnapshot = row.Length > 24
+                    ? Deserialize<InspectionHistoryExecutionSnapshot>(Text(row[24]))
+                    : null
             };
         }
 
@@ -294,6 +317,23 @@ namespace IntegratedImageProcessingApp.Services
             {
                 serializer.WriteObject(stream, value);
                 return Encoding.UTF8.GetString(stream.ToArray());
+            }
+        }
+
+        private static T Deserialize<T>(string json) where T : class
+        {
+            if (string.IsNullOrWhiteSpace(json)) return null;
+            try
+            {
+                var serializer = new DataContractJsonSerializer(typeof(T));
+                using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(json)))
+                {
+                    return serializer.ReadObject(stream) as T;
+                }
+            }
+            catch
+            {
+                return null;
             }
         }
 

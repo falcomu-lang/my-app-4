@@ -148,6 +148,7 @@ namespace IntegratedImageProcessingApp.Forms
                     imageSavePath = CreateCameraInspectionImagePath(sequenceNumber);
                     latestCameraInspectionFramePath = imageSavePath;
                     latestCameraInspectionFrameIdentity = imageIdentity;
+                    Interlocked.Exchange(ref latestCameraInspectionSequenceForTcp, sequenceNumber);
                     StartCameraInspectionImageSave(
                         memorySource,
                         imageSavePath,
@@ -324,7 +325,10 @@ namespace IntegratedImageProcessingApp.Forms
                 {
                     lastCameraInspectionCompletedUtc = DateTime.UtcNow;
                 }
-                QueueStationStatusPublish(true);
+                bool publishThisFrameResult = !string.IsNullOrWhiteSpace(imageIdentity) &&
+                    string.Equals(latestCameraInspectionFrameIdentity, imageIdentity,
+                        StringComparison.OrdinalIgnoreCase);
+                QueueStationStatusPublish(true, publishThisFrameResult);
                 Interlocked.Exchange(ref cameraInspectionFrameInFlight, 0);
                 if (droppedCount > 0 && !IsDisposed)
                 {

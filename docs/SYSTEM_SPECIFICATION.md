@@ -1,6 +1,6 @@
 # 整合式影像處理軟體功能規格書
 
-文件版本 1.1　核對日期 2026-10-30　程式基準 b512791
+文件版本 1.2　核對日期 2026-11-04　程式基準：目前工作目錄，含未提交修改
 
 本規格記錄目前程式的功能、資料、判定與介面行為，供設備整合、開發及驗收使用。標示為目標的項目尚未實作；實際影像檢出率與設備節拍不由本文件預先保證。
 
@@ -10,7 +10,7 @@
 
 ![影像輸入與結果資料流](assets/inspection_workflow.png)
 
-目前包含兩個 .NET Framework 4.7.2 專案。相機與總控尚未分成獨立產品。角色驗證、完整設備安全控制、PLC 互鎖、排料時序及可靠逐筆結果傳輸未包含在現有實作承諾中。
+目前包含兩個 .NET Framework 4.7.2 專案。相機與總控尚未分成獨立產品。本機角色切換有密碼；遠端命令 HMAC 可選啟用；逐筆 TCP 結果有持久 ACK／重送。個人帳號、TLS、PLC 互鎖、排料時序、所有訊息的身分驗證及現場通訊可靠度驗收不在現有實作範圍。
 
 ## 2 影像輸入與接納
 
@@ -58,6 +58,9 @@ Recipe 保存前段處理、來源關聯、區塊與物件定義、檢測參數�
 | ListenIpAddress | 0.0.0.0 | IPv4 監聽介面 |
 | ListenPort | 5000 | TCP 監聽埠 |
 | AllowConnections | false | 是否啟動本機監聽 |
+| RequireAuthenticatedCommands | false | 是否要求遠端 command 簽章驗證；舊檔維持相容 |
+| RemoteCommandSecret | 空白 | 被控端命令驗證金鑰；啟用驗證時須至少 16 字元且不含空白 |
+| [Processing] MaxProcessingWorkers | 0 | 應用程式平行迴圈上限；0 自動，1–32 明確指定 |
 | RecordResultReviewRuns | false | 手動確認完成後記錄歷史 |
 | KeepResultReviewImages | true | 手動確認保留圖片 |
 | LimitImageYHeightEnabled | false | 相機輸入高度限制 |
@@ -77,6 +80,8 @@ Recipe 保存前段處理、來源關聯、區塊與物件定義、檢測參數�
 | ReconnectIntervalSeconds | 3 | 重試間隔 |
 | HeartbeatTimeoutSeconds | 10 | 心跳逾時 |
 | Stations | 空清單 | 最多 10 個、不重複 ID |
+
+總控每個站點另可設定 `CommandSecret`；對應金鑰須與被控端 `RemoteCommandSecret` 相同。該欄位隨 `config/connection-controller-settings.xml` 保存。
 
 站點含 Enabled、SoftwareId、Name、IpAddress、Port；新站預設未啟用、ID 1、Port 5000。XML 儲存於 config/connection-controller-settings.xml。
 
@@ -353,6 +358,8 @@ StationId 為 1 至 10，總控設定 ID 與對方回報 ID 不符會斷線並�
 | station-status | 相機、模式、Recipe 與最新逐物件結果 |
 | command | 取像／檢測命令 |
 | command-ack | CommandId 對應的接受狀態 |
+| inspection-result | 有 ResultId 的逐次檢測結果，用於持久重送 |
+| result-ack | 確認 ResultId 已由接收端寫入本地 inbox |
 
 Command 支援 start-capture、stop-capture、inspect、start-inspection、stop-inspection。命令 ACK 表示命令接受／處理狀態，不代表全部後續影格判定已完成。
 
@@ -360,10 +367,10 @@ Command 支援 start-capture、stop-capture、inspect、start-inspection、stop-
 
 | 欄位群 | 欄位 |
 |---|---|
-| 訊息與命令 | MessageType、MessageId、CommandId、Command、SentAtUtc |
+| 訊息與命令 | MessageType、MessageId、CommandId、Command、TargetStationId、CommandSignature、SentAtUtc |
 | 站點 | StationId、StationName、Status、Accepted |
 | 硬體與模式 | CameraConnected、IsCapturing、IsInspecting |
-| 判定與 Recipe | JudgementComplete、RecipeId、RecipeName、ResultAtUtc |
+| 判定與 Recipe | JudgementComplete、RecipeId、RecipeName、ResultAtUtc、ResultId、AcknowledgedResultId、SupportsReliableResults、CameraSequence |
 | 統計 | ObjectCount、ACount、BCount、NgCount、PendingCount |
 | 逐片 Objects | Number、Row、Column、SizeGrade、DefectGrade、CombinedGrade |
 
@@ -375,7 +382,11 @@ Command 支援 start-capture、stop-capture、inspect、start-inspection、stop-
 
 Transport 心跳 timer 目前每兩秒執行，依總控設定套用逾時。重連受監控開關、自動重連及頁面協調邏輯影響，不能宣稱斷線瞬間必定完成恢復。
 
-目前沒有每筆結果送達 ACK、持久重送、接收去重合約、協定版本、TLS 或登入驗證。TCP 連線成功與對方業務資料已永久保存是不同狀態。另有舊 peer 清理可能移除新連線的已知風險。
+逐筆檢測結果採 `inspection-result` 傳送並帶 ResultId。發送端先保存 `tcp-results/outbox`，總控端先將收到的結果寫入 `tcp-results/inbox/yyyyMMdd`，保存成功才回 `result-ack`；發送端收到 ACK 後刪除 outbox 項目，尚未 ACK 的結果會於支援可靠結果的 peer 連線後重送。接收端以 ResultId 去重；延遲到達的舊結果仍保存並 ACK，但不覆蓋總控端已顯示的較新結果。此 ACK 證明接收端已寫入本地 inbox，不代表已寫入整合程式的正式資料庫或已備份。TCP 佇列目前沒有自動清理／保留期限；多個總控 peer 共用同一 sender outbox，未提供每 peer 各自確認的佇列語意。
+
+命令簽章是 opt-in。被控端 `[Network] RequireAuthenticatedCommands=true` 後，總控端必須在對應站點設定相同的 `CommandSecret`。金鑰至少 16 字元且不可含空白；簽章使用 HMAC-SHA256，涵蓋 CommandId、Command、來源 StationId、目標 TargetStationId 與 SentAtUtc。時間戳與接收端 UTC 相差需在 ±2 分鐘內，接受過的命令 ID 會持久記錄於 `tcp-results/accepted-commands/yyyyMMdd`，以拒絕重播。設定缺漏的舊站預設不要求簽章，以保留相容性。啟用後未簽章、錯誤簽章、目標 ID 不符、逾時或重複 ID 均會拒絕執行。
+
+命令驗證金鑰以明文保存於 `config/device-settings.ini` 或 `config/connection-controller-settings.xml`。HMAC 只驗證被控端收到的 command，不提供加密，也不驗證 hello、station-status、inspection-result 或 result-ack 的來源；目前沒有 TLS、協定版本或正式裝置身分管理。需限制網路可達範圍並同步站點時鐘。TCP 連線成功與接收端 inbox 已落盤，是不同狀態。
 
 ## 13 計時與效能
 
@@ -383,11 +394,17 @@ Transport 心跳 timer 目前每兩秒執行，依總控設定套用逾時。重
 
 每核心／ROI 累計是多項工作的工作量，不是並行等待的牆鐘。頻域亦分來源準備、掃描、統計、鄰格與預覽累計；應連同格數解讀。
 
+### 13.1 應用程式平行工作上限
+
+全域設定 > 內部參數 > 影像處理資源提供「最大並行工作數」，可設 1–32；0 代表自動，預設不高於邏輯處理器數且最多 8。此值套用在應用程式自有的 `Parallel.For` 工作：前處理、尺寸物件、一般缺陷核心／ROI、頻域 ROI 及結果確認物件。巢狀迴圈由目前 worker 依序執行，以避免每層另外擴張執行緒。
+
+這不是整個程序的 CPU 或記憶體硬上限。OpenCV 原生平行化、相機 TIFF 背景保存、其他 Task／UI 工作、影像來源和預覽快取均未納入同一個資源預算。調高上限可能增加 RAM／CPU 競爭，不承諾加速；必須用固定影像、Recipe、設備及 Release 組態量測牆鐘、CPU、峰值 RAM 與 P95。
+
 目前不承諾固定每秒片數、毫秒上限或無限執行緒。驗收須附影像、Recipe、物件數、ROI、視窗格數、電腦、Release 設定、冷／熱執行及記憶體，另量來源可用至結果發布的整體時間。
 
 ## 14 目前限制與後續目標
 
-已知限制包括頁面與運行模式耦合、TCP 同 ID 重連競態、歷史標定未快照、部分歷史資料讀自 Grid、巢狀平行／存檔缺少統一預算、角色未驗證，以及手動／相機影像拒收規則未完全一致。
+已知限制包括頁面與運行模式耦合、歷史標定未快照、部分歷史資料讀自 Grid、程序級 CPU／RAM 預算不足、角色未使用個人帳號，以及手動／相機影像拒收規則未完全一致。TCP peer 清理現已比對 peer 實例；逐筆結果也有 outbox／inbox／ACK／重送，但兩者仍需現場重連驗收。TCP 缺 TLS，命令 HMAC 為選用且只保護 command。
 
 紋理異常、自動方向線條分析與 DFT 頁已移除，不列為現有功能。自動保留天數／清理、完整歷史匯出、正式帳密管理、設備互鎖和完整可靠通訊是後續需求，需另定義規格及驗收。
 

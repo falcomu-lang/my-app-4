@@ -141,7 +141,26 @@ namespace CameraCaptureApp.Services
                 "MeterWheelExtensionCompareOutputStates=" + settings.MeterWheelExtensionCompareOutputStates.ToString(CultureInfo.InvariantCulture)
             };
 
-            File.WriteAllLines(_settingsFilePath, lines, Encoding.UTF8);
+            string temporaryPath = _settingsFilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                File.WriteAllLines(temporaryPath, lines, new UTF8Encoding(false));
+                if (File.Exists(_settingsFilePath))
+                {
+                    File.Replace(temporaryPath, _settingsFilePath, null);
+                }
+                else
+                {
+                    File.Move(temporaryPath, _settingsFilePath);
+                }
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
         }
 
         private void MigrateLegacySettingsIfPresent()

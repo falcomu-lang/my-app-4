@@ -31,19 +31,61 @@ namespace IntegratedImageProcessingApp.Forms
         private bool isApplyingMainFormRole;
         private List<object> functionMenuItemsBeforeRestrictedRole;
         private string functionMenuSelectionBeforeRestrictedRole;
+        private MainFormRole? startupRoleRequiresAuthentication;
 
         private void InitializeMainFormRoleSwitcher()
         {
             functionMenuItemsBeforeRestrictedRole = functionListBox.Items
                 .Cast<object>().ToList();
-            selectedMainFormRole = ParseMainFormRole(
+            MainFormRole persistedRole = ParseMainFormRole(
                 cameraDeviceSettings == null ? null : cameraDeviceSettings.LastSelectedRole);
+            selectedMainFormRole = MainFormRole.Operator;
             roleSelectorComboBox.SelectedIndex = (int)selectedMainFormRole;
             roleSelectorComboBox.SelectedIndexChanged += RoleSelectorComboBox_SelectedIndexChanged;
             applyRoleButton.Click += ApplyRoleButton_Click;
             UpdateCurrentRoleLabel();
             UpdateRoleApplyButtonState();
             ApplyMainFormRoleMenu(selectedMainFormRole);
+            int overviewIndex = functionListBox.Items.IndexOf(InspectionOverviewMenuText);
+            if (overviewIndex >= 0)
+            {
+                functionListBox.SelectedIndex = overviewIndex;
+            }
+            if (persistedRole != MainFormRole.Operator)
+            {
+                startupRoleRequiresAuthentication = persistedRole;
+                Shown += MainForm_AuthenticatePersistedRole;
+            }
+        }
+
+        private void MainForm_AuthenticatePersistedRole(object sender, EventArgs e)
+        {
+            Shown -= MainForm_AuthenticatePersistedRole;
+            if (!startupRoleRequiresAuthentication.HasValue || IsDisposed) return;
+
+            MainFormRole requestedRole = startupRoleRequiresAuthentication.Value;
+            startupRoleRequiresAuthentication = null;
+            string enteredPassword;
+            if (!ShowRolePasswordDialog(requestedRole, out enteredPassword))
+            {
+                PersistMainFormRoleSelection();
+                return;
+            }
+
+            string configuredPassword = ReadRolePassword(requestedRole);
+            if (!string.Equals(enteredPassword, configuredPassword, StringComparison.Ordinal))
+            {
+                MessageBox.Show(
+                    this,
+                    "密碼錯誤，程式將以操作員角色啟動。",
+                    "角色驗證",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                PersistMainFormRoleSelection();
+                return;
+            }
+
+            SetMainFormRole(requestedRole);
         }
 
         private void RoleSelectorComboBox_SelectedIndexChanged(object sender, EventArgs e)

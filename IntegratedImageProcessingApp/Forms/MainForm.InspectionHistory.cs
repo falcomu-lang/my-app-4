@@ -26,10 +26,13 @@ namespace IntegratedImageProcessingApp.Forms
         private ComboBox inspectionHistoryRecipeFilter;
         private ComboBox inspectionHistoryStatusFilter;
         private ContextMenuStrip inspectionHistoryContextMenu;
+        private ToolStripMenuItem inspectionHistoryRerunMenuItem;
         private Label[] inspectionHistorySummaryValueLabels;
         private InspectionHistoryStore inspectionHistoryStore;
         private string inspectionHistorySelectedBatchId;
         private SystemParameterSettings inspectionHistoryPreviousSystemParameters;
+        private InspectionHistoryExecutionSnapshot inspectionHistoryCalibrationOverride;
+        private InspectionHistoryExecutionSnapshot inspectionHistoryPreviousCalibrationOverride;
         private string inspectionHistoryPreviousActiveParameterId;
         private string inspectionHistoryPreviousReviewParameterId;
         private Size inspectionHistoryPreviousReferenceImageSize;
@@ -470,8 +473,21 @@ namespace IntegratedImageProcessingApp.Forms
             inspectionHistoryRecordsEmptyLabel.BringToFront();
 
             inspectionHistoryContextMenu = new ContextMenuStrip();
-            inspectionHistoryContextMenu.Items.Add("使用當時參數重新檢測", null,
+            inspectionHistoryRerunMenuItem = new ToolStripMenuItem(
+                "使用當時參數重新檢測",
+                null,
                 InspectionHistoryRerunMenuItem_Click);
+            inspectionHistoryRerunMenuItem.ToolTipText =
+                "需要可進入參數結果確認頁面的角色。";
+            inspectionHistoryContextMenu.Items.Add(inspectionHistoryRerunMenuItem);
+            inspectionHistoryContextMenu.Opening += delegate
+            {
+                bool canRerun = selectedMainFormRole != MainFormRole.Operator;
+                inspectionHistoryRerunMenuItem.Enabled = canRerun;
+                inspectionHistoryRerunMenuItem.ToolTipText = canRerun
+                    ? "使用這筆紀錄保存的 Recipe 與影像重新檢測。"
+                    : "操作員目前只有歷史查閱權限；重新檢測需要工程師或管理者角色。";
+            };
             inspectionHistoryRecordsGrid.ContextMenuStrip = inspectionHistoryContextMenu;
             return host;
         }
@@ -847,6 +863,17 @@ namespace IntegratedImageProcessingApp.Forms
                         : (string.IsNullOrWhiteSpace(snapshot.Parameter.DisplayName)
                             ? snapshot.Parameter.Id : snapshot.Parameter.DisplayName)
                 };
+                record.ExecutionSnapshot = new InspectionHistoryExecutionSnapshot
+                {
+                    XMillimetersPerPixel = GetCameraXMillimetersPerPixel(),
+                    YMillimetersPerPixel = GetCameraYMillimetersPerPixel(),
+                    MillimeterConversionEnabled = IsCameraMillimeterConversionEnabled(),
+                    SoftwareId = cameraDeviceSettings == null ? 0 : cameraDeviceSettings.SoftwareId,
+                    ProgramName = cameraDeviceSettings == null ? string.Empty : cameraDeviceSettings.ProgramName,
+                    ApplicationVersion = typeof(MainForm).Assembly.GetName().Version == null
+                        ? string.Empty
+                        : typeof(MainForm).Assembly.GetName().Version.ToString()
+                };
 
                 IList<ObjectDetectionDefectIntegrationGroup> groups = snapshot.IntegrationGroups ??
                     new List<ObjectDetectionDefectIntegrationGroup>();
@@ -1024,11 +1051,23 @@ namespace IntegratedImageProcessingApp.Forms
                             }
                         }
                         record.RecipeSnapshotPath = store.SaveRecipeSnapshot(settingsSnapshot);
-                        DetectionRecipeCatalogEntry activeRecipe = new DetectionRecipeCatalogService(
-                            AppDomain.CurrentDomain.BaseDirectory).LoadParameterList().FirstOrDefault(item =>
-                                string.Equals(item.Id, record.RecipeId, StringComparison.Ordinal));
-                        if (activeRecipe != null) record.RecipeName = activeRecipe.DisplayName;
-                        else record.RecipeName = fallbackRecipeName;
+                        record.RecipeName = fallbackRecipeName;
+                        try
+                        {
+                            DetectionRecipeCatalogEntry activeRecipe = new DetectionRecipeCatalogService(
+                                AppDomain.CurrentDomain.BaseDirectory).LoadParameterList().FirstOrDefault(item =>
+                                    string.Equals(item.Id, record.RecipeId, StringComparison.Ordinal));
+                            if (activeRecipe != null && !string.IsNullOrWhiteSpace(activeRecipe.DisplayName))
+                            {
+                                record.RecipeName = activeRecipe.DisplayName;
+                            }
+                        }
+                        catch (Exception recipeCatalogException)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                "Recipe display-name lookup failed; saving history with captured name: " +
+                                recipeCatalogException);
+                        }
                         store.SaveBatch(record);
                         if (IsHandleCreated && !IsDisposed)
                         {
@@ -1093,8 +1132,29 @@ namespace IntegratedImageProcessingApp.Forms
             string snapshotPath,
             string imagePath)
         {
+            if (selectedMainFormRole == MainFormRole.Operator)
+            {
+                SetCameraInspectionStatus(
+                    "操作員角色可查閱歷史資料；重新檢測請切換至工程師或管理者角色。");
+                return;
+            }
+
             try
             {
+                InspectionHistoryExecutionSnapshot executionSnapshot = record == null
+                    ? null : record.ExecutionSnapshot;
+                if (executionSnapshot == null ||
+                    executionSnapshot.XMillimetersPerPixel <= 0.0 ||
+                    executionSnapshot.YMillimetersPerPixel <= 0.0 ||
+                    double.IsNaN(executionSnapshot.XMillimetersPerPixel) ||
+                    double.IsNaN(executionSnapshot.YMillimetersPerPixel) ||
+                    double.IsInfinity(executionSnapshot.XMillimetersPerPixel) ||
+                    double.IsInfinity(executionSnapshot.YMillimetersPerPixel))
+                {
+                    throw new InvalidDataException(
+                        "這筆歷史紀錄沒有有效的相機精度快照，無法保證尺寸單位與結果一致，因此未開始重新檢測。新建立的歷史紀錄會保存此設定。");
+                }
+
                 SystemParameterSettings historical = new SystemParameterIniService(snapshotPath).Load();
                 if (historical == null || historical.ObjectDetectionParameters == null ||
                     historical.ObjectDetectionParameters.Count == 0)
@@ -1129,10 +1189,12 @@ namespace IntegratedImageProcessingApp.Forms
                 }
 
                 inspectionHistoryPreviousSystemParameters = systemParameters;
+                inspectionHistoryPreviousCalibrationOverride = inspectionHistoryCalibrationOverride;
                 inspectionHistoryPreviousActiveParameterId = activeObjectDetectionParameterId;
                 inspectionHistoryPreviousReviewParameterId = objectDetectionResultReviewSelectedParameterId;
                 inspectionHistoryPreviousReferenceImageSize = objectDetectionResultReviewReferenceImageSize;
                 isInspectionHistoryRerunActive = true;
+                inspectionHistoryCalibrationOverride = executionSnapshot;
                 historical.LastImagePath = imagePath;
                 historical.ActiveDetectionRecipeId = record.RecipeId ?? string.Empty;
                 systemParameters = historical;
@@ -1225,10 +1287,12 @@ namespace IntegratedImageProcessingApp.Forms
         {
             if (!isInspectionHistoryRerunActive) return;
             systemParameters = inspectionHistoryPreviousSystemParameters ?? systemParameters;
+            inspectionHistoryCalibrationOverride = inspectionHistoryPreviousCalibrationOverride;
             activeObjectDetectionParameterId = inspectionHistoryPreviousActiveParameterId;
             objectDetectionResultReviewSelectedParameterId = inspectionHistoryPreviousReviewParameterId;
             objectDetectionResultReviewReferenceImageSize = inspectionHistoryPreviousReferenceImageSize;
             inspectionHistoryPreviousSystemParameters = null;
+            inspectionHistoryPreviousCalibrationOverride = null;
             isInspectionHistoryRerunActive = false;
             inspectionHistoryNeedsReviewRefresh = true;
         }

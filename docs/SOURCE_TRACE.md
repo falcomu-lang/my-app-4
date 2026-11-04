@@ -1,6 +1,6 @@
 # 整合式影像處理軟體程式對照表
 
-文件版本 1.0　核對日期 2026-10-30　程式基準 b512791
+文件版本 1.1　核對日期 2026-11-04　程式基準：目前工作目錄，含未提交修改
 
 以下位置由目前檔案實際搜尋取得。連結相對於專案，附 GitHub 行號錨點。行號可能隨後續修改位移；維護時以方法或運算式重新定位。這是靜態對照，不表示已執行驗收。
 
@@ -59,14 +59,17 @@
 | S49 | 歷史右鍵重跑 | [MainForm.InspectionHistory.cs:473](../IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs#L473) | inspectionHistoryContextMenu.Items.Add("使用當時參數重新檢測" |
 | S50 | 歷史 ParameterId 選取 | [MainForm.InspectionHistory.cs:1106](../IntegratedImageProcessingApp/Forms/MainForm.InspectionHistory.cs#L1106) | record.ParameterId |
 | S51 | TCP 合約 | [InspectionTcpTransport.cs:16](../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs#L16) | public sealed class InspectionTcpMessage |
-| S52 | TCP 重連清理風險 | [InspectionTcpTransport.cs:528](../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs#L528) | private void RemovePeer |
-| S53 | TCP 心跳只保活 | [InspectionTcpTransport.cs:467](../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs#L467) | if (!string.Equals(message.MessageType, "heartbeat" |
+| S52 | TCP peer 清理比對連線實例，避免舊 peer 移除新 peer | [InspectionTcpTransport.cs:602](../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs#L602) | ReferenceEquals(current, peer) |
+| S53 | TCP heartbeat 用於存活；逐筆結果另走 ACK／重送 | [InspectionTcpTransport.cs:467](../IntegratedImageProcessingApp/Services/InspectionTcpTransport.cs#L467) | if (!string.Equals(message.MessageType, "heartbeat" |
 | S54 | TCP 狀態節流 | [MainForm.ConnectionController.cs:1605](../IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs#L1605) | private void QueueStationStatusPublish |
 | S55 | TCP 命令 | [MainForm.ConnectionController.cs:1231](../IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs#L1231) | case "start-inspection" |
 | S56 | 取像 SDK | [CameraService.cs:15](../CameraCaptureModule/Services/CameraService.cs#L15) | class CameraService |
 | S57 | 相機設定 UI | [CameraSettingsForm.Designer.cs:168](../CameraCaptureModule/Forms/CameraSettingsForm.Designer.cs#L168) | this.tabPageConnection.Text |
 | S58 | 米輪控制 UI | [MeterWheelControlForm.Designer.cs:172](../CameraCaptureModule/Forms/MeterWheelControlForm.Designer.cs#L172) | this.buttonClearEncoder.Text |
+| S59 | TCP command HMAC 驗證、目標／時間戳／重播檢查 | [MainForm.ConnectionController.cs:1645](../IntegratedImageProcessingApp/Forms/MainForm.ConnectionController.cs#L1645) | private bool TryAuthorizeRemoteCommand |
+| S60 | 應用程式平行工作共同上限 | [InspectionParallelism.cs:11](../IntegratedImageProcessingApp/Services/InspectionParallelism.cs#L11) | public static class InspectionParallelism |
+| S61 | TCP 結果 outbox／inbox 與 ResultId 去重 | [InspectionTcpResultStore.cs:16](../IntegratedImageProcessingApp/Services/InspectionTcpResultStore.cs#L16) | public sealed class InspectionTcpResultStore |
 
 ## 核對範圍
 
-目前架構、功能規格與操作手冊的關鍵規則對應上述程式。完整自有檔案職責與大型方法盤點見根目錄 PROJECT_HANDOFF.md 及 ARCHITECTURE_REVIEW.md。此表不把第三方 SDK 原始碼列為自有程式，也不宣稱全部硬體 feature 都已實測。
+目前架構、功能規格與操作手冊的關鍵規則對應上述程式。行號是 2026-11-04 工作目錄核對值，後續修改可能移動；以方法名稱重新定位。完整自有檔案職責與大型方法盤點見根目錄 PROJECT_HANDOFF.md 及 ARCHITECTURE_REVIEW.md。此表不把第三方 SDK 原始碼列為自有程式，也不宣稱全部硬體 feature 都已實測。

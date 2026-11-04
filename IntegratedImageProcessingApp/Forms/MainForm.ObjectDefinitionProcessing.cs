@@ -981,7 +981,8 @@ namespace IntegratedImageProcessingApp.Forms
                 "source-mask-secondary-type",
                 definition == null ? string.Empty : definition.SourceMaskSecondaryType ?? string.Empty,
                 "source-mask-secondary-id",
-                definition == null ? string.Empty : definition.SourceMaskSecondaryId ?? string.Empty
+                definition == null ? string.Empty : definition.SourceMaskSecondaryId ?? string.Empty,
+                CreateObjectDefinitionRelationDependencySignature(definition)
             };
 
             if (usesBlockSource && definition != null && string.Equals(definition.SourceType, "Group", StringComparison.Ordinal))
@@ -1030,6 +1031,27 @@ namespace IntegratedImageProcessingApp.Forms
             }
 
             return string.Join("|", parts.ToArray());
+        }
+
+        private string CreateObjectDefinitionRelationDependencySignature(
+            ObjectDefinitionSettings definition)
+        {
+            var builder = new System.Text.StringBuilder();
+            foreach (ImageRelationSettings relation in GetObjectDefinitionSourceRelations(definition))
+            {
+                builder.Append("relation:");
+                AppendObjectDetectionResultReviewSignatureValue(
+                    builder,
+                    relation,
+                    new HashSet<object>());
+                builder.Append("steps:");
+                AppendObjectDetectionResultReviewSignatureValue(
+                    builder,
+                    GetImageProcessingStepsForRelation(relation),
+                    new HashSet<object>());
+            }
+
+            return builder.ToString();
         }
 
         private bool HasCompletedObjectDefinitionResult(

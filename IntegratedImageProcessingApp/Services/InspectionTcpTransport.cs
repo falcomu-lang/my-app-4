@@ -44,6 +44,12 @@ namespace IntegratedImageProcessingApp.Services
         [DataMember(Order = 20)] public bool Accepted { get; set; }
         [DataMember(Order = 21)] public string ResultAtUtc { get; set; }
         [DataMember(Order = 22)] public bool IsInspecting { get; set; }
+        [DataMember(Order = 23)] public string ResultId { get; set; }
+        [DataMember(Order = 24)] public string AcknowledgedResultId { get; set; }
+        [DataMember(Order = 25)] public long CameraSequence { get; set; }
+        [DataMember(Order = 26)] public bool SupportsReliableResults { get; set; }
+        [DataMember(Order = 27)] public int TargetStationId { get; set; }
+        [DataMember(Order = 28)] public string CommandSignature { get; set; }
     }
 
     [DataContract]
@@ -93,13 +99,80 @@ namespace IntegratedImageProcessingApp.Services
 
     public sealed class InspectionTcpTransport : IDisposable
     {
+        private const int MaxInspectionTcpMessageBytes = 4 * 1024 * 1024;
+
+        private sealed class BoundedLineReader : IDisposable
+        {
+            private readonly Stream stream;
+            private readonly byte[] readBuffer = new byte[8192];
+            private readonly MemoryStream lineBuffer = new MemoryStream();
+            private int readOffset;
+            private int readCount;
+
+            public BoundedLineReader(Stream stream)
+            {
+                this.stream = stream ?? throw new ArgumentNullException(nameof(stream));
+            }
+
+            public async Task<string> ReadLineAsync(int maximumBytes)
+            {
+                while (true)
+                {
+                    if (readOffset >= readCount)
+                    {
+                        readCount = await stream.ReadAsync(
+                            readBuffer, 0, readBuffer.Length).ConfigureAwait(false);
+                        readOffset = 0;
+                        if (readCount == 0)
+                        {
+                            return lineBuffer.Length == 0 ? null : CompleteLine();
+                        }
+                    }
+
+                    byte value = readBuffer[readOffset++];
+                    if (value == (byte)'\n')
+                    {
+                        return CompleteLine();
+                    }
+
+                    if (lineBuffer.Length >= maximumBytes)
+                    {
+                        throw new InvalidDataException(
+                            "Inspection TCP message exceeded the configured line limit.");
+                    }
+
+                    lineBuffer.WriteByte(value);
+                }
+            }
+
+            private string CompleteLine()
+            {
+                int length = (int)lineBuffer.Length;
+                byte[] buffer = lineBuffer.GetBuffer();
+                if (length > 0 && buffer[length - 1] == (byte)'\r')
+                {
+                    length--;
+                }
+
+                string line = Encoding.UTF8.GetString(buffer, 0, length);
+                lineBuffer.SetLength(0);
+                lineBuffer.Position = 0;
+                return line;
+            }
+
+            public void Dispose()
+            {
+                lineBuffer.Dispose();
+            }
+        }
+
         private sealed class PeerConnection : IDisposable
         {
             public string Key;
             public int? StationId;
             public bool IsOutgoing;
             public TcpClient Client;
-            public StreamReader Reader;
+            public BoundedLineReader LineReader;
             public StreamWriter Writer;
             public SemaphoreSlim WriteLock = new SemaphoreSlim(1, 1);
             public DateTime LastReceivedUtc = DateTime.UtcNow;
@@ -112,7 +185,7 @@ namespace IntegratedImageProcessingApp.Services
                     return;
                 }
                 try { Client.Close(); } catch { }
-                try { Reader.Dispose(); } catch { }
+                try { LineReader.Dispose(); } catch { }
                 try { Writer.Dispose(); } catch { }
                 WriteLock.Dispose();
             }
@@ -442,8 +515,9 @@ namespace IntegratedImageProcessingApp.Services
             {
                 while (Volatile.Read(ref peer.Closed) == 0)
                 {
-                    string line = await peer.Reader.ReadLineAsync().ConfigureAwait(false);
-                    if (line == null || line.Length > 4 * 1024 * 1024)
+                    string line = await peer.LineReader
+                        .ReadLineAsync(MaxInspectionTcpMessageBytes).ConfigureAwait(false);
+                    if (line == null)
                     {
                         break;
                     }
@@ -520,7 +594,7 @@ namespace IntegratedImageProcessingApp.Services
                 StationId = stationId,
                 IsOutgoing = isOutgoing,
                 Client = client,
-                Reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true),
+                LineReader = new BoundedLineReader(stream),
                 Writer = new StreamWriter(stream, new UTF8Encoding(false), 4096, true)
             };
         }
@@ -530,14 +604,20 @@ namespace IntegratedImageProcessingApp.Services
             bool removed;
             lock (peersLock)
             {
-                removed = peers.Remove(peer.Key);
-                if (peer.StationId.HasValue)
+                PeerConnection current;
+                removed = peers.TryGetValue(peer.Key, out current) &&
+                    ReferenceEquals(current, peer);
+                if (removed)
                 {
-                    string outgoingKey;
-                    if (outgoingPeerKeys.TryGetValue(peer.StationId.Value, out outgoingKey) &&
-                        string.Equals(outgoingKey, peer.Key, StringComparison.Ordinal))
+                    peers.Remove(peer.Key);
+                    if (peer.StationId.HasValue)
                     {
-                        outgoingPeerKeys.Remove(peer.StationId.Value);
+                        string outgoingKey;
+                        if (outgoingPeerKeys.TryGetValue(peer.StationId.Value, out outgoingKey) &&
+                            string.Equals(outgoingKey, peer.Key, StringComparison.Ordinal))
+                        {
+                            outgoingPeerKeys.Remove(peer.StationId.Value);
+                        }
                     }
                 }
             }
